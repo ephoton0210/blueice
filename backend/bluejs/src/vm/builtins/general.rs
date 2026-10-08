@@ -15,30 +15,6 @@ impl Vm {
         self.test262_done.take()
     }
 
-    pub(in super::super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
-        Ok(if let Value::Object(id) = value {
-            if let Some((_, _, callable, _)) = self.test262_foreign_reference(*id) {
-                callable
-            } else if let Some((_, _, callable, _)) = self.test262_reverse_reference(*id) {
-                // `$262.createRealm()` transports an object owned by a
-                // parent Test262 realm as a reverse-membrane facade in this
-                // realm. Its owner retains the forwarding record, while this
-                // realm retains the callable/constructible bits (and now, a
-                // live dispatch path back to the original) so `ShadowRealm`
-                // and ordinary call dispatch alike can treat it correctly.
-                callable
-            } else if let Some((callable, _)) = self.heap.proxy_capabilities(*id)? {
-                callable
-            } else {
-                self.heap.native_function(*id)?.is_some()
-                    || self.heap.closure(*id)?.is_some()
-                    || self.heap.bound_function(*id)?.is_some()
-            }
-        } else {
-            false
-        })
-    }
-
     pub(in super::super) fn coerce_primitive(
         &mut self,
         value: &Value,
@@ -324,7 +300,7 @@ impl Vm {
         // ArraySetLength performs ToUint32 followed by a separate ToNumber.
         // These must remain separate observable conversions: an object can
         // supply a stateful `valueOf` implementation.
-        let length = native::uint32(&Value::Number(self.coerce_number(value)?))?;
+        let length = native::uint32(self.coerce_number(value)?);
         let number = self.coerce_number(value)?;
         if f64::from(length) != number {
             return Err(RuntimeError::RangeError("invalid array length".into()));
@@ -372,18 +348,14 @@ impl Vm {
     }
 
     pub(in super::super) fn is_regexp(&mut self, value: &Value) -> Result<bool, RuntimeError> {
-        if !matches!(value, Value::Object(_)) {
+        let Value::Object(id) = value else {
             return Ok(false);
-        }
+        };
         let matcher = self.get_property(value, &JsSymbol::well_known("match").into())?;
         if !matches!(matcher, Value::Undefined) {
             return self.to_boolean(&matcher);
         }
-        Ok(if let Value::Object(id) = value {
-            self.heap.regexp(*id)?.is_some()
-        } else {
-            false
-        })
+        Ok(self.heap.regexp(*id)?.is_some())
     }
 
     pub(in super::super) fn dispatch_string_method(

@@ -6,7 +6,7 @@
 //! Allocating instructions root all VM-held objects around heap
 //! safepoints. The collector itself additionally protects store inputs.
 
-use crate::bytecode::{Binding, ModuleExport, ModuleImportName};
+use crate::bytecode::{Binding, ModuleExport, ModuleImportName, TemplateSiteId};
 use crate::heap::{GeneratorState, PrivateElement};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
@@ -21,12 +21,16 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 mod builtins;
+mod classification;
 mod completion;
 mod debugger;
 mod errors;
 mod execution;
+mod for_in;
 mod functions;
 mod host_objects;
+mod host_registration;
+use host_registration::{host_function_index, host_registration_index};
 mod interpreter;
 mod intl;
 mod intrinsics;
@@ -35,6 +39,7 @@ mod lifecycle;
 mod modules;
 mod native_stack;
 mod operations;
+mod promise_reactions;
 mod properties;
 mod realm_reentrancy;
 mod regexp;
@@ -42,12 +47,18 @@ mod shadow_realm;
 mod temporal;
 mod test262;
 mod test262_agents;
+// Coverage builds run internal boundary fixtures against the ordinary library
+// instance as well as the unit-test instance. This preserves raw LLVM coverage
+// semantics without exposing fixture APIs in normal builds.
+#[cfg(any(test, coverage))]
+#[path = "../tests/fixtures/vm_execution_boundaries.rs"]
+mod execution_boundaries;
 use completion::{
     call_stack_exhausted, Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
 };
 use debugger::{
-    DebuggerContinuation, ModuleDebuggerContinuation, ModuleDebuggerPauseRequest,
-    NestedDebuggerContinuation, NestedDebuggerPauseRequest,
+    DebuggerContinuation, DebuggerFrameKind, DebuggerInterpreterExit, ModuleDebuggerContinuation,
+    ModuleDebuggerPauseRequest, NestedDebuggerContinuation, NestedDebuggerPauseRequest,
 };
 pub use debugger::{
     VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
@@ -296,7 +307,6 @@ impl RuntimeError {
 struct GlobalBinding {
     cell: ObjectId,
     mutable: bool,
-    strict_immutable: bool,
     property: bool,
     _root: RootId,
 }
@@ -496,6 +506,9 @@ enum AsyncGeneratorDelegateKind {
     /// The delegate of a `yield*` has no `return` method, so the operand is
     /// awaited a second time before it is returned.
     AwaitReturnNoMethod,
+    /// AsyncIteratorClose is awaiting `return()` because `yield*`'s delegate
+    /// has no `throw` method. Its completion is thrown at the delegation site.
+    CloseMissingThrow,
 }
 
 struct PromiseRecord {
@@ -644,12 +657,10 @@ struct Test262Realm {
 
 /// The two roots keep an opaque membrane transport value alive in each heap.
 /// Such a value preserves identity across a call boundary. Ordinary-object
-/// stand-ins additionally record child-created data properties at the call
-/// boundary, then write them back through the parent VM's [[Set]] operation;
-/// no parent-heap handle is exposed to child heap storage.
+/// facades forward property operations through the reverse membrane as they
+/// happen; no parent-heap handle is exposed to child heap storage.
 struct Test262ImportedValue {
     value: Value,
-    property_forwarding: bool,
     _source_root: RootId,
     _target_root: RootId,
 }
@@ -785,7 +796,7 @@ struct SuspendedModuleExecution {
     script_global_slots: HashMap<usize, String>,
     variable_scope: u32,
     variable_scope_lexicals: Vec<String>,
-    templates: HashMap<u64, ObjectId>,
+    templates: HashMap<TemplateSiteId, ObjectId>,
     new_target: Value,
     new_target_allowed: bool,
     home_object: Option<ObjectId>,
@@ -808,6 +819,9 @@ pub struct Vm {
     has_own_property_installed: bool,
     property_is_enumerable_installed: bool,
     string_intrinsics: Option<(ObjectId, ObjectId)>,
+    /// The original, permanently rooted `%Function.prototype%`. Mutable
+    /// constructor `[[Prototype]]` links cannot identify a realm intrinsic.
+    function_intrinsic_prototype: Option<ObjectId>,
     /// `%TypedArray%` and `%TypedArray%.prototype`, kept outside the global
     /// object but permanently reachable from every concrete constructor.
     typed_array_intrinsics: Option<(ObjectId, ObjectId)>,
@@ -997,7 +1011,7 @@ pub struct Vm {
     variable_scope_lexicals: Vec<String>,
     iterator_prototype: Option<ObjectId>,
     regexp_iterator_prototype: Option<ObjectId>,
-    templates: HashMap<u64, ObjectId>,
+    templates: HashMap<TemplateSiteId, ObjectId>,
     new_target: Value,
     new_target_allowed: bool,
     // The `[[HomeObject]]` of the currently executing method or class
@@ -1079,6 +1093,10 @@ pub struct Vm {
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
     promise_jobs: VecDeque<PromiseJob>,
+    /// Heap edges of displaced async frames and active iterator records that
+    /// live outside the operand stack. Nested frames retain their own suffix
+    /// until they return, fail, or hand ownership to a suspended frame.
+    async_frame_roots: Vec<ObjectId>,
     test262_done: Option<Result<(), Value>>,
     /// Test262-only host scheduler state. Ordinary realms never install or
     /// expose it; agent VMs receive the same Arc while retaining their own
@@ -1128,6 +1146,10 @@ pub struct Vm {
     /// legacy `f.caller` reads it: eval frames, natives, generators resumed
     /// from a call and async continuations do not appear.
     call_stack: Vec<ObjectId>,
+    /// Synchronous delegate callbacks execute while their saved frame remains
+    /// in the heap for GC. These identities block resumption until the callback
+    /// and its result getters finish; the call operands already retain each one.
+    active_generator_delegations: HashSet<ObjectId>,
     /// How many of `with_objects` the running function inherited from the
     /// scope it was created in (the rest were entered by its own `with`).
     inherited_with_depth: usize,
@@ -1148,7 +1170,13 @@ impl Vm {
             .global("globalThis")?
             .object_id()
             .expect("globalThis is always an object");
-        if !host_property_name_is_valid(name) || self.heap.get_own(global, name)?.is_some() {
+        if !host_property_name_is_valid(name)
+            || self
+                .heap
+                .get_own(global, name)
+                .expect("the materialized realm global remains rooted during host installation")
+                .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "host global name is invalid or already defined".into(),
             ));
@@ -1164,7 +1192,13 @@ impl Vm {
             .global("globalThis")?
             .object_id()
             .expect("globalThis is always an object");
-        if !host_property_name_is_valid(name) || self.heap.get_own(global, name)?.is_some() {
+        if !host_property_name_is_valid(name)
+            || self
+                .heap
+                .get_own(global, name)
+                .expect("the materialized realm global remains rooted during host installation")
+                .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "host global name is invalid or already defined".into(),
             ));
@@ -1193,7 +1227,14 @@ impl Vm {
                 "host object or method name is invalid".into(),
             ));
         }
-        if self.heap.get_own(owner.0, name)?.is_some() {
+        // HostObject is an opaque capability published as a non-configurable
+        // property of this realm's permanently rooted global object.
+        if self
+            .heap
+            .get_own(owner.0, name)
+            .expect("a validated host object remains rooted by its global property")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "host method is already defined".into(),
             ));
@@ -1208,12 +1249,14 @@ impl Vm {
         length: u32,
         function: impl HostFunction,
     ) -> Result<(), RuntimeError> {
-        let index = u32::try_from(self.host_functions.len())
-            .ok()
-            .ok_or(RuntimeError::RangeError("too many host functions".into()))?;
-        self.install_host_callable_native(owner, name, length, NativeFunction::Host(index))?;
-        self.host_functions.push(Box::new(function));
-        Ok(())
+        // Check the tag's representation before publishing either the heap
+        // function or its callback. The integer boundary can be validated
+        // without constructing an impossibly large callback registry.
+        host_function_index(self.host_functions.len()).and_then(|index| {
+            self.install_host_callable_native(owner, name, length, NativeFunction::Host(index))?;
+            self.host_functions.push(Box::new(function));
+            Ok(())
+        })
     }
 
     fn install_host_callable_native(
@@ -1223,7 +1266,9 @@ impl Vm {
         length: u32,
         function: NativeFunction,
     ) -> Result<(), RuntimeError> {
-        let prototype = self.function_prototype()?;
+        let prototype = self.function_prototype().expect(
+            "host installation materializes globalThis and Function before publishing its owner",
+        );
         let id = self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
@@ -1284,12 +1329,13 @@ impl Vm {
     /// Native functions inherit from %Function.prototype%, not from
     /// %String.prototype%. The String intrinsic cache deliberately stores
     /// the latter as its second member, so callers that install a callable
-    /// must use this helper rather than indexing that cache directly.
+    /// must use this helper rather than indexing that cache directly or
+    /// reading String's user-mutable `[[Prototype]]`.
     fn function_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
-        let (string_constructor, _) = self.string_intrinsics()?;
-        self.heap
-            .prototype(string_constructor)?
-            .ok_or_else(|| RuntimeError::TypeError("Function prototype is unavailable".into()))
+        self.string_intrinsics()?;
+        Ok(self.function_intrinsic_prototype.expect(
+            "String bootstrap publishes the original Function prototype with its permanent root",
+        ))
     }
 
     fn install_native(
@@ -1413,14 +1459,14 @@ impl Vm {
         let getter = self.with_roots(|heap| {
             heap.alloc_native_function(getter_native, &getter_name, prototype)
         })?;
-        // Allocating the setter can collect immediately under a one-object
-        // nursery. Keep the getter live before that second allocation.
-        self.stack.push(Value::Object(getter));
-        let setter = self.with_roots(|heap| {
-            heap.alloc_native_function(setter_native, &setter_name, prototype)
-        })?;
-        self.stack.push(Value::Object(setter));
         let result = (|| {
+            // The setter allocation may collect or fail. Protect the getter
+            // until publication and restore the caller's stack on either path.
+            self.stack.push(Value::Object(getter));
+            let setter = self.with_roots(|heap| {
+                heap.alloc_native_function(setter_native, &setter_name, prototype)
+            })?;
+            self.stack.push(Value::Object(setter));
             self.define_data(getter, "length", Value::Number(0.0), false, false, true)?;
             self.define_data(
                 getter,
@@ -1469,7 +1515,8 @@ impl Vm {
         }
         if self
             .heap
-            .get_own_property_descriptor(self.object_prototype, "propertyIsEnumerable")?
+            .get_own_property_descriptor(self.object_prototype, "propertyIsEnumerable")
+            .expect("Object.prototype is a permanent VM root and this read cannot allocate")
             .is_none()
         {
             let function_prototype = self.function_prototype()?;
@@ -1491,7 +1538,8 @@ impl Vm {
         }
         if self
             .heap
-            .get_own_property_descriptor(self.object_prototype, "hasOwnProperty")?
+            .get_own_property_descriptor(self.object_prototype, "hasOwnProperty")
+            .expect("Object.prototype is a permanent VM root and this read cannot allocate")
             .is_none()
         {
             let function_prototype = self.function_prototype()?;
@@ -1567,7 +1615,9 @@ impl Vm {
         };
         let arrow = !construct && closure_code.as_ref().is_some_and(|code| code.arrow);
         let target = match (arrow, callee.object_id()) {
-            (true, Some(id)) => self.heap.closure_new_target(id)?,
+            (true, Some(id)) => self.heap.closure_new_target(id).expect(
+                "the preceding closure lookup verified this arrow without running JavaScript",
+            ),
             _ => target,
         };
         self.charge_step()?;
@@ -1677,9 +1727,16 @@ impl Vm {
             }
         }
         if let Value::Object(id) = callee {
-            if let Some((code, captures, lexical_this, home)) = self.heap.closure(id)? {
+            if let Some((code, captures, lexical_this, home)) = self
+                .heap
+                .closure(id)
+                .expect("bound and Proxy dispatch already validated the unchanged callee")
+            {
                 let receiver = if code.arrow { lexical_this } else { receiver };
-                let with_objects = self.heap.closure_with_objects(id)?;
+                let with_objects = self
+                    .heap
+                    .closure_with_objects(id)
+                    .expect("the immediately preceding closure lookup verified this live object");
                 return self.call_closure(builtins::ClosureCall {
                     code,
                     captures,
@@ -1693,7 +1750,9 @@ impl Vm {
             }
         }
         let function = if let Value::Object(id) = callee {
-            self.heap.native_function(id)?
+            self.heap
+                .native_function(id)
+                .expect("the validated callee remains live during native tag lookup")
         } else {
             None
         };
@@ -1745,6 +1804,6 @@ impl Vm {
     }
 }
 
-#[cfg(test)]
-#[path = "vm/tests.rs"]
+#[cfg(any(test, coverage))]
+#[path = "../tests/fixtures/vm_internal.rs"]
 mod tests;

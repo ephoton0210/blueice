@@ -55,7 +55,10 @@ impl Vm {
         options: &Value,
         since: bool,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        // Native dispatch checked the ZonedDateTime receiver before entry.
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let other = self.temporal_to_zoned_date_time(other_value, &Value::Undefined)?;
         if existing.calendar != other.calendar {
             return Err(RuntimeError::RangeError(
@@ -191,7 +194,11 @@ impl Vm {
         // before its range check (`temporal_duration_record`): a difference
         // too large for a double to hold exactly is observably rounded
         // (`prototype/{since,until}/float64-representable-integer.js`).
-        let record = Self::temporal_duration_record(fields.map(i128::from))?;
+        // Both instants are within Temporal's range, so their difference is
+        // far below DurationRecord's 2^53-second normalized limit. Calendar
+        // fields are likewise bounded and the algorithm keeps one sign.
+        let record = Self::temporal_duration_record(fields.map(i128::from))
+            .expect("a bounded zoned-date-time difference is a valid duration");
         self.alloc_temporal_value(Self::temporal_duration_value(record), false)
     }
 
@@ -200,7 +207,10 @@ impl Vm {
         receiver: &Value,
         other_value: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        // Native dispatch checked the ZonedDateTime receiver before entry.
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let other = self.temporal_to_zoned_date_time(other_value, &Value::Undefined)?;
         // `TimeZoneEquals`: compares primary-zone identity, not raw stored
         // spelling -- an IANA alias and its target (`Asia/Calcutta` /

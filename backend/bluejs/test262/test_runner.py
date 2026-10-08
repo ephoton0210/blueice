@@ -52,6 +52,23 @@ from run import (
 
 
 class RunnerTests(unittest.TestCase):
+    def test_heavy_scheduling_retains_every_fixture_and_its_resource_limits(self):
+        corpus = Path("corpus")
+        paths = [corpus / "test" / relative for relative in (
+            "built-ins/Date/basic.js", "staging/sm/Date/dst-offset-caching-2-of-8.js",
+            "staging/sm/expressions/destructuring-array-default-simple.js",
+            "staging/sm/Date/dst-offset-caching-8-of-8.js",
+        )]
+        groups = run.scheduling_groups(paths, corpus, 8)
+        self.assertEqual(groups[0], ("ordinary", [paths[0], paths[2]], 8))
+        self.assertEqual(groups[1], ("heavy", [paths[1], paths[3]], 2))
+        self.assertEqual(sorted(p for _, selected, _ in groups for p in selected), sorted(paths))
+        self.assertEqual(run.scheduling_groups(paths, corpus, 1)[1][2], 1)
+        for path in paths[1::2]:
+            relative = path.relative_to(corpus / "test").as_posix()
+            self.assertEqual(run.case_timeout({}, 2, relative), 70)
+            self.assertEqual(run.instruction_budget({}, 100_000, relative), 200_000_000)
+
     def test_default_jobs_never_oversubscribes_the_host_or_exceeds_the_ceiling(self):
         self.assertEqual(default_jobs(0), 1)
         self.assertEqual(default_jobs(1), 1)
@@ -1074,6 +1091,28 @@ class RunnerTests(unittest.TestCase):
             try:
                 self.assertEqual(worker.run({"stall": True})["kind"], "timeout")
                 self.assertEqual(worker.run({})["kind"], "ok")
+            finally:
+                worker.close()
+
+    def test_supervisor_flushes_a_live_adapter_on_final_close(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "adapter"
+            marker = Path(temporary) / "closed"
+            executable.write_text(
+                "#!/usr/bin/env python3\nimport json,sys\n"
+                "print('{\"ready\":1}',flush=True)\nfor line in sys.stdin:\n"
+                " print('{\"kind\":\"ok\"}',flush=True)\n"
+                f"open({str(marker)!r},'w').write('done')\n"
+            )
+            executable.chmod(0o755)
+            worker = Worker(executable, 1)
+            try:
+                self.assertEqual(worker.run({})["kind"], "ok")
+                process = worker.process
+                worker.close(flush_profile=True)
+                self.assertEqual(process.returncode, 0)
+                self.assertEqual(marker.read_text(), "done")
+                self.assertIsNone(worker.process)
             finally:
                 worker.close()
 

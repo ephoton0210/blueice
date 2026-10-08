@@ -18,7 +18,7 @@ impl Vm {
 
     /// Reads a validated `Temporal.Duration` receiver's own record.
     pub(in super::super) fn temporal_duration_receiver(
-        &mut self,
+        &self,
         receiver: &Value,
     ) -> Result<blueice_ecma402::DurationRecord, RuntimeError> {
         let object = receiver.object_id().ok_or_else(|| {
@@ -238,13 +238,12 @@ impl Vm {
                 .temporal_duration_relative_to_property_bag(value)
                 .map(Some);
         }
-        if !matches!(value, Value::String(_)) {
+        let Value::String(text) = value else {
             return Err(RuntimeError::TypeError(
                 "relativeTo must be an object or a string".into(),
             ));
-        }
-        let source = self
-            .coerce_string(value)?
+        };
+        let source = text
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid relativeTo string".into()))?;
         self.temporal_duration_relative_to_string(&source).map(Some)
@@ -327,21 +326,18 @@ impl Vm {
         let offset_primitive = (!matches!(offset_value, Value::Undefined))
             .then(|| self.coerce_primitive(&offset_value, "string"))
             .transpose()?;
-        if let Some(primitive) = &offset_primitive {
-            if !matches!(primitive, Value::String(_)) {
+        let offset_string = match offset_primitive {
+            None => None,
+            Some(Value::String(text)) => Some(
+                text.to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal offset".into()))?,
+            ),
+            Some(_) => {
                 return Err(RuntimeError::TypeError(
                     "Temporal relativeTo offset must be a string".into(),
                 ));
             }
-        }
-        let offset_string = offset_primitive
-            .map(|primitive| self.coerce_string(&primitive))
-            .transpose()?
-            .map(|text| {
-                text.to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal offset".into()))
-            })
-            .transpose()?;
+        };
         let requested_second = self.temporal_read_optional_integer(bag, "second", 0, 60)?;
         let time_zone_value = self.get_property(bag, &"timeZone".into())?;
         let requested_year = self.temporal_read_optional_integer(bag, "year", -275_760, 275_760)?;
@@ -680,21 +676,23 @@ impl Vm {
         )
         .total_nanoseconds()
             + record.days * DAY_NS;
-        let target_days =
-            i64::try_from(time_total.div_euclid(DAY_NS)).map_err(|_| out_of_range())?;
         let target_time =
             duration_math::time_fields_from_nanoseconds(time_total.rem_euclid(DAY_NS));
-        let target_date = plain_date::calendar_add_date(
-            calendar,
-            anchor,
-            record.years as i64,
-            record.months as i64,
-            record.weeks as i64,
-            target_days,
-            false,
-        )
-        .filter(|date| epoch::is_date_within_limits(*date))
-        .ok_or_else(out_of_range)?;
+        let target_date = i64::try_from(time_total.div_euclid(DAY_NS))
+            .ok()
+            .and_then(|target_days| {
+                plain_date::calendar_add_date(
+                    calendar,
+                    anchor,
+                    record.years as i64,
+                    record.months as i64,
+                    record.weeks as i64,
+                    target_days,
+                    false,
+                )
+            })
+            .filter(|date| epoch::is_date_within_limits(*date))
+            .ok_or_else(out_of_range)?;
         let origin = (anchor, MIDNIGHT);
         let target = (target_date, target_time);
         if origin != target {

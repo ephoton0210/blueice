@@ -5,9 +5,10 @@
 use super::*;
 
 /// Performs the grammar's lexical PrivateEnvironment checks without lowering
-/// the program.  The parser uses this for parse-only Test262 cases; the
-/// compiler repeats the lookup while assigning hidden owner bindings.
-pub(crate) fn validate_private_early_errors(program: &Program) -> Result<(), CompileError> {
+/// the program. The parser uses this for parse-only Test262 cases. Callers
+/// constructing a [`Program`] directly can run the same check before lowering;
+/// the compiler also resolves private names while assigning owner bindings.
+pub fn validate_private_early_errors(program: &Program) -> Result<(), CompileError> {
     validate_private_statements(&program.body, &HashSet::new())
 }
 
@@ -153,10 +154,10 @@ fn validate_private_for_init(init: &ForInit, names: &HashSet<String>) -> Result<
 fn validate_private_for_head(head: &ForHead, names: &HashSet<String>) -> Result<(), CompileError> {
     match head {
         ForHead::Decl(_, pattern) => validate_private_pattern(pattern, names),
-        ForHead::AnnexBVarInit(pattern, initializer) => {
-            validate_private_pattern(pattern, names)?;
-            validate_private_expression(initializer, names)
-        }
+        // An Annex B initializer belongs to a plain identifier binding, which
+        // has nothing to validate.
+        ForHead::AnnexBVarInit(pattern, initializer) => validate_private_pattern(pattern, names)
+            .and(validate_private_expression(initializer, names)),
         ForHead::Assignment(pattern) => validate_private_assignment_pattern(pattern, names),
         ForHead::Expr(expression) => validate_private_expression(expression, names),
     }
@@ -425,16 +426,15 @@ fn validate_private_expression(expr: &Expr, names: &HashSet<String>) -> Result<(
             if *computed {
                 validate_private_expression(property, names)?;
             }
-            if !*computed {
-                if let Expr::Identifier(name) = property.as_ref() {
-                    if let Some(name) = name.strip_prefix('#') {
-                        if matches!(object.as_ref(), Expr::Super) {
-                            return Err(CompileError::InvalidSyntax(
-                                "super cannot access a private element",
-                            ));
-                        }
-                        validate_private_name(name, names)?;
+            // A non-computed property is always an identifier.
+            if let (false, Expr::Identifier(name)) = (*computed, property.as_ref()) {
+                if let Some(name) = name.strip_prefix('#') {
+                    if matches!(object.as_ref(), Expr::Super) {
+                        return Err(CompileError::InvalidSyntax(
+                            "super cannot access a private element",
+                        ));
                     }
+                    validate_private_name(name, names)?;
                 }
             }
             Ok(())

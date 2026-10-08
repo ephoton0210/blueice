@@ -39,6 +39,10 @@ const EXPRESSION_CASES: &[&str] = &[
         "with ({}) { let local = 1; local; }",
         "with ({ x: 1, f() {} }) { f(); missing; missing++; delete missing; }",
         "with ({ x: 1 }) { x &&= 2; x ||= 3; x ??= 4; missing &&= 5; }",
+    "with ({}) { 7; 13; [missing = 42] = []; }",
+    "with ({}) { 7; 13; ({ value: missing = 42 } = {}); }",
+    "with ({}) { 7; 13; for (missing of [42]) {} }",
+    "with ({}) { 7; 13; for (missing in { value: 42 }) {} }",
         "let x = [1, , ...[2], 3]; x;",
         "({ a: 1, ['b']: function() {}, get c() { return 2; }, set c(v) {}, m() {}, ...{ d: 4 } });",
         "({ __proto__: null, a: 1, ['x']: class {} });",
@@ -158,6 +162,27 @@ fn expression_families_reject_every_truncated_metadata_budget() {
         }
         assert!(first_success.is_some(), "{source}");
     }
+}
+
+#[test]
+fn named_function_expression_needs_room_for_its_captured_and_self_bindings() {
+    let program = parse("let outer = 1; (function self() { return outer; });").unwrap();
+    let limits = CompileLimits {
+        max_metadata_entries: 1,
+        ..CompileLimits::default()
+    };
+    assert!(matches!(
+        compile_with_limits(&program, limits),
+        Err(CompileError::ProgramTooLarge)
+    ));
+    assert!(compile_with_limits(
+        &program,
+        CompileLimits {
+            max_metadata_entries: 2,
+            ..CompileLimits::default()
+        }
+    )
+    .is_ok());
 }
 
 #[test]

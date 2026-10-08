@@ -7,7 +7,8 @@
 //! Heap::root or through properties on an already-rooted object.
 
 use blueice_bluejs::{
-    compile, parse, Heap, HeapConfig, HeapError, PropertyDescriptor, Value, Vm, VmConfig,
+    compile, parse, Heap, HeapConfig, HeapError, JsString, PropertyDescriptor, PropertyName, Value,
+    Vm, VmConfig,
 };
 
 #[test]
@@ -57,6 +58,26 @@ fn ordinary_properties_distinguish_missing_from_undefined_and_preserve_values() 
     assert!(heap.delete(object, "number").unwrap());
     assert!(heap.delete(object, "missing").unwrap());
     assert_eq!(heap.get_own(object, "number").unwrap(), None);
+}
+
+#[test]
+fn property_keys_accept_owned_strings_and_property_names_consistently() {
+    let mut heap = Heap::default();
+    let object = heap.alloc_object(None).unwrap();
+    let owned = String::from("owned");
+    let js = JsString::from("js");
+    let name = PropertyName::from("name");
+
+    heap.set(object, owned.clone(), Value::Number(1.0)).unwrap();
+    heap.set(object, js.clone(), Value::Number(2.0)).unwrap();
+    heap.set(object, name.clone(), Value::Number(3.0)).unwrap();
+
+    assert_eq!(heap.get(object, owned.clone()), Ok(Value::Number(1.0)));
+    assert_eq!(heap.get(object, js.clone()), Ok(Value::Number(2.0)));
+    assert_eq!(heap.get(object, "name"), Ok(Value::Number(3.0)));
+    assert_eq!(heap.get_own(object, owned), Ok(Some(Value::Number(1.0))));
+    assert_eq!(heap.get_own(object, js), Ok(Some(Value::Number(2.0))));
+    assert_eq!(heap.get_own(object, name), Ok(Some(Value::Number(3.0))));
 }
 
 #[test]
@@ -737,4 +758,146 @@ fn batched_safepoint_roots_keep_vm_held_objects_alive_across_collections() {
         Value::Bool(true)
     );
     assert!(vm.heap().stats().minor_collections > 40);
+}
+
+#[test]
+fn intl_service_allocations_keep_their_references_during_collection() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 1024,
+            max_heap_bytes: 64 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = r#"
+        const services = [
+            new Intl.DisplayNames('en', {type: 'region'}),
+            new Intl.DurationFormat('en'),
+            new Intl.ListFormat('en'),
+            new Intl.PluralRules('en'),
+            new Intl.RelativeTimeFormat('en'),
+            new Intl.Segmenter('en')
+        ];
+        globalThis.savedServices = services;
+        globalThis.savedIterator = services[5].segment('abc')[Symbol.iterator]();
+        for (let index = 0; index < 128; index++) ({index});
+        typeof services[0].of('US') === 'string' &&
+        typeof services[1].format({seconds: 1}) === 'string' &&
+        typeof services[2].format(['A', 'B']) === 'string' &&
+        typeof services[3].select(1) === 'string' &&
+        typeof services[4].format(-1, 'day') === 'string' &&
+        savedIterator.next().value.segment === 'a'
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().major_collections > 0);
+}
+
+#[test]
+fn finalization_registry_holdings_survive_minor_collection() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 1024,
+            max_heap_bytes: 64 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = r#"
+        const registry = new FinalizationRegistry(() => {});
+        globalThis.savedRegistry = registry;
+        registry.register({}, {token: 'held'});
+        for (let index = 0; index < 128; index++) ({index});
+        true
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().minor_collections > 0);
+    assert!(vm.heap().stats().major_collections > 0);
+}
+
+#[test]
+fn generator_pending_completions_survive_collection() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 1024,
+            max_heap_bytes: 64 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = r#"
+        function* pauseInFinally() {
+            try { yield 1; } finally { yield 2; }
+        }
+        const returning = pauseInFinally();
+        returning.next();
+        returning.return({token: 'return'});
+        const throwing = pauseInFinally();
+        throwing.next();
+        throwing.throw({token: 'throw'});
+        globalThis.savedGenerators = [returning, throwing];
+        for (let index = 0; index < 128; index++) ({index});
+        let thrown;
+        try { throwing.next(); } catch (value) { thrown = value; }
+        returning.next().value.token === 'return' && thrown.token === 'throw'
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().major_collections > 0);
+}
+
+#[test]
+fn generator_pending_runtime_errors_survive_collection() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 1024,
+            max_heap_bytes: 64 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = r#"
+        function* pauseOnError(kind) {
+            try {
+                if (kind === 'ReferenceError') return missingBinding;
+                if (kind === 'TypeError') return null.property;
+                if (kind === 'RangeError') return new Array(-1);
+                return eval('(');
+            } finally {
+                yield {kind};
+            }
+        }
+        const kinds = ['ReferenceError', 'TypeError', 'RangeError', 'SyntaxError'];
+        const generators = kinds.map(kind => pauseOnError(kind));
+        globalThis.savedErrorGenerators = generators;
+        const paused = generators.every((generator, index) =>
+            generator.next().value.kind === kinds[index]);
+        for (let index = 0; index < 128; index++) ({index});
+        const errors = generators.map(generator => {
+            try { generator.next(); return 'none'; }
+            catch (error) { return error.name; }
+        });
+        paused && errors.every((name, index) => name === kinds[index])
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().major_collections > 0);
 }

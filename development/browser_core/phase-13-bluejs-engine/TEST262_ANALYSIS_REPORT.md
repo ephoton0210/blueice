@@ -2,9 +2,13 @@
 
 Snapshot: `72faf8ec1445c55149615e8b35187830783aba1a`.
 
-## Latest complete macOS rerun (2026-09-25)
+## Latest complete macOS rerun (2026-09-29)
 
-At source commit `e9c15268`, the pinned, unfiltered 53,582-file / 102,926-mode inventory produced **102,921 pass, 0 fail, 0 unsupported, 0 timeout, 0 harness error, 1 `stale_corpus`, and 4 `excluded`** in 235.768 seconds. Thus all **102,921 dispatched modes passed (100%)**, while the raw scheduled pass rate is **99.995%**. The runner returns 1 because the five non-pass dispositions remain visible. `analyze.py` reconciled every path, mode, source hash, status, feature count, and group count; its current output is `target/test262-macos-20260925-analysis/`. The detailed dispositions below still apply, and the [macOS report](TEST262_MACOS_REPORT.md) now records this latest run.
+At source commit `dee6e8718` plus the uncommitted coverage changes in the macOS report, the pinned, unfiltered 53,582-file / 102,926-mode inventory produced **102,921 pass, 0 fail, 0 unsupported, 0 timeout, 0 harness error, 1 `stale_corpus`, and 4 `excluded`** in 239.079 seconds. Thus all **102,921 dispatched modes passed (100%)**, while the raw scheduled pass rate is **99.995%**. The runner returns 1 because the five non-pass dispositions remain visible. `analyze.py` reconciled every path, mode, source hash, status, feature count, and group count; its current output is `target/test262-macos-20260929-batch1-analysis/`. Exact path/mode/status/expected-outcome/actual-kind/actual-phase/source-hash comparison against the preceding 2026-09-28 batch5 run found zero changes across all 102,926 modes. The detailed dispositions below still apply, and the [macOS report](TEST262_MACOS_REPORT.md) records this latest run.
+
+### Platform provenance note
+
+This macOS run supersedes the last full-platform-comparison snapshot (commit `1947afb`, Ubuntu, 97.057% pass, `TEST262_LINUX_REPORT.md`) referenced by earlier revisions of this report; Linux and Windows have not been re-run at the current 0-failure commit, so their own reports still carry that older revision's per-platform tables and diagnostic breakdown until they are.
 
 ## Previous milestone (2026-09-23): 0 failures
 

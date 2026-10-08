@@ -264,4 +264,54 @@ mod tests {
                 .is_none()
         );
     }
+
+    const CHINESE: AnyCalendarKind = AnyCalendarKind::Chinese;
+
+    #[test]
+    fn calendar_ordinals_convert_to_iso_dates() {
+        // Chinese New Year 2020 fell on 2020-01-25 and the month had 29 days,
+        // so a day past its end is constrained to its last one.
+        assert_eq!(
+            calendar_ordinal_to_iso(CHINESE, 2020, 1, 1),
+            Some((2020, 1, 25))
+        );
+        assert_eq!(
+            calendar_ordinal_to_iso(CHINESE, 2020, 1, 29),
+            Some((2020, 2, 22))
+        );
+        assert_eq!(
+            calendar_ordinal_to_iso(CHINESE, 2020, 1, 31),
+            Some((2020, 2, 22))
+        );
+        // A day before the first is constrained up to it.
+        assert_eq!(
+            calendar_ordinal_to_iso(CHINESE, 2020, 1, -5),
+            Some((2020, 1, 25))
+        );
+    }
+
+    #[test]
+    fn calendar_coordinates_outside_the_supported_range_have_no_date() {
+        let beyond_year = i64::from(i32::MAX) + 1;
+        // Not an `i32` year, not a `u8` month, and a year the calendar data
+        // does not cover.
+        assert_eq!(calendar_ordinal_to_iso(CHINESE, beyond_year, 1, 1), None);
+        assert_eq!(calendar_ordinal_to_iso(CHINESE, 2020, 256, 1), None);
+        assert_eq!(calendar_ordinal_to_iso(CHINESE, 1_000_000_000, 1, 1), None);
+        assert!(calendar_date_from_month(
+            CHINESE,
+            beyond_year,
+            Month::new(1),
+            1,
+            IcuOverflow::Constrain
+        )
+        .is_none());
+        assert!(calendar_date_from_ordinal(CHINESE, beyond_year, 1, 1).is_none());
+        assert!(calendar_date_from_ordinal(CHINESE, 2020, 256, 1).is_none());
+        assert!(calendar_date_from_ordinal(CHINESE, 2020, 1, 31).is_some());
+        assert!(
+            calendar_date_from_month(CHINESE, 2020, Month::new(1), 31, IcuOverflow::Constrain)
+                .is_some()
+        );
+    }
 }

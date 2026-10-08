@@ -392,3 +392,61 @@ fn wait_for_child_socket(child: &mut Child, path: &Path, timeout: Duration) -> i
         thread::sleep(Duration::from_millis(20));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spawn_for_core_with_script_socket_rejects_a_relative_socket_before_spawning_anything() {
+        let Err(error) = SpawnedBlueJsHost::spawn_for_core_with_script_socket_and_runtime_limits(
+            Path::new("relative/script.sock"),
+            BlueJsHostRuntimeLimits::default(),
+            true,
+            false,
+            false,
+            false,
+        ) else {
+            panic!("a relative script socket must be rejected");
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn spawn_for_core_with_script_socket_rejects_more_than_one_dom_profile() {
+        let Err(error) = SpawnedBlueJsHost::spawn_for_core_with_script_socket_and_runtime_limits(
+            Path::new("/tmp/blueice-script.sock"),
+            BlueJsHostRuntimeLimits::default(),
+            true,
+            true,
+            false,
+            false,
+        ) else {
+            panic!("more than one enabled DOM profile must be rejected");
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn wait_for_child_socket_fails_once_a_short_lived_child_exits_without_binding() {
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let never_created = std::env::temp_dir()
+            .join(format!("blueice-wait-test-{}-nonexistent.sock", std::process::id()));
+        let error = wait_for_child_socket(&mut child, &never_created, Duration::from_secs(5))
+            .unwrap_err();
+        assert!(error.to_string().contains("exited before binding"));
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn wait_for_child_socket_times_out_while_a_child_is_still_running() {
+        let mut child = std::process::Command::new("sleep").arg("5").spawn().unwrap();
+        let never_created = std::env::temp_dir()
+            .join(format!("blueice-wait-test-{}-timeout.sock", std::process::id()));
+        let error = wait_for_child_socket(&mut child, &never_created, Duration::from_millis(50))
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}

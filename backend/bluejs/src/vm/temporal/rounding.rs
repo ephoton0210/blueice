@@ -634,6 +634,16 @@ mod tests {
             exact_ratio_to_f64((1_i128 << 53) + 3, 2),
             2_f64.powi(52) + 2.0
         );
+        // Below, exactly at, and above the halfway point once the quotient
+        // is wider than a mantissa: only an exact tie with an odd mantissa
+        // rounds up.
+        let two_pow_53 = 1_i128 << 53;
+        assert_eq!(exact_ratio_to_f64((1 << 54) + 1, 1), (1_u64 << 54) as f64);
+        assert_eq!(exact_ratio_to_f64(two_pow_53 + 1, 1), two_pow_53 as f64);
+        assert_eq!(
+            exact_ratio_to_f64(two_pow_53 + 3, 1),
+            (two_pow_53 + 4) as f64
+        );
     }
 
     #[test]

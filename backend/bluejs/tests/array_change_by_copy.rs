@@ -5,7 +5,7 @@
 //! ES2023 change-array-by-copy methods (`toReversed`, `toSorted`,
 //! `toSpliced`, `with`) and `Array.prototype[Symbol.unscopables]`, driven
 //! through the real parse/compile/execute path.
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm, VmConfig};
+use blueice_bluejs::{compile, parse, HeapError, RuntimeError, Value, Vm, VmConfig};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
@@ -31,6 +31,151 @@ fn throws(source: &str, error: &str) {
          caught==='{error}'"
     );
     truthy(&wrapped);
+}
+
+#[test]
+fn change_by_copy_propagates_length_and_index_getter_errors() {
+    for (method, args) in [
+        ("toReversed", ""),
+        ("toSorted", ""),
+        ("toSpliced", "0, 0"),
+        ("with", "1, 'replacement'"),
+    ] {
+        for property in ["length", "0"] {
+            let source = format!(
+                "(function() {{
+                    const source = new Proxy({{ length: 2, 0: 'a', 1: 'b' }}, {{
+                        get(target, key) {{
+                            if (key === '{property}') throw new RangeError('{property}');
+                            return target[key];
+                        }}
+                    }});
+                    try {{ Array.prototype.{method}.call(source, {args}); }}
+                    catch (error) {{ return error instanceof RangeError && error.message === '{property}'; }}
+                    return false;
+                }})()"
+            );
+            truthy(&source);
+        }
+    }
+}
+
+#[test]
+fn change_by_copy_propagates_index_argument_conversion_errors() {
+    for source in [
+        "[1, 2].toSpliced({ valueOf() { throw new RangeError('start'); } }, 0)",
+        "[1, 2].toSpliced(0, { valueOf() { throw new RangeError('delete'); } })",
+        "[1, 2].with({ valueOf() { throw new RangeError('index'); } }, 0)",
+    ] {
+        let wrapped = format!(
+            "(function() {{ try {{ {source}; }} catch (error) {{ return error instanceof RangeError; }} return false; }})()"
+        );
+        truthy(&wrapped);
+    }
+}
+
+#[test]
+fn change_by_copy_walks_charge_the_instruction_budget() {
+    let execute_with_budget = |source: &str| {
+        let program = compile(&parse(source).unwrap()).unwrap();
+        Vm::new(VmConfig {
+            instruction_budget: 50,
+            ..VmConfig::default()
+        })
+        .unwrap()
+        .execute(&program)
+    };
+    for (method, args) in [
+        ("toReversed", ""),
+        ("toSorted", ""),
+        ("toSpliced", "0, 0"),
+        ("with", "0, 1"),
+    ] {
+        let short = format!("Array.prototype.{method}.call({{ length: 1 }}, {args})");
+        let long = format!("Array.prototype.{method}.call({{ length: 100 }}, {args})");
+        assert!(execute_with_budget(&short).is_ok(), "{short}");
+        assert!(matches!(
+            execute_with_budget(&long),
+            Err(RuntimeError::InstructionLimit)
+        ));
+    }
+    // A splice that copies only the prefix must charge for that walk too.
+    assert!(execute_with_budget("Array.prototype.toSpliced.call({ length: 1 }, 1, 0)").is_ok());
+    assert!(matches!(
+        execute_with_budget("Array.prototype.toSpliced.call({ length: 100 }, 100, 0)"),
+        Err(RuntimeError::InstructionLimit)
+    ));
+}
+
+#[test]
+fn change_by_copy_rejects_null_receivers_and_oversized_array_results() {
+    for (method, args) in [
+        ("toReversed", ""),
+        ("toSorted", ""),
+        ("toSpliced", "0, 0"),
+        ("with", "0, 1"),
+    ] {
+        throws(
+            &format!("Array.prototype.{method}.call(null, {args})"),
+            "TypeError",
+        );
+        throws(
+            &format!("Array.prototype.{method}.call({{ length: 4294967296 }}, {args})"),
+            "RangeError",
+        );
+    }
+}
+
+#[test]
+fn to_spliced_propagates_errors_while_copying_the_prefix() {
+    truthy(
+        "(function() {
+            const source = new Proxy({ length: 2, 0: 'a', 1: 'b' }, {
+                get(target, key) {
+                    if (key === '0') throw new RangeError('prefix');
+                    return target[key];
+                }
+            });
+            try { Array.prototype.toSpliced.call(source, 1, 0); }
+            catch (error) { return error instanceof RangeError && error.message === 'prefix'; }
+            return false;
+        })()",
+    );
+}
+
+#[test]
+fn change_by_copy_reports_heap_limits_across_allocation_boundaries() {
+    for source in [
+        "[1, 2, 3].toReversed()",
+        "[3, 2, 1].toSorted()",
+        "[undefined, 2, 1].toSorted()",
+        "[1, 2, 3].toSpliced(1, 1, 7, 8)",
+        "[1, 2, 3].with(1, 7)",
+    ] {
+        let program = compile(&parse(source).unwrap()).unwrap();
+        let mut probe = Vm::default();
+        probe.execute(&program).unwrap();
+        let baseline = probe.heap().stats().managed_bytes;
+        let mut completed = 0;
+        let mut exhausted = 0;
+        for limit in (baseline.saturating_sub(16_384)..=baseline + 16_384).step_by(32) {
+            let mut config = VmConfig::default();
+            config.heap.max_heap_bytes = limit;
+            config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit);
+            let Ok(mut vm) = Vm::new(config) else {
+                continue;
+            };
+            match vm.execute(&program) {
+                Ok(_) => completed += 1,
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => exhausted += 1,
+                Err(other) => panic!("{source}, heap limit {limit}: {other:?}"),
+            }
+        }
+        assert!(
+            completed > 0 && exhausted > 0,
+            "{source}, baseline {baseline}: {completed} completed, {exhausted} exhausted"
+        );
+    }
 }
 
 #[test]
@@ -141,6 +286,7 @@ fn with_replaces_one_index_in_a_copy() {
     truthy("[1,2,3].with(-1,'x').join()==='1,2,x'");
     truthy("[1,,3].with(0,9).hasOwnProperty(1)");
     truthy("[1,2,3].with(1.9,'x').join()==='1,x,3'");
+    truthy("[1,2,3].with(NaN,'x').join()==='x,2,3'");
 }
 
 #[test]

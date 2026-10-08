@@ -214,6 +214,41 @@ mod tests {
     }
 
     #[test]
+    fn rejects_offsets_whose_hour_or_minute_is_not_two_digits() {
+        assert_eq!(parse_offset_minutes("+ab"), None);
+        assert_eq!(parse_offset_minutes("+a1"), None);
+        assert_eq!(parse_offset_minutes("+0a"), None);
+        assert_eq!(parse_offset_minutes("+01ab"), None);
+        assert_eq!(parse_offset_minutes("+01:ab"), None);
+        assert_eq!(parse_offset_minutes("+01:3a"), None);
+        assert_eq!(parse_offset_minutes("+ab:30"), None);
+    }
+
+    #[test]
+    fn iana_name_components_may_continue_with_digits_signs_and_dots() {
+        for name in ["Etc/GMT+5", "Etc/GMT-14", "Etc/GMT0", "a.b_c", "_x/.y"] {
+            assert_eq!(
+                parse_identifier(name),
+                Some(TimeZoneIdentifier::Named(name.to_string())),
+                "{name}"
+            );
+        }
+        for name in [
+            "9abc", "-abc", "a$b", "a/b c", "a/", "/a", "a/./b", "a/../b",
+        ] {
+            assert_eq!(parse_identifier(name), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn date_strings_without_a_time_or_closed_annotation_name_no_zone() {
+        // A bracket that is never closed.
+        assert_eq!(resolve("2000-05-02[UTC"), Err(()));
+        // A date with neither annotation nor time has no zone either.
+        assert_eq!(resolve("2000-05-02"), Err(()));
+    }
+
+    #[test]
     fn formats_offsets_in_the_extended_form_with_normalized_zero() {
         assert_eq!(format_offset(0), "+00:00");
         assert_eq!(format_offset(-420), "-07:00");

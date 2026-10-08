@@ -15,6 +15,71 @@ fn bounded_values_policy_is_independent_of_static_metadata() {
 }
 
 #[test]
+fn supervise_out_of_process_bluejs_builders_set_their_own_fields() {
+    let limits = BlueJsHostRuntimeLimits::default();
+    let options =
+        CoreLaunchOptions::default().supervise_out_of_process_bluejs_with_runtime_limits(limits);
+    assert!(options.supervise_out_of_process_bluejs);
+    assert_eq!(options.bluejs_host_runtime_limits, limits);
+
+    let options =
+        CoreLaunchOptions::default().supervise_out_of_process_bluejs_with_core_http_fixture();
+    assert!(options.supervise_out_of_process_bluejs);
+    assert!(options.core_http_page_script_fixture);
+}
+
+#[test]
+fn generation_pinned_relay_fails_closed_before_any_generation_is_activated() {
+    let path = unique_internal_socket_path();
+    let relay =
+        GenerationPinnedUnixRelay::bind(&path, "test", Arc::new(Mutex::new(()))).unwrap();
+    let mut client = UnixStream::connect(&path).unwrap();
+    let mut buf = [0u8; 1];
+    // No target generation has been activated yet: the accept loop must
+    // close the connection rather than hang or forward it anywhere.
+    assert_eq!(std::io::Read::read(&mut client, &mut buf).unwrap(), 0);
+    relay.close();
+}
+
+#[test]
+fn generation_pinned_relay_close_is_idempotent_and_drop_calls_close() {
+    let path = unique_internal_socket_path();
+    let relay =
+        GenerationPinnedUnixRelay::bind(&path, "test", Arc::new(Mutex::new(()))).unwrap();
+    assert!(path.exists());
+    relay.close();
+    assert!(!path.exists());
+    // A second close() must be a no-op, not a panic or a hang.
+    relay.close();
+    drop(relay);
+}
+
+#[test]
+fn spawn_rejects_a_fixed_and_owner_selected_http_policy_before_spawning_anything() {
+    use blueice_ipc::owner_bootstrap::{OwnerHttpOriginRule, OwnerHttpResource};
+    let policy = OwnerHttpPolicyBootstrap {
+        origin_rule: OwnerHttpOriginRule::SameDocumentOrigin,
+        resources: vec![OwnerHttpResource {
+            canonical_url: "https://example.test/app.js".to_string(),
+            integrity: format!("sha256:{}", "a".repeat(64)),
+        }],
+    };
+    let options = CoreLaunchOptions::default()
+        .supervise_out_of_process_bluejs_with_owner_http_policy(policy)
+        .unwrap()
+        .supervise_out_of_process_bluejs_with_core_http_fixture();
+    let Err(error) = SpawnedCore::spawn_with_options(320.0, 200.0, &std::env::temp_dir(), options)
+    else {
+        panic!("a mutually exclusive HTTP page policy combination must be rejected");
+    };
+    assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(
+        error.to_string(),
+        "fixed and owner-selected HTTP page policies are mutually exclusive"
+    );
+}
+
+#[test]
 fn forward_client_to_core_relays_one_message_then_stops_on_disconnect() {
     let (client_side, mut client_observed) = UnixStream::pair().unwrap();
     let (core_side, mut core_observed) = UnixStream::pair().unwrap();
@@ -318,6 +383,25 @@ fn default_rendezvous_socket_path_is_per_user_not_system_wide() {
 }
 
 #[test]
+fn rendezvous_socket_dir_prefers_xdg_runtime_dir_when_set() {
+    // SAFETY: no other test in this crate reads or writes `XDG_RUNTIME_DIR`,
+    // and this crate's own binaries never run in-process during unit tests.
+    let previous = std::env::var_os("XDG_RUNTIME_DIR");
+    unsafe {
+        std::env::set_var("XDG_RUNTIME_DIR", "/tmp/blueice-xdg-test-runtime-dir");
+    }
+    let dir = rendezvous_socket_dir();
+    match previous {
+        Some(value) => unsafe { std::env::set_var("XDG_RUNTIME_DIR", value) },
+        None => unsafe { std::env::remove_var("XDG_RUNTIME_DIR") },
+    }
+    assert_eq!(
+        dir,
+        PathBuf::from("/tmp/blueice-xdg-test-runtime-dir").join("blueice")
+    );
+}
+
+#[test]
 fn sibling_core_binary_sits_next_to_the_launcher_binary() {
     let exe = PathBuf::from("/some/target/debug/blueice-launcher");
     assert_eq!(
@@ -362,6 +446,65 @@ fn unique_compiler_mcp_test_path(label: &str) -> PathBuf {
             .unwrap()
             .as_nanos()
     ))
+}
+
+#[test]
+fn prepare_stable_endpoint_rejects_relative_oversized_and_parentless_or_missing_paths() {
+    assert_eq!(
+        prepare_stable_endpoint(Path::new("relative/path.sock"), "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+
+    let oversized =
+        PathBuf::from("/").join("a".repeat(MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES + 1));
+    assert_eq!(
+        prepare_stable_endpoint(&oversized, "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+
+    // The filesystem root has no parent directory at all.
+    assert_eq!(
+        prepare_stable_endpoint(Path::new("/"), "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+
+    let missing_parent = PathBuf::from("/tmp")
+        .join(format!(
+            "blueice-launcher-test-missing-parent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+        .join("socket.sock");
+    assert_eq!(
+        prepare_stable_endpoint(&missing_parent, "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::NotFound
+    );
+}
+
+#[test]
+fn prepare_stable_endpoint_surfaces_a_non_not_found_stat_error_verbatim() {
+    use std::os::unix::ffi::OsStrExt;
+
+    // An interior NUL byte makes the path un-stat-able with a non-`NotFound`
+    // `InvalidInput` error, distinct from a merely-absent socket.
+    let path = PathBuf::from("/tmp").join(std::ffi::OsStr::from_bytes(b"blueice-nul-\0-test"));
+    assert_eq!(
+        prepare_stable_endpoint(&path, "test")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
 }
 
 #[test]
@@ -447,6 +590,36 @@ fn wait_for_socket_times_out_if_the_path_never_appears() {
     ));
     let _ = std::fs::remove_file(&path);
     assert!(!wait_for_socket(&path, Duration::from_millis(50)));
+}
+
+#[test]
+fn connect_when_listening_waits_for_a_socket_that_is_not_yet_bound() {
+    let path = std::env::temp_dir().join(format!(
+        "blueice-connect-wait-test-{}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    let binder = {
+        let path = path.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(100));
+            let listener = UnixListener::bind(&path).unwrap();
+            listener.accept().map(|_| ()).unwrap();
+        })
+    };
+    connect_when_listening(&path, Duration::from_secs(5)).unwrap();
+    binder.join().unwrap();
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn connect_when_listening_gives_up_after_the_timeout() {
+    let path = std::env::temp_dir().join(format!(
+        "blueice-connect-wait-test-missing-{}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    assert!(connect_when_listening(&path, Duration::from_millis(50)).is_err());
 }
 
 #[test]
@@ -616,6 +789,42 @@ fn capture_v1_tabs_fails_if_no_reply_arrives_within_the_timeout() {
     let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
 
     assert!(capture_v1_tabs(&core_writer, &clients, Duration::from_millis(100)).is_err());
+}
+
+#[test]
+fn capture_v1_tabs_fails_if_its_own_registered_sender_is_dropped_while_waiting() {
+    // Distinct from the broadcast-connection-ends case below: here the
+    // initial `ListTabs` write to `core` succeeds (the pair stays open),
+    // but the `Sender` `capture_v1_tabs` itself registered in `clients`
+    // is dropped out from under it -- the `mpsc::RecvTimeoutError::
+    // Disconnected` branch, not a write failure or the plain deadline.
+    let (core_side, _core_observed) = UnixStream::pair().unwrap();
+    let core_writer = Arc::new(Mutex::new(core_side));
+    let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+
+    let waiter_clients = Arc::clone(&clients);
+    let waiter = thread::spawn(move || {
+        capture_v1_tabs(&core_writer, &waiter_clients, Duration::from_secs(5))
+    });
+
+    loop {
+        if clients
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len()
+            == 1
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    clients
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
+
+    let err = waiter.join().unwrap().unwrap_err();
+    assert!(err.contains("ended while waiting"));
 }
 
 #[test]
@@ -920,6 +1129,111 @@ fn replay_tabs_ignores_a_reply_carrying_a_mismatched_request_id() {
     });
 
     replay_tabs(&mut stream, &tabs).unwrap();
+    responder.join().unwrap();
+}
+
+#[test]
+fn replay_tabs_first_tab_skips_a_premature_frame_ready_and_an_unrelated_reply() {
+    // `expect_navigate_success` must not mistake a `FrameReady` that
+    // arrives before `Navigated`, or any other reply shape entirely, for
+    // the real completion signal -- both are simply noise to wait past.
+    let (mut stream, mut server) = UnixStream::pair().unwrap();
+    let tabs = vec![TabSummary {
+        id: 1,
+        url: Some("about:blank".to_string()),
+    }];
+    let responder = thread::spawn(move || {
+        let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
+        assert!(matches!(msg, ClientMessage::Navigate { .. }));
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::FrameReady {
+                shm_path: "premature".into(),
+                width: 1,
+                height: 1,
+                generation: 0,
+            },
+        )
+        .unwrap();
+        write_server_message_with_id(&mut server, req, &ServerMessage::Tabs(Vec::new())).unwrap();
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::Navigated {
+                url: "about:blank".to_string(),
+            },
+        )
+        .unwrap();
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::FrameReady {
+                shm_path: "x".into(),
+                width: 1,
+                height: 1,
+                generation: 1,
+            },
+        )
+        .unwrap();
+    });
+
+    replay_tabs(&mut stream, &tabs).unwrap();
+    responder.join().unwrap();
+}
+
+#[test]
+fn replay_tabs_later_tab_skips_a_mismatched_id_and_a_premature_frame_ready_then_reports_an_error()
+{
+    // The same request-id filtering and premature-`FrameReady` tolerance
+    // as the first-tab `Navigate` path above, exercised on the later-tab
+    // `OpenTab` path (`expect_open_tab_success`), plus a reply shape
+    // that matches neither of its named arms at all, ending in a plain
+    // `Error` reply rather than `GatekeeperBlocked`.
+    let (mut stream, mut server) = UnixStream::pair().unwrap();
+    let tabs = vec![
+        TabSummary { id: 1, url: None },
+        TabSummary {
+            id: 2,
+            url: Some("http://bad".to_string()),
+        },
+    ];
+    let responder = thread::spawn(move || {
+        let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
+        assert!(matches!(msg, ClientMessage::OpenTab { .. }));
+        write_server_message_with_id(&mut server, req, &ServerMessage::Tabs(Vec::new())).unwrap();
+        write_server_message_with_id(
+            &mut server,
+            Some(999_999),
+            &ServerMessage::TabOpened {
+                tab_id: 2,
+                url: Some("http://bad".to_string()),
+            },
+        )
+        .unwrap();
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::FrameReady {
+                shm_path: "premature".into(),
+                width: 1,
+                height: 1,
+                generation: 0,
+            },
+        )
+        .unwrap();
+        write_server_message_with_id(
+            &mut server,
+            req,
+            &ServerMessage::Error {
+                message: "second boom".to_string(),
+            },
+        )
+        .unwrap();
+    });
+
+    let err = replay_tabs(&mut stream, &tabs).unwrap_err();
+    assert!(err.contains("second boom"));
     responder.join().unwrap();
 }
 

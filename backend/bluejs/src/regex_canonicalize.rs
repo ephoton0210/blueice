@@ -881,4 +881,24 @@ mod tests {
         )
         .is_none());
     }
+
+    #[test]
+    fn a_pattern_entry_that_is_not_a_code_unit_cannot_be_rewritten() {
+        // One entry stands for one code unit, so a code point beyond U+FFFF is
+        // not something the rewrite models: as a literal, after a backslash,
+        // as a class member, as an escaped class member, or as the end of a
+        // range.
+        let astral = 0x1f600;
+        let backslash = u32::from(b'\\');
+        assert_eq!(rewrite_pattern(&[astral]), None);
+        assert_eq!(rewrite_pattern(&[backslash, astral]), None);
+        assert_eq!(rewrite_pattern(&[0x5b, astral, 0x5d]), None);
+        assert_eq!(rewrite_pattern(&[0x5b, backslash, astral, 0x5d]), None);
+        assert_eq!(
+            rewrite_pattern(&[0x5b, u32::from(b'a'), u32::from(b'-'), astral, 0x5d]),
+            None
+        );
+        // A range to `\k` cannot be read when the pattern has named groups.
+        assert_eq!(rewrite_pattern(&units(r"(?<n>x)[a-\k]")), None);
+    }
 }

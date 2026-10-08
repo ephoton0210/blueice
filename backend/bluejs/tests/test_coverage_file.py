@@ -6,9 +6,13 @@
 
 import importlib.util
 import json
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -137,6 +141,13 @@ class CoverageFileTests(unittest.TestCase):
 
     def test_fresh_run_cleans_profiles_and_executes_unfiltered_crate_suite(self):
         calls = []
+        for name in ("debug/incremental", "llvm-cov-target/debug/incremental"):
+            cache = self.repo / "target" / name
+            cache.mkdir(parents=True)
+            (cache / "disposable").write_text("profile cache")
+        dependencies = self.repo / "target/debug/deps"
+        dependencies.mkdir()
+        (dependencies / "reuse").write_text("compiled dependency")
 
         def fake_run(argv, *, cwd, check):
             self.assertEqual(cwd, self.repo)
@@ -153,7 +164,13 @@ class CoverageFileTests(unittest.TestCase):
                         "    2|      1|fn g() {}\n"
                     )
 
-        with patch.object(coverage_file.subprocess, "run", side_effect=fake_run):
+        def fake_bounded(argv, *, cwd, target):
+            self.assertEqual(target, self.repo / "target")
+            fake_run(argv, cwd=cwd, check=True)
+
+        with patch.dict(coverage_file.os.environ, {"CARGO_TARGET_DIR": str(self.repo / "target")}), patch.object(
+            coverage_file.subprocess, "run", side_effect=fake_run
+        ), patch.object(coverage_file, "run_bounded_command", side_effect=fake_bounded):
             files, _ = coverage_file.run_coverage()
         self.assertEqual(len(files), 1)
         self.assertEqual(calls[0], ["cargo", "llvm-cov", "clean", "--profraw-only"])
@@ -162,6 +179,136 @@ class CoverageFileTests(unittest.TestCase):
         self.assertNotIn("--test", calls[1])
         self.assertNotIn("--ignore-filename-regex", calls[1])
         self.assertEqual(calls[2][:5], ["cargo", "llvm-cov", "report", "-p", "blueice-bluejs"])
+        self.assertEqual(calls[3], ["cargo", "llvm-cov", "clean", "--profraw-only"])
+        self.assertFalse((self.repo / "target/debug/incremental").exists())
+        self.assertFalse((self.repo / "target/llvm-cov-target/debug/incremental").exists())
+        self.assertTrue((dependencies / "reuse").exists())
+
+    def test_failed_coverage_run_releases_profiles_and_incremental_cache(self):
+        cache = self.repo / "target/llvm-cov-target/debug/incremental"
+        cache.mkdir(parents=True)
+        (cache / "disposable").write_text("profile cache")
+        calls = []
+
+        def fake_run(argv, *, cwd, check):
+            self.assertEqual(cwd, self.repo)
+            self.assertTrue(check)
+            calls.append(argv)
+            if len(calls) == 2:
+                raise coverage_file.subprocess.CalledProcessError(1, argv)
+
+        def fake_bounded(argv, *, cwd, target):
+            self.assertEqual(target, self.repo / "target")
+            fake_run(argv, cwd=cwd, check=True)
+
+        with patch.dict(coverage_file.os.environ, {"CARGO_TARGET_DIR": str(self.repo / "target")}), patch.object(
+            coverage_file.subprocess, "run", side_effect=fake_run
+        ), patch.object(coverage_file, "run_bounded_command", side_effect=fake_bounded):
+            with self.assertRaises(coverage_file.subprocess.CalledProcessError):
+                coverage_file.run_coverage()
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(calls[-1], ["cargo", "llvm-cov", "clean", "--profraw-only"])
+        self.assertFalse(cache.exists())
+
+    def test_disk_budget_stops_a_test_that_keeps_writing(self):
+        target = self.repo / "target"
+        target.mkdir()
+        command = [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; import time; "
+            "Path('target/growth').write_bytes(b'x' * 1048576); time.sleep(30)",
+        ]
+        with self.assertRaisesRegex(RuntimeError, "test disk budget exceeded"):
+            coverage_file.run_bounded_command(
+                command,
+                cwd=self.repo,
+                target=target,
+                growth_limit=0,
+                free_floor=0,
+                poll_interval=0.05,
+            )
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux") and shutil.which("readelf") and shutil.which("strip"),
+        "Linux ELF tools are required",
+    )
+    def test_releases_debug_data_without_discarding_a_reusable_executable(self):
+        deps = self.repo / "target/debug/deps"
+        deps.mkdir(parents=True)
+        source = self.repo / "probe.rs"
+        source.write_text('fn main() { print!("ready"); }\n')
+        binary = deps / "probe-0123456789abcdef"
+        subprocess.run(["rustc", "-g", str(source), "-o", str(binary)], check=True)
+        before = binary.stat().st_size
+        target = self.repo / "target"
+        target_limit = coverage_file.target_size_bytes(target) - 4096
+        sections = ["readelf", "--section-headers", "--wide", str(binary)]
+        self.assertIn(".debug_info", subprocess.check_output(sections, text=True))
+
+        coverage_file.run_bounded_command(
+            [sys.executable, "-c", "pass"],
+            cwd=self.repo,
+            target=target,
+            target_limit=target_limit,
+            free_floor=0,
+        )
+
+        self.assertLess(binary.stat().st_size, before)
+        self.assertLessEqual(coverage_file.target_size_bytes(target), target_limit)
+        self.assertNotIn(".debug_info", subprocess.check_output(sections, text=True))
+        self.assertEqual(subprocess.check_output([str(binary)]), b"ready")
+
+    def test_disk_budget_rejects_an_oversized_existing_target(self):
+        target = self.repo / "target"
+        target.mkdir()
+        (target / "existing").write_bytes(b"x" * 1024)
+        with self.assertRaisesRegex(RuntimeError, "already exceeds"):
+            coverage_file.run_bounded_command(
+                [sys.executable, "-c", "raise AssertionError('should not run')"],
+                cwd=self.repo,
+                target=target,
+                target_limit=0,
+                free_floor=0,
+            )
+
+    def test_disk_budget_counts_temporary_files_outside_target(self):
+        target = self.repo / "target"
+        target.mkdir()
+        command = [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; import time; "
+            "Path('temporary-output').write_bytes(b'x' * 1048576); time.sleep(30)",
+        ]
+        def disk_usage(_path):
+            temporary = self.repo / "temporary-output"
+            used = temporary.stat().st_size if temporary.exists() else 0
+            return SimpleNamespace(free=10 * 1048576 - used)
+
+        with patch.object(coverage_file.shutil, "disk_usage", side_effect=disk_usage):
+            with self.assertRaisesRegex(RuntimeError, "test disk budget exceeded"):
+                coverage_file.run_bounded_command(
+                    command,
+                    cwd=self.repo,
+                    target=target,
+                    growth_limit=2 * 1048576,
+                    host_growth_limit=0,
+                    free_floor=0,
+                    poll_interval=0.05,
+                )
+
+    def test_disk_measurement_tolerates_a_file_removed_during_the_scan(self):
+        target = self.repo / "target"
+        target.mkdir()
+        partial = coverage_file.subprocess.CompletedProcess(
+            ["du", "-sk", str(target)],
+            1,
+            stdout=f"1024\t{target}\n",
+            stderr="du: cannot access a removed executable: No such file or directory",
+        )
+        with patch.object(coverage_file.subprocess, "run", return_value=partial):
+            self.assertEqual(coverage_file.target_size_bytes(target), 1024 * 1024)
 
     def test_source_union_counts_duplicate_compilations_once(self):
         payload = self.export()
@@ -237,7 +384,7 @@ class CoverageFileTests(unittest.TestCase):
             self.assertEqual(
                 coverage_file.main(["ast.rs", "--update-macos-report"]), 0
             )
-        update.assert_called_once_with(files, totals)
+        update.assert_called_once_with(files, totals, include_test262=False)
         self.assertTrue(any("Complete: yes" in str(call) for call in printed.call_args_list))
 
     def test_file_only_measurement_does_not_update_either_report(self):
@@ -249,12 +396,57 @@ class CoverageFileTests(unittest.TestCase):
             patch("builtins.print") as printed,
         ):
             self.assertEqual(coverage_file.main(["ast.rs"]), 0)
-        run.assert_called_once_with()
+        run.assert_called_once_with(include_test262=False)
         macos.assert_not_called()
         linux.assert_not_called()
         output = [str(call) for call in printed.call_args_list]
         self.assertTrue(any("ast.rs" in line for line in output))
         self.assertTrue(any("Complete: yes" in line for line in output))
+
+    def test_test262_option_reaches_measurement_and_report(self):
+        files, totals = coverage_file.checked_export(self.export())
+        self.patch(coverage_file, "MACOS_REPORT", self.repo / "macos.md")
+        with (
+            patch.object(coverage_file, "run_coverage", return_value=(files, totals)) as run,
+            patch.object(coverage_file, "update_macos_report") as update,
+            patch("builtins.print"),
+        ):
+            self.assertEqual(
+                coverage_file.main(["ast.rs", "--update-macos-report", "--include-test262"]),
+                0,
+            )
+        run.assert_called_once_with(include_test262=True)
+        update.assert_called_once_with(files, totals, include_test262=True)
+
+    def test_instrumented_test262_requires_the_complete_expected_inventory(self):
+        target = self.repo / "target"
+        adapter = target / "llvm-cov-target/debug/bluejs-test262"
+        adapter.parent.mkdir(parents=True)
+        adapter.write_bytes(b"adapter")
+        output = self.repo / "test262"
+        output.mkdir()
+
+        def fake_bounded(argv, *, cwd, target, env, accepted_returncodes):
+            self.assertEqual(cwd, self.repo)
+            self.assertIn("--flush-profiles", argv)
+            self.assertEqual(accepted_returncodes, (0, 1))
+            self.assertIn("%p-%m.profraw", env["LLVM_PROFILE_FILE"])
+            (output / "summary.json").write_text(json.dumps({
+                "complete_inventory": True,
+                "scheduled_modes": 102_926,
+                "results": {"pass": 102_921, "excluded": 4, "stale_corpus": 1},
+            }))
+
+        with patch.object(coverage_file, "run_bounded_command", side_effect=fake_bounded):
+            coverage_file.run_test262_coverage(Path(sys.executable), output, target)
+            (output / "summary.json").write_text(json.dumps({
+                "complete_inventory": False,
+                "scheduled_modes": 102_926,
+                "results": {"pass": 102_920, "fail": 1, "excluded": 4, "stale_corpus": 1},
+            }))
+        with patch.object(coverage_file, "run_bounded_command"):
+            with self.assertRaisesRegex(ValueError, "inventory changed"):
+                coverage_file.run_test262_coverage(Path(sys.executable), output, target)
 
     def test_linux_report_adds_the_same_table_before_platform_differences(self):
         report = self.repo / "linux.md"

@@ -43,10 +43,11 @@ impl Vm {
             Ok(Value::Object(source))
         })();
         match result {
-            Ok(value) => self.settle_promise(promise, PromiseStatus::Fulfilled(value))?,
+            Ok(value) => self.resolve_promise(promise, value)?,
             Err(error) => {
                 let error = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+                self.settle_promise(promise, PromiseStatus::Rejected(error))
+                    .expect("the dynamic-import job retains its registered native promise; rejection cannot allocate");
             }
         }
         Ok(())
@@ -64,15 +65,15 @@ impl Vm {
         self.execute_module_graph_inner(entry, &modules, false, true, ImportPhase::Defer)?;
         let namespace = self
             .last_module_namespace
-            .ok_or(RuntimeError::ModuleResolution(format!(
-                "dynamic import of {entry} did not produce a namespace"
-            )))?;
+            .expect("successful deferred graph execution publishes its namespace before returning");
         let running: Vec<String> = self
             .last_deferred_dependencies
             .iter()
             .filter(|dependency| {
                 self.linked_record(dependency)
-                    .is_some_and(|record| record.evaluating || record.suspended)
+                    // Evaluation remains active while suspended, and both
+                    // flags are cleared together when a dependency settles.
+                    .is_some_and(|record| record.evaluating)
             })
             .cloned()
             .collect();
@@ -186,11 +187,12 @@ impl Vm {
         for request in &code.module_requests {
             let target =
                 Self::resolve_module_target(module, &request.module_request, request.module_type)?;
-            for additional in Self::gather_async_dependencies(&target, modules, linked, seen)? {
-                if !result.contains(&additional) {
-                    result.push(additional);
-                }
-            }
+            // One shared visited set spans every recursive request. A TLA
+            // frontier member is emitted only on its first visit, so another
+            // result-vector membership check cannot remove any duplicates.
+            result.extend(Self::gather_async_dependencies(
+                &target, modules, linked, seen,
+            )?);
         }
         Ok(result)
     }
@@ -266,7 +268,7 @@ impl Vm {
         let modules = self.module_registry.clone();
         let ready = self.with_module_records(|_, linked| {
             Self::ready_for_sync_execution(module, &modules, linked, &mut HashSet::new())
-        })??;
+        }).expect("the preceding records lookup retained the graph; cloning its registry cannot run JS")?;
         if !ready {
             return Err(RuntimeError::TypeError(
                 "a deferred module that is evaluating, suspended or asynchronous cannot be \
@@ -278,19 +280,21 @@ impl Vm {
         // keep rooted) everything the observing code has on the interpreter,
         // exactly as a Promise job that enters a module does.
         let execution = self.suspend_module_execution();
-        let roots = self.root_suspended_module_execution(&execution)?;
+        let roots = self.root_suspended_module_execution(&execution);
         let call_depth = std::mem::replace(&mut self.call_depth, 0);
         let result = self
-            .with_module_records(|vm, linked| vm.evaluate_module_record(module, &modules, linked));
-        if let Some(root) = self.result_root.take() {
-            self.heap.unroot(root)?;
-        }
+            .with_module_records(|vm, linked| vm.evaluate_module_record(module, &modules, linked))
+            .expect("displacing execution state does not remove the retained module graph");
+        // evaluate_module_record retains completion values in the graph; it
+        // does not finish a root execution. This synchronous path drains no
+        // jobs, and reentrant eval restores its own displaced result root.
+        debug_assert!(self.result_root.is_none());
         self.restore_module_execution(execution);
         self.call_depth = call_depth;
         for root in roots {
-            self.heap.unroot(root)?;
+            self.release_root(root);
         }
-        result?.map(|_| ())
+        result.map(|_| ())
     }
 
     /// A deferred namespace's own-property operations on string keys other
@@ -378,6 +382,9 @@ impl Vm {
         self.stack.pop();
         let source = source?;
         let root = self.heap.root(source)?;
+        // A retained source object owns the prototype's first heap edge.
+        // Cold allocation/root failures must not publish a dangling cache.
+        self.host_module_source_prototype = Some(prototype);
         self.module_source_cache.insert(module.to_string(), source);
         self.module_source_roots.insert(module.to_string(), root);
         Ok(source)
@@ -397,8 +404,6 @@ impl Vm {
         let parent = self
             .abstract_module_source_prototype
             .unwrap_or(self.object_prototype);
-        let prototype = self.with_roots(|heap| heap.alloc_object(Some(parent)))?;
-        self.host_module_source_prototype = Some(prototype);
-        Ok(prototype)
+        self.with_roots(|heap| heap.alloc_object(Some(parent)))
     }
 }

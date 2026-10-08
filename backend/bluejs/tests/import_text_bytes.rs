@@ -315,6 +315,29 @@ fn a_bytes_import_survives_a_collection_before_every_allocation() {
     assert_eq!(result, Ok(string("true:1,2,3,4:text")));
 }
 
+#[test]
+fn an_oversized_bytes_module_fails_before_linking() {
+    let config = VmConfig {
+        heap: HeapConfig {
+            max_heap_bytes: 1024 * 1024,
+            ..HeapConfig::default()
+        },
+        ..VmConfig::default()
+    };
+    let mut vm = vm_with(config, &[], &[("large.bin", &vec![0; 1024 * 1024])]);
+    let result = vm.execute_module_graph(
+        "t/main.js",
+        &build(&[(
+            "main.js",
+            "import bytes from './large.bin' with { type: 'bytes' }; bytes.length",
+        )]),
+    );
+    assert!(
+        matches!(result, Err(RuntimeError::RangeError(ref message)) if message.contains("immutable ArrayBuffer length")),
+        "{result:?}"
+    );
+}
+
 /// Runs `script` as the classic-script entry `t/main.js` and returns what it
 /// reported through `$DONE`.
 fn run_script(
@@ -348,6 +371,45 @@ fn dynamic_import_honours_type_text_and_type_bytes() {
         }, e => $DONE(e));";
     let done = run_script(&[("data.txt", "hello")], &[("data.bin", &[9, 8])], script);
     assert_eq!(done, Some(Ok(())));
+}
+
+#[test]
+fn dynamic_import_keeps_javascript_and_each_synthetic_type_distinct() {
+    let config = VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            ..HeapConfig::default()
+        },
+        ..VmConfig::default()
+    };
+    let mut vm = vm_with(config, &[("data.js", "text")], &[("data.js", &[7, 8])]);
+    vm.set_dynamic_module_sources(HashMap::from([(
+        "t/data.js".to_string(),
+        "export default 11;".to_string(),
+    )]));
+    vm.set_json_module_sources(HashMap::from([(
+        "t/data.js".to_string(),
+        "{\"value\": 12}".to_string(),
+    )]));
+    vm.install_test262_done().unwrap();
+    vm.set_module_loader_context("t/main.js", HashMap::new());
+    let source = r#"Promise.all([
+      import('./data.js'),
+      import('./data.js', { with: { type: 'json' } }),
+      import('./data.js', { with: { type: 'text' } }),
+      import('./data.js', { with: { type: 'bytes' } }),
+      import('./data.js')
+    ]).then(([js, json, text, bytes, again]) => {
+      const valid = js === again && js.default === 11 && json.default.value === 12
+        && text.default === 'text' && bytes.default.join() === '7,8'
+        && bytes.default.buffer.immutable === true
+        && js !== json && json !== text && text !== bytes;
+      if (valid) $DONE(); else $DONE(new Error('module type identity'));
+    }, error => $DONE(error));"#;
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
 }
 
 #[test]
@@ -391,6 +453,22 @@ fn a_synthetic_module_has_no_source_phase_representation() {
 }
 
 #[test]
+fn a_static_source_import_does_not_synthesize_a_typed_module() {
+    for (kind, text, bytes) in [
+        ("text", vec![("data", "text")], Vec::new()),
+        ("bytes", Vec::new(), vec![("data", &[7_u8, 8][..])]),
+    ] {
+        let source =
+            format!("import source resource from './data' with {{ type: '{kind}' }}; resource");
+        let result = run(&[("main.js", &source)], &text, &bytes);
+        assert!(
+            matches!(result, Err(RuntimeError::TypeError(ref message)) if message.contains("source-phase representation")),
+            "{kind}: {result:?}"
+        );
+    }
+}
+
+#[test]
 fn a_specifier_cannot_spell_a_typed_modules_registry_key() {
     // Synthetic modules are keyed `path\0type`; a plain request whose
     // specifier happens to end that way must not reach the text module of
@@ -430,6 +508,20 @@ fn a_side_effect_only_import_still_requires_the_resource() {
         matches!(missing, Err(RuntimeError::TypeError(ref message)) if message.contains("bytes module source")),
         "{missing:?}"
     );
+}
+
+#[test]
+fn typed_imports_and_reexports_reject_paths_outside_the_host_root() {
+    for source in [
+        "import value from '../../outside' with { type: 'text' }; value",
+        "export { default as value } from '../../outside' with { type: 'text' };",
+    ] {
+        let result = run(&[("main.js", source)], &[], &[]);
+        assert!(
+            matches!(result, Err(RuntimeError::ModuleResolution(ref message)) if message.contains("escapes its host root")),
+            "{source}: {result:?}"
+        );
+    }
 }
 
 #[test]

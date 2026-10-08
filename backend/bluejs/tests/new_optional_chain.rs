@@ -18,3 +18,8 @@ fn new_cannot_take_an_optional_chain_as_its_target() {
     // A parenthesized chain is an ordinary operand.
     assert!(parse("const o = { C: class {} }; new (o?.C)();").is_ok());
 }
+
+#[test]
+fn nested_grouped_optional_chain_is_a_valid_standalone_expression() {
+    assert!(parse("var object = null; ((object?.value));").is_ok());
+}

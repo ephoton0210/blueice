@@ -4,6 +4,48 @@
 
 use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
+#[test]
+fn locale_case_mapping_enforces_the_output_limit_for_runs_and_surrogates() {
+    use blueice_bluejs::VmConfig;
+
+    for source in [
+        format!("'{}'.toLocaleUpperCase('de')", "ß".repeat(32)),
+        format!("'{}'.toLocaleLowerCase('en')", "İ".repeat(32)),
+        format!("'{}\\ud800'.toLocaleUpperCase('de')", "ß".repeat(16)),
+        format!("'{}\\ud800'.toLocaleUpperCase('de')", "ß".repeat(17)),
+    ] {
+        let code = compile(&parse(&source).unwrap()).unwrap();
+        let mut vm = Vm::new(VmConfig {
+            max_string_bytes: 64,
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert!(
+            matches!(
+                vm.execute(&code),
+                Err(RuntimeError::StringLimit { limit: 64 })
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn segment_iterator_next_rejects_non_iterator_receivers() {
+    for receiver in ["0", "{}"] {
+        let source = format!(
+            "let iterator = new Intl.Segmenter().segment('A')[Symbol.iterator](); iterator.next.call({receiver})"
+        );
+        match evaluate(&source) {
+            Err(RuntimeError::TypeError(message)) => assert!(
+                message.contains("Segmenter iterator next requires"),
+                "{source}: {message}"
+            ),
+            other => panic!("{source}: {other:?}"),
+        }
+    }
+}
+
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
 }
@@ -185,6 +227,87 @@ fn locale_objects_preserve_canonical_locale_state() {
         evaluate("let g=Object.getOwnPropertyDescriptor(Intl.Locale.prototype,'language').get; g.call(1)"),
         Err(RuntimeError::TypeError("receiver is not an Intl.Locale".into()))
     );
+}
+
+#[test]
+fn locale_numeric_first_day_options_follow_weekday_order() {
+    for (day, expected) in [
+        (0, "sun"),
+        (1, "mon"),
+        (2, "tue"),
+        (3, "wed"),
+        (4, "thu"),
+        (5, "fri"),
+        (6, "sat"),
+        (7, "sun"),
+    ] {
+        let source = format!("new Intl.Locale('en', {{firstDayOfWeek: {day}}}).firstDayOfWeek");
+        assert_eq!(
+            evaluate(&source),
+            Ok(Value::String(expected.into())),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn collator_resolved_options_preserve_each_sensitivity() {
+    for sensitivity in ["base", "accent", "case", "variant"] {
+        let source = format!(
+            "new Intl.Collator('en', {{sensitivity: '{sensitivity}'}}).resolvedOptions().sensitivity"
+        );
+        assert_eq!(
+            evaluate(&source),
+            Ok(Value::String(sensitivity.into())),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn locale_option_getters_propagate_abrupt_completion() {
+    for option in [
+        "language",
+        "script",
+        "region",
+        "variants",
+        "calendar",
+        "collation",
+        "hourCycle",
+        "caseFirst",
+        "numeric",
+        "numberingSystem",
+        "firstDayOfWeek",
+    ] {
+        let source = format!(
+            "(() => {{ const options = {{ get {option}() {{ throw new Error('{option}'); }} }}; \
+             try {{ new Intl.Locale('en', options); return false; }} \
+             catch (error) {{ return error.message === '{option}'; }} }})()"
+        );
+        assert_eq!(evaluate(&source), Ok(Value::Bool(true)), "{option}");
+    }
+}
+
+#[test]
+fn intl_constructor_option_getters_propagate_abrupt_completion() {
+    for (constructor, option) in [
+        ("NumberFormat", "style"),
+        ("DateTimeFormat", "timeZone"),
+        ("ListFormat", "type"),
+        ("DurationFormat", "style"),
+        ("Collator", "usage"),
+        ("PluralRules", "type"),
+        ("RelativeTimeFormat", "style"),
+        ("Segmenter", "granularity"),
+        ("DisplayNames", "type"),
+    ] {
+        let source = format!(
+            "(() => {{ const options = {{ get {option}() {{ throw new Error('{option}'); }} }}; \
+             try {{ new Intl.{constructor}('en', options); return false; }} \
+             catch (error) {{ return error.message === '{option}'; }} }})()"
+        );
+        assert_eq!(evaluate(&source), Ok(Value::Bool(true)), "{constructor}");
+    }
 }
 
 #[test]

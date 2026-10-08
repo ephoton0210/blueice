@@ -120,10 +120,10 @@ pub(super) fn calendar_difference_date_fixed_months(
     largest_unit: DateUnit,
 ) -> (i64, i64, i64, i64) {
     let months_per_year = calendar_months_per_year(calendar);
-    let sign = match compare_iso_date(start, end) {
-        Ordering::Less => 1_i64,
-        Ordering::Greater => -1,
-        Ordering::Equal => return (0, 0, 0, 0),
+    let sign = if compare_iso_date(start, end) == Ordering::Less {
+        1_i64
+    } else {
+        -1
     };
     let (y1, m1, d1) = to_calendar_ordinal(calendar, start);
     let two = to_calendar_ordinal(calendar, end);
@@ -228,10 +228,10 @@ pub(super) fn calendar_difference_date_leap_month(
     end: CivilDate,
     largest_unit: DateUnit,
 ) -> (i64, i64, i64, i64) {
-    let sign = match compare_iso_date(start, end) {
-        Ordering::Less => 1_i64,
-        Ordering::Greater => -1,
-        Ordering::Equal => return (0, 0, 0, 0),
+    let sign = if compare_iso_date(start, end) == Ordering::Less {
+        1_i64
+    } else {
+        -1
     };
 
     let one = calendar_month_identity(calendar, start);
@@ -320,22 +320,21 @@ pub(super) fn calendar_difference_date_leap_month(
         while y != years {
             let probe_year =
                 i32::try_from(one.0 + y).unwrap_or(if y > 0 { i32::MAX } else { i32::MIN });
-            if let Some(count) = months_in_year_for(calendar, probe_year) {
-                months += i64::from(count) * sign;
-            }
+            let count = months_in_year_for(calendar, probe_year)
+                .expect("intervening year lies between representable calendar dates");
+            months += i64::from(count) * sign;
             y += sign;
         }
 
         // Months since/until the landing year's own start/end, from `one`'s
         // own Month identity re-resolved in that year.
-        if let Some(dt) =
+        let dt =
             calendar_date_from_month(calendar, one.0 + years, one.1, 1, IcuOverflow::Constrain)
-        {
-            if sign > 0 {
-                months += months_since_start_of_year(&dt);
-            } else {
-                months -= months_until_end_of_year(&dt);
-            }
+                .expect("constrain-mode regulation succeeds for a representable landing year");
+        if sign > 0 {
+            months += months_since_start_of_year(&dt);
+        } else {
+            months -= months_until_end_of_year(&dt);
         }
         years = 0;
     }
@@ -389,5 +388,48 @@ pub(crate) fn calendar_difference_date(
         calendar_difference_date_leap_month(calendar, start, end, largest_unit)
     } else {
         calendar_difference_date_fixed_months(calendar, start, end, largest_unit)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn equal_dates_differ_by_nothing_in_every_calendar_family() {
+        let date = (2000, 6, 15);
+        for calendar in [
+            AnyCalendarKind::Persian,
+            AnyCalendarKind::Coptic,
+            AnyCalendarKind::Hebrew,
+            AnyCalendarKind::Chinese,
+        ] {
+            for unit in [DateUnit::Year, DateUnit::Month] {
+                assert_eq!(
+                    calendar_difference_date(calendar, date, date, unit),
+                    (0, 0, 0, 0),
+                    "{calendar:?} {unit:?}"
+                );
+            }
+        }
+        // The two family entry points also answer for themselves.
+        assert_eq!(
+            calendar_difference_date_fixed_months(
+                AnyCalendarKind::Persian,
+                date,
+                date,
+                DateUnit::Year
+            ),
+            (0, 0, 0, 0)
+        );
+        assert_eq!(
+            calendar_difference_date_leap_month(
+                AnyCalendarKind::Hebrew,
+                date,
+                date,
+                DateUnit::Year
+            ),
+            (0, 0, 0, 0)
+        );
     }
 }

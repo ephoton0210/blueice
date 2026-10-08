@@ -16,27 +16,27 @@ BlueJS targets [ECMAScript 2026 edition 17](development/browser_core/phase-13-bl
 
 ## Test262 results by platform
 
-The same source revision (commit `eaeb5c1` of `feature/bluejs-object-heap`) was run through the unfiltered, pinned Test262 inventory (53,582 files / 102,926 modes, snapshot `72faf8ec…`) on **macOS and Ubuntu on 2026-09-21 (the Windows run is still in progress and its row is filled from its own result when it completes)**. Every row below is a real complete run on that platform's own hardware and toolchain; no row is inferred from another. The Ubuntu run used the repository's pinned Rust 1.95.0; the macOS run used Homebrew's Rust 1.98.0 (there is no `rustup` there, so the pin was not in effect).
+macOS and Ubuntu ran the unfiltered, pinned Test262 inventory (53,582 files / 102,926 modes, snapshot `72faf8ec…`) at commit `1947afb` of `feature/bluejs-object-heap` on 2026-09-21; the earlier `eaeb5c1`, `4ef9a44`, `fff18c4` and `b0b0021` commits were confirmed byte-for-byte identical for this inventory. Windows ran the same inventory on a tree equal to `fff18c4` with `backend/bluejs/src/regex_worker.rs`, `backend/bluejs/tests/regex_worker_reuse.rs` and `Cargo.toml` updated to their `b0b0021` state (the RegExp-request memo that fixed Windows' Test262 timeouts, see below); `1947afb`'s only further change is a `#[cfg(unix)]`-gated socket-connect race fix that the Windows build never compiles, so it does not affect this platform. Every row below is a real complete run on that platform's own hardware and toolchain; no row is inferred from another. The Ubuntu run used the repository's pinned Rust 1.95.0; the macOS run used Homebrew's Rust 1.98.0 (there is no `rustup` there, so the pin was not in effect).
 
 Test262 does not provide an official "Core" switch, so the reports use explicit top-level-directory scopes: **ECMA-262 Core** is `language/` + `built-ins/` (91,820 modes); **complete ECMA-262 Test262 scope** adds `annexB/` and `staging/` (95,980 modes); and **ECMA-402** is `intl402/` (6,714 modes). `harness/` (232 modes) validates Test262 support code and is retained only in the all-inventory total. Every scope is calculated from the same unfiltered complete run, not from separately filtered invocations. The complete ECMA-262 scope is an inventory label, not an assertion that time-based staging/proposal tests belong to one published ECMA edition.
 
 | Platform / evidence | ECMA-262 Core | Complete ECMA-262 scope | ECMA-402 | All modes: pass / fail / timeout |
 | --- | ---: | ---: | ---: | ---: |
-| macOS 26.6.2, Apple M4 (arm64); Rust 1.98.0; 8 jobs; 324.9 s | 89,444 / 91,820 (97.412%) | 92,975 / 95,980 (96.869%) | 6,714 / 6,714 (100.000%) | 99,899 / 3,025 / 2 (97.059%) |
-| Ubuntu 24.04.4 LTS (native), Core i5-9400T (x86_64); Rust 1.95.0; 6 jobs; 542.3 s | 89,444 / 91,820 (97.412%) | 92,973 / 95,980 (96.867%) | 6,714 / 6,714 (100.000%) | 99,897 / 3,027 / 2 (97.057%) |
-| Windows 11 (build 26100) VM (x86_64, 6 vCPU); Rust 1.95.0 | run in progress | run in progress | run in progress | run in progress |
+| macOS 26.6.2, Apple M4 (arm64); Rust 1.98.0; 8 jobs; 127.8 s | 89,444 / 91,820 (97.412%) | 92,975 / 95,980 (96.869%) | 6,714 / 6,714 (100.000%) | 99,899 / 3,025 / 2 (97.059%) |
+| Ubuntu 24.04.4 LTS (native), Core i5-9400T (x86_64); Rust 1.95.0; 6 jobs; 522.6 s | 89,444 / 91,820 (97.412%) | 92,973 / 95,980 (96.867%) | 6,714 / 6,714 (100.000%) | 99,897 / 3,027 / 2 (97.057%) |
+| Windows 11 Pro (build 26100) VM (x86_64, 6 vCPU); Rust 1.95.0; 6 jobs; 801.8 s | 89,444 / 91,820 (97.412%) | 92,973 / 95,980 (96.867%) | 6,714 / 6,714 (100.000%) | 99,897 / 3,027 / 2 (97.057%) |
 
-Every run recorded zero `harness_error` records; macOS recorded 2 `timeout` records and Ubuntu 2 (both are the two modes of `staging/explicit-resource-management/async-disposal-from-sync-method-returning-a-promise.js`). These are conformance progress measurements, not a claim of full ECMAScript conformance: the remaining failures are classified in the [triage report](development/browser_core/phase-13-bluejs-engine/TEST262_ANALYSIS_REPORT.md). Between macOS and Ubuntu only `staging/sm/Math/acosh-approx.js` differs (it passes on macOS and fails on Ubuntu; the cause is not yet isolated). Exact scope, provenance and rerun commands are in the per-platform reports: [macOS](development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md), [Ubuntu](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md) and [Windows](development/browser_core/phase-13-bluejs-engine/TEST262_WINDOWS_REPORT.md).
+Every run recorded zero `harness_error` records; macOS recorded 2 `timeout` records and Ubuntu 2 (both are the two modes of `staging/explicit-resource-management/async-disposal-from-sync-method-returning-a-promise.js`); Windows recorded 2. These are conformance progress measurements, not a claim of full ECMAScript conformance: the remaining failures are classified in the [triage report](development/browser_core/phase-13-bluejs-engine/TEST262_ANALYSIS_REPORT.md). Between macOS and Ubuntu only `staging/sm/Math/acosh-approx.js` differs (it passes on macOS and fails on Ubuntu; the cause is not yet isolated). Exact scope, provenance and rerun commands are in the per-platform reports: [macOS](development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md), [Ubuntu](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md) and [Windows](development/browser_core/phase-13-bluejs-engine/TEST262_WINDOWS_REPORT.md).
 
 ### Test suites and coverage on the same revision
 
 | Platform | Workspace tests | Line coverage: workspace (gate 90%) | `blueice-bluejs` (gate 88%) | `blueice-ecma402` | Node oracle (22,268 scripts) | TypeScript oracle (68 cases) |
 | --- | --- | --- | --- | --- | --- | --- |
-| macOS | 2,985 pass / 0 fail / 5 ignored | 92.32% (90,668 / 98,207) | 91.37% (58,892 / 64,456) | 94.36% (9,559 / 10,130) | 4 / 4 pass | pass |
-| Ubuntu | 2,985 pass / 0 fail / 5 ignored | 92.20% (90,541 / 98,201) | 91.38% (58,892 / 64,450) | 94.42% (9,559 / 10,124) | 4 / 4 pass | pass |
-| Windows 11 VM | in progress | in progress | in progress | in progress | in progress | in progress |
+| macOS | 2,992 pass / 0 fail / 5 ignored | 92.30% (90,775 / 98,347) | 91.36% (58,943 / 64,517) | 93.55% (9,471 / 10,124) | 4 / 4 pass | pass |
+| Ubuntu | 2,992 pass / 0 fail / 5 ignored | 92.19% (90,657 / 98,341) | 91.37% (58,944 / 64,511) | 93.28% (9,444 / 10,124) | 4 / 4 pass | pass |
+| Windows | 2,747 pass / 0 fail / 5 ignored | 91.28% (86,461 / 94,723) | 91.33% (58,919 / 64,514) | 93.54% (9,470 / 10,124) | 4 / 4 pass | pass |
 
-Line coverage is a different measure from a Test262 pass rate and the two are not interchangeable. The BlueJS figure was 91.37% (58,892 / 64,456) on macOS and 91.38% (58,892 / 64,450) on Ubuntu, up from the previously recorded 88.38%; the workspace and BlueJS gates in CI are 90% and 88%. The Node oracle compares 22,268 scripts with Node 24; the TypeScript oracle runs BlueTSC's 68-case fixture matrix against TypeScript 5.9.3. BlueTS's own results are in the [BlueTS test report](development/browser_core/phase-18-bluets/TEST_REPORT.md).
+Line coverage is a different measure from a Test262 pass rate and the two are not interchangeable. The BlueJS figure was 91.36% (58,943 / 64,517) on macOS and 91.37% (58,944 / 64,511) on Ubuntu, up from the previously recorded 88.38%; the workspace and BlueJS gates in CI are 90% and 88%. The Node oracle compares 22,268 scripts with Node 24; the TypeScript oracle runs BlueTSC's 68-case fixture matrix against TypeScript 5.9.3. BlueTS's own results are in the [BlueTS test report](development/browser_core/phase-18-bluets/TEST_REPORT.md).
 
 ### Current BlueJS coverage (2026-09-24)
 
@@ -58,7 +58,7 @@ Every `intl402/` service passes in full on the platforms measured, including `Te
 | --- | ---: | ---: | ---: |
 | macOS, 2026-09-21 | 2,656 / 2,656 (100.000%) | 4,058 / 4,058 (100.000%) | 13,268 / 13,268 (100.000%) |
 | Ubuntu 24.04.4 LTS, 2026-09-21 | 2,656 / 2,656 (100.000%) | 4,058 / 4,058 (100.000%) | 13,268 / 13,268 (100.000%) |
-| Windows 11 VM, 2026-09-21 | in progress | in progress | in progress |
+| Windows 11 VM, 2026-09-21 | 2,656 / 2,656 (100.000%) | 4,058 / 4,058 (100.000%) | 13,268 / 13,268 (100.000%) |
 
 The breakdown comes from the same unfiltered complete inventory as the first table. The full per-service and per-Temporal-type breakdown, provenance and reproduction commands are in the [Ubuntu report](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md), the [macOS report](development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md) and the [Windows report](development/browser_core/phase-13-bluejs-engine/TEST262_WINDOWS_REPORT.md).
 

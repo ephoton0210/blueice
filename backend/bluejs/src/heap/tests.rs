@@ -500,6 +500,114 @@ fn immutable_typed_array_index_descriptors_are_neither_writable_nor_configurable
 }
 
 #[test]
+fn typed_array_numeric_properties_do_not_fall_through_to_ordinary_storage() {
+    let mut heap = Heap::default();
+    let buffer = heap.alloc_array_buffer(2, None).unwrap();
+    let view = heap
+        .alloc_typed_array(buffer, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    heap.typed_array_set_index(view, 0, &Value::Number(7.0))
+        .unwrap();
+
+    assert_eq!(heap.get_own(view, "0"), Ok(Some(Value::Number(7.0))));
+    assert_eq!(heap.get(view, "0"), Ok(Value::Number(7.0)));
+    assert_eq!(heap.get_own(view, "2"), Ok(None));
+    assert_eq!(heap.get(view, "2"), Ok(Value::Undefined));
+    assert_eq!(heap.get_own(view, "-0"), Ok(None));
+    assert_eq!(heap.get(view, "-0"), Ok(Value::Undefined));
+    assert!(heap
+        .get_own_property_descriptor(view, "-0")
+        .unwrap()
+        .is_none());
+    assert_eq!(heap.delete(view, "0"), Ok(false));
+    assert_eq!(heap.delete(view, "2"), Ok(true));
+    assert_eq!(heap.delete(view, "-0"), Ok(true));
+    assert_eq!(
+        heap.set(view, "-0", Value::Number(8.0)),
+        Err(HeapError::ReadOnlyProperty)
+    );
+    assert_eq!(heap.own_keys(view), Ok(vec!["0".into(), "1".into()]));
+
+    heap.detach_array_buffer(buffer).unwrap();
+    assert_eq!(heap.get_own(view, "0"), Ok(None));
+    assert_eq!(heap.get(view, "0"), Ok(Value::Undefined));
+    assert_eq!(heap.delete(view, "0"), Ok(true));
+    assert_eq!(heap.own_keys(view), Ok(vec![]));
+}
+
+#[test]
+fn property_storage_rejects_foreign_objects_and_exhausted_ids() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let object = heap.alloc_object(None).unwrap();
+    assert_eq!(heap.typed_array_index_value(object, 0), Ok(None));
+    macro_rules! invalid {
+        () => {
+            Err(HeapError::InvalidObject(foreign))
+        };
+    }
+
+    assert_eq!(heap.get_own(foreign, "x"), invalid!());
+    assert_eq!(heap.get(foreign, "x"), invalid!());
+    assert_eq!(heap.set(foreign, "x", Value::Null), invalid!());
+    assert_eq!(heap.delete(foreign, "x"), invalid!());
+    assert!(matches!(
+        heap.get_own_property_descriptor(foreign, "x"),
+        Err(HeapError::InvalidObject(id)) if id == foreign
+    ));
+    assert_eq!(
+        heap.define_own_property(
+            foreign,
+            "x",
+            PropertyDescriptor::data(Value::Null, true, true, true),
+        ),
+        invalid!()
+    );
+    assert_eq!(heap.own_property_keys(foreign), invalid!());
+    assert_eq!(heap.own_integer_keys(foreign), invalid!());
+    assert_eq!(heap.enumerable_own_keys(foreign), invalid!());
+    assert_eq!(heap.is_arguments(foreign), invalid!());
+    assert_eq!(heap.is_module_namespace(foreign), invalid!());
+    assert_eq!(
+        heap.arguments_parameter_cell(foreign, &"x".into()),
+        invalid!()
+    );
+    assert_eq!(
+        heap.module_namespace_export_cell(foreign, &"x".into()),
+        invalid!()
+    );
+    assert_eq!(
+        heap.unmap_arguments_property(foreign, &"x".into()),
+        invalid!()
+    );
+    assert_eq!(heap.root(foreign), invalid!());
+    assert_eq!(
+        heap.define_own_property(
+            object,
+            "foreign",
+            PropertyDescriptor::data(Value::Object(foreign), true, true, true),
+        ),
+        invalid!()
+    );
+    assert_eq!(
+        heap.define_own_property(
+            foreign,
+            PropertyName::Symbol(JsSymbol::new(None)),
+            PropertyDescriptor::data(Value::Null, true, true, true),
+        ),
+        invalid!()
+    );
+
+    heap.next_root = u64::MAX;
+    assert_eq!(heap.root(object), Err(HeapError::IdExhausted));
+    assert_eq!(heap.stats().root_registrations, 0);
+    heap.next_object = u64::MAX;
+    assert_eq!(heap.alloc_object(None), Err(HeapError::IdExhausted));
+    assert!(heap.contains(object));
+}
+
+#[test]
 fn weak_collection_values_follow_live_keys_to_an_ephemeron_fixed_point() {
     let mut heap = Heap::default();
     let first = heap.alloc_weak_collection(true, None).unwrap();
@@ -550,6 +658,98 @@ fn manual_collection_heap() -> Heap {
         max_heap_bytes: usize::MAX,
     })
     .unwrap()
+}
+
+#[test]
+fn non_extensible_objects_keep_their_prototype_and_reject_foreign_handles() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let parent = heap.alloc_object(None).unwrap();
+    let alternate = heap.alloc_object(None).unwrap();
+    let object = heap.alloc_object(Some(parent)).unwrap();
+    let foreign = other.alloc_object(None).unwrap();
+
+    assert_eq!(heap.is_extensible(object), Ok(true));
+    heap.prevent_extensions(object).unwrap();
+    assert_eq!(heap.is_extensible(object), Ok(false));
+    assert_eq!(
+        heap.define_own_property(
+            object,
+            "new",
+            PropertyDescriptor::data(Value::Null, true, true, true),
+        ),
+        Ok(false)
+    );
+    assert_eq!(heap.set_prototype(object, Some(parent)), Ok(()));
+    assert_eq!(heap.prototype(object), Ok(Some(parent)));
+    assert_eq!(
+        heap.set_prototype(object, Some(alternate)),
+        Err(HeapError::ReadOnlyProperty)
+    );
+    assert_eq!(heap.prototype(object), Ok(Some(parent)));
+    assert_eq!(
+        heap.prevent_extensions(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.is_extensible(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+}
+
+#[test]
+fn young_closure_metadata_survives_old_owner_and_ephemeron_edges() {
+    let mut heap = manual_collection_heap();
+    let prototype = heap.alloc_object(None).unwrap();
+    let closure = heap
+        .alloc_closure(
+            Rc::new(Bytecode::empty()),
+            Vec::new(),
+            Value::Undefined,
+            prototype,
+        )
+        .unwrap();
+    let closure_root = heap.root(closure).unwrap();
+    heap.collect_minor();
+    assert!(!heap.objects[&closure].young);
+
+    let young_home = heap.alloc_object(None).unwrap();
+    heap.set_closure_home(closure, young_home).unwrap();
+    assert!(heap.remembered.contains(&closure));
+    heap.collect_minor();
+    assert!(heap.contains(young_home));
+    heap.unroot(closure_root).unwrap();
+
+    let table = heap.alloc_weak_collection(true, None).unwrap();
+    let table_root = heap.root(table).unwrap();
+    let key = heap.alloc_object(None).unwrap();
+    let key_root = heap.root(key).unwrap();
+    let ephemeron_closure = heap
+        .alloc_closure(
+            Rc::new(Bytecode::empty()),
+            Vec::new(),
+            Value::Undefined,
+            prototype,
+        )
+        .unwrap();
+    let ephemeron_home = heap.alloc_object(None).unwrap();
+    heap.set_closure_home(ephemeron_closure, ephemeron_home)
+        .unwrap();
+    heap.weak_collection_set(table, Value::Object(key), Value::Object(ephemeron_closure))
+        .unwrap();
+    let primitive_key = heap.alloc_object(None).unwrap();
+    let primitive_root = heap.root(primitive_key).unwrap();
+    heap.weak_collection_set(table, Value::Object(primitive_key), Value::Number(1.0))
+        .unwrap();
+    heap.collect_minor();
+    assert!(heap.contains(ephemeron_closure));
+    assert!(heap.contains(ephemeron_home));
+    heap.collect_minor();
+    assert!(heap.contains(ephemeron_closure));
+
+    heap.unroot(primitive_root).unwrap();
+    heap.unroot(key_root).unwrap();
+    heap.unroot(table_root).unwrap();
 }
 
 /// A chain in which each key's only reference is the previous key's table
@@ -673,6 +873,109 @@ fn weak_ref_does_not_trace_its_target_and_clears_after_collection() {
     assert!(!heap.contains(target));
     assert_eq!(heap.weak_ref_target(weak_ref).unwrap(), None);
     heap.unroot(weak_ref_root).unwrap();
+}
+
+#[test]
+fn minor_gc_clears_dead_young_weak_targets_and_keeps_live_or_symbol_targets() {
+    let mut heap = manual_collection_heap();
+    let table = heap.alloc_weak_collection(true, None).unwrap();
+    let table_root = heap.root(table).unwrap();
+    let dead_key = heap.alloc_object(None).unwrap();
+    let dead_value = heap.alloc_object(None).unwrap();
+    heap.weak_collection_set(table, Value::Object(dead_key), Value::Object(dead_value))
+        .unwrap();
+    let live_key = heap.alloc_object(None).unwrap();
+    let live_key_root = heap.root(live_key).unwrap();
+    let live_value = heap.alloc_object(None).unwrap();
+    heap.weak_collection_set(table, Value::Object(live_key), Value::Object(live_value))
+        .unwrap();
+    let symbol = JsSymbol::new(Some("live symbol".into()));
+    let symbol_value = heap.alloc_object(None).unwrap();
+    heap.weak_collection_set(
+        table,
+        Value::Symbol(symbol.clone()),
+        Value::Object(symbol_value),
+    )
+    .unwrap();
+
+    let dead_target = heap.alloc_object(None).unwrap();
+    let dead_ref = heap
+        .alloc_weak_ref(Value::Object(dead_target), None)
+        .unwrap();
+    let dead_ref_root = heap.root(dead_ref).unwrap();
+    let live_target = heap.alloc_object(None).unwrap();
+    let live_target_root = heap.root(live_target).unwrap();
+    let live_ref = heap
+        .alloc_weak_ref(Value::Object(live_target), None)
+        .unwrap();
+    let live_ref_root = heap.root(live_ref).unwrap();
+    let symbol_ref = heap
+        .alloc_weak_ref(Value::Symbol(symbol.clone()), None)
+        .unwrap();
+    let symbol_ref_root = heap.root(symbol_ref).unwrap();
+
+    let registry = heap
+        .alloc_finalization_registry(Value::Undefined, None)
+        .unwrap();
+    let registry_root = heap.root(registry).unwrap();
+    let dead_registry_target = heap.alloc_object(None).unwrap();
+    let live_registry_target = heap.alloc_object(None).unwrap();
+    let registry_target_root = heap.root(live_registry_target).unwrap();
+    for target in [
+        Value::Object(dead_registry_target),
+        Value::Object(live_registry_target),
+        Value::Symbol(symbol.clone()),
+    ] {
+        heap.finalization_registry_register(registry, target, Value::Null, None)
+            .unwrap();
+    }
+
+    heap.collect_minor();
+    for dead in [dead_key, dead_value, dead_target, dead_registry_target] {
+        assert!(!heap.contains(dead));
+    }
+    for live in [
+        live_key,
+        live_value,
+        symbol_value,
+        live_target,
+        live_registry_target,
+    ] {
+        assert!(heap.contains(live));
+    }
+    assert_eq!(heap.weak_ref_target(dead_ref), Ok(None));
+    assert_eq!(
+        heap.weak_ref_target(live_ref),
+        Ok(Some(Value::Object(live_target)))
+    );
+    assert_eq!(
+        heap.weak_ref_target(symbol_ref),
+        Ok(Some(Value::Symbol(symbol)))
+    );
+    let ObjectKind::FinalizationRegistry { cells, .. } = &heap.objects[&registry].kind else {
+        panic!("expected finalization registry");
+    };
+    assert_eq!(
+        cells
+            .iter()
+            .map(|cell| cell.target.is_none())
+            .collect::<Vec<_>>(),
+        [true, false, false]
+    );
+    heap.collect_minor();
+
+    for root in [
+        registry_target_root,
+        registry_root,
+        symbol_ref_root,
+        live_ref_root,
+        live_target_root,
+        dead_ref_root,
+        live_key_root,
+        table_root,
+    ] {
+        heap.unroot(root).unwrap();
+    }
 }
 
 #[test]
@@ -837,6 +1140,9 @@ fn private_sidecars_trace_brands_slots_and_private_elements() {
 
     let receiver = heap.alloc_object(None).unwrap();
     let receiver_root = heap.root(receiver).unwrap();
+    assert_eq!(heap.has_private_brand(receiver, owner), Ok(false));
+    heap.add_private_brand(receiver, owner).unwrap();
+    assert_eq!(heap.has_private_brand(receiver, owner), Ok(true));
     heap.add_private_brand(receiver, owner).unwrap();
     let slot_value = heap.alloc_object(None).unwrap();
     heap.set_private_slot(receiver, owner, "field".into(), Value::Object(slot_value))
@@ -994,11 +1300,15 @@ fn temporal_payload_is_accounted() {
         time_zone: "UTC".repeat(50),
     };
     let expected = std::mem::size_of::<Object>() + value.bytes();
-    let bytes_added = heap
-        .alloc(ObjectKind::Temporal(Box::new(value)), None)
-        .map(|_| heap.stats().managed_bytes - before)
-        .unwrap();
+    let temporal = heap.alloc_temporal(value.clone(), None).unwrap();
+    let bytes_added = heap.stats().managed_bytes - before;
     assert_eq!(bytes_added, expected);
+    let stored = heap.temporal_value(temporal).unwrap().unwrap();
+    assert_eq!(stored.kind, value.kind);
+    assert_eq!(stored.year, value.year);
+    assert_eq!(stored.calendar, value.calendar);
+    let ordinary = heap.alloc_object(None).unwrap();
+    assert!(heap.temporal_value(ordinary).unwrap().is_none());
 }
 
 /// Exact IEEE 754 binary16 bit patterns pinned from Test262's
@@ -1178,6 +1488,35 @@ fn collection_clear_releases_entry_bytes_and_keeps_positions_valid_for_iterators
 }
 
 #[test]
+fn set_iterator_skips_deleted_entries_and_clear_preserves_its_position() {
+    let mut heap = Heap::default();
+    let prototype = heap.alloc_object(None).unwrap();
+    let set = heap.alloc_set(None).unwrap();
+    heap.set_add(set, Value::Number(1.0)).unwrap();
+    heap.set_add(set, Value::Number(2.0)).unwrap();
+    assert_eq!(heap.set_delete(set, &Value::Number(1.0)), Ok(true));
+    let iterator = heap
+        .alloc_collection_iterator(set, false, ArrayIteratorKind::Values, prototype)
+        .unwrap();
+
+    let (key, value, kind) = heap
+        .collection_iterator_next(iterator, false)
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(key, Value::Number(2.0));
+    assert_eq!(value, Value::Undefined);
+    assert_eq!(kind, ArrayIteratorKind::Values);
+
+    heap.collection_clear(set).unwrap();
+    assert_eq!(heap.set_size(set), Ok(0));
+    assert_eq!(
+        heap.collection_iterator_next(iterator, false),
+        Ok(Some(None))
+    );
+}
+
+#[test]
 fn collection_iteration_rejects_foreign_and_malformed_live_references() {
     let mut heap = Heap::default();
     let mut other = Heap::default();
@@ -1243,6 +1582,23 @@ fn collection_accessors_reject_foreign_objects_and_wrong_brands() {
     let key = Value::String("key".into());
     let foreign_value = Value::Object(foreign);
 
+    let raw = heap.alloc_raw_json().unwrap();
+    assert_eq!(heap.is_raw_json(raw), Ok(true));
+    assert_eq!(heap.is_raw_json(ordinary), Ok(false));
+    assert_eq!(heap.is_map(map), Ok(true));
+    assert_eq!(heap.is_map(set), Ok(false));
+    assert_eq!(heap.is_set(set), Ok(true));
+    assert_eq!(heap.is_set(map), Ok(false));
+    assert_eq!(heap.map_get(map, &key), Ok(None));
+    assert_eq!(heap.map_has(map, &key), Ok(false));
+    assert_eq!(heap.set_has(set, &key), Ok(false));
+    heap.map_set(map, key.clone(), Value::Number(7.0)).unwrap();
+    assert_eq!(heap.map_get(map, &key), Ok(Some(Value::Number(7.0))));
+    assert_eq!(heap.map_has(map, &key), Ok(true));
+    heap.set_add(set, key.clone()).unwrap();
+    heap.set_add(set, key.clone()).unwrap();
+    assert_eq!(heap.set_has(set, &key), Ok(true));
+
     assert_eq!(
         heap.is_raw_json(foreign),
         Err(HeapError::InvalidObject(foreign))
@@ -1277,8 +1633,10 @@ fn collection_accessors_reject_foreign_objects_and_wrong_brands() {
         heap.set_add(set, foreign_value),
         Err(HeapError::InvalidObject(foreign))
     );
-    assert_eq!(heap.map_size(map), Ok(0));
-    assert_eq!(heap.set_size(set), Ok(0));
+    assert_eq!(heap.map_size(map), Ok(1));
+    assert_eq!(heap.set_size(set), Ok(1));
+    assert_eq!(heap.map_delete(map, &key), Ok(true));
+    assert_eq!(heap.set_delete(set, &key), Ok(true));
     assert_eq!(heap.map_delete(map, &key), Ok(false));
     assert_eq!(heap.set_delete(set, &key), Ok(false));
 }
@@ -1301,6 +1659,15 @@ fn module_namespace_sorts_exports_and_rejects_invalid_cells_and_initialization()
     };
     assert_eq!(exports[0].0, JsString::from("a"));
     assert_eq!(exports[1].0, JsString::from("z"));
+    let deferred = heap.alloc_module_namespace(vec![], true).unwrap();
+    assert_eq!(
+        heap.get(deferred, JsSymbol::well_known("toStringTag")),
+        Ok(Value::String("Deferred Module".into()))
+    );
+    let html_dda = heap
+        .alloc_html_dda_object(NativeFunction::Empty, cell)
+        .unwrap();
+    assert_eq!(heap.is_html_dda(html_dda), Ok(true));
     assert_eq!(
         heap.initialize_module_namespace(namespace, vec![]),
         Err(HeapError::InvalidObject(namespace))
@@ -1321,6 +1688,319 @@ fn module_namespace_sorts_exports_and_rejects_invalid_cells_and_initialization()
 }
 
 #[test]
+fn mapped_arguments_and_module_namespace_exports_follow_binding_cells() {
+    let mut heap = Heap::default();
+    let prototype = heap.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let cell = heap.alloc_object(None).unwrap();
+    heap.set(cell, "value", Value::Number(1.0)).unwrap();
+    let second_cell = heap.alloc_object(None).unwrap();
+    heap.set(second_cell, "value", Value::Number(5.0)).unwrap();
+    let arguments = heap
+        .alloc_arguments(
+            HashMap::from([
+                (PropertyName::from("0"), cell),
+                (PropertyName::from("1"), second_cell),
+            ]),
+            prototype,
+        )
+        .unwrap();
+    assert_eq!(heap.is_arguments(arguments), Ok(true));
+    assert_eq!(heap.is_arguments(ordinary), Ok(false));
+    assert_eq!(
+        heap.arguments_parameter_cell(arguments, &"0".into()),
+        Ok(Some(cell))
+    );
+    assert_eq!(
+        heap.arguments_parameter_cell(ordinary, &"0".into()),
+        Ok(None)
+    );
+    heap.set(arguments, "0", Value::Number(2.0)).unwrap();
+    heap.set(arguments, "1", Value::Number(5.0)).unwrap();
+    assert_eq!(heap.get_own(cell, "value"), Ok(Some(Value::Number(2.0))));
+    assert_eq!(heap.get(arguments, "0"), Ok(Value::Number(2.0)));
+    assert_eq!(
+        heap.get_own_property_descriptor(arguments, "0")
+            .unwrap()
+            .and_then(|descriptor| descriptor.value),
+        Some(Value::Number(2.0))
+    );
+    assert_eq!(
+        heap.define_own_property(
+            arguments,
+            "0",
+            PropertyDescriptor::data(Value::Number(3.0), true, true, true),
+        ),
+        Ok(true)
+    );
+    assert_eq!(heap.get_own(cell, "value"), Ok(Some(Value::Number(3.0))));
+    assert_eq!(
+        heap.define_own_property(
+            arguments,
+            "0",
+            PropertyDescriptor::data(Value::Number(3.0), false, true, true),
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        heap.arguments_parameter_cell(arguments, &"0".into()),
+        Ok(None)
+    );
+    assert_eq!(heap.delete(arguments, "1"), Ok(true));
+    assert_eq!(
+        heap.arguments_parameter_cell(arguments, &"1".into()),
+        Ok(None)
+    );
+
+    let namespace = heap
+        .alloc_module_namespace(vec![("export".into(), cell)], false)
+        .unwrap();
+    assert_eq!(
+        heap.own_property_keys(namespace),
+        Ok(vec![
+            "export".into(),
+            PropertyName::Symbol(JsSymbol::well_known("toStringTag")),
+        ])
+    );
+    assert_eq!(heap.is_module_namespace(namespace), Ok(true));
+    assert_eq!(heap.is_module_namespace(ordinary), Ok(false));
+    assert_eq!(
+        heap.module_namespace_export_cell(namespace, &"export".into()),
+        Ok(Some(cell))
+    );
+    assert_eq!(
+        heap.module_namespace_export_cell(namespace, &"missing".into()),
+        Ok(None)
+    );
+    assert_eq!(
+        heap.get_own(namespace, "export"),
+        Ok(Some(Value::Number(3.0)))
+    );
+    assert_eq!(heap.get(namespace, "export"), Ok(Value::Number(3.0)));
+    assert_eq!(
+        heap.get_own_property_descriptor(namespace, "export")
+            .unwrap()
+            .and_then(|descriptor| descriptor.value),
+        Some(Value::Number(3.0))
+    );
+    assert_eq!(
+        heap.define_own_property(
+            namespace,
+            "export",
+            PropertyDescriptor::data(Value::Number(3.0), true, true, false),
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        heap.define_own_property(
+            namespace,
+            "export",
+            PropertyDescriptor::data(Value::Number(4.0), true, true, false),
+        ),
+        Ok(false)
+    );
+    assert_eq!(heap.delete(namespace, "export"), Ok(false));
+    assert_eq!(heap.delete(namespace, "missing"), Ok(true));
+    assert_eq!(
+        heap.delete(namespace, PropertyName::Symbol(JsSymbol::new(None))),
+        Ok(true)
+    );
+    assert_eq!(
+        heap.define_own_property(
+            namespace,
+            "missing",
+            PropertyDescriptor::data(Value::Null, true, true, true),
+        ),
+        Ok(false)
+    );
+    assert_eq!(
+        heap.set(namespace, "export", Value::Number(4.0)),
+        Err(HeapError::ReadOnlyProperty)
+    );
+
+    let uninitialized_cell = heap.alloc_object(None).unwrap();
+    let uninitialized = heap
+        .alloc_module_namespace(vec![("pending".into(), uninitialized_cell)], false)
+        .unwrap();
+    assert_eq!(
+        heap.get_own(uninitialized, "pending"),
+        Err(HeapError::UninitializedModuleExport)
+    );
+    assert_eq!(
+        heap.get(uninitialized, "pending"),
+        Err(HeapError::UninitializedModuleExport)
+    );
+    assert!(matches!(
+        heap.get_own_property_descriptor(uninitialized, "pending"),
+        Err(HeapError::UninitializedModuleExport)
+    ));
+    assert_eq!(
+        heap.define_own_property(
+            uninitialized,
+            "pending",
+            PropertyDescriptor::data(Value::Undefined, true, true, false),
+        ),
+        Err(HeapError::UninitializedModuleExport)
+    );
+}
+
+#[test]
+fn malformed_property_links_report_errors_without_reading_other_heap_storage() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let cell = heap.alloc_object(None).unwrap();
+    heap.set(cell, "value", Value::Number(1.0)).unwrap();
+
+    let namespace = heap
+        .alloc_module_namespace(vec![("x".into(), cell)], false)
+        .unwrap();
+    let ObjectKind::ModuleNamespace { exports } =
+        &mut heap.objects.get_mut(&namespace).unwrap().kind
+    else {
+        panic!("expected module namespace");
+    };
+    exports[0].1 = foreign;
+    assert_eq!(
+        heap.get_own(namespace, "x"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.get(namespace, "x"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert!(matches!(
+        heap.get_own_property_descriptor(namespace, "x"),
+        Err(HeapError::InvalidObject(id)) if id == foreign
+    ));
+    assert_eq!(
+        heap.define_own_property(
+            namespace,
+            "x",
+            PropertyDescriptor::data(Value::Number(1.0), true, true, false),
+        ),
+        Err(HeapError::InvalidObject(foreign))
+    );
+
+    let arguments = heap
+        .alloc_arguments(
+            HashMap::from([
+                (PropertyName::from("0"), cell),
+                (PropertyName::from("1"), cell),
+            ]),
+            ordinary,
+        )
+        .unwrap();
+    heap.set(arguments, "0", Value::Number(2.0)).unwrap();
+    heap.define_own_property(
+        arguments,
+        "1",
+        PropertyDescriptor::data(Value::Number(3.0), true, true, true),
+    )
+    .unwrap();
+    let ObjectKind::Arguments { parameter_map } =
+        &mut heap.objects.get_mut(&arguments).unwrap().kind
+    else {
+        panic!("expected arguments object");
+    };
+    parameter_map.insert("0".into(), foreign);
+    parameter_map.insert("1".into(), foreign);
+    assert_eq!(
+        heap.get(arguments, "0"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    for key in ["0", "1"] {
+        assert!(matches!(
+            heap.get_own_property_descriptor(arguments, key),
+            Err(HeapError::InvalidObject(id)) if id == foreign
+        ));
+    }
+    assert_eq!(
+        heap.define_own_property(
+            arguments,
+            "0",
+            PropertyDescriptor::data(Value::Number(4.0), true, true, true),
+        ),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(heap.unmap_arguments_property(ordinary, &"0".into()), Ok(()));
+
+    let buffer = heap.alloc_array_buffer(1, None).unwrap();
+    let view = heap
+        .alloc_typed_array(buffer, 0, 1, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    let ObjectKind::TypedArray { buffer, .. } = &mut heap.objects.get_mut(&view).unwrap().kind
+    else {
+        panic!("expected typed array");
+    };
+    *buffer = foreign;
+    assert_eq!(
+        heap.get_own(view, "0"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(heap.get(view, "0"), Err(HeapError::InvalidObject(foreign)));
+    assert!(matches!(
+        heap.get_own_property_descriptor(view, "0"),
+        Err(HeapError::InvalidObject(id)) if id == foreign
+    ));
+    assert_eq!(
+        heap.delete(view, "0"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.own_property_keys(view),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.enumerable_own_keys(view),
+        Err(HeapError::InvalidObject(foreign))
+    );
+}
+
+#[test]
+fn array_length_updates_reject_wrong_receivers_and_mapped_read_only_cells() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    assert_eq!(
+        heap.set_array_length(foreign, Value::Number(0.0)),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_array_length(ordinary, Value::Number(0.0)),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+
+    let cell = heap.alloc_object(None).unwrap();
+    assert_eq!(
+        heap.define_own_property(
+            cell,
+            "value",
+            PropertyDescriptor::data(Value::Number(1.0), false, true, true),
+        ),
+        Ok(true)
+    );
+    let arguments = heap
+        .alloc_arguments(HashMap::from([(PropertyName::from("0"), cell)]), ordinary)
+        .unwrap();
+    assert_eq!(
+        heap.set(arguments, "0", Value::Number(2.0)),
+        Err(HeapError::ReadOnlyProperty)
+    );
+    assert_eq!(
+        heap.define_own_property(
+            arguments,
+            "0",
+            PropertyDescriptor::data(Value::Number(3.0), true, true, true),
+        ),
+        Err(HeapError::ReadOnlyProperty)
+    );
+    assert_eq!(heap.get_own(cell, "value"), Ok(Some(Value::Number(1.0))));
+}
+
+#[test]
 fn weak_storage_and_finalization_reject_invalid_references_and_brands() {
     let mut heap = Heap::default();
     let mut other = Heap::default();
@@ -1333,6 +2013,17 @@ fn weak_storage_and_finalization_reject_invalid_references_and_brands() {
         .unwrap();
     let object_key = Value::Object(key);
     let foreign_key = Value::Object(foreign);
+    let symbol = JsSymbol::new(Some("weak key".into()));
+    let symbol_key = Value::Symbol(symbol.clone());
+
+    assert_eq!(heap.is_weak_collection(weak_map, true), Ok(true));
+    assert_eq!(heap.is_weak_collection(weak_map, false), Ok(false));
+    assert_eq!(heap.is_weak_collection(ordinary, true), Ok(false));
+    let symbol_ref = heap.alloc_weak_ref(symbol_key.clone(), None).unwrap();
+    assert_eq!(
+        heap.weak_ref_target(symbol_ref),
+        Ok(Some(symbol_key.clone()))
+    );
 
     assert_eq!(
         heap.alloc_weak_ref(Value::Bool(false), None),
@@ -1381,6 +2072,13 @@ fn weak_storage_and_finalization_reject_invalid_references_and_brands() {
         heap.weak_collection_delete(weak_map, &object_key),
         Ok(false)
     );
+    heap.weak_collection_set(weak_map, object_key.clone(), Value::Null)
+        .unwrap();
+    assert_eq!(heap.weak_collection_delete(weak_map, &object_key), Ok(true));
+    assert_eq!(
+        heap.weak_collection_delete(weak_map, &object_key),
+        Ok(false)
+    );
 
     assert_eq!(
         heap.finalization_registry_register(registry, Value::Bool(true), Value::Null, None,),
@@ -1424,6 +2122,32 @@ fn weak_storage_and_finalization_reject_invalid_references_and_brands() {
         heap.finalization_registry_unregister(ordinary, object_key),
         Err(HeapError::InvalidInternalSlot(ordinary))
     );
+    heap.finalization_registry_register(
+        registry,
+        Value::Object(key),
+        Value::String("holding".into()),
+        Some(Value::Object(key)),
+    )
+    .unwrap();
+    assert_eq!(
+        heap.finalization_registry_unregister(registry, Value::Object(key)),
+        Ok(true)
+    );
+    assert_eq!(
+        heap.finalization_registry_unregister(registry, Value::Object(key)),
+        Ok(false)
+    );
+    heap.finalization_registry_register(
+        registry,
+        symbol_key.clone(),
+        Value::Null,
+        Some(symbol_key.clone()),
+    )
+    .unwrap();
+    assert_eq!(
+        heap.finalization_registry_unregister(registry, symbol_key),
+        Ok(true)
+    );
 }
 
 #[test]
@@ -1458,6 +2182,18 @@ fn private_sidecar_accessors_validate_references_and_preserve_accessor_halves() 
         .unwrap();
     heap.define_private_accessor(owner, name.clone(), Value::Object(setter), true)
         .unwrap();
+    let setter_first: JsString = "setter-first".into();
+    heap.define_private_accessor(owner, setter_first.clone(), Value::Object(setter), true)
+        .unwrap();
+    heap.define_private_accessor(owner, setter_first.clone(), Value::Object(getter), false)
+        .unwrap();
+    assert!(matches!(
+        heap.private_element(owner, &setter_first),
+        Ok(Some(PrivateElement::Accessor {
+            get: Some(Value::Object(g)),
+            set: Some(Value::Object(s)),
+        })) if g == getter && s == setter
+    ));
     assert!(matches!(
         heap.private_element(owner, &name),
         Ok(Some(PrivateElement::Accessor {
@@ -1511,6 +2247,19 @@ fn date_and_temporal_accessors_reject_foreign_objects_and_wrong_brands() {
     let mut other = Heap::default();
     let foreign = other.alloc_object(None).unwrap();
     let ordinary = heap.alloc_object(None).unwrap();
+    let error = heap.alloc_error(None).unwrap();
+    let date = heap.alloc_date(42.0, None).unwrap();
+    assert_eq!(heap.is_error(error), Ok(true));
+    assert_eq!(heap.is_error(ordinary), Ok(false));
+    assert_eq!(heap.is_date(date), Ok(true));
+    assert_eq!(heap.is_date(ordinary), Ok(false));
+    assert_eq!(heap.date_value(date), Ok(42.0));
+    assert_eq!(
+        heap.date_value(ordinary),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    heap.set_date_value(date, 123.0).unwrap();
+    assert_eq!(heap.date_value(date), Ok(123.0));
     assert_eq!(
         heap.is_html_dda(foreign),
         Err(HeapError::InvalidObject(foreign))
@@ -1676,6 +2425,16 @@ fn heap_identity_exhaustion_and_mutable_collection_parts_have_explicit_errors() 
         Err(HeapError::IdExhausted)
     ));
     let identities = AtomicU64::new(42);
+    assert!(matches!(
+        Heap::new_with_identity_source(
+            HeapConfig {
+                nursery_capacity: 0,
+                ..HeapConfig::default()
+            },
+            &identities,
+        ),
+        Err(HeapError::InvalidConfig)
+    ));
     let heap = Heap::new_with_identity_source(HeapConfig::default(), &identities).unwrap();
     assert_eq!(heap.identity, 42);
     assert_eq!(identities.load(Ordering::Relaxed), 43);
@@ -1764,8 +2523,8 @@ fn proxy_allocation_rejects_foreign_handles_and_revocation_keeps_capabilities() 
     );
     assert_eq!(heap.stats().managed_bytes, before);
     assert_eq!(
-        heap.proxy_capabilities(foreign),
-        Err(HeapError::InvalidObject(foreign))
+        heap.object_capabilities(foreign).err(),
+        Some(HeapError::InvalidObject(foreign))
     );
     assert_eq!(
         heap.revoke_proxy(foreign),
@@ -1780,10 +2539,12 @@ fn proxy_allocation_rejects_foreign_handles_and_revocation_keeps_capabilities() 
         .alloc_proxy(target, handler, None, true, false)
         .unwrap();
     assert_eq!(heap.proxy(proxy), Ok(Some((target, handler))));
-    assert_eq!(heap.proxy_capabilities(proxy), Ok(Some((true, false))));
+    let bits = heap.object_capabilities(proxy).unwrap();
+    assert!(bits.callable && !bits.constructible);
     heap.revoke_proxy(proxy).unwrap();
     assert_eq!(heap.proxy(proxy), Err(HeapError::RevokedProxy));
-    assert_eq!(heap.proxy_capabilities(proxy), Ok(Some((true, false))));
+    let bits = heap.object_capabilities(proxy).unwrap();
+    assert!(bits.callable && !bits.constructible);
 }
 
 #[test]
@@ -1832,6 +2593,9 @@ fn generator_slots_reject_foreign_and_wrong_brand_handles_without_mutation() {
     }
     assert_eq!(heap.stats().managed_bytes, before);
     assert_eq!(heap.generator_state_is_done(generator), Ok(true));
+    heap.set_generator_state(generator, GeneratorState::Running)
+        .unwrap();
+    assert_eq!(heap.generator_state_is_done(generator), Ok(false));
     assert!(heap.async_generator_control(generator).unwrap().is_none());
     heap.enable_async_generator(generator).unwrap();
     heap.enable_async_generator(generator).unwrap();
@@ -1904,6 +2668,55 @@ fn exotic_slot_readers_reject_handles_from_another_heap() {
             "{name}"
         );
     }
+}
+
+#[test]
+fn function_and_boxed_slot_readers_distinguish_valid_and_ordinary_objects() {
+    let mut heap = Heap::default();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let prototype = heap.alloc_object(None).unwrap();
+    let native = heap
+        .alloc_native_function(NativeFunction::Empty, "native", prototype)
+        .unwrap();
+    assert_eq!(heap.function_initial_name(native), Ok(Some("native")));
+    assert_eq!(heap.function_initial_name(ordinary), Ok(None));
+
+    let closure = heap
+        .alloc_closure(
+            Rc::new(Bytecode::empty()),
+            Vec::new(),
+            Value::Undefined,
+            prototype,
+        )
+        .unwrap();
+    assert_eq!(heap.function_source_text(closure), Ok(None));
+    assert_eq!(heap.function_source_text(ordinary), Ok(None));
+
+    let string = heap.alloc_string("boxed".into(), None).unwrap();
+    assert_eq!(
+        heap.boxed_string(string),
+        Ok(Some(&JsString::from("boxed")))
+    );
+    assert_eq!(heap.boxed_string(ordinary), Ok(None));
+    let boxed = heap
+        .alloc_boxed_primitive(Value::Number(7.0), prototype)
+        .unwrap();
+    assert_eq!(heap.boxed_primitive(boxed), Ok(Some(Value::Number(7.0))));
+    assert_eq!(heap.boxed_primitive(ordinary), Ok(None));
+
+    let bound = heap
+        .alloc_bound_function(
+            BoundFunction {
+                target: native,
+                this: Value::Undefined,
+                args: vec![Value::Number(1.0)],
+                constructible: false,
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(heap.bound_function(bound).unwrap().unwrap().target, native);
+    assert!(heap.bound_function(ordinary).unwrap().is_none());
 }
 
 #[test]
@@ -1983,6 +2796,7 @@ fn iterator_status_updates_ignore_non_iterator_handles() {
         heap.array_iterator(array_iterator),
         Ok(Some((ordinary, 0, false, ArrayIteratorKind::Values)))
     );
+    assert_eq!(heap.array_iterator(ordinary), Ok(None));
     heap.advance_array_iterator(array_iterator, true);
     assert_eq!(
         heap.array_iterator(array_iterator),
@@ -1992,6 +2806,7 @@ fn iterator_status_updates_ignore_non_iterator_handles() {
         heap.regexp_iterator(regexp_iterator),
         Ok(Some((ordinary, "x".into(), false, false, false)))
     );
+    assert_eq!(heap.regexp_iterator(ordinary), Ok(None));
     heap.finish_regexp_iterator(regexp_iterator);
     assert_eq!(
         heap.regexp_iterator(regexp_iterator),
@@ -2016,6 +2831,7 @@ fn regexp_replacement_rejects_wrong_handles_and_preserves_the_new_matcher() {
     let ordinary = heap.alloc_object(None).unwrap();
     let foreign = other.alloc_object(None).unwrap();
     let regexp = heap.alloc_regexp(test_regexp("old"), prototype).unwrap();
+    assert!(heap.regexp(ordinary).unwrap().is_none());
     assert_eq!(
         heap.set_regexp(foreign, test_regexp("new")),
         Err(HeapError::InvalidObject(foreign))
@@ -2079,6 +2895,29 @@ fn string_and_segment_iterators_preserve_handle_and_code_point_boundaries() {
         Err(HeapError::InvalidObject(foreign))
     );
     assert_eq!(heap.is_segment_iterator(ordinary), Ok(false));
+
+    let segments = Rc::new(crate::intl::Segments {
+        input: "A".into(),
+        records: vec![crate::intl::SegmentRecord {
+            start: 0,
+            end: 1,
+            is_word_like: Some(true),
+        }],
+    });
+    let segment_iterator = heap
+        .alloc_segment_iterator(segments.clone(), prototype)
+        .unwrap();
+    assert_eq!(heap.is_segment_iterator(segment_iterator), Ok(true));
+    let (current, index) = heap
+        .segment_iterator_next(segment_iterator)
+        .unwrap()
+        .unwrap();
+    assert!(Rc::ptr_eq(&current, &segments));
+    assert_eq!(index, 0);
+    assert!(heap
+        .segment_iterator_next(segment_iterator)
+        .unwrap()
+        .is_none());
 
     let string = heap
         .alloc_string_iterator("A😀B".into(), prototype)
@@ -2158,15 +2997,36 @@ fn completion_records_retain_object_references_and_charge_owned_payloads() {
         assert!(completion.references().is_empty());
         assert_eq!(completion.managed_bytes(), "message".len());
     }
+    let jump = GeneratorPendingCompletion::Jump {
+        cleanup: 0,
+        target: 1,
+    };
+    assert!(jump.references().is_empty());
+    assert_eq!(jump.managed_bytes(), 0);
 
     let mut queue = AsyncGeneratorControl::default();
-    queue.requests.push_back(AsyncGeneratorRequest {
-        id: 0,
-        completion: AsyncGeneratorCompletion::ResumeThrow(Value::Object(first)),
-        target: second,
-    });
-    assert_eq!(queue.references(), vec![second, first]);
-    assert_eq!(queue.managed_bytes(), size_of::<AsyncGeneratorRequest>());
+    for (id, completion) in [
+        AsyncGeneratorCompletion::Next(Value::Object(first)),
+        AsyncGeneratorCompletion::Return(Value::Object(first)),
+        AsyncGeneratorCompletion::Throw(Value::Object(first)),
+        AsyncGeneratorCompletion::ReturnAwaited(Value::Object(first)),
+        AsyncGeneratorCompletion::ResumeReturn(Value::Object(first)),
+        AsyncGeneratorCompletion::ResumeThrow(Value::Object(first)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        queue.requests.push_back(AsyncGeneratorRequest {
+            id: id as u64,
+            completion,
+            target: second,
+        });
+    }
+    assert_eq!(queue.references(), [second, first].repeat(6));
+    assert_eq!(
+        queue.managed_bytes(),
+        6 * size_of::<AsyncGeneratorRequest>()
+    );
 }
 
 #[test]
@@ -2177,6 +3037,18 @@ fn shared_buffer_rejects_overflow_and_notifies_only_matching_waiters() {
     assert!(!buffer.write(4, &[1]));
     assert_eq!(buffer.modify(usize::MAX, 2, |_| true), None);
     assert_eq!(buffer.copy(0, 4), Some(vec![0; 4]));
+    assert!(buffer.write(0, &[4, 5]));
+    assert_eq!(buffer.copy(0, 4), Some(vec![4, 5, 0, 0]));
+    for (offset, expected) in [(0, Some(5)), (usize::MAX, None), (4, None)] {
+        assert_eq!(
+            buffer.modify(offset, 1, |bytes| {
+                bytes[0] += 1;
+                bytes[0]
+            }),
+            expected
+        );
+    }
+    assert_eq!(buffer.copy(0, 4), Some(vec![5, 5, 0, 0]));
 
     let waiter = buffer.register_waiter(0);
     assert_eq!(buffer.notify(4, 1), 0);
@@ -2312,6 +3184,10 @@ fn intl_host_records_only_trace_their_javascript_prototype() {
 
     let mut heap = Heap::default();
     let prototype = heap.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let collator = ecma402::Collator::try_new(&[], Default::default()).unwrap();
+    let number_format = ecma402::NumberFormat::try_new(&[], Default::default()).unwrap();
+    let date_time_format = ecma402::DateTimeFormat::try_new(&[], Default::default()).unwrap();
     let display_names = ecma402::DisplayNames::try_new(
         &[],
         ecma402::DisplayNamesOptions {
@@ -2342,26 +3218,143 @@ fn intl_host_records_only_trace_their_javascript_prototype() {
     };
     let relative_time_format =
         ecma402::RelativeTimeFormat::try_new(&[], Default::default()).unwrap();
+    let segmenter = ecma402::Segmenter::try_new(&[], Default::default()).unwrap();
     let segments = Rc::new(crate::intl::Segments {
         input: "abc".into(),
         records: vec![],
     });
-    for kind in [
+    let kinds = [
+        ObjectKind::Collator {
+            data: Rc::new(collator),
+            compare: None,
+        },
+        ObjectKind::NumberFormat {
+            data: Rc::new(number_format),
+            format: None,
+        },
+        ObjectKind::DateTimeFormat {
+            data: Rc::new(date_time_format),
+            format: None,
+        },
         ObjectKind::DisplayNames(Rc::new(display_names)),
         ObjectKind::DurationFormat(Rc::new(duration_format)),
         ObjectKind::ListFormat(Rc::new(list_format)),
         ObjectKind::PluralRules(Rc::new(plural_rules)),
         ObjectKind::RelativeTimeFormat(Rc::new(relative_time_format)),
+        ObjectKind::Segmenter(Rc::new(segmenter)),
+        ObjectKind::Segments(segments.clone()),
+        ObjectKind::IntlLocale(Rc::new(crate::intl::Locale {
+            locale: ecma402::canonicalize("en").unwrap(),
+        })),
         ObjectKind::SegmentIterator {
             data: segments,
             next: 0,
         },
-    ] {
+    ];
+    type Reader = fn(&Heap, ObjectId) -> Result<bool, HeapError>;
+    let readers: &[Reader] = &[
+        |heap, object| heap.collator(object).map(|value| value.is_some()),
+        |heap, object| heap.number_format(object).map(|value| value.is_some()),
+        |heap, object| heap.date_time_format(object).map(|value| value.is_some()),
+        |heap, object| heap.display_names(object).map(|value| value.is_some()),
+        |heap, object| heap.duration_format(object).map(|value| value.is_some()),
+        |heap, object| heap.list_format(object).map(|value| value.is_some()),
+        |heap, object| heap.plural_rules(object).map(|value| value.is_some()),
+        |heap, object| {
+            heap.relative_time_format(object)
+                .map(|value| value.is_some())
+        },
+        |heap, object| heap.segmenter(object).map(|value| value.is_some()),
+        |heap, object| heap.segments(object).map(|value| value.is_some()),
+        |heap, object| heap.intl_locale(object).map(|value| value.is_some()),
+    ];
+    let mut objects = Vec::new();
+    for (kind_index, kind) in kinds.into_iter().enumerate() {
         assert_eq!(
             allocation_references(&kind, Some(prototype)),
             vec![prototype]
         );
+        let object = heap.alloc(kind, Some(prototype)).unwrap();
+        for (reader_index, reader) in readers.iter().enumerate() {
+            assert_eq!(reader(&heap, object), Ok(reader_index == kind_index));
+            assert_eq!(reader(&heap, ordinary), Ok(false));
+        }
+        objects.push(object);
     }
+
+    let function = heap.alloc_object(None).unwrap();
+    let collator = objects[0];
+    let number_format = objects[1];
+    let date_time_format = objects[2];
+    assert_eq!(heap.collator_compare(collator), None);
+    assert_eq!(heap.number_format_format(number_format), None);
+    assert_eq!(heap.date_time_format_format(date_time_format), None);
+    heap.set_collator_compare(collator, function);
+    heap.set_number_format_format(number_format, function);
+    heap.set_date_time_format_format(date_time_format, function);
+    assert_eq!(heap.collator_compare(collator), Some(function));
+    assert_eq!(heap.number_format_format(number_format), Some(function));
+    assert_eq!(
+        heap.date_time_format_format(date_time_format),
+        Some(function)
+    );
+    heap.set_collator_compare(ordinary, function);
+    heap.set_number_format_format(ordinary, function);
+    heap.set_date_time_format_format(ordinary, function);
+    assert_eq!(heap.collator_compare(ordinary), None);
+    assert_eq!(heap.number_format_format(ordinary), None);
+    assert_eq!(heap.date_time_format_format(ordinary), None);
+}
+
+#[test]
+fn plain_temporal_epoch_conversion_uses_iso_date_and_local_time() {
+    let mut plain = TemporalValue {
+        kind: TemporalKind::PlainDateTime,
+        duration: None,
+        year: 1970,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+        microsecond: 0,
+        nanosecond: 0,
+        epoch_nanoseconds: BigInt::from(0),
+        calendar: String::new(),
+        time_zone: String::new(),
+    };
+    assert_eq!(plain.plain_epoch_milliseconds(), 0);
+    plain.day = 2;
+    assert_eq!(plain.plain_epoch_milliseconds(), 86_400_000);
+    plain.year = 1969;
+    plain.month = 12;
+    plain.day = 31;
+    assert_eq!(plain.plain_epoch_milliseconds(), -86_400_000);
+
+    plain.kind = TemporalKind::PlainTime;
+    plain.year = 2000;
+    plain.hour = 1;
+    plain.minute = 2;
+    plain.second = 3;
+    plain.millisecond = 4;
+    assert_eq!(plain.plain_epoch_milliseconds(), 3_723_004);
+
+    plain.kind = TemporalKind::PlainDateTime;
+    plain.year = 2000;
+    plain.month = 3;
+    plain.day = 1;
+    plain.hour = 0;
+    plain.minute = 0;
+    plain.second = 0;
+    plain.millisecond = 0;
+    let first_of_march = plain.plain_epoch_milliseconds();
+    plain.month = 2;
+    plain.day = 29;
+    assert_eq!(
+        first_of_march - plain.plain_epoch_milliseconds(),
+        86_400_000
+    );
 }
 
 #[test]
@@ -2429,6 +3422,17 @@ fn buffer_allocation_rejects_limits_before_installing_a_shared_backing() {
         &backing
     ));
     assert_eq!(heap.buffer_byte_length(shared), Ok(2));
+    assert_eq!(heap.array_buffer_copy(shared, 0, 2), Ok(vec![0, 0]));
+    heap.array_buffer_write(shared, 0, &[7, 8]).unwrap();
+    assert_eq!(heap.array_buffer_copy(shared, 0, 2), Ok(vec![7, 8]));
+    assert_eq!(
+        heap.array_buffer_copy(shared, 2, 1),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.array_buffer_write(shared, 2, &[1]),
+        Err(HeapError::InvalidBufferRange)
+    );
 }
 
 #[test]
@@ -2445,6 +3449,10 @@ fn binary_data_accessors_reject_other_kinds_and_preserve_detached_view_slots() {
 
     assert_eq!(heap.is_data_view(view), Ok(true));
     assert_eq!(heap.is_data_view(object), Ok(false));
+    assert_eq!(heap.is_shared_array_buffer(shared), Ok(true));
+    assert_eq!(heap.is_shared_array_buffer(buffer), Ok(false));
+    assert_eq!(heap.array_buffer_byte_length(buffer), Ok(8));
+    assert_eq!(heap.array_buffer_is_detached(buffer), Ok(false));
     assert_eq!(heap.data_view_buffer(view), Ok(buffer));
     assert_eq!(heap.data_view_current_info(view), Ok((buffer, 4, 4)));
     assert_eq!(heap.array_buffer_is_resizable(buffer), Ok(true));
@@ -2536,6 +3544,9 @@ fn binary_data_accessors_reject_other_kinds_and_preserve_detached_view_slots() {
     assert_eq!(heap.typed_array_is_out_of_bounds(typed), Ok(true));
 
     heap.detach_array_buffer(buffer).unwrap();
+    assert_eq!(heap.array_buffer_is_detached(buffer), Ok(true));
+    assert_eq!(heap.buffer_max_byte_length(buffer), Ok(0));
+    assert_eq!(heap.typed_array_is_out_of_bounds(typed), Ok(true));
     assert_eq!(heap.data_view_buffer(view), Ok(buffer));
     assert_eq!(
         heap.data_view_current_info(view),
@@ -2683,7 +3694,100 @@ fn shared_and_plain_typed_array_atomic_bounds_are_checked_before_modification() 
         heap.typed_array_index_value(shared_view, 0),
         Ok(Some(Value::Number(7.0)))
     );
+    assert_eq!(
+        heap.typed_array_set_index(shared_view, 0, &Value::Number(9.0)),
+        Ok(true)
+    );
+    assert_eq!(
+        heap.typed_array_set_index(shared_view, 2, &Value::Number(1.0)),
+        Ok(false)
+    );
+    assert_eq!(
+        heap.typed_array_index_value(shared_view, 0),
+        Ok(Some(Value::Number(9.0)))
+    );
     assert_eq!(heap.buffer_max_byte_length(shared), Ok(2));
+}
+
+#[test]
+fn typed_array_views_track_resize_and_atomic_updates_share_error_paths() {
+    let mut heap = Heap::default();
+    let plain = heap.alloc_resizable_array_buffer(8, 16, None).unwrap();
+    let fixed = heap
+        .alloc_typed_array(plain, 2, 2, false, TypedArrayKind::Uint16, None)
+        .unwrap();
+    let tracking = heap
+        .alloc_typed_array(plain, 2, 0, true, TypedArrayKind::Uint16, None)
+        .unwrap();
+    assert_eq!(
+        heap.typed_array_info(tracking),
+        Ok((plain, 2, 3, TypedArrayKind::Uint16))
+    );
+    assert_eq!(heap.typed_array_is_out_of_bounds(fixed), Ok(false));
+    heap.resize_array_buffer(plain, 4).unwrap();
+    assert_eq!(
+        heap.typed_array_info(tracking),
+        Ok((plain, 2, 1, TypedArrayKind::Uint16))
+    );
+    assert_eq!(
+        heap.typed_array_info(fixed),
+        Ok((plain, 2, 0, TypedArrayKind::Uint16))
+    );
+    assert_eq!(heap.typed_array_is_out_of_bounds(fixed), Ok(true));
+
+    let shared = heap.alloc_shared_array_buffer(2, None, None).unwrap();
+    let shared_view = heap
+        .alloc_typed_array(shared, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    let plain_view = heap
+        .alloc_typed_array(plain, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    let object = heap.alloc_object(None).unwrap();
+    for (view, index, expected) in [
+        (shared_view, 0, Ok(Value::Number(0.0))),
+        (shared_view, 2, Err(HeapError::InvalidBufferRange)),
+        (plain_view, 0, Err(HeapError::InvalidInternalSlot(plain))),
+        (object, 0, Err(HeapError::InvalidInternalSlot(object))),
+    ] {
+        assert_eq!(
+            heap.shared_typed_array_atomic_modify(view, index, |old| {
+                (Some(Value::Number(7.0)), old)
+            }),
+            expected
+        );
+    }
+    assert_eq!(
+        heap.typed_array_index_value(shared_view, 0),
+        Ok(Some(Value::Number(7.0)))
+    );
+
+    let immutable = heap.alloc_immutable_array_buffer(vec![0], None).unwrap();
+    let immutable_view = heap
+        .alloc_typed_array(immutable, 0, 1, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    for (view, index, replacement, expected) in [
+        (
+            plain_view,
+            0,
+            Some(Value::Number(9.0)),
+            Ok(Value::Number(0.0)),
+        ),
+        (plain_view, 0, None, Ok(Value::Number(9.0))),
+        (plain_view, 4, None, Err(HeapError::InvalidBufferRange)),
+        (immutable_view, 0, None, Ok(Value::Number(0.0))),
+        (
+            immutable_view,
+            0,
+            Some(Value::Number(1.0)),
+            Err(HeapError::ImmutableArrayBuffer),
+        ),
+        (object, 0, None, Err(HeapError::InvalidInternalSlot(object))),
+    ] {
+        assert_eq!(
+            heap.typed_array_atomic_modify(view, index, |old| (replacement, old)),
+            expected
+        );
+    }
 }
 
 #[test]
@@ -2702,6 +3806,65 @@ fn uint8_clamping_obeys_range_and_ties_to_even() {
             Value::Number(expected)
         );
     }
+}
+
+#[test]
+fn typed_writes_encode_each_element_kind_at_its_byte_width() {
+    let check = |kind: TypedArrayKind, value: Value, expected: Vec<u8>| {
+        let mut bytes = vec![0; kind.byte_width()];
+        binary_data::typed_write(kind, &mut bytes, &value);
+        assert_eq!(bytes, expected);
+    };
+    check(TypedArrayKind::Int8, Value::Number(-1.0), vec![0xff]);
+    check(TypedArrayKind::Uint8, Value::Number(258.0), vec![2]);
+    check(TypedArrayKind::Uint8Clamped, Value::Number(1.5), vec![2]);
+    check(TypedArrayKind::Int16, Value::Number(-2.0), vec![0xfe, 0xff]);
+    check(TypedArrayKind::Uint16, Value::Number(65_537.0), vec![1, 0]);
+    check(
+        TypedArrayKind::Int32,
+        Value::Number(-2.0),
+        vec![0xfe, 0xff, 0xff, 0xff],
+    );
+    check(
+        TypedArrayKind::Uint32,
+        Value::Number(4_294_967_297.0),
+        vec![1, 0, 0, 0],
+    );
+    check(
+        TypedArrayKind::Float16,
+        Value::Number(42.0),
+        vec![0x40, 0x51],
+    );
+    check(
+        TypedArrayKind::Float32,
+        Value::Number(1.5),
+        1.5f32.to_le_bytes().to_vec(),
+    );
+    check(
+        TypedArrayKind::Float64,
+        Value::Number(2.5),
+        2.5f64.to_le_bytes().to_vec(),
+    );
+    check(
+        TypedArrayKind::BigInt64,
+        Value::BigInt(BigInt::from(-1)),
+        vec![0xff; 8],
+    );
+    check(
+        TypedArrayKind::BigInt64,
+        Value::BigInt(BigInt::from(1)),
+        vec![1, 0, 0, 0, 0, 0, 0, 0],
+    );
+    check(
+        TypedArrayKind::BigUint64,
+        Value::BigInt(BigInt::from(u64::MAX)),
+        vec![0xff; 8],
+    );
+    check(
+        TypedArrayKind::BigUint64,
+        Value::BigInt(BigInt::from(0)),
+        vec![0; 8],
+    );
 }
 
 #[test]
@@ -2908,10 +4071,26 @@ fn numeric_index_keys_reject_ill_formed_utf16_and_noncanonical_spellings() {
     let ill_formed = PropertyName::String(JsString::from_code_units(vec![0xd800]));
     assert_eq!(binary_data::typed_array_numeric_key(&ill_formed), None);
     assert_eq!(
+        binary_data::typed_array_numeric_key(&PropertyName::Symbol(JsSymbol::new(None))),
+        None
+    );
+    assert_eq!(
+        binary_data::typed_array_numeric_key(&"-0".into()),
+        Some(TypedArrayNumericKey::Invalid)
+    );
+    assert_eq!(
+        binary_data::typed_array_numeric_key(&"1.5".into()),
+        Some(TypedArrayNumericKey::Invalid)
+    );
+    assert_eq!(
         binary_data::typed_array_numeric_key(&"9007199254740991".into()),
         Some(TypedArrayNumericKey::Index(9_007_199_254_740_991))
     );
     assert_eq!(binary_data::typed_array_numeric_key(&"01".into()), None);
+    assert_eq!(
+        binary_data::typed_array_numeric_key(&"ordinary".into()),
+        None
+    );
     assert_eq!(binary_data::ecmascript_number_string(0.0), "0");
     assert_eq!(
         binary_data::normalize_scientific_rendering("1e21".into()),

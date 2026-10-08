@@ -122,8 +122,8 @@ impl Compiler {
         let Stmt::Expr(Expr::Assign { target, value, .. }) = statement else {
             return Err(CompileError::InvalidSyntax("invalid class field AST"));
         };
-        let (object, name) =
-            private_member_parts(target).expect("private field target is a private member");
+        let (object, name) = private_member_parts(target)
+            .ok_or(CompileError::InvalidSyntax("invalid class field AST"))?;
         let owner = self.private_member_reference(object, name)?;
         if name.starts_with('\0') {
             // An auto-accessor's hidden storage has no name to give a function.
@@ -169,7 +169,7 @@ impl Compiler {
             return self.statements_after_function_declarations(statements);
         }
         let is_async = has_await_using_declaration(statements);
-        self.wrap_with_disposal(is_async, |this| {
+        self.wrap_with_disposal(is_async, &mut |this| {
             this.statements_after_function_declarations(statements)
         })
     }
@@ -188,7 +188,7 @@ impl Compiler {
     pub(super) fn wrap_with_disposal(
         &mut self,
         is_async: bool,
-        compile_body: impl FnOnce(&mut Self) -> Result<(), CompileError>,
+        compile_body: &mut dyn FnMut(&mut Self) -> Result<(), CompileError>,
     ) -> Result<(), CompileError> {
         let handler_index = self.metadata_index(self.bytecode.handlers.len())?;
         self.bytecode.handlers.push(Handler {
@@ -784,7 +784,7 @@ impl Compiler {
                 let is_async_using =
                     matches!(init, Some(ForInit::VarDecl(DeclKind::AwaitUsing, _)));
                 if is_async_using || matches!(init, Some(ForInit::VarDecl(DeclKind::Using, _))) {
-                    self.wrap_with_disposal(is_async_using, |this| {
+                    self.wrap_with_disposal(is_async_using, &mut |this| {
                         this.loop_statement(
                             init.as_ref(),
                             test.as_ref(),
@@ -1303,15 +1303,8 @@ impl Compiler {
             let start = self.offset();
             self.bytecode.handlers[handler_index as usize].catch = Some(start);
             let parameter_bound_names = catch.param.as_ref().map(pattern_names).unwrap_or_default();
-            if self.bytecode.strict
-                && parameter_bound_names
-                    .iter()
-                    .any(|name| matches!(name.as_str(), "eval" | "arguments"))
-            {
-                return Err(CompileError::InvalidSyntax(
-                    "strict catch parameters cannot bind eval or arguments",
-                ));
-            }
+            // Entry-point early-error validation already rejects strict
+            // catch bindings named eval or arguments.
             if catch_lexical_names(&catch.body)
                 .into_iter()
                 .any(|name| parameter_bound_names.contains(&name))

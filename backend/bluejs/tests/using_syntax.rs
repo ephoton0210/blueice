@@ -34,6 +34,26 @@ fn using_does_not_take_a_binding_pattern() {
 }
 
 #[test]
+fn for_using_heads_reject_destructuring_and_missing_initializers() {
+    // A bracket after `using` is a computed member, so this is an ordinary
+    // assignment target in a for-of head rather than a using declaration.
+    assert!(parse("for (using [item] of items) ;").is_ok());
+    for source in [
+        "for (using { item } of items) ;",
+        "for (using item in items) ;",
+        "for (using item; ; ) ;",
+        "for (using first = null, second; ; ) ;",
+        "async function f() { for (await using [item] of items) ; }",
+        "async function f() { for (await using { item } of items) ; }",
+        "async function f() { for (await using item in items) ; }",
+        "async function f() { for (await using first = null, second; ; ) ; }",
+        "async function f() { for await (var item in items) ; }",
+    ] {
+        assert_known_syntax_error(source);
+    }
+}
+
+#[test]
 fn using_followed_by_a_bracket_stays_a_member_expression() {
     assert_eq!(
         evaluate("var using = [7]; var a = 0; using [a] = 3; using[0]"),

@@ -37,6 +37,28 @@ pub enum Value {
 }
 
 impl Value {
+    /// Inspect a value's representation without applying JavaScript coercion.
+    pub(crate) fn as_string(&self) -> Option<&JsString> {
+        match self {
+            Self::String(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_number(&self) -> Option<f64> {
+        match self {
+            Self::Number(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_bigint(&self) -> Option<&BigInt> {
+        match self {
+            Self::BigInt(value) => Some(value),
+            _ => None,
+        }
+    }
+
     pub(crate) fn object_id(&self) -> Option<ObjectId> {
         match self {
             Value::Object(id) => Some(*id),

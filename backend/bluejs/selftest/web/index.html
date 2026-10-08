@@ -1,0 +1,58 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+     License, v. 2.0. If a copy of the MPL was not distributed with this
+     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BlueJS · Self-test</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#graph"><span class="brand-icon">B</span><span>BlueJS<small>SELF-TEST WORKSPACE</small></span></a>
+    <nav aria-label="Main navigation">
+      <button class="nav-item active" data-view="graph"><span>◈</span> Test graph</button>
+      <button class="nav-item" data-view="runs"><span>▷</span> Runs & progress</button>
+      <button class="nav-item" data-view="reports"><span>▤</span> Coverage & reports</button>
+    </nav>
+    <div class="sidebar-bottom"><span class="live-dot"></span> Local workspace<small>Built for the BlueIce engine</small></div>
+  </aside>
+  <main>
+    <header class="topbar"><span class="breadcrumb">BlueJS <span>/</span> Self-test</span><span id="global-status" class="badge idle">Idle</span></header>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section class="page-heading"><div><div class="eyebrow">KNOW WHAT YOUR CHANGE TOUCHES</div><h1 id="page-title">Test impact graph</h1><p id="page-description">Follow source changes to the tests that exercise them.</p></div><button id="index-button" class="button secondary">Build graph from retained results</button></section>
+    <section class="metrics" aria-label="Workspace summary">
+      <article><span>Measured relationships</span><strong id="edge-count">—</strong><small id="graph-age">Graph not indexed</small></article>
+      <article><span>Selected test targets</span><strong id="selection-count">—</strong><small id="selection-total">Refresh the impact plan</small></article>
+      <article><span>Estimated test work</span><strong id="estimated-time">—</strong><small>Recorded serial time; parallel execution differs</small></article>
+      <article><span>Complete source files</span><strong id="coverage-count">—</strong><small id="coverage-note">Full measurement required</small></article>
+    </section>
+
+    <section id="view-graph" class="view">
+      <div class="panel plan-panel"><div class="panel-heading"><h2>Impact plan</h2><span id="snapshot-badge" class="muted">Source snapshot</span></div><div class="plan-controls"><label for="changed-files">Changed files <small>One repository path per line. Leave empty to use Git changes.</small></label><textarea id="changed-files" rows="2" placeholder="backend/bluejs/src/vm/builtins/generators.rs"></textarea><button id="plan-button" class="button primary">Analyze changes</button><button id="git-button" class="button secondary">Use Git changes</button></div><div id="plan-summary" class="plan-summary"></div><div id="fallbacks" class="fallbacks" hidden></div></div>
+      <div class="graph-layout">
+        <section class="panel source-panel"><div class="panel-heading"><h2>Source files</h2><span id="source-count" class="muted"></span></div><label class="sr-only" for="source-search">Find a source file</label><input id="source-search" type="search" placeholder="Find a file…"><div id="source-list" class="source-list" role="list"></div></section>
+        <section class="panel relationship-panel"><div class="panel-heading"><h2 id="selected-source">Select a source file</h2><button id="add-source" class="button compact" disabled>Add to plan</button></div><div class="legend"><span><i class="observed"></i> Observed execution</span><span><i class="static"></i> Static dependency</span></div><div class="graph-stage"><svg id="relationship-graph" viewBox="0 0 780 340" role="img" aria-label="Source to test relationships"></svg><div id="graph-empty" class="empty">Index a verified measurement to explore real test relationships.</div></div><div class="panel-heading table-heading"><h3>Related tests and dependencies</h3><span id="related-count" class="muted"></span></div><div class="table-wrap"><table><thead><tr><th>Target</th><th>Relationship</th><th>Recorded time</th></tr></thead><tbody id="related-tests"></tbody></table></div></section>
+      </div>
+      <section class="panel shared-function-panel"><div class="panel-heading"><h2>Shared functions and callers</h2><span id="shared-function-count" class="muted"></span></div><p class="help">Explore source references for the selected file. Measured test relationships and conservative fallbacks remain part of the selection.</p><div class="table-wrap"><table><thead><tr><th>Shared function</th><th>Referencing file / function</th><th>Source line</th></tr></thead><tbody id="shared-function-list"></tbody></table></div></section>
+    </section>
+
+    <section id="view-runs" class="view" hidden>
+      <section class="panel"><div class="panel-heading"><h2>Verification workflow</h2><span id="worker-setting" class="muted"></span></div><ol class="workflow"><li>Analyze changes</li><li>Run Rust partitions</li><li>Run full verification</li><li>Publish current report</li></ol><div class="run-actions"><button id="partition-button" class="button primary">Run affected Rust partitions</button><button id="impact-button" class="button secondary">Run affected targets</button><button id="pipeline-button" class="button secondary">Affected → full verification</button><button id="full-button" class="button secondary" disabled>Run full verification</button><button id="cancel-button" class="button danger" disabled>Cancel run</button><label class="checkbox"><input id="workspace-gates" type="checkbox"> Include workspace runtime & Rustdoc</label></div><p class="help">Rust partitions use native test names and fresh profiles. After they pass, full verification runs once for the same snapshot. A source edit invalidates that prerequisite.</p></section>
+      <section class="panel"><div class="panel-heading"><h2>Rust correction graph</h2><span id="partition-summary" class="muted"></span></div><p id="partition-anchor" class="help"></p><div id="partition-unknown" class="fallbacks" hidden></div><div class="table-wrap"><table><thead><tr><th>Target / partition filters</th><th>Selection reason</th></tr></thead><tbody id="partition-plan"></tbody></table></div></section>
+      <section class="panel progress-panel"><div class="panel-heading"><h2 id="run-title">Execution progress</h2><span id="run-status" class="badge idle">No active run</span></div><div class="progress-track"><div id="run-progress"></div></div><div id="run-message" class="progress-caption">Your selected tests will appear here.</div><div class="table-wrap"><table><thead><tr><th>Test / step</th><th>Stage</th><th>Status</th><th>Elapsed</th><th>Output</th></tr></thead><tbody id="task-list"></tbody></table></div></section>
+      <section class="panel"><div class="panel-heading"><h2>Retained runs</h2><span class="muted">Source fingerprints, logs and profiles remain on disk</span></div><div id="history-list" class="history-list"></div></section>
+    </section>
+
+    <section id="view-reports" class="view" hidden>
+      <section class="panel"><div class="panel-heading"><h2>Latest complete measurement</h2><span id="measurement-date" class="muted">No full measurement</span></div><div class="coverage-metrics" id="coverage-metrics"></div><p id="measurement-details" class="help"></p><div id="report-actions" class="run-actions"></div></section>
+      <section class="panel"><div class="panel-heading"><h2>Raw source coverage</h2><span class="muted">Completion requires 100% lines, functions and regions</span></div><div class="table-wrap"><table><thead><tr><th>Source</th><th>Lines</th><th>Functions</th><th>Regions</th><th>Status</th></tr></thead><tbody id="coverage-table"></tbody></table></div></section>
+    </section>
+    <footer>Observed paths guide selection. The final complete run verifies the full engine contract.</footer>
+  </main>
+  <dialog id="output-dialog"><div class="panel-heading"><h2 id="output-title">Output</h2><button id="close-output" class="button compact">Close</button></div><pre id="output-text"></pre></dialog>
+</body>
+</html>

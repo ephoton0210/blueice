@@ -964,4 +964,214 @@ mod project_inventory_tests {
         assert!(!state.project_is_observed(1));
         assert!(compiler_generation_is_observed(&state, 1, 4).is_some());
     }
+
+    #[test]
+    fn inventory_limit_admits_a_zero_request_and_caps_the_rest_by_remaining_budget() {
+        let state = CompilerMcpSessionState::default();
+        // An explicit zero-page request is passed straight through.
+        assert_eq!(state.inventory_limit(Some(0)).unwrap(), Some(0));
+        // With nothing observed yet, an unrequested limit falls back to the
+        // full remaining per-session budget.
+        assert_eq!(
+            state.inventory_limit(None).unwrap(),
+            Some(u32::try_from(MAX_OBSERVED_COMPILER_STATIC_METADATA_IDS).unwrap())
+        );
+        // A requested limit under the remaining budget passes through as-is.
+        assert_eq!(state.inventory_limit(Some(10)).unwrap(), Some(10));
+    }
+
+    #[test]
+    fn inventory_limit_fails_closed_once_the_session_budget_is_exhausted() {
+        let mut state = CompilerMcpSessionState::default();
+        state.observe_projects(&CompilerProjectInventory {
+            projects: vec![CompilerProject { id: 1 }],
+        });
+        state.observe_generation(1, 1);
+        let full_page = blueice_ipc::compiler::CompilerStaticMetadataPage {
+            generation: blueice_ipc::compiler::CompilerGeneration {
+                project: CompilerProject { id: 1 },
+                sequence: 1,
+            },
+            kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+            ids: (1..=u32::try_from(MAX_OBSERVED_COMPILER_STATIC_METADATA_IDS).unwrap())
+                .collect(),
+            next_cursor: None,
+        };
+        state
+            .observe_static_metadata_page(
+                1,
+                1,
+                blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+                &full_page,
+            )
+            .unwrap();
+        assert!(matches!(
+            state.inventory_limit(None),
+            Err(CompilerMetadataReceiptError::Limit)
+        ));
+    }
+
+    #[test]
+    fn observe_static_metadata_page_rejects_a_mismatched_or_duplicate_page() {
+        let mut state = CompilerMcpSessionState::default();
+        state.observe_projects(&CompilerProjectInventory {
+            projects: vec![CompilerProject { id: 1 }],
+        });
+        state.observe_generation(1, 1);
+        let generation = blueice_ipc::compiler::CompilerGeneration {
+            project: CompilerProject { id: 1 },
+            sequence: 1,
+        };
+
+        // Wrong generation.
+        let wrong_generation = blueice_ipc::compiler::CompilerStaticMetadataPage {
+            generation: blueice_ipc::compiler::CompilerGeneration {
+                sequence: 2,
+                ..generation
+            },
+            kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+            ids: vec![1],
+            next_cursor: None,
+        };
+        assert!(matches!(
+            state.observe_static_metadata_page(
+                1,
+                1,
+                blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+                &wrong_generation,
+            ),
+            Err(CompilerMetadataReceiptError::InvalidPage(_))
+        ));
+
+        // Wrong kind.
+        let wrong_kind = blueice_ipc::compiler::CompilerStaticMetadataPage {
+            generation,
+            kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Types,
+            ids: vec![1],
+            next_cursor: None,
+        };
+        assert!(matches!(
+            state.observe_static_metadata_page(
+                1,
+                1,
+                blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+                &wrong_kind,
+            ),
+            Err(CompilerMetadataReceiptError::InvalidPage(_))
+        ));
+
+        // Duplicate IDs within one page.
+        let duplicate = blueice_ipc::compiler::CompilerStaticMetadataPage {
+            generation,
+            kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+            ids: vec![1, 1],
+            next_cursor: None,
+        };
+        assert!(matches!(
+            state.observe_static_metadata_page(
+                1,
+                1,
+                blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+                &duplicate,
+            ),
+            Err(CompilerMetadataReceiptError::InvalidPage(_))
+        ));
+
+        // A well-formed page is admitted and later re-observation is idempotent.
+        let page = blueice_ipc::compiler::CompilerStaticMetadataPage {
+            generation,
+            kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+            ids: vec![1, 2],
+            next_cursor: None,
+        };
+        state
+            .observe_static_metadata_page(
+                1,
+                1,
+                blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+                &page,
+            )
+            .unwrap();
+        assert!(state.static_metadata_id_is_observed(
+            1,
+            ObservedCompilerStaticMetadataKind::Sources,
+            1
+        ));
+        state
+            .observe_static_metadata_page(
+                1,
+                1,
+                blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+                &page,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn compiler_metadata_receipt_error_reply_maps_both_variants() {
+        assert!(matches!(
+            compiler_metadata_receipt_error_reply(CompilerMetadataReceiptError::Limit),
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::ResourceLimit,
+                ..
+            }
+        ));
+        let blueice_ipc::compiler::CompilerReply::Error { code, message } =
+            compiler_metadata_receipt_error_reply(CompilerMetadataReceiptError::InvalidPage(
+                "a specific reason",
+            ))
+        else {
+            panic!("expected an Error reply");
+        };
+        assert_eq!(
+            code,
+            blueice_ipc::compiler::CompilerErrorCode::InvalidMetadataPage
+        );
+        assert_eq!(message, "a specific reason");
+    }
+
+    #[test]
+    fn compiler_work_set_kind_from_params_maps_every_variant() {
+        assert_eq!(
+            compiler_work_set_kind_from_params(CompilerWorkSetKindParams::Parsed),
+            blueice_ipc::compiler::CompilerWorkSetKind::Parsed
+        );
+        assert_eq!(
+            compiler_work_set_kind_from_params(CompilerWorkSetKindParams::ReusedParsed),
+            blueice_ipc::compiler::CompilerWorkSetKind::ReusedParsed
+        );
+        assert_eq!(
+            compiler_work_set_kind_from_params(CompilerWorkSetKindParams::Rechecked),
+            blueice_ipc::compiler::CompilerWorkSetKind::Rechecked
+        );
+        assert_eq!(
+            compiler_work_set_kind_from_params(CompilerWorkSetKindParams::ReusedChecked),
+            blueice_ipc::compiler::CompilerWorkSetKind::ReusedChecked
+        );
+    }
+
+    #[test]
+    fn compiler_contract_value_from_json_rejects_oversized_collections_and_keys() {
+        let oversized_array =
+            serde_json::Value::Array(vec![serde_json::Value::Null; 4_096 + 1]);
+        assert!(compiler_contract_value_from_json(oversized_array).is_err());
+
+        let oversized_object = serde_json::Value::Object(
+            (0..=4_096)
+                .map(|index| (index.to_string(), serde_json::Value::Null))
+                .collect(),
+        );
+        assert!(compiler_contract_value_from_json(oversized_object).is_err());
+
+        let mut long_key_object = serde_json::Map::new();
+        long_key_object.insert("a".repeat(256 * 1_024 + 1), serde_json::Value::Null);
+        assert!(
+            compiler_contract_value_from_json(serde_json::Value::Object(long_key_object))
+                .is_err()
+        );
+
+        // A well-formed value round-trips.
+        let value = serde_json::json!({"a": [1, "b", null, true]});
+        assert!(compiler_contract_value_from_json(value).is_ok());
+    }
 }

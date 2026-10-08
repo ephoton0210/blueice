@@ -773,3 +773,502 @@ pub trait PageHostClient {
         self.advance_debugger_execution(tab_id, document_generation)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use blueice_ipc::page_host::PageHostDebuggerLinkedStackFrame;
+
+    /// Implements only the two required methods, leaving every optional
+    /// method at its trait default — the "test doubles must opt in" pattern
+    /// this trait's own doc comments describe, deliberately inverted from
+    /// `RecordingChild` (which opts a few methods in) so every default body
+    /// in this file is actually reachable from a test.
+    struct MinimalClient;
+
+    impl PageHostClient for MinimalClient {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+    }
+
+    fn document() -> PageHostDocument {
+        PageHostDocument {
+            tab_id: 1,
+            document_generation: 1,
+            snapshot: PageHostDocumentSnapshot {
+                document_text: String::new(),
+                document_origin: String::new(),
+            },
+            debugger_execution_control: false,
+            scripts: Vec::new(),
+        }
+    }
+
+    fn program() -> PageHostDebuggerProgram {
+        PageHostDebuggerProgram {
+            program_handle: 0,
+            program_generation: 0,
+        }
+    }
+
+    fn metadata() -> PageHostDebuggerMetadataHandle {
+        PageHostDebuggerMetadataHandle {
+            metadata_handle: 0,
+            metadata_generation: 0,
+        }
+    }
+
+    fn safe_point() -> PageHostDebuggerSafePoint {
+        PageHostDebuggerSafePoint {
+            program: program(),
+            code_unit_ordinal: 0,
+            bytecode_offset: 0,
+        }
+    }
+
+    fn frame() -> PageHostDebuggerFrame {
+        PageHostDebuggerFrame {
+            tab_id: 0,
+            document_generation: 0,
+            program: program(),
+            code_unit_ordinal: 0,
+            invocation_serial: 0,
+        }
+    }
+
+    fn linked_frame() -> PageHostDebuggerLinkedFrame {
+        PageHostDebuggerLinkedFrame {
+            tab_id: 0,
+            document_generation: 0,
+            entry_program: program(),
+            dependency_program: program(),
+            code_unit_ordinal: 0,
+            invocation_serial: 0,
+        }
+    }
+
+    fn linked_stack_snapshot() -> PageHostDebuggerLinkedStackSnapshot {
+        let stack_frame = PageHostDebuggerLinkedStackFrame {
+            safe_point: safe_point(),
+            scope_entries: Vec::new(),
+            scope_truncated: false,
+        };
+        PageHostDebuggerLinkedStackSnapshot {
+            frames: [stack_frame.clone(), stack_frame],
+            stack_truncated: false,
+            max_scope_entries: 0,
+        }
+    }
+
+    fn linked_source() -> PageHostDebuggerLinkedSource {
+        PageHostDebuggerLinkedSource {
+            metadata: metadata(),
+            source_id: 0,
+        }
+    }
+
+    fn scope_entry() -> PageHostDebuggerScopeEntry {
+        PageHostDebuggerScopeEntry {
+            slot_ordinal: 0,
+            scope_depth: 0,
+        }
+    }
+
+    fn value_target() -> PageHostDebuggerValueTarget {
+        PageHostDebuggerValueTarget {
+            tab_id: 0,
+            document_generation: 0,
+            program: program(),
+            frame: None,
+            frame_index: 0,
+            safe_point: safe_point(),
+            scope_entry: scope_entry(),
+        }
+    }
+
+    fn linked_value_target() -> PageHostDebuggerLinkedValueTarget {
+        PageHostDebuggerLinkedValueTarget {
+            frame: linked_frame(),
+            expected_stack: Box::new(linked_stack_snapshot()),
+            frame_index: 0,
+            scope_entry: scope_entry(),
+        }
+    }
+
+    fn static_scope_target() -> PageHostDebuggerStaticScopeTarget {
+        PageHostDebuggerStaticScopeTarget::Ordinary {
+            metadata: metadata(),
+            target: value_target(),
+        }
+    }
+
+    #[track_caller]
+    fn assert_unsupported(result: io::Result<PageHostReply>, message: &str) {
+        let error = result.expect_err("default implementation must return an error");
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(error.to_string(), message);
+    }
+
+    #[test]
+    fn default_capability_flags_are_all_false() {
+        let client = MinimalClient;
+        assert!(!client.debugger_breakpoint_configuration_available());
+        assert!(!client.debugger_bluets_metadata_available());
+        assert!(!client.debugger_bluets_metadata_summary_available());
+        assert!(!client.debugger_bluets_metadata_lowering_summary_available());
+        assert!(!client.debugger_bluets_metadata_sources_available());
+        assert!(!client.debugger_bluets_metadata_source_provenance_available());
+        assert!(!client.debugger_bluets_metadata_types_available());
+        assert!(!client.debugger_bluets_metadata_type_display_available());
+        assert!(!client.debugger_bluets_metadata_symbols_available());
+        assert!(!client.debugger_bluets_metadata_contracts_available());
+        assert!(!client.debugger_bluets_metadata_contract_display_available());
+        assert!(!client.debugger_bluets_metadata_contract_validation_available());
+        assert!(!client.debugger_bluets_metadata_symbol_display_available());
+        assert!(!client.debugger_bluets_metadata_symbol_location_available());
+        assert!(!client.debugger_bluets_metadata_contract_location_available());
+        assert!(!client.debugger_bluets_safe_point_span_available());
+        assert!(!client.debugger_bluets_exception_location_available());
+        assert!(!client.debugger_bluets_source_breakpoint_available());
+        assert!(!client.debugger_bluets_source_span_step_available());
+        assert!(!client.debugger_bluets_metadata_symbol_type_available());
+        assert!(!client.debugger_bluets_metadata_symbol_contract_available());
+        assert!(!client.debugger_execution_control_available());
+        assert!(!client.debugger_nested_frames_available());
+        assert!(!client.debugger_linked_frames_available());
+        assert!(!client.debugger_stack_snapshot_available());
+        assert!(!client.debugger_value_snapshot_available());
+        assert!(!client.debugger_stepping_available());
+    }
+
+    #[test]
+    fn default_dispatch_click_with_script_pump_is_unsupported() {
+        let mut client = MinimalClient;
+        let mut pump_called = false;
+        let mut pump = || {
+            pump_called = true;
+            Ok(())
+        };
+        assert_unsupported(
+            client.dispatch_click_with_script_pump(1, 1, 1, &mut pump),
+            "page-host child does not implement click dispatch",
+        );
+        assert!(!pump_called, "default must not invoke the pump");
+    }
+
+    #[test]
+    fn default_debugger_realm_stats_is_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.debugger_realm_stats(1, 1),
+            "page-host child does not implement debugger locations",
+        );
+    }
+
+    #[test]
+    fn default_child_stats_is_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.child_stats(),
+            "page-host child does not implement child-wide accounting",
+        );
+    }
+
+    #[test]
+    fn default_debugger_programs_is_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.debugger_programs(1, 1),
+            "page-host child does not implement debugger locations",
+        );
+    }
+
+    #[test]
+    fn default_bluets_metadata_operations_are_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.debugger_bluets_metadata(1, 1, program()),
+            "page-host child does not implement BlueTS debugger metadata inventory",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_summary(1, 1, program(), metadata()),
+            "page-host child does not implement BlueTS debugger metadata summaries",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_lowering_summary(1, 1, program(), metadata()),
+            "page-host child does not implement BlueTS debugger lowering summaries",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_sources(1, 1, program(), metadata()),
+            "page-host child does not implement BlueTS debugger source inventories",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_source_provenance(1, 1, program(), metadata(), 0),
+            "page-host child does not implement BlueTS debugger source provenance",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_types(1, 1, program(), metadata()),
+            "page-host child does not implement BlueTS debugger type inventories",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_type_display(1, 1, program(), metadata(), 0),
+            "page-host child does not implement BlueTS debugger type displays",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_symbols(1, 1, program(), metadata()),
+            "page-host child does not implement BlueTS debugger symbol inventories",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_contracts(1, 1, program(), metadata()),
+            "page-host child does not implement BlueTS debugger contract inventories",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_contract_display(1, 1, program(), metadata(), 0),
+            "page-host child does not implement BlueTS debugger contract displays",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_contract_validation(
+                1,
+                1,
+                program(),
+                metadata(),
+                0,
+                CompilerContractValue::Null,
+            ),
+            "page-host child does not implement BlueTS debugger contract validation",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_symbol_display(1, 1, program(), metadata(), 0),
+            "page-host child does not implement BlueTS debugger symbol displays",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_symbol_location(1, 1, program(), metadata(), 0),
+            "page-host child does not implement BlueTS debugger symbol locations",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_contract_location(1, 1, program(), metadata(), 0),
+            "page-host child does not implement BlueTS debugger contract locations",
+        );
+        assert_unsupported(
+            client.debugger_bluets_safe_point_span(1, 1, metadata(), safe_point()),
+            "page-host child does not implement exact BlueTS safe-point spans",
+        );
+        assert_unsupported(
+            client.debugger_bluets_exception_location(1, 1, program(), metadata()),
+            "page-host child does not implement BlueTS exception locations",
+        );
+        assert_unsupported(
+            client.debugger_bluets_source_breakpoint(1, 1, program(), metadata(), 0, 0),
+            "page-host child does not implement BlueTS source breakpoints",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_symbol_type(1, 1, program(), metadata(), 0, 0),
+            "page-host child does not implement BlueTS debugger symbol types",
+        );
+        assert_unsupported(
+            client.debugger_bluets_metadata_symbol_contract(1, 1, program(), metadata(), 0, 0),
+            "page-host child does not implement BlueTS debugger symbol contracts",
+        );
+    }
+
+    #[test]
+    fn default_breakpoint_operations_are_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.debugger_safe_points(1, 1, program()),
+            "page-host child does not implement debugger locations",
+        );
+        assert_unsupported(
+            client.validate_debugger_safe_point(1, 1, safe_point()),
+            "page-host child does not implement debugger locations",
+        );
+        assert_unsupported(
+            client.set_debugger_breakpoint(1, 1, safe_point()),
+            "page-host child does not implement debugger breakpoint configuration",
+        );
+        assert_unsupported(
+            client.debugger_breakpoints(1, 1),
+            "page-host child does not implement debugger breakpoint configuration",
+        );
+        assert_unsupported(
+            client.clear_debugger_breakpoint(1, 1, safe_point()),
+            "page-host child does not implement debugger breakpoint configuration",
+        );
+    }
+
+    #[test]
+    fn default_stack_and_value_inspection_are_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.debugger_stack_snapshot(1, 1, program(), None, 0, 0),
+            "page-host child does not implement debugger stack inspection",
+        );
+        assert_unsupported(
+            client.debugger_value_snapshot(value_target()),
+            "page-host child does not implement debugger value inspection",
+        );
+        assert_unsupported(
+            client.debugger_linked_value_snapshot(linked_value_target()),
+            "page-host child does not implement linked debugger value inspection",
+        );
+        assert_unsupported(
+            client.debugger_static_scope_relation(static_scope_target()),
+            "page-host child does not implement static scope relations",
+        );
+    }
+
+    #[test]
+    fn default_nested_and_linked_control_are_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.arm_debugger_nested_safe_point_breakpoint(1, 1, safe_point()),
+            "page-host child does not implement nested debugger control",
+        );
+        assert_unsupported(
+            client.step_debugger_nested_instruction(frame()),
+            "page-host child does not implement nested debugger control",
+        );
+        assert_unsupported(
+            client.resume_debugger_nested_execution(frame()),
+            "page-host child does not implement nested debugger resume",
+        );
+        assert_unsupported(
+            client
+                .arm_debugger_linked_nested_safe_point_breakpoint(1, 1, program(), safe_point()),
+            "page-host child does not implement linked debugger control",
+        );
+        assert_unsupported(
+            client.debugger_linked_stack_snapshot(linked_frame(), 0),
+            "page-host child does not implement linked debugger stack inspection",
+        );
+        assert_unsupported(
+            client.debugger_linked_stack_spans(
+                linked_frame(),
+                linked_stack_snapshot(),
+                [linked_source(), linked_source()],
+            ),
+            "page-host child does not implement linked debugger source spans",
+        );
+        assert_unsupported(
+            client.resume_debugger_linked_nested_execution(linked_frame()),
+            "page-host child does not implement linked debugger resume",
+        );
+    }
+
+    #[test]
+    fn default_root_execution_control_is_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.arm_debugger_root_safe_point_breakpoint(1, 1, safe_point()),
+            "page-host child does not implement debugger execution control",
+        );
+        assert_unsupported(
+            client.debugger_execution_state(1, 1, program()),
+            "page-host child does not implement debugger execution control",
+        );
+        assert_unsupported(
+            client.resume_debugger_execution(1, 1, program()),
+            "page-host child does not implement debugger execution control",
+        );
+        assert_unsupported(
+            client.step_debugger_root_instruction(1, 1, program()),
+            "page-host child does not implement debugger root stepping",
+        );
+        assert_unsupported(
+            client.step_debugger_bluets_source_span(1, 1, metadata(), 0, safe_point()),
+            "page-host child does not implement BlueTS source-span stepping",
+        );
+        assert_unsupported(
+            client.advance_debugger_execution(1, 1),
+            "page-host child does not implement debugger execution control",
+        );
+    }
+
+    #[test]
+    fn required_methods_are_reachable_through_the_trait() {
+        let mut client = MinimalClient;
+        assert_eq!(
+            client.synchronize_document(document()).unwrap(),
+            PageHostReply::Synchronized {
+                tab_id: 1,
+                document_generation: 1,
+                already_current: false,
+                reports: Vec::new(),
+            }
+        );
+        assert_eq!(
+            client.close_realm(1, 1).unwrap(),
+            PageHostReply::RealmClosed {
+                tab_id: 1,
+                document_generation: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn synchronize_document_with_script_pump_delegates_without_invoking_the_pump() {
+        let mut client = MinimalClient;
+        let mut pump_called = false;
+        let mut pump = || {
+            pump_called = true;
+            Ok(())
+        };
+        let reply = client
+            .synchronize_document_with_script_pump(document(), &mut pump)
+            .unwrap();
+        assert_eq!(
+            reply,
+            PageHostReply::Synchronized {
+                tab_id: 1,
+                document_generation: 1,
+                already_current: false,
+                reports: Vec::new(),
+            }
+        );
+        assert!(!pump_called, "default delegate must not invoke the pump");
+    }
+
+    #[test]
+    fn realm_stats_delegates_to_debugger_realm_stats() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.realm_stats(1, 1),
+            "page-host child does not implement debugger locations",
+        );
+    }
+
+    #[test]
+    fn advance_debugger_execution_with_script_pump_delegates_without_invoking_the_pump() {
+        let mut client = MinimalClient;
+        let mut pump_called = false;
+        let mut pump = || {
+            pump_called = true;
+            Ok(())
+        };
+        assert_unsupported(
+            client.advance_debugger_execution_with_script_pump(1, 1, &mut pump),
+            "page-host child does not implement debugger execution control",
+        );
+        assert!(!pump_called, "default delegate must not invoke the pump");
+    }
+}

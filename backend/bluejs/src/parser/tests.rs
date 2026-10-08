@@ -5,6 +5,60 @@
 use super::*;
 
 #[test]
+fn assignment_cover_lookahead_stops_at_the_matching_delimiter() {
+    assert!(Parser::new("[value].property").cover_assignment_target_has_lhs_suffix());
+    assert!(!Parser::new("{value}").cover_assignment_target_has_lhs_suffix());
+    assert!(!Parser::new("value").cover_assignment_target_has_lhs_suffix());
+    assert!(!Parser::new("[").cover_assignment_target_has_lhs_suffix());
+
+    let mut truncated = Parser::new("[");
+    truncated.tokens.pop();
+    assert!(!truncated.cover_assignment_target_has_lhs_suffix());
+}
+
+#[test]
+fn function_parser_rejects_malformed_direct_token_streams() {
+    let mut parser = Parser::new("");
+    assert!(parser.parse_params().is_err());
+
+    let mut parser = Parser::new("(...)");
+    assert!(parser.parse_params().is_err());
+
+    let mut parser = Parser::new("(...rest");
+    assert!(parser.parse_params().is_err());
+
+    let parser = Parser::new("(");
+    assert_eq!(parser.matching_close_paren(0), None);
+    let mut truncated = Parser::new("(");
+    truncated.tokens.pop();
+    assert_eq!(truncated.matching_close_paren(0), None);
+
+    let mut parser = Parser::new("function #");
+    parser.advance();
+    let error = parser.parse_function_declaration(false).unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("a function cannot have a private name"),
+        "{error:?}"
+    );
+    assert!(error.known_syntax);
+}
+
+#[test]
+fn module_validation_rejects_invalid_super_private_names_and_duplicate_names() {
+    for source in [
+        "super.value;",
+        "class C { method() { return this.#missing; } }",
+        "export { first as duplicate }; export { second as duplicate };",
+        "class C {} class C {}",
+    ] {
+        let error = parse_module(source).expect_err(source);
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+}
+
+#[test]
 fn regexp_lexical_goals_are_visible_in_the_public_ast() {
     use crate::{parse, Expr, Stmt};
     let program = parse("/a/g").unwrap();
@@ -31,6 +85,33 @@ fn advance_stops_at_the_terminal_token() {
     assert!(parser.at_eof());
     assert_eq!(parser.advance(), Token::Eof);
     assert!(parser.at_eof());
+}
+
+#[test]
+fn template_placeholder_parser_rejects_tokens_after_one_expression() {
+    let error = Parser::new("value")
+        .parse_template_placeholder("value; other")
+        .expect_err("a placeholder contains exactly one expression");
+    assert!(
+        error
+            .message
+            .starts_with("unexpected trailing tokens after expression"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn template_placeholder_errors_propagate_through_template_construction() {
+    let parser = Parser::new("value");
+    let direct = parser
+        .parse_template_placeholder("value +")
+        .expect_err("an incomplete placeholder is invalid");
+    assert!(direct.known_syntax, "{direct:?}");
+
+    let template = parser
+        .parse_template(vec!["head".into(), "tail".into()], vec!["value +".into()])
+        .expect_err("a template cannot contain an incomplete placeholder");
+    assert!(template.known_syntax, "{template:?}");
 }
 
 #[test]

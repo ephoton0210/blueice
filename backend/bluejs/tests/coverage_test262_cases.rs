@@ -524,6 +524,10 @@ fn number_format_matrix_checks_option_records_against_expected_output() {
     expect_true(&format!(
         "__bluejsTest262NumberFormatPrecisionMatrix(['en-US'], ['latn'], {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}, {padded}) === undefined"
     ));
+    // Unit formatting leaves an affix after the final digit in each pattern.
+    expect_true(&format!(
+        "__bluejsTest262NumberFormatPrecisionMatrix(['en-US'], ['latn'], {{ style: 'unit', unit: 'meter', maximumFractionDigits: 1 }}, {expected}) === undefined"
+    ));
 }
 
 #[test]

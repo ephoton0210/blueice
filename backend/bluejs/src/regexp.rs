@@ -107,6 +107,14 @@ enum LegacyMatch {
     },
 }
 
+enum MatchedStatic {
+    LastMatch,
+    LastParen,
+    LeftContext,
+    RightContext,
+    Paren(u8),
+}
+
 impl Default for LegacyStatics {
     fn default() -> Self {
         Self {
@@ -149,9 +157,14 @@ impl LegacyStatics {
     /// The slot's current String, or `None` when it is empty (invalidated).
     pub fn get(&self, which: crate::native::LegacyRegExpStatic) -> Option<JsString> {
         use crate::native::LegacyRegExpStatic::*;
-        if which == Input {
-            return self.input.as_deref().cloned();
-        }
+        let which = match which {
+            Input => return self.input.as_deref().cloned(),
+            LastMatch => MatchedStatic::LastMatch,
+            LastParen => MatchedStatic::LastParen,
+            LeftContext => MatchedStatic::LeftContext,
+            RightContext => MatchedStatic::RightContext,
+            Paren(index) => MatchedStatic::Paren(index),
+        };
         let slice = |input: &JsString, range: std::ops::Range<usize>| {
             JsString::from_code_units(input.as_code_units()[range].to_vec())
         };
@@ -171,12 +184,11 @@ impl LegacyStatics {
                         .map_or_else(JsString::default, |range| slice(input, range))
                 };
                 Some(match which {
-                    Input => unreachable!("handled above"),
-                    LastMatch => slice(input, *start..*end),
-                    LastParen => group(groups.last()),
-                    LeftContext => slice(input, 0..*start),
-                    RightContext => slice(input, *end..input.len()),
-                    Paren(index) => group(groups.get(usize::from(index) - 1)),
+                    MatchedStatic::LastMatch => slice(input, *start..*end),
+                    MatchedStatic::LastParen => group(groups.last()),
+                    MatchedStatic::LeftContext => slice(input, 0..*start),
+                    MatchedStatic::RightContext => slice(input, *end..input.len()),
+                    MatchedStatic::Paren(index) => group(groups.get(usize::from(index) - 1)),
                 })
             }
         }

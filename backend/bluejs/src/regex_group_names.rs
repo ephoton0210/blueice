@@ -401,6 +401,20 @@ mod tests {
     }
 
     #[test]
+    fn a_digit_that_is_not_a_scalar_value_stays_an_undecoded_escape() {
+        // The four points after `\u` include a lone surrogate, which is no digit.
+        let raw = [
+            BACKSLASH,
+            u32::from(b'u'),
+            0xD800,
+            u32::from(b'0'),
+            u32::from(b'0'),
+            u32::from(b'0'),
+        ];
+        assert_eq!(decode_name(&raw), "\\u\u{FFFD}000");
+    }
+
+    #[test]
     fn astral_names_are_joined_only_where_they_are_names() {
         let joined = points("(?<\u{1d453}>x)\\k<\u{1d453}>", "");
         assert_eq!(

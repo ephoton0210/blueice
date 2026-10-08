@@ -23,12 +23,16 @@ impl Vm {
     /// The heap budget must accommodate both prototype records.
     pub fn new(config: VmConfig) -> Result<Self, HeapError> {
         let mut heap = Heap::new(config.heap)?;
-        let object_prototype = heap.alloc_object(None)?;
+        let object_prototype = heap
+            .alloc_object(None)
+            .expect("validated heap configuration reserves the first object");
         // Permanent root, released with the heap. Builtin properties and
         // callable methods are installed lazily by string_intrinsics.
-        heap.root(object_prototype)?;
+        heap.root(object_prototype)
+            .expect("a newly allocated object can be rooted");
         let array_prototype = heap.alloc_array(0, Some(object_prototype))?;
-        heap.root(array_prototype)?;
+        heap.root(array_prototype)
+            .expect("a newly allocated array can be rooted");
         Ok(Self {
             config,
             heap,
@@ -37,6 +41,7 @@ impl Vm {
             has_own_property_installed: false,
             property_is_enumerable_installed: false,
             string_intrinsics: None,
+            function_intrinsic_prototype: None,
             typed_array_intrinsics: None,
             regexp_legacy: crate::regexp::LegacyStatics::default(),
             result_root: None,
@@ -160,6 +165,7 @@ impl Vm {
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
             promise_jobs: VecDeque::new(),
+            async_frame_roots: Vec::new(),
             test262_done: None,
             test262_agent_host: None,
             test262_agent_control: None,
@@ -177,6 +183,7 @@ impl Vm {
             throw_type_error: None,
             legacy_function_getters: None,
             call_stack: Vec::new(),
+            active_generator_delegations: HashSet::new(),
             inherited_with_depth: 0,
             joining: Vec::new(),
         })

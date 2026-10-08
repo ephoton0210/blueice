@@ -6,6 +6,7 @@ use super::*;
 mod admission;
 mod debugger_control;
 mod dom_transport;
+mod error_paths;
 mod exception_sites;
 mod linked_module;
 mod metadata_inventory;

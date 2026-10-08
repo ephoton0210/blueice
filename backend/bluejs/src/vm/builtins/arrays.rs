@@ -103,15 +103,22 @@ impl Vm {
         object: ObjectId,
         count: usize,
     ) -> Result<bool, RuntimeError> {
-        let Value::Number(length) = self.heap.get(object, "length")? else {
+        // The caller has checked that `object` is an Array, so its `length` is
+        // a Number, and an object's prototype chain consists of live objects.
+        let live = "the receiver and its prototypes are live";
+        let length = primitive::number(&self.heap.get(object, "length").expect(live))
+            .expect("an Array's length is a Number");
+        // Multiple arguments must all be stored before an overflowing length
+        // write. A single append preserves that order when it returns the error.
+        if count > 1 && length + count as f64 > f64::from(u32::MAX) {
             return Ok(false);
-        };
-        let mut current = self.heap.prototype(object)?;
+        }
+        let mut current = self.heap.prototype(object).expect(live);
         while let Some(prototype) = current {
-            if self.heap.proxy(prototype)?.is_some()
+            if self.heap.proxy(prototype).expect(live).is_some()
                 || self.test262_foreign_reference(prototype).is_some()
                 || self.test262_reverse_reference(prototype).is_some()
-                || self.heap.is_module_namespace(prototype)?
+                || self.heap.is_module_namespace(prototype).expect(live)
             {
                 return Ok(false);
             }
@@ -119,25 +126,27 @@ impl Vm {
                 let key: PropertyName = ((length as u64) + offset as u64).to_string().into();
                 if self
                     .heap
-                    .typed_array_numeric_key(prototype, &key)?
+                    .typed_array_numeric_key(prototype, &key)
+                    .expect(live)
                     .is_some()
                     || self
                         .heap
-                        .get_own_property_descriptor(prototype, key)?
+                        .get_own_property_descriptor(prototype, key)
+                        .expect(live)
                         .is_some()
                 {
                     return Ok(false);
                 }
             }
-            current = self.heap.prototype(prototype)?;
+            current = self.heap.prototype(prototype).expect(live);
         }
         Ok(true)
     }
 
     /// `Array.prototype.push` for a receiver whose `length` is not a plain
-    /// Number (an array-like, a proxy, a TypedArray): ToLength(Get(O,
-    /// "length")), one strict Set per argument, then a strict Set of the new
-    /// `length`. Genuine arrays never get here.
+    /// Number (an array-like, a proxy, a TypedArray), or an array whose stores
+    /// cannot take the direct path: ToLength(Get(O, "length")), one strict Set
+    /// per argument, then a strict Set of the new `length`.
     pub(in super::super) fn array_push_generic(
         &mut self,
         object: ObjectId,
@@ -342,9 +351,9 @@ impl Vm {
                 if depth > 0.0 && self.is_array(&element)? {
                     let length = self.get_property(&element, &"length".into())?;
                     let length = self.coerce_length(&length)? as u64;
-                    let Value::Object(inner) = element else {
-                        unreachable!("IsArray is only true for objects");
-                    };
+                    let inner = element
+                        .object_id()
+                        .expect("IsArray is only true for objects");
                     if frames.len() >= MAX_FLATTEN_NESTING {
                         return Err(RuntimeError::RangeError(
                             "Array flattening is nested too deeply".into(),
@@ -359,11 +368,8 @@ impl Vm {
                         depth: depth - 1.0,
                     });
                 } else {
-                    if target_index >= (1u64 << 53) - 1 {
-                        return Err(RuntimeError::TypeError(
-                            "Array.prototype.flat result is too long".into(),
-                        ));
-                    }
+                    // FlattenIntoArray's `targetIndex >= 2^53 - 1` TypeError is
+                    // not reachable: the target holds every element in the heap.
                     self.array_create_data_property_or_throw(
                         target,
                         target_index.to_string().into(),
@@ -435,19 +441,26 @@ impl Vm {
             let mut index = 0_u64;
             for value in std::iter::once(Value::Object(original)).chain(args.iter().cloned()) {
                 self.stack.push(value.clone());
-                if self.array_is_concat_spreadable(&value)? {
-                    let source = self.coerce_object(&value)?;
+                let spreadable = self.array_is_concat_spreadable(&value)?;
+                // A spread element adds its length, any other one adds one.
+                let length = if spreadable {
+                    let source = value.object_id().expect("only objects are spreadable");
                     self.stack.push(Value::Object(source));
                     let length = self.get_property(&Value::Object(source), &"length".into())?;
-                    let length = self.coerce_length(&length)? as u64;
-                    if index
-                        .checked_add(length)
-                        .is_none_or(|next| next > 9_007_199_254_740_991)
-                    {
-                        return Err(RuntimeError::TypeError(
-                            "concatenated Array length exceeds the safe integer limit".into(),
-                        ));
-                    }
+                    self.coerce_length(&length)? as u64
+                } else {
+                    1
+                };
+                if index
+                    .checked_add(length)
+                    .is_none_or(|next| next > 9_007_199_254_740_991)
+                {
+                    return Err(RuntimeError::TypeError(
+                        "concatenated Array length exceeds the safe integer limit".into(),
+                    ));
+                }
+                if spreadable {
+                    let source = value.object_id().expect("only objects are spreadable");
                     for source_index in 0..length {
                         self.charge_step()?;
                         let key: PropertyName = source_index.to_string().into();
@@ -465,11 +478,6 @@ impl Vm {
                     }
                     self.stack.pop();
                 } else {
-                    if index >= 9_007_199_254_740_991 {
-                        return Err(RuntimeError::TypeError(
-                            "concatenated Array length exceeds the safe integer limit".into(),
-                        ));
-                    }
                     self.array_create_data_property_or_throw(
                         target,
                         index.to_string().into(),
@@ -518,7 +526,9 @@ impl Vm {
                     "Array.prototype.forEach callback must be callable".into(),
                 ));
             }
-            let mut scan = self.index_scan(object, length)?;
+            let mut scan = self
+                .index_scan(object, length)
+                .expect("the receiver is live");
             let mut from = 0;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 self.call_native(
@@ -553,7 +563,9 @@ impl Vm {
             }
             let target = self.array_species_create(object, 0)?;
             self.stack.push(Value::Object(target));
-            let mut scan = self.index_scan(object, length)?;
+            let mut scan = self
+                .index_scan(object, length)
+                .expect("the receiver is live");
             let mut from = 0;
             let mut target_index = 0usize;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
@@ -570,7 +582,10 @@ impl Vm {
                     ],
                     false,
                 )?;
-                if self.to_boolean(&selected)? {
+                if self
+                    .to_boolean(&selected)
+                    .expect("the callback result is live")
+                {
                     self.array_create_data_property_or_throw(
                         target,
                         target_index.to_string().into(),
@@ -605,7 +620,9 @@ impl Vm {
             }
             let target = self.array_species_create(object, length as usize)?;
             self.stack.push(Value::Object(target));
-            let mut scan = self.index_scan(object, length)?;
+            let mut scan = self
+                .index_scan(object, length)
+                .expect("the receiver is live");
             let mut from = 0;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 let mapped = self.call_native(
@@ -640,7 +657,9 @@ impl Vm {
                     "Array predicate callback must be callable".into(),
                 ));
             }
-            let mut scan = self.index_scan(object, length)?;
+            let mut scan = self
+                .index_scan(object, length)
+                .expect("the receiver is live");
             let mut from = 0;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 let selected = self.call_native(
@@ -649,7 +668,11 @@ impl Vm {
                     vec![value, Value::Number(index as f64), Value::Object(object)],
                     false,
                 )?;
-                if self.to_boolean(&selected)? == some {
+                if self
+                    .to_boolean(&selected)
+                    .expect("the callback result is live")
+                    == some
+                {
                     return Ok(Value::Bool(some));
                 }
                 from = index + 1;
@@ -716,7 +739,10 @@ impl Vm {
                     ],
                     false,
                 )?;
-                if self.to_boolean(&selected)? {
+                if self
+                    .to_boolean(&selected)
+                    .expect("the callback result is live")
+                {
                     return Ok(if return_index {
                         Value::Number(index as f64)
                     } else {
@@ -750,7 +776,9 @@ impl Vm {
                     "Array.prototype.reduce callback must be callable".into(),
                 ));
             }
-            let mut scan = self.index_scan(object, length)?;
+            let mut scan = self
+                .index_scan(object, length)
+                .expect("the receiver is live");
             let mut from = 0;
             // The accumulator lives in a stack slot: a getter or callback may
             // collect while it is between calls.
@@ -803,7 +831,9 @@ impl Vm {
                     "Array.prototype.reduceRight callback must be callable".into(),
                 ));
             }
-            let mut scan = self.index_scan(object, length)?;
+            let mut scan = self
+                .index_scan(object, length)
+                .expect("the receiver is live");
             let mut end = length;
             let accumulator = self.stack.len();
             if args.len() > 1 {
@@ -872,10 +902,14 @@ impl Vm {
                 return Ok(Value::Bool(false));
             }
             let start = self.array_start_index(from_index, length as i64)? as u64;
-            let mut scan = self.index_scan(object, length)?;
+            let mut scan = self
+                .index_scan(object, length)
+                .expect("the receiver is live");
             let mut from = start;
             loop {
-                let next = self.scan_next(&mut scan, object, from)?;
+                let next = self
+                    .scan_next(&mut scan, object, from)
+                    .expect("the receiver is live");
                 // Indices the scan skips are absent everywhere on the chain,
                 // and `Get` reads an absent index as `undefined`.
                 if *search == Value::Undefined && next.map_or(from < length, |next| next > from) {
@@ -911,7 +945,9 @@ impl Vm {
                 return Ok(Value::Number(-1.0));
             }
             let start = self.array_start_index(from_index, length as i64)? as u64;
-            let mut scan = self.index_scan(object, length)?;
+            let mut scan = self
+                .index_scan(object, length)
+                .expect("the receiver is live");
             let mut from = start;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 if value == *search {
@@ -1096,12 +1132,13 @@ impl Vm {
             // algorithm. `typed_array_method` selects that variant; the
             // Array.prototype entry point keeps the ordinary path even when
             // its receiver happens to be a TypedArray.
-            let foreign_typed_values = if self.heap.is_typed_array(object)? {
+            let live = "the receiver is live";
+            let foreign_typed_values = if self.heap.is_typed_array(object).expect(live) {
                 None
             } else {
                 self.test262_foreign_typed_array_values(object)?
             };
-            let length = if typed_array_method && self.heap.is_typed_array(object)? {
+            let length = if typed_array_method && self.heap.is_typed_array(object).expect(live) {
                 let (_, _, length, _) = self.typed_array_receiver(&Value::Object(object))?;
                 length as u64
             } else if let Some(values) = &foreign_typed_values {
@@ -1194,7 +1231,9 @@ impl Vm {
             if index < 0 {
                 return Ok(Value::Number(-1.0));
             }
-            let mut scan = self.index_scan(object, length as u64)?;
+            let mut scan = self
+                .index_scan(object, length as u64)
+                .expect("the receiver is live");
             let mut end = index as u64 + 1;
             while let Some((index, value)) = self.array_previous_present(&mut scan, object, end)? {
                 if value == *search {
@@ -1380,15 +1419,16 @@ impl Vm {
                 "Array species must be a constructor".into(),
             ));
         }
-        self.call_with_target(
-            species.clone(),
-            Value::Undefined,
-            vec![Value::Number(length as f64)],
-            true,
-            species,
-        )?
-        .object_id()
-        .ok_or_else(|| RuntimeError::TypeError("Array species must return an object".into()))
+        Ok(self
+            .call_with_target(
+                species.clone(),
+                Value::Undefined,
+                vec![Value::Number(length as f64)],
+                true,
+                species,
+            )?
+            .object_id()
+            .expect("Construct returns an object"))
     }
 
     pub(super) fn array_set_or_throw(

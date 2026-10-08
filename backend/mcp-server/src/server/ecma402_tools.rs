@@ -154,12 +154,12 @@ impl From<DebugLocaleOptionsParams> for blueice_ecma402::LocaleOptions {
     }
 }
 
-const MAX_DEBUG_LOCALES: usize = 100;
-const MAX_DEBUG_UTF16_UNITS: usize = 65_536;
-const MAX_DEBUG_DECIMAL_BYTES: usize = 4_096;
+pub(super) const MAX_DEBUG_LOCALES: usize = 100;
+pub(super) const MAX_DEBUG_UTF16_UNITS: usize = 65_536;
+pub(super) const MAX_DEBUG_DECIMAL_BYTES: usize = 4_096;
 pub(super) const MAX_DEBUG_LIST_ITEMS: usize = 1_024;
-const MAX_DEBUG_LIST_BYTES: usize = 65_536;
-const MAX_DEBUG_SEGMENTER_BYTES: usize = 65_536;
+pub(super) const MAX_DEBUG_LIST_BYTES: usize = 65_536;
+pub(super) const MAX_DEBUG_SEGMENTER_BYTES: usize = 65_536;
 pub(super) const MAX_DEBUG_SEGMENTS: usize = 4_096;
 
 fn debug_locale_matcher(value: Option<&str>) -> Result<blueice_ecma402::LocaleMatcher, String> {

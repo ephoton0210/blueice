@@ -4,6 +4,9 @@
 
 use super::*;
 
+#[cfg(test)]
+mod tests;
+
 fn normalized_exponential(number: f64, fraction_digits: Option<usize>) -> String {
     let rendered = if let Some(fraction_digits) = fraction_digits {
         format!("{number:.fraction_digits$e}")
@@ -194,6 +197,11 @@ fn precision_string(value: f64, precision: usize) -> String {
     text
 }
 
+/// The `RangeError` a NumberFormat that cannot format a Number is reported as.
+fn number_format_error(error: blueice_ecma402::NumberFormatError) -> RuntimeError {
+    RuntimeError::RangeError(error.to_string())
+}
+
 impl Vm {
     pub(in super::super) fn number_receiver(
         &mut self,
@@ -247,7 +255,7 @@ impl Vm {
             return formatter
                 .format_f64(number)
                 .map(|formatted| Value::String(formatted.into()))
-                .map_err(|error| RuntimeError::RangeError(error.to_string()));
+                .map_err(number_format_error);
         }
         if method == NumberMethod::ToString {
             let radix = native::argument(args, 0);

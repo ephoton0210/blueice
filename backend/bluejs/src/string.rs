@@ -67,7 +67,7 @@ impl JsString {
     /// is `NativeFunctionAccessor_opt PropertyName_opt`. An initial name that
     /// grammar cannot spell (for example the legacy `RegExp.$&` accessors'
     /// `get $&`) is therefore left out rather than producing invalid source.
-    pub(crate) fn native_function_source(initial_name: Option<&Self>) -> Self {
+    pub(crate) fn native_function_source(initial_name: Option<&str>) -> Self {
         const PREFIX: &[u16] = &[
             0x0066, 0x0075, 0x006e, 0x0063, 0x0074, 0x0069, 0x006f, 0x006e, 0x0020,
         ];
@@ -76,12 +76,12 @@ impl JsString {
             0x0065, 0x0020, 0x0063, 0x006f, 0x0064, 0x0065, 0x005d, 0x0020, 0x007d,
         ];
 
-        let initial_name = initial_name.filter(|name| name.is_native_function_name());
+        let initial_name = initial_name.filter(|name| Self::is_native_function_name(name));
         let mut units =
-            Vec::with_capacity(PREFIX.len() + initial_name.map_or(0, Self::len) + SUFFIX.len());
+            Vec::with_capacity(PREFIX.len() + initial_name.map_or(0, str::len) + SUFFIX.len());
         units.extend_from_slice(PREFIX);
         if let Some(initial_name) = initial_name {
-            units.extend_from_slice(initial_name.as_code_units());
+            units.extend(initial_name.encode_utf16());
         }
         units.extend_from_slice(SUFFIX);
         Self(units)
@@ -91,14 +91,11 @@ impl JsString {
     /// PropertyName_opt` in a NativeFunction: an optional `get `/`set ` prefix
     /// followed by nothing, an IdentifierName, or a bracketed computed name
     /// such as `[Symbol.species]`.
-    fn is_native_function_name(&self) -> bool {
-        let Ok(name) = self.to_utf8() else {
-            return false;
-        };
+    fn is_native_function_name(name: &str) -> bool {
         let name = name
             .strip_prefix("get ")
             .or_else(|| name.strip_prefix("set "))
-            .unwrap_or(&name);
+            .unwrap_or(name);
         let mut characters = name.chars();
         match characters.next() {
             None => true,
@@ -176,10 +173,9 @@ mod tests {
     use super::JsString;
 
     #[test]
-    fn invalid_utf16_cannot_be_a_native_function_name() {
-        let invalid_name = JsString::from_code_units(vec![0xD800]);
+    fn invalid_native_function_name_is_omitted() {
         assert_eq!(
-            JsString::native_function_source(Some(&invalid_name)),
+            JsString::native_function_source(Some("get $&")),
             JsString::native_function_source(None)
         );
     }

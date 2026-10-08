@@ -59,7 +59,7 @@ pub(crate) fn add_zoned_date_time(
         plain_date::calendar_add_date(calendar, local_date, years, months, weeks, days, reject)?;
     let intermediate_ns = zone
         .epoch_nanoseconds_for(added_date, local_time, Disambiguation::Compatible)
-        .ok()?;
+        .expect("compatible disambiguation resolves a valid local time");
     Some(intermediate_ns + BigInt::from(time_nanoseconds))
 }
 
@@ -147,7 +147,7 @@ pub(crate) fn difference_zoned_date_time(
         let candidate = plain_date::add_iso_date(date2, 0, 0, 0, -day_correction * sign, false)?;
         let candidate_ns = zone
             .epoch_nanoseconds_for(candidate, time1, Disambiguation::Compatible)
-            .ok()?;
+            .expect("compatible disambiguation resolves a valid local time");
         if !epoch::is_in_instant_range(&candidate_ns) {
             return None;
         }
@@ -338,6 +338,36 @@ mod tests {
                 DateUnit::Day,
             ),
             Some((0, 0, 0, 0, 0))
+        );
+    }
+
+    #[test]
+    fn difference_rejects_inconsistent_and_out_of_range_candidate_dates() {
+        let earlier = BigInt::from(0);
+        let later = BigInt::from(1);
+        let midnight = (0, 0, 0, 0, 0, 0);
+        let difference = |date2, time1, time2| {
+            difference_zoned_date_time(
+                &utc(),
+                AnyCalendarKind::Iso,
+                &earlier,
+                (1970, 1, 1),
+                time1,
+                &later,
+                date2,
+                time2,
+                DateUnit::Day,
+            )
+        };
+
+        // Deliberately inconsistent inputs exercise the defensive correction
+        // limit that valid ZonedDateTime values never reach.
+        assert_eq!(difference((2000, 1, 1), midnight, midnight), None);
+        assert_eq!(difference((275760, 9, 14), midnight, midnight), None);
+        assert_eq!(difference((i32::MIN, 0, 1), midnight, midnight), None);
+        assert_eq!(
+            difference((i32::MIN, 1, 1), (23, 0, 0, 0, 0, 0), midnight),
+            None
         );
     }
 

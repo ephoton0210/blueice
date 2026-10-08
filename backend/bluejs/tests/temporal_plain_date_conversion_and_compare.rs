@@ -68,6 +68,70 @@ fn assert_type_error(source: &str) {
     );
 }
 
+#[test]
+fn plain_date_conversion_brand_checks_before_reading_arguments() {
+    assert_true(
+        r#"(function() {
+          const methods = ["toPlainDateTime", "toPlainYearMonth", "toPlainMonthDay"];
+          const other = new Temporal.PlainDateTime(2020, 6, 15);
+          for (const name of methods) {
+            const method = Temporal.PlainDate.prototype[name];
+            for (const receiver of [undefined, null, {}, other]) {
+              let accessed = false;
+              const argument = { get hour() { accessed = true; throw new Error("argument read"); } };
+              try { method.call(receiver, argument); return name + " accepted a wrong receiver"; }
+              catch (error) { if (!(error instanceof TypeError) || accessed) return name + " read argument first"; }
+            }
+          }
+          const date = new Temporal.PlainDate(2020, 6, 15);
+          return date.toPlainDateTime().toString() === "2020-06-15T00:00:00"
+              && date.toPlainYearMonth().toString() === "2020-06"
+              && date.toPlainMonthDay().toString() === "06-15";
+        })()"#,
+    );
+}
+
+#[test]
+fn valid_plain_dates_convert_in_every_supported_calendar() {
+    assert_true(
+        r#"(function() {
+          const calendars = ["iso8601", "buddhist", "chinese", "coptic", "dangi", "ethioaa",
+                             "ethiopic", "gregory", "hebrew", "indian", "islamic-civil",
+                             "islamic-tbla", "islamic-umalqura", "japanese", "persian", "roc"];
+          for (const calendar of calendars) {
+            for (const day of ["-271821-04-19", "2020-02-29", "2023-03-22", "2024-06-15", "+275760-09-13"]) {
+              const date = Temporal.PlainDate.from(day + "[u-ca=" + calendar + "]");
+              let yearMonth;
+              try { yearMonth = date.toPlainYearMonth(); }
+              catch (error) {
+                if ((day !== "-271821-04-19" && day !== "+275760-09-13") || !(error instanceof RangeError))
+                  return calendar + " " + day + " unexpected year-month error";
+              }
+              const monthDay = date.toPlainMonthDay();
+              if (yearMonth && (yearMonth.calendarId !== calendar || yearMonth.monthCode !== date.monthCode))
+                return calendar + " " + day + " year-month";
+              if (monthDay.calendarId !== calendar || monthDay.monthCode !== date.monthCode || monthDay.day !== date.day)
+                return calendar + " " + day + " month-day";
+            }
+          }
+          return true;
+        })()"#,
+    );
+}
+
+#[test]
+fn plain_time_objects_are_not_dates_or_date_times() {
+    assert_type_error("Temporal.PlainDate.from(new Temporal.PlainTime(12))");
+    assert_type_error("Temporal.PlainDateTime.from(new Temporal.PlainTime(12))");
+}
+
+#[test]
+fn date_and_year_month_strings_reject_invalid_offsets_and_annotations() {
+    assert_range_error("Temporal.PlainDate.from('2000-05-02T12:34+25:00')");
+    assert_range_error("Temporal.PlainDateTime.from('2000-05-02T12:34+01:99')");
+    assert_range_error("Temporal.PlainYearMonth.from('2000-05[!foo=bar]')");
+}
+
 /// The time-of-day in a string argument is ignored by `PlainDate.compare`, in
 /// either position, for every date/time separator and for a leap second.
 #[test]

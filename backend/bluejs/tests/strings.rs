@@ -44,6 +44,13 @@ fn property_keys_preserve_code_unit_identity() {
 }
 
 #[test]
+fn string_index_rejects_usize_addition_overflow_through_script_access() {
+    let overflow = (usize::MAX as u128 + 1).to_string();
+    let source = format!("'x'['{overflow}'] === undefined");
+    assert_eq!(evaluate(&source), Value::Bool(true));
+}
+
+#[test]
 fn numeric_coercion_does_not_repair_surrogates() {
     for source in [
         r"+'\ud800'",

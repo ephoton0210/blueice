@@ -97,7 +97,7 @@ impl Parser {
         // The caller has consumed `function`, and before it `async`.
         let start = self.previous_token_start(1 + usize::from(is_async));
         let generator = self.eat_punct(Punct::Star);
-        if matches!(self.peek(), Token::Invalid(message) if message.contains("unexpected character '#'"))
+        if matches!(self.peek(), Token::Invalid(message) if message.contains("private identifier requires a name"))
         {
             return Err(self.syntax_error("a function cannot have a private name"));
         }
@@ -120,7 +120,9 @@ impl Parser {
                     return Err(self.syntax_error(detail));
                 }
             }
-            Some(self.expect_identifier_name()?)
+            let name = name.clone();
+            self.advance();
+            Some(name)
         } else if !self.strict && self.check_keyword(Keyword::Let) {
             // `let` is an ordinary identifier in sloppy code.
             self.advance();
@@ -308,7 +310,8 @@ impl Parser {
     fn parse_class_definition(&mut self, start: usize) -> Result<Class, ParseError> {
         let name = match self.peek() {
             Token::Identifier(name) if name != "extends" => {
-                let name = self.expect_identifier_name()?;
+                let name = name.clone();
+                self.advance();
                 if matches!(
                     name.as_str(),
                     "implements"
@@ -562,7 +565,7 @@ impl Parser {
                 });
             }
         }
-        self.expect_punct(Punct::RBrace)?;
+        self.advance();
         Ok(Class {
             name,
             extends,
@@ -804,21 +807,23 @@ impl Parser {
     /// clearer error).
     pub(super) fn matching_close_paren(&self, open_idx: usize) -> Option<usize> {
         let mut depth = 0i32;
-        let mut i = open_idx;
-        loop {
-            match self.tokens.get(i)?.token {
-                Token::Punct(Punct::LParen) => depth += 1,
+        self.tokens
+            .iter()
+            .enumerate()
+            .skip(open_idx)
+            .find_map(|(i, token)| match &token.token {
+                Token::Punct(Punct::LParen) => {
+                    depth += 1;
+                    None
+                }
                 Token::Punct(Punct::RParen) => {
                     depth -= 1;
-                    if depth == 0 {
-                        return Some(i);
-                    }
+                    (depth == 0).then_some(Some(i))
                 }
-                Token::Eof => return None,
-                _ => {}
-            }
-            i += 1;
-        }
+                Token::Eof => Some(None),
+                _ => None,
+            })
+            .flatten()
     }
 
     /// Arrow functions (`x => ...` / `(a, b) => ...`) share
@@ -896,7 +901,7 @@ impl Parser {
                     if self.tokens[self.pos].newline_before {
                         return Err(self.syntax_error("no line terminator is allowed before =>"));
                     }
-                    self.expect_punct(Punct::Arrow)?;
+                    self.advance();
                     let body = self.parse_arrow_body(is_async)?;
                     return Ok(Some(Expr::Arrow {
                         params,

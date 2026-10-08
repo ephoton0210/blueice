@@ -93,24 +93,23 @@ impl Parser {
         // this before the ordinary default-import branch, where
         // `import source local from "..."` would otherwise be read as a
         // default binding followed by an unexpected identifier.
-        if self.check_identifier("source")
-            && matches!(self.peek_at(1), Token::Identifier(_))
-            && self.check_identifier_at(2, "from")
-        {
-            self.advance();
-            let local_name = self.expect_binding_identifier()?;
-            if !self.eat_contextual_keyword("from")? {
-                return Err(self.syntax_error("source import requires 'from'"));
+        if self.check_identifier("source") {
+            if let Token::Identifier(local_name) = self.peek_at(1).clone() {
+                if self.check_identifier_at(2, "from") {
+                    self.advance();
+                    self.advance();
+                    self.eat_contextual_keyword("from")?;
+                    let module_request = self.expect_module_name()?;
+                    let module_type = self.parse_import_attributes()?;
+                    self.consume_semicolon()?;
+                    return Ok(vec![ImportEntry {
+                        module_request,
+                        import_name: ImportName::Source,
+                        local_name: Some(local_name),
+                        module_type,
+                    }]);
+                }
             }
-            let module_request = self.expect_module_name()?;
-            let module_type = self.parse_import_attributes()?;
-            self.consume_semicolon()?;
-            return Ok(vec![ImportEntry {
-                module_request,
-                import_name: ImportName::Source,
-                local_name: Some(local_name),
-                module_type,
-            }]);
         }
 
         // `import defer * as ns from "..."`: `defer` is a contextual keyword
@@ -157,7 +156,8 @@ impl Parser {
                     self.expect_punct(Punct::Comma)?;
                 }
             }
-            self.expect_punct(Punct::RBrace)?;
+            // The loop exits only when `}` is current.
+            self.advance();
         }
         if !self.eat_contextual_keyword("from")? {
             return Err(self.syntax_error("import declaration requires 'from'"));
@@ -216,6 +216,20 @@ impl Parser {
         let at = |offset: usize| self.peek_at(offset);
         matches!(at(after_default), Token::Punct(Punct::At))
             || matches!(at(after_default), Token::Identifier(name) if name == "class")
+    }
+
+    fn parse_export_variable_statement(
+        &mut self,
+        kind: DeclKind,
+    ) -> Result<(Stmt, Vec<String>), ParseError> {
+        self.advance();
+        let declarations = self.parse_var_declarators(kind)?;
+        self.consume_semicolon()?;
+        let names = declarations
+            .iter()
+            .flat_map(|declaration| pattern_bound_names(&declaration.pattern))
+            .collect();
+        Ok((Stmt::VarDecl(kind, declarations), names))
     }
 
     pub(super) fn parse_export_declaration(
@@ -282,7 +296,8 @@ impl Parser {
                 Token::Identifier(name) if name == "async" && self.async_function_follows() => {
                     self.require_unescaped_async()?;
                     self.advance();
-                    self.expect_keyword(Keyword::Function)?;
+                    // `async_function_follows` already checked `function`.
+                    self.advance();
                     let function = self.parse_function_with_async(true)?;
                     let binding = function.name.clone().unwrap_or_else(|| hidden.clone());
                     body.push(Stmt::ModuleDefaultFunction {
@@ -352,7 +367,8 @@ impl Parser {
                     self.expect_punct(Punct::Comma)?;
                 }
             }
-            self.expect_punct(Punct::RBrace)?;
+            // The loop exits only when `}` is current.
+            self.advance();
             let request = if self.eat_contextual_keyword("from")? {
                 let module_request = self.expect_module_name()?;
                 let module_type = self.parse_import_attributes()?;
@@ -383,35 +399,28 @@ impl Parser {
             return Ok(request);
         }
 
-        let statement = match self.peek().clone() {
-            Token::Keyword(Keyword::Var) => self.parse_var_decl_stmt(DeclKind::Var)?,
-            Token::Keyword(Keyword::Let) => self.parse_var_decl_stmt(DeclKind::Let)?,
-            Token::Keyword(Keyword::Const) => self.parse_var_decl_stmt(DeclKind::Const)?,
+        let (statement, names) = match self.peek().clone() {
+            Token::Keyword(Keyword::Var) => self.parse_export_variable_statement(DeclKind::Var)?,
+            Token::Keyword(Keyword::Let) => self.parse_export_variable_statement(DeclKind::Let)?,
+            Token::Keyword(Keyword::Const) => {
+                self.parse_export_variable_statement(DeclKind::Const)?
+            }
             Token::Keyword(Keyword::Function) => {
                 self.advance();
                 let function = self.parse_function()?;
-                if function.name.is_none() {
+                let Some(name) = function.name.clone() else {
                     return Err(self.syntax_error("function declarations require a name"));
-                }
-                Stmt::FunctionDecl(function)
+                };
+                (Stmt::FunctionDecl(function), vec![name])
             }
             Token::Identifier(_) | Token::Punct(Punct::At) if self.export_declares_class(0) => {
                 let class = self.parse_exported_class(decorators)?;
-                if class.name.is_none() {
+                let Some(name) = class.name.clone() else {
                     return Err(self.syntax_error("class declarations require a name"));
-                }
-                Stmt::ClassDecl(class)
+                };
+                (Stmt::ClassDecl(class), vec![name])
             }
             _ => return Err(self.syntax_error("expected an export declaration")),
-        };
-        let names = match &statement {
-            Stmt::VarDecl(_, declarations) => declarations
-                .iter()
-                .flat_map(|declaration| pattern_bound_names(&declaration.pattern))
-                .collect(),
-            Stmt::FunctionDecl(function) => vec![function.name.clone().unwrap()],
-            Stmt::ClassDecl(class) => vec![class.name.clone().unwrap()],
-            _ => unreachable!("module export parser only produces declarations"),
         };
         for name in names {
             exports.push(ExportEntry::Local {

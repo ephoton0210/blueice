@@ -757,6 +757,49 @@ impl JsonNode {
 /// records duplicate object names in source order: ordinary property creation
 /// retains the first key position while the final occurrence supplies both the
 /// final value and source text.
+/// Decodes an already-validated JSON string token's body (the bytes between
+/// its quotes) into UTF-16 code units. A `\uXXXX` escape is taken as its raw
+/// code unit with no surrogate-pairing requirement, matching JSON's own
+/// grammar and the WTF-16 strings JS itself allows -- unlike `serde_json`'s
+/// UTF-8-`String`-based decoder, this can represent a lone surrogate.
+fn decode_json_string_body(body: &str) -> Vec<u16> {
+    let bytes = body.as_bytes();
+    let mut units = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            match bytes[i + 1] {
+                b'"' => units.push(u16::from(b'"')),
+                b'\\' => units.push(u16::from(b'\\')),
+                b'/' => units.push(u16::from(b'/')),
+                b'b' => units.push(0x08),
+                b'f' => units.push(0x0c),
+                b'n' => units.push(u16::from(b'\n')),
+                b'r' => units.push(u16::from(b'\r')),
+                b't' => units.push(u16::from(b'\t')),
+                b'u' => {
+                    let code = u16::from_str_radix(&body[i + 2..i + 6], 16)
+                        .expect("the scan above validated four hex digits");
+                    units.push(code);
+                    i += 6;
+                    continue;
+                }
+                _ => unreachable!("the scan above validated this escape"),
+            }
+            i += 2;
+        } else {
+            let character = body[i..]
+                .chars()
+                .next()
+                .expect("i is a character boundary");
+            let mut buf = [0u16; 2];
+            units.extend_from_slice(character.encode_utf16(&mut buf));
+            i += character.len_utf8();
+        }
+    }
+    units
+}
+
 struct JsonSourceParser<'a> {
     input: &'a str,
     index: usize,
@@ -896,10 +939,9 @@ impl<'a> JsonSourceParser<'a> {
         loop {
             match self.peek() {
                 Some(b'"') => {
+                    let body = &self.input[start + 1..self.index];
                     self.index += 1;
-                    let decoded = serde_json::from_str::<String>(&self.input[start..self.index])
-                        .map_err(|_| ())?;
-                    return Ok(decoded.into());
+                    return Ok(JsString::from_code_units(decode_json_string_body(body)));
                 }
                 Some(b'\\') => {
                     self.index += 1;

@@ -46,6 +46,50 @@ fn private_static_scope_wire_rejects_missing_realm() {
 }
 
 #[test]
+fn private_static_scope_linked_relation_rejects_a_non_linked_target() {
+    // `debugger_static_scope_linked_relation` is only ever reached, in
+    // production, through `debugger_static_scope_relation`'s own `Linked`
+    // match arm -- so the destructuring `else` branch that rejects any
+    // other variant can only be driven directly, as a private crate-
+    // internal call, exactly like the other private helpers this test
+    // module already calls without going through the wire protocol.
+    let host = BlueJsChildHost::default();
+    let program = PageHostDebuggerProgram {
+        program_handle: 11,
+        program_generation: 13,
+    };
+    let target = page_host::PageHostDebuggerStaticScopeTarget::Ordinary {
+        metadata: PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        },
+        target: PageHostDebuggerValueTarget {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            frame: None,
+            frame_index: 0,
+            safe_point: PageHostDebuggerSafePoint {
+                program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: 2,
+                scope_depth: 0,
+            },
+        },
+    };
+    assert!(matches!(
+        host.debugger_static_scope_linked_relation(target),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn private_static_scope_ordinary_root_relates_only_one_live_compiler_slot() {
     let mut host = BlueJsChildHost::default();
     assert!(matches!(
@@ -436,6 +480,121 @@ fn private_child_bluets_classic_returns_only_exact_paused_plain_values() {
         }),
         PageHostReply::Error {
             code: PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn private_child_bluets_value_snapshot_rejects_wrong_execution_state_and_program_identity() {
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(1, vec![blue_ts_classic(0, "let answer: number = 41;")]),
+        }),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let program = host.documents[&7]
+        .pending_debugger_executions
+        .front()
+        .unwrap()
+        .program
+        .unwrap();
+    let halt = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+        tab_id: 7,
+        document_generation: 1,
+        program,
+    }) {
+        PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+            .into_iter()
+            .filter(|point| point.code_unit_ordinal == 0)
+            .max_by_key(|point| point.bytecode_offset)
+            .unwrap(),
+        reply => panic!("expected BlueTS root points: {reply:?}"),
+    };
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+            tab_id: 7,
+            document_generation: 1,
+            safe_point: halt,
+        }),
+        PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    let target = paused_value_targets(&mut host, program, None, 0)[0];
+
+    // A live document that never armed/advanced its debugger (so it is not
+    // mid-pause at all) rejects a value-snapshot request for a target that
+    // otherwise looks well-formed.
+    let mut plain_host = BlueJsChildHost::default();
+    assert!(matches!(
+        plain_host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(1, vec![blue_ts_classic(0, "let answer: number = 41;")]),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        plain_host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+
+    // A target naming a program other than the one this document is
+    // actually paused on is rejected the same way -- the paused-program
+    // identity check does not merely compare handles, it requires the
+    // whole `PageHostDebuggerProgram` to match the live pending execution.
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+            target: PageHostDebuggerValueTarget {
+                program: PageHostDebuggerProgram {
+                    program_handle: program.program_handle + 1,
+                    ..program
+                },
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: program.program_handle + 1,
+                        ..program
+                    },
+                    ..target.safe_point
+                },
+                ..target
+            },
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+
+    // A stale generation for the same real program handle fails the same
+    // whole-`PageHostDebuggerProgram` identity check.
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+            target: PageHostDebuggerValueTarget {
+                program: PageHostDebuggerProgram {
+                    program_generation: program.program_generation + 1,
+                    ..program
+                },
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_generation: program.program_generation + 1,
+                        ..program
+                    },
+                    ..target.safe_point
+                },
+                ..target
+            },
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
             ..
         }
     ));

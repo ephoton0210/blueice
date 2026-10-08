@@ -5,12 +5,16 @@
 use super::*;
 use blueice_ipc::debugger::DebuggerSourceCoordinates;
 mod admission_hold;
+mod canned_replies;
 mod linked_coordinates;
 mod linked_scope_values;
 mod metadata_grants;
 mod metadata_locations;
 mod metadata_relations;
 mod native_execution;
+mod request_channel;
+mod source_span_step;
+mod type_display;
 mod value_scopes;
 
 struct MetadataLocations {

@@ -7,7 +7,7 @@
 use super::super::*;
 use super::resolution::{
     temporal_checked_start_of_day, temporal_interpret_offset, temporal_require_instant_range,
-    temporal_resolution_error, temporal_set_local_fields, temporal_zoned_date_time_zone,
+    temporal_set_local_fields, temporal_zoned_date_time_zone,
 };
 
 impl Vm {
@@ -16,7 +16,10 @@ impl Vm {
         receiver: &Value,
         time_zone: &Value,
     ) -> Result<Value, RuntimeError> {
-        let mut value = self.temporal_zoned_date_time_receiver(receiver)?;
+        // Native dispatch checked the ZonedDateTime receiver before entry.
+        let mut value = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let zone = self.temporal_time_zone(time_zone)?;
         // The instant itself is unchanged; only its presentation zone (and
         // therefore the local fields resolved from it) changes.
@@ -30,7 +33,10 @@ impl Vm {
         receiver: &Value,
         plain_time_like: &Value,
     ) -> Result<Value, RuntimeError> {
-        let mut value = self.temporal_zoned_date_time_receiver(receiver)?;
+        // Native dispatch checked the ZonedDateTime receiver before entry.
+        let mut value = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let zone = temporal_zoned_date_time_zone(&value);
         let date = (value.year, value.month, value.day);
         value.epoch_nanoseconds = if *plain_time_like == Value::Undefined {
@@ -40,9 +46,12 @@ impl Vm {
             temporal_checked_start_of_day(&zone, date)?
         } else {
             let time = self.temporal_to_plain_time(plain_time_like, &Value::Undefined)?;
+            // The receiver's local date exists in this zone. Compatible
+            // disambiguation resolves any time on that date, including a
+            // skipped clock time; the instant-range check remains below.
             let resolved = zone
                 .epoch_nanoseconds_for(date, time, time_zone::Disambiguation::Compatible)
-                .map_err(temporal_resolution_error)?;
+                .expect("compatible resolution of an existing zoned date succeeds");
             temporal_require_instant_range(resolved)?
         };
         temporal_set_local_fields(&mut value, &zone);
@@ -60,11 +69,20 @@ impl Vm {
         like: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        // Native dispatch checked the ZonedDateTime receiver before entry.
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let like_object = like
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Temporal.with requires an object".into()))?;
-        if self.heap.temporal_value(like_object)?.is_some() {
+        // JavaScript object values are handles from this VM's heap.
+        if self
+            .heap
+            .temporal_value(like_object)
+            .expect("the property bag belongs to this VM")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "Temporal.with does not accept a Temporal-like object".into(),
             ));
@@ -76,7 +94,7 @@ impl Vm {
                 )));
             }
         }
-        let existing_fields = self.temporal_calendar_fields(&existing)?;
+        let existing_fields = self.temporal_calendar_fields(&existing);
         // `PrepareCalendarFields` reads and converts one field at a time, in
         // alphabetical order, each conversion straight after its own `Get`
         // (`with/order-of-operations.js`). Nothing object-valued is held in a

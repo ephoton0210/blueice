@@ -21,10 +21,17 @@ trait HeapPayload {
     fn heap_payload(&self, context: &mut CountContext) -> Option<usize>;
 }
 
+/// Account for a child payload without conflating allocation size with the
+/// sum of separately owned allocations. Both unavailable children and real
+/// usize overflow retain the public None result.
+fn add_payload(total: usize, child: Option<usize>) -> Option<usize> {
+    total.checked_add(child?)
+}
+
 macro_rules! sum {
     ($($part:expr),* $(,)?) => {{
         let mut total = 0usize;
-        $(total = total.checked_add($part?)?;)*
+        $(total = add_payload(total, $part)?;)*
         Some(total)
     }};
 }
@@ -50,7 +57,7 @@ impl<T: HeapPayload> HeapPayload for Option<T> {
 
 impl<T: HeapPayload> HeapPayload for Box<T> {
     fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
-        std::mem::size_of::<T>().checked_add((**self).heap_payload(context)?)
+        add_payload(std::mem::size_of::<T>(), (**self).heap_payload(context))
     }
 }
 
@@ -58,7 +65,7 @@ impl<T: HeapPayload> HeapPayload for Vec<T> {
     fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
         let mut bytes = self.capacity().checked_mul(std::mem::size_of::<T>())?;
         for item in self {
-            bytes = bytes.checked_add(item.heap_payload(context)?)?;
+            bytes = add_payload(bytes, item.heap_payload(context))?;
         }
         Some(bytes)
     }
@@ -67,9 +74,7 @@ impl<T: HeapPayload> HeapPayload for Vec<T> {
 impl HeapPayload for BigInt {
     fn heap_payload(&self, _: &mut CountContext) -> Option<usize> {
         let bits = usize::try_from(self.bits()).ok()?;
-        bits.checked_add(31)?
-            .checked_div(32)?
-            .checked_mul(std::mem::size_of::<u32>())
+        (bits.checked_add(31)? / 32).checked_mul(std::mem::size_of::<u32>())
     }
 }
 
@@ -606,4 +611,177 @@ mod tests {
         assert_eq!(one.heap_payload(&mut context), Some(shared.len()));
         assert_eq!(two.heap_payload(&mut context), Some(0));
     }
+
+    #[test]
+    fn a_source_text_range_with_an_unrepresentable_offset_has_no_text_payload() {
+        // `SourceText::range` yields its default, textless value whenever
+        // either offset doesn't fit in `u32` -- unreachable from a real
+        // parse (no source file is anywhere near 4 GiB), but a real,
+        // directly-checkable boundary of the crate's own `pub(crate)` API,
+        // not a corrupted invariant.
+        let text = Arc::<str>::from("short");
+        let unrepresentable = SourceText::range(&text, usize::MAX, usize::MAX);
+        let mut context = CountContext::default();
+        assert_eq!(unrepresentable.heap_payload(&mut context), Some(0));
+    }
+
+    #[test]
+    fn every_module_import_and_export_shape_has_a_computable_heap_payload() {
+        let source = r#"
+            import './side-effect.js';
+            import def, { a as b, c } from './named.js';
+            import * as ns from './ns.js';
+            import defer * as dns from './deferred.js';
+            import source src from './src.js';
+
+            export { def, c };
+            export { a as aa } from './named.js';
+            export * from './star.js';
+            export * as starNs from './starns.js';
+            export default function namedDefault() { return 1; }
+        "#;
+        let module = crate::parse_module(source).unwrap();
+        assert!(module.owned_heap_payload_bytes().unwrap() > 0);
+    }
+
+    #[test]
+    fn every_reachable_statement_and_expression_shape_has_a_computable_heap_payload() {
+        let source = r#"
+            function dec(value, _context) { return value; }
+            class Base {}
+
+            export function kitchen(a, [x, y = 1, ...zs], { p, q: qq, ...rest } = {}, ...restArgs) {
+                let num = 1;
+                let big = 1n;
+                let str = "s";
+                let tpl = `t${a}`;
+                let tag = String.raw`r${a}`;
+                let re = /x/g;
+                let spreadSrc = [1, 2];
+                let arr = [1, ...spreadSrc];
+                let computed = "k";
+                let spreadObj = { k2: 2 };
+                let obj = { k: 1, ...spreadObj, [computed]: 2, "str-key": 3, 4: "num-key", m() { return 1; }, get g() { return 1; }, set s(v) {} };
+                let fn = function named() {};
+                let arrow1 = (v) => v;
+                let arrow2 = (v) => { return v; };
+                let computed2 = "dyn";
+                let cls = class Named extends Base {
+                    static field = 1;
+                    #priv = 2;
+                    static {
+                        void 0;
+                    }
+                    @dec method() {
+                        return this.#priv;
+                    }
+                    get accessorGet() { return 1; }
+                    set accessorSet(v) {}
+                    accessor autoAcc = 3;
+                    [computed2]() { return 1; }
+                    hasPriv(o) { return #priv in o; }
+                };
+
+                label: for (let i = 0; i < 1; i++) {
+                    if (i === 0) {
+                        continue label;
+                    } else {
+                        break label;
+                    }
+                }
+                for (const k in obj) {
+                }
+                for (const v of arr) {
+                }
+                while (false) {
+                }
+                do {
+                } while (false);
+                switch (num) {
+                    case 1:
+                        break;
+                    default:
+                        break;
+                }
+                try {
+                    throw new Error("e");
+                } catch (e) {
+                } finally {
+                }
+                try {
+                } catch {
+                }
+                block: {
+                    let inner = 1;
+                }
+                ;
+
+                const seq = (1, 2, 3);
+                const cond = true ? 1 : 2;
+                // `Expr::Parenthesized` is only retained when the group is
+                // itself an assignment target (or wraps an optional chain);
+                // an ordinary grouped read like `(a)` alone is unwrapped
+                // back to the inner expression at parse time.
+                (a) = 5;
+                const logical = a && num;
+                let plain = 1;
+                plain = 2;
+                for (plain = 0; plain < 1; plain++) {
+                }
+                for (plain in obj) {
+                }
+                [x, y] = [y, x];
+                let restAssignTarget;
+                ({ p: rest.p, ...restAssignTarget } = obj);
+                const optChain = ({}).missing?.member;
+                const optCall = fn.bind?.();
+                const dynImport = () => import("./dynamic.js");
+                const metaUrl = () => import.meta;
+                const target = function () {
+                    return new.target;
+                };
+                const call = new Base();
+                const alsoCall = fn(a, ...restArgs);
+
+                return new cls().hasPriv(new cls());
+            }
+
+            export function* gen() {
+                yield 1;
+            }
+
+            // `export async function` (non-default) is not accepted by
+            // this parser -- only `export default async function ...` is
+            // -- so this is declared plainly and exported by name instead.
+            async function asyncFn() {
+                await Promise.resolve();
+            }
+            export { asyncFn };
+        "#;
+        let module = crate::parse_module(source).unwrap();
+        assert!(module.owned_heap_payload_bytes().unwrap() > 0);
+    }
+
+    #[test]
+    fn sloppy_annex_b_for_head_and_with_shapes_have_a_computable_heap_payload() {
+        // `with`, the Annex B `var x = init in ...` for-in initializer, and
+        // a call-expression for-in/for-of target are all sloppy-mode-only
+        // relaxations -- unreachable from a module (always strict), so this
+        // is a separate classic script with no directive prologue.
+        let source = r#"
+            function sink() { return {}; }
+            with (sink()) {
+            }
+            for (var v = 1 in { a: 1 }) {
+            }
+            for (sink() in { b: 1 }) {
+            }
+        "#;
+        let program = crate::parse(source).unwrap();
+        assert!(program.owned_heap_payload_bytes().unwrap() > 0);
+    }
 }
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/payload_accounting_contracts.rs"]
+mod accounting_contracts;

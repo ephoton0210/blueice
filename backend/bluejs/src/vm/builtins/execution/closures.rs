@@ -4,7 +4,51 @@
 
 use super::*;
 
+/// How the first, synchronous stretch of an async function's body ended.
+enum AsyncBody {
+    Returned(Value),
+    Awaiting {
+        promise: ObjectId,
+        pc: usize,
+        handlers: Vec<HandlerFrame>,
+    },
+    Failed(RuntimeError),
+}
+
+impl AsyncBody {
+    /// An async function that is not a generator contains no `yield`, and only
+    /// generators suspend on entry, so those two exits are failures here.
+    fn classify(result: Result<InterpreterExit, RuntimeError>) -> Self {
+        match result {
+            Ok(InterpreterExit::Return(value)) => Self::Returned(value),
+            Ok(InterpreterExit::Await {
+                promise,
+                pc,
+                handlers,
+            }) => Self::Awaiting {
+                promise,
+                pc,
+                handlers,
+            },
+            Ok(InterpreterExit::Yield { .. }) => Self::Failed(RuntimeError::TypeError(
+                "yield requires an async generator function".into(),
+            )),
+            Ok(InterpreterExit::Suspend { .. }) => Self::Failed(RuntimeError::TypeError(
+                "an ordinary async function has no entry suspend".into(),
+            )),
+            Err(error) => Self::Failed(error),
+        }
+    }
+}
+
 impl Vm {
+    /// Marks a generator this call has just allocated as an async generator.
+    fn enable_async_generator(&mut self, generator: ObjectId) {
+        self.heap
+            .enable_async_generator(generator)
+            .expect("the generator was allocated by this call");
+    }
+
     pub(in super::super::super) fn binding_value(
         &mut self,
         slot: usize,
@@ -88,6 +132,16 @@ impl Vm {
                 "nested debugger pause requires a direct synchronous closure call",
             ));
         }
+        // Reject serial exhaustion before replacing the caller's bindings,
+        // stack and execution context. An early error in the nested body path
+        // would otherwise skip the common frame restoration below.
+        let next_debugger_frame_serial = if nested_debugger_target.is_some() {
+            Some(self.next_debugger_frame_serial.checked_add(1).ok_or(
+                RuntimeError::Unsupported("nested debugger frame serial exhausted"),
+            )?)
+        } else {
+            None
+        };
         if code.class_constructor && !construct {
             // §10.2.1.1's class-constructor rejection is created in the
             // function's Realm. Materialize it before a Test262 membrane can
@@ -132,13 +186,18 @@ impl Vm {
         }
         if code.generator {
             let async_generator = code.async_function;
+            // Creating the generator function (in the interpreter or the
+            // dynamic function constructors) already materialized both
+            // prototypes, so neither lookup can allocate here.
             let default_prototype = if code.async_function {
-                self.async_generator_prototype()?
+                self.async_generator_prototype()
             } else {
-                self.generator_prototype()?
-            };
+                self.generator_prototype()
+            }
+            .expect(GENERATOR_INTRINSICS);
             let prototype = self
-                .get_property(&callee, &"prototype".into())?
+                .get_property(&callee, &"prototype".into())
+                .expect(GENERATOR_PROTOTYPE)
                 .object_id()
                 .unwrap_or(default_prototype);
             if !code.generator_initializes_parameters {
@@ -153,7 +212,7 @@ impl Vm {
                 };
                 let generator = self.with_roots(|heap| heap.alloc_generator(state, prototype))?;
                 if async_generator {
-                    self.heap.enable_async_generator(generator)?;
+                    self.enable_async_generator(generator);
                 }
                 return Ok(Value::Object(generator));
             }
@@ -175,7 +234,7 @@ impl Vm {
                 )
             })?;
             if async_generator {
-                self.heap.enable_async_generator(generator)?;
+                self.enable_async_generator(generator);
             }
             let base = self.stack.len();
             self.stack.push(Value::Object(generator));
@@ -195,10 +254,13 @@ impl Vm {
             // default such as `(g.prototype = null)` must affect the freshly
             // created generator object's [[Prototype]].
             let prototype = self
-                .get_property(&callee, &"prototype".into())?
+                .get_property(&callee, &"prototype".into())
+                .expect(GENERATOR_PROTOTYPE)
                 .object_id()
                 .unwrap_or(default_prototype);
-            self.heap.set_prototype(generator, Some(prototype))?;
+            self.heap
+                .set_prototype(generator, Some(prototype))
+                .expect("a freshly allocated generator cannot form a prototype cycle");
             self.stack.push(Value::Object(generator));
             let stored = self.with_roots(|heap| heap.set_generator_state(generator, state));
             self.stack.pop();
@@ -212,6 +274,10 @@ impl Vm {
             .extend(self.cells.values().copied().map(Value::Object));
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
+        // A resumed async/generator caller is absent from call_stack. Its
+        // function must survive while the callee replaces Vm::callee and
+        // allocates, so restoring the caller cannot publish a collected ID.
+        self.stack.push(self.callee.clone());
         self.stack.extend(self.arguments.iter().cloned());
         // The callee sees only the with objects it closed over, not the
         // caller's; keep the caller's rooted on the stack meanwhile.
@@ -290,17 +356,19 @@ impl Vm {
         let result_root = self.result_root.take();
         let mut suspended_parent_stack = None;
         let mut suspended_async = None;
-        let running = callee.object_id();
-        self.call_stack.extend(running);
+        let running = callee
+            .object_id()
+            .expect("a closure call has a function object as its callee");
+        self.call_stack.push(running);
         let result = if async_function {
             let mut iterators = Vec::new();
-            match self.interpret(&code, &mut iterators, 0, None, None, None) {
-                Ok(InterpreterExit::Return(value)) => Ok(value),
-                Ok(InterpreterExit::Await {
+            match AsyncBody::classify(self.interpret(&code, &mut iterators, 0, None, None, None)) {
+                AsyncBody::Returned(value) => Ok(value),
+                AsyncBody::Awaiting {
                     promise,
                     pc,
                     handlers,
-                }) => {
+                } => {
                     let stack = self.stack.split_off(frame_base);
                     let mut execution = self.suspend_module_execution();
                     let parent_stack = std::mem::replace(&mut execution.stack, stack);
@@ -320,13 +388,7 @@ impl Vm {
                     suspended_async = Some((state, promise));
                     Ok(Value::Undefined)
                 }
-                Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
-                    "yield requires an async generator function".into(),
-                )),
-                Ok(InterpreterExit::Suspend { .. }) => {
-                    unreachable!("ordinary async functions have no entry suspend")
-                }
-                Err(error) => {
+                AsyncBody::Failed(error) => {
                     let base = self.stack.len();
                     if let RuntimeError::Thrown(value) = &error {
                         self.stack.push(value.clone());
@@ -341,28 +403,27 @@ impl Vm {
             }
         } else if let Some((target_offset, target_ordinal)) = nested_debugger_target {
             let frame_serial = self.next_debugger_frame_serial;
-            let next_frame_serial =
-                frame_serial
-                    .checked_add(1)
-                    .ok_or(RuntimeError::Unsupported(
-                        "nested debugger frame serial exhausted",
-                    ))?;
+            let next_frame_serial = next_debugger_frame_serial
+                .expect("nested invocation reserved its serial before installing the frame");
             let pending_base = self.pending_completions.len();
             let save_base = self.completion_saves.len();
             let mut iterators = Vec::new();
-            let result = match self.interpret(
-                &code,
-                &mut iterators,
-                0,
-                None,
-                Some(InterpreterSuspensionPoint::Offset(target_offset)),
-                None,
+            let result = match DebuggerInterpreterExit::classify(
+                self.interpret(
+                    &code,
+                    &mut iterators,
+                    0,
+                    None,
+                    Some(InterpreterSuspensionPoint::Offset(target_offset)),
+                    None,
+                ),
+                DebuggerFrameKind::NestedEntry,
             ) {
-                Ok(InterpreterExit::Suspend {
+                DebuggerInterpreterExit::Suspended {
                     pc,
                     iterators,
                     handlers,
-                }) => {
+                } => {
                     let stack = self.stack.split_off(frame_base);
                     let mut execution = self.suspend_module_execution();
                     let parent_stack = std::mem::replace(&mut execution.stack, stack);
@@ -379,11 +440,7 @@ impl Vm {
                     suspended_parent_stack = Some(parent_stack);
                     Ok(Value::Undefined)
                 }
-                Ok(InterpreterExit::Return(value)) => Ok(value),
-                Ok(InterpreterExit::Yield { .. } | InterpreterExit::Await { .. }) => Err(
-                    RuntimeError::Unsupported("nested debugger target cannot yield or await"),
-                ),
-                Err(error) => Err(error),
+                DebuggerInterpreterExit::Completed(result) => result,
             };
             if result.is_err() {
                 let base = self.stack.len();
@@ -404,9 +461,7 @@ impl Vm {
         } else {
             self.run(&code)
         };
-        if running.is_some() {
-            self.call_stack.pop();
-        }
+        self.call_stack.pop();
         // A derived constructor's `this` lives in its hidden binding (which
         // `super()` in the constructor or in a nested arrow or eval bound);
         // every other constructor's is the receiver allocated at entry.
@@ -462,9 +517,12 @@ impl Vm {
         self.home_object = home_object;
         self.class_field_initializer = class_field_initializer;
         self.stack.truncate(base - 1);
-        if let Some((state, awaited)) = suspended_async {
-            self.suspend_async_await(state, awaited)?;
-        }
+        // A failure to suspend takes the same route as a failure of the body:
+        // it ends the call (or rejects the async function's promise) below.
+        let result = match suspended_async {
+            Some((state, awaited)) => self.suspend_async_await(state, awaited).and(result),
+            None => result,
+        };
         let mut completion_check_failed = false;
         let result = result.and_then(|value| {
             if construct && !matches!(value, Value::Object(_)) {
@@ -499,9 +557,21 @@ impl Vm {
             Ok(_) => {}
             Err(error) => {
                 let value = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+                self.settle_tracked_promise(promise, PromiseStatus::Rejected(value));
             }
         }
         Ok(Value::Object(promise))
     }
 }
+
+/// The `expect` message for a generator prototype looked up by a call to a
+/// generator function that already exists.
+const GENERATOR_INTRINSICS: &str = "a generator function's prototypes are already materialized";
+
+/// A generator function's own `prototype` is a writable, non-configurable data
+/// property, so reading it can neither throw nor allocate.
+const GENERATOR_PROTOTYPE: &str = "a generator function's prototype is a data property";
+
+#[cfg(any(test, coverage))]
+#[path = "../../../../tests/fixtures/closure_execution_internal.rs"]
+mod tests;

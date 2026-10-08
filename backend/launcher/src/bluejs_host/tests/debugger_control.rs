@@ -514,3 +514,247 @@ fn private_debugger_breakpoint_configuration_is_idempotent_and_bounded() {
         PageHostReply::DebuggerBreakpoints { safe_points, .. } if safe_points.len() == max
     ));
 }
+
+#[test]
+fn advance_debugger_execution_rejects_a_document_without_execution_control() {
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(1, vec![classic(0, "globalThis.answer = 1;")]),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn advance_debugger_execution_rejects_an_unknown_realm_and_a_stale_generation() {
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::UnknownRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(1, vec![classic(0, "globalThis.answer = 1;")]),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 2,
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn advance_debugger_execution_re_reports_an_already_paused_classic_root_as_still_paused() {
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(1, vec![classic(0, "let first = 1; first += 1;")]),
+        }),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+        tab_id: 7,
+        document_generation: 1,
+    }) {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+        reply => panic!("expected private classic program, got {reply:?}"),
+    };
+    let target = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+        tab_id: 7,
+        document_generation: 1,
+        program,
+    }) {
+        PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+            .into_iter()
+            .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset != 0)
+            .expect("fixture must have a non-entry root safe point"),
+        reply => panic!("expected source-free safe points, got {reply:?}"),
+    };
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+            tab_id: 7,
+            document_generation: 1,
+            safe_point: target,
+        }),
+        PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    // Calling advance again with nothing newly armed must simply re-observe
+    // the same already-paused pending execution, not error or re-execute it.
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    assert_eq!(
+        host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }),
+        PageHostReply::DebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+            state: PageHostDebuggerExecutionState::Paused { safe_point: target },
+        }
+    );
+}
+
+#[test]
+fn resume_and_step_root_instruction_reject_every_wrong_realm_or_document_state() {
+    let program = PageHostDebuggerProgram {
+        program_handle: 1,
+        program_generation: 1,
+    };
+
+    // No tab has ever been synchronized: an unknown realm.
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::UnknownRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::UnknownRealm,
+            ..
+        }
+    ));
+
+    // A real tab exists, but at a different (stale) generation.
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(1, vec![classic(0, "globalThis.answer = 1;")]),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+            tab_id: 7,
+            document_generation: 2,
+            program,
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+            tab_id: 7,
+            document_generation: 2,
+            program,
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+
+    // The current document is live but never opted into debugger execution
+    // control at all.
+    let mut plain_host = BlueJsChildHost::default();
+    assert!(matches!(
+        plain_host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(1, vec![classic(0, "globalThis.answer = 1;")]),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        plain_host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+    assert!(matches!(
+        plain_host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+
+    // Debugger execution control is on, but this exact program was never
+    // installed -- there is no execution state to resume or step at all.
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+            program: PageHostDebuggerProgram {
+                program_handle: program.program_handle + 999,
+                program_generation: program.program_generation + 999,
+            },
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+            tab_id: 7,
+            document_generation: 1,
+            program: PageHostDebuggerProgram {
+                program_handle: program.program_handle + 999,
+                program_generation: program.program_generation + 999,
+            },
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+}

@@ -311,6 +311,27 @@ fn unparenthesize(expr: Expr) -> Expr {
     }
 }
 
+/// Builds a `SourceText` for a source of `len` bytes: its offsets are `u32`,
+/// so a longer source keeps no per-function text (the default, empty one).
+#[cfg(test)]
+fn source_text_within(len: usize, build: impl FnOnce() -> SourceText) -> SourceText {
+    if len > u32::MAX as usize {
+        return SourceText::default();
+    }
+    build()
+}
+
+/// Wraps an expression statement's expression in `Expr::Parenthesized`, which
+/// evaluates the same but is no longer a bare string statement; any other
+/// statement is returned unchanged.
+#[cfg(test)]
+fn parenthesize_expression_statement(statement: Stmt) -> Stmt {
+    match statement {
+        Stmt::Expr(expression) => Stmt::Expr(Expr::Parenthesized(Box::new(expression))),
+        other => other,
+    }
+}
+
 fn is_assignment_operator(token: &Token) -> bool {
     matches!(
         token,
@@ -397,7 +418,7 @@ struct Parser {
     /// The byte offset of each character of `source` (and of its end), for
     /// mapping the tokenizer's character offsets to `source` byte ranges.
     /// `None` for ASCII text, where the two are the same.
-    char_to_byte: Option<Vec<u32>>,
+    char_to_byte: Option<Vec<usize>>,
 }
 
 impl Parser {
@@ -428,7 +449,6 @@ impl Parser {
                 .char_indices()
                 .map(|(offset, _)| offset)
                 .chain([source.len()])
-                .map(|offset| u32::try_from(offset).unwrap_or(u32::MAX))
                 .collect()
         });
         Parser {
@@ -469,12 +489,9 @@ impl Parser {
     /// token's end is right even when the last thing consumed was a RegExp or
     /// tagged template, which the parser scans outside the token stream.
     fn source_text_from(&self, start: usize) -> SourceText {
-        if self.source.len() > u32::MAX as usize {
-            return SourceText::default();
-        }
         let end = self.positions[self.pos];
         let to_byte = |offset: usize| match &self.char_to_byte {
-            Some(offsets) => offsets[offset] as usize,
+            Some(offsets) => offsets[offset],
             None => offset,
         };
         SourceText::range(&self.source, to_byte(start), to_byte(end))
@@ -647,17 +664,14 @@ impl Parser {
         }
     }
 
-    /// A token the grammar cannot accept at this point. Every production the
-    /// parser implements is complete for its goal, so a token that fails to
-    /// match a mandatory position is a specified SyntaxError. Only a lexical
-    /// placeholder for a construct this engine does not scan (see
-    /// `Token::Invalid`) stays unclassified, because the source may be valid.
+    /// A token the grammar cannot accept at this point. The tokenizer now
+    /// emits `Token::Invalid` only for malformed lexical input; grammar
+    /// productions with an unsupported valid form mark that error explicitly.
     fn error(&self, message: impl Into<String>) -> ParseError {
-        let known_syntax = !matches!(self.peek(), Token::Invalid(message) if message.contains("not supported") || message.contains("unexpected character '#'"));
         ParseError {
             message: format!("{} (found {:?})", message.into(), self.peek()),
             resource: None,
-            known_syntax,
+            known_syntax: true,
         }
     }
 
@@ -693,26 +707,24 @@ impl Parser {
             return Ok(statement);
         }
         let token = &self.tokens[start];
-        let is_use_strict_valued =
-            matches!(&statement, Stmt::Expr(Expr::String(value)) if value == "use strict");
         let is_directive = matches!(&statement, Stmt::Expr(Expr::String(_)))
-            && matches!(token.token, Token::String(_))
-            && (self.pos == start + 1
-                || (self.pos == start + 2
-                    && matches!(self.tokens[start + 1].token, Token::Punct(Punct::Semicolon))));
+            && matches!(token.token, Token::String(_));
         if !is_directive {
             prologue.open = false;
         } else {
             prologue.legacy_octal |= token.legacy_octal_escape;
         }
-        if !is_use_strict_valued {
-            return Ok(statement);
+        let value = match statement {
+            Stmt::Expr(Expr::String(value)) => value,
+            other => return Ok(other),
+        };
+        if value != "use strict" {
+            return Ok(Stmt::Expr(Expr::String(value)));
         }
         if !is_directive || token.string_escaped {
-            let Stmt::Expr(expression) = statement else {
-                unreachable!("a use strict-valued statement is an expression statement")
-            };
-            return Ok(Stmt::Expr(Expr::Parenthesized(Box::new(expression))));
+            return Ok(Stmt::Expr(Expr::Parenthesized(Box::new(Expr::String(
+                value,
+            )))));
         }
         if prologue.legacy_octal {
             return Err(ParseError {
@@ -724,7 +736,7 @@ impl Parser {
             });
         }
         self.strict = true;
-        Ok(statement)
+        Ok(Stmt::Expr(Expr::String(value)))
     }
 
     /// `{ FunctionBody }` of a function, method, accessor or arrow: a
@@ -880,5 +892,33 @@ impl Parser {
             quasis,
             expressions,
         })
+    }
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+
+    #[test]
+    fn source_text_ranges_are_limited_to_u32_offsets() {
+        let source: std::sync::Arc<str> = "ab".into();
+        let build = || SourceText::range(&source, 0, 1);
+        let built = build();
+        assert_eq!(source_text_within(0, build), built);
+        assert_eq!(source_text_within(u32::MAX as usize, build), built);
+        // Too long a source keeps no range at all.
+        assert_eq!(
+            source_text_within(u32::MAX as usize + 1, build),
+            SourceText::default()
+        );
+    }
+
+    #[test]
+    fn only_expression_statements_are_parenthesized() {
+        assert_eq!(
+            parenthesize_expression_statement(Stmt::Expr(Expr::Null)),
+            Stmt::Expr(Expr::Parenthesized(Box::new(Expr::Null)))
+        );
+        assert_eq!(parenthesize_expression_statement(Stmt::Empty), Stmt::Empty);
     }
 }

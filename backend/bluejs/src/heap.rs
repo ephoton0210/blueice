@@ -40,6 +40,8 @@ use std::time::Duration;
 
 mod binary_data;
 pub(crate) use binary_data::{f16_bits_to_f64, f64_to_f16_bits};
+mod capabilities;
+pub(crate) use capabilities::ObjectCapabilities;
 mod collection_iteration;
 pub(crate) use collection_iteration::CollectionEntry;
 mod core;
@@ -901,7 +903,7 @@ enum ObjectKind {
     String(JsString),
     NativeFunction {
         function: NativeFunction,
-        initial_name: JsString,
+        initial_name: String,
     },
     Closure {
         code: Rc<Bytecode>,
@@ -1599,6 +1601,9 @@ pub struct Heap {
     scoped_roots: Vec<Vec<ObjectId>>,
     managed_bytes: usize,
     next_major_bytes: usize,
+    /// First refused request in a test allocation sweep, after normal GC.
+    #[cfg(any(test, coverage))]
+    first_failed_allocation: Option<usize>,
     minor_collections: u64,
     major_collections: u64,
     root_registrations: u64,

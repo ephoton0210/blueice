@@ -22,8 +22,126 @@ fn assert_script_syntax_error(source: &str) {
 }
 
 #[test]
+fn module_validation_rejects_invalid_super_private_names_and_duplicate_names() {
+    for source in [
+        "super.value;",
+        "class C { method() { return this.#missing; } }",
+        "export { first as duplicate }; export { second as duplicate };",
+        "class C {} class C {}",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
+fn module_declarations_reject_nonbindings_and_ill_formed_export_names() {
+    for source in [
+        "import { value as 0 } from './m.js';",
+        "import name from 0;",
+        "import '\\uD800';",
+        "import name\n\\u0066rom './m.js';",
+        "export { name as '\\uD800' }; var name;",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
+fn module_specifiers_and_export_names_reject_legacy_octal_escapes() {
+    for source in [
+        "import '\\1';",
+        "import value from '\\8';",
+        "export { value as '\\1' }; const value = 1;",
+        "export * as '\\8' from './dependency.js';",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
+fn an_incomplete_import_reports_a_syntax_error_at_eof() {
+    assert_module_syntax_error("import");
+}
+
+#[test]
+fn incomplete_import_export_and_attribute_clauses_are_known_syntax_errors() {
+    for source in [
+        "import name from;",
+        "import { value as } from './m.js';",
+        "import { value from './m.js';",
+        "import * as from './m.js';",
+        "import name from './m.js' with { type: 1 };",
+        "import name from './m.js' with { type };",
+        "import name from './m.js' with { type: 'json', other: };",
+        "import source name from;",
+        "export * from;",
+        "export * as from './m.js';",
+        "export { value as } from './m.js';",
+        "export { value from './m.js';",
+        "export { value } from;",
+        "export default async function;",
+        "export const value = ;",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
+fn malformed_module_clause_tails_and_declarations_are_known_syntax_errors() {
+    for source in [
+        "import './m.js' with;",
+        "import './m.js' with { 1: 'x' };",
+        "import './m.js' with { type 'json' };",
+        "import './m.js' with { type: 'json' other: 'x' };",
+        "import './m.js' extra;",
+        "import source name from './m.js' with;",
+        "import source name from './m.js' extra;",
+        "import * as ns from './m.js' with;",
+        "import { value } from './m.js' with;",
+        "export * from './m.js' with;",
+        "export default 1 extra;",
+        "export { value } from './m.js' with;",
+        "export { value } from './m.js' extra;",
+        "export var value = ;",
+        "export let value = ;",
+        "export const value = ;",
+        "export function value( {}",
+        "export function () {}",
+        "export class {}",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
+fn import_and_export_dispatch_rejects_invalid_nested_declarations() {
+    for source in [
+        "import source 0 from './m.js';",
+        "import source name from;",
+        "import a, bad from './m.js';",
+        "import a, { value from './m.js';",
+        "import * as ns from './m.js' extra;",
+        "import './m.js' with { type: '\\1' };",
+        "export { value as other from './m.js';",
+        "export default async function* () {",
+        "export default @decorator class C {",
+        "export default @;",
+        "export default function (",
+        "export default ;",
+        "export var value = 1 extra;",
+        "@decorator export d\\u0065fault class C {}",
+        "@first export default @second class C {}",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
 fn contextual_keywords_in_import_and_export_declarations_reject_escapes() {
     for source in [
+        "\\u0069mport {a} from './m.js';",
+        "\\u0065xport {a}; var a;",
+        "import source name \\u0066rom './m.js';",
         "import {a \\u0061s b} from './m.js';",
         "import * \\u0061s ns from './m.js';",
         "import {} \\u0066rom './m.js';",

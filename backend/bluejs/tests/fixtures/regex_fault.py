@@ -19,8 +19,17 @@ def send(data):
 
 if mode == "early_exit":
     sys.exit(0)
+if mode == "closed_before_ready":
+    os.close(0)
+    send(b"bluejs-regexp-worker/1")
+    sys.exit(0)
 send(b"bad" if mode == "bad_ready" else b"bluejs-regexp-worker/1")
 if mode == "after_ready_exit":
+    sys.exit(0)
+if mode == "close_after_header":
+    if len(sys.stdin.buffer.read(4)) != 4:
+        sys.exit(1)
+    os.close(0)
     sys.exit(0)
 while True:
     length = sys.stdin.buffer.read(4)
@@ -29,6 +38,10 @@ while True:
     request = json.loads(sys.stdin.buffer.read(struct.unpack("<I", length)[0]))
     if mode == "malformed":
         send(b"{}")
+    elif mode == "truncated_reply":
+        sys.stdout.buffer.write(struct.pack("<I", 4) + b"x")
+        sys.stdout.buffer.flush()
+        sys.exit(0)
     elif mode == "oversized":
         sys.stdout.buffer.write(struct.pack("<I", 16 * 1024 * 1024 + 1))
         sys.stdout.buffer.flush()

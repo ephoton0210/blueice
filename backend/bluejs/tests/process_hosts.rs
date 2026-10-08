@@ -268,6 +268,51 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
 }
 
 #[test]
+fn adapter_exercises_temporal_and_module_error_paths_in_the_real_process() {
+    let cases = [
+        ("Temporal.PlainDate.from('\\ud800')", "sloppy", "RangeError"),
+        (
+            "Temporal.PlainDateTime.from('\\ud800')",
+            "sloppy",
+            "RangeError",
+        ),
+        (
+            "Temporal.Now.plainDateISO('Not/A_Zone')",
+            "sloppy",
+            "RangeError",
+        ),
+        (
+            "new Temporal.Instant(0n).toZonedDateTimeISO('Not/A_Zone')",
+            "sloppy",
+            "RangeError",
+        ),
+        (
+            "Temporal.PlainDate.from('2000-01-01').toZonedDateTime('Not/A_Zone')",
+            "sloppy",
+            "RangeError",
+        ),
+        ("import * as 0 from './m.js';", "module", "SyntaxError"),
+        ("export default function (", "module", "SyntaxError"),
+        ("export default ;", "module", "SyntaxError"),
+        ("export var value = 1 extra;", "module", "SyntaxError"),
+        (
+            "@decorator export d\\u0065fault class C {}",
+            "module",
+            "SyntaxError",
+        ),
+    ];
+    let requests: Vec<_> = cases
+        .iter()
+        .map(|(source, mode, _)| json!({"source":source,"mode":mode}))
+        .collect();
+    let replies = adapter(&requests, None);
+    assert_eq!(replies.len(), cases.len());
+    for (reply, (source, mode, kind)) in replies.iter().zip(cases) {
+        assert_eq!(reply["kind"], kind, "{mode}: {source}: {reply}");
+    }
+}
+
+#[test]
 fn adapter_reports_invalid_requested_modules_at_resolution() {
     for invalid_source in ["0++;", "break;"] {
         let replies = adapter(
@@ -399,7 +444,9 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
         "early_exit",
         "bad_ready",
         "after_ready_exit",
+        "closed_before_ready",
         "malformed",
+        "truncated_reply",
         "oversized",
         "invalid_range",
         "compile_reply",
@@ -411,6 +458,14 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
         );
         assert_eq!(replies[0]["kind"], "worker_error", "{mode}: {replies:?}");
     }
+    let long_pattern = adapter(
+        &[json!({
+            "source": "new RegExp('a'.repeat(100000)).test('a')",
+            "mode": "sloppy"
+        })],
+        Some(("close_after_header", &script)),
+    );
+    assert_eq!(long_pattern[0]["kind"], "worker_error", "{long_pattern:?}");
     let missing = directory.join("missing");
     for source in ["/a/", "new RegExp('a')"] {
         let replies = adapter(
@@ -420,6 +475,54 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
         assert_eq!(replies[0]["kind"], "worker_error");
     }
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn regex_helper_reports_closed_output_during_frame_header_and_body() {
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+
+    let (read, write) = UnixStream::pair().unwrap();
+    drop(read);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(OwnedFd::from(write)))
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(!child.wait().unwrap().success());
+
+    let (mut output, write) = UnixStream::pair().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(OwnedFd::from(write)))
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut length = [0; 4];
+    output.read_exact(&mut length).unwrap();
+    let mut ready = vec![0; u32::from_le_bytes(length) as usize];
+    output.read_exact(&mut ready).unwrap();
+    assert_eq!(ready, b"bluejs-regexp-worker/1");
+
+    let patterns = vec![(vec![97u16], String::new()); 100_000];
+    let request = serde_json::to_vec(&json!({
+        "operation": "validate",
+        "patterns": patterns,
+    }))
+    .unwrap();
+    input
+        .write_all(&(request.len() as u32).to_le_bytes())
+        .unwrap();
+    input.write_all(&request).unwrap();
+    input.flush().unwrap();
+    output.read_exact(&mut length).unwrap();
+    assert!(u32::from_le_bytes(length) > 100_000);
+    drop(output);
+    drop(input);
+    assert!(!child.wait().unwrap().success());
 }
 
 #[test]
@@ -456,6 +559,60 @@ fn helper_rejects_oversized_frames_and_handles_out_of_range_starts() {
         .unwrap();
     drop(input);
     assert!(!child.wait().unwrap().success());
+}
+
+#[test]
+fn helper_process_reuses_cached_requests_and_exits_after_shutdown() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = child.stdout.take().unwrap();
+    let mut read_frame = || {
+        let mut size = [0; 4];
+        output.read_exact(&mut size).unwrap();
+        let mut bytes = vec![0; u32::from_le_bytes(size) as usize];
+        output.read_exact(&mut bytes).unwrap();
+        bytes
+    };
+    assert_eq!(read_frame(), b"bluejs-regexp-worker/1");
+    let mut request = |value: Value| {
+        let bytes = serde_json::to_vec(&value).unwrap();
+        input
+            .write_all(&(bytes.len() as u32).to_le_bytes())
+            .unwrap();
+        input.write_all(&bytes).unwrap();
+        input.flush().unwrap();
+        serde_json::from_slice::<Value>(&read_frame()).unwrap()
+    };
+    assert_eq!(
+        request(json!({"operation":"compile","source":[97],"flags":""})),
+        json!("Compiled")
+    );
+    let first = request(json!({
+        "operation":"find","source":null,"flags":null,"input":[97,98,97],"start":0
+    }));
+    assert_eq!(first["Found"]["captures"][0], json!({"start":0,"end":1}));
+    let reused = request(json!({
+        "operation":"find","source":null,"flags":null,"input":null,"start":2
+    }));
+    assert_eq!(reused["Found"]["captures"][0], json!({"start":2,"end":3}));
+    assert_eq!(
+        request(json!({
+            "operation":"validate","patterns":[[[97],""],[[40],""]]
+        })),
+        json!({"Validated":[true,false]})
+    );
+    let bytes = serde_json::to_vec(&json!({"operation":"shutdown"})).unwrap();
+    input
+        .write_all(&(bytes.len() as u32).to_le_bytes())
+        .unwrap();
+    input.write_all(&bytes).unwrap();
+    drop(input);
+    assert!(child.wait().unwrap().success());
 }
 
 #[test]

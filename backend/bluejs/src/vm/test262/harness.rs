@@ -21,8 +21,10 @@ impl Vm {
         let base = self.stack.len();
         let result = (|| {
             let host = self.test262_host()?;
-            let string = self.string_intrinsics()?.0;
-            let function_prototype = self.heap.prototype(string)?.unwrap();
+            // Creating the host already made the String intrinsics.
+            let function_prototype = self
+                .function_prototype()
+                .expect("the String intrinsics exist by now");
             let value = self.with_roots(|heap| {
                 heap.alloc_html_dda_object(NativeFunction::Test262("IsHTMLDDA"), function_prototype)
             })?;
@@ -38,7 +40,11 @@ impl Vm {
 
     fn test262_host(&mut self) -> Result<ObjectId, RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
-        if let Some(Value::Object(host)) = self.heap.get_own(global, "$262")? {
+        if let Some(Value::Object(host)) = self
+            .heap
+            .get_own(global, "$262")
+            .expect("the global object is live")
+        {
             return Ok(host);
         }
         let prototype = self.object_prototype;
@@ -75,8 +81,11 @@ impl Vm {
             self.global(name)?;
         }
         self.json_global()?;
-        let string = self.string_intrinsics()?.0;
-        let prototype = self.heap.prototype(string)?.unwrap();
+        // The error and global functions installed above create the String
+        // intrinsics, so this only reads them.
+        let prototype = self
+            .function_prototype()
+            .expect("the String intrinsics exist by now");
         let host = self.test262_host()?;
         self.install_native(
             host,
@@ -131,7 +140,12 @@ impl Vm {
             2,
             NativeFunction::Test262("setTimeout"),
         )?;
-        let assert = self.heap.get(global, "assert")?.object_id().unwrap();
+        let assert = self
+            .heap
+            .get(global, "assert")
+            .expect("the global object is live")
+            .object_id()
+            .unwrap();
         for (name, length) in [
             ("sameValue", 3),
             ("notSameValue", 3),
@@ -211,10 +225,18 @@ impl Vm {
             ("_formatIdentityFreeValue", "formatIdentityFreeValue"),
             ("_toString", "formatSimpleValue"),
         ] {
-            let value = self.heap.get(global, global_name)?;
+            let value = self
+                .heap
+                .get(global, global_name)
+                .expect("the global object is live");
             self.define_data(assert, property, value, true, true, true)?;
         }
-        let compare = self.heap.get(global, "compareArray")?.object_id().unwrap();
+        let compare = self
+            .heap
+            .get(global, "compareArray")
+            .expect("the global object is live")
+            .object_id()
+            .unwrap();
         self.install_native(
             compare,
             prototype,
@@ -243,15 +265,8 @@ impl Vm {
             NativeFunction::Test262("$DONOTEVALUATE"),
         )?;
         self.install_abstract_module_source(host, prototype)?;
+        // `error_global` also defines the constructor on the global object.
         let error = self.error_global("Test262Error")?.object_id().unwrap();
-        self.define_data(
-            global,
-            "Test262Error",
-            Value::Object(error),
-            true,
-            false,
-            true,
-        )?;
         self.install_native(
             error,
             prototype,

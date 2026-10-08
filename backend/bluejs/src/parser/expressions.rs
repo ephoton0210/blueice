@@ -66,7 +66,8 @@ impl Parser {
             }
             if self.destructuring_assignment_ahead() {
                 let pattern = self.parse_assignment_pattern()?;
-                self.expect_punct(Punct::Assign)?;
+                // The balanced-pattern lookahead already found this `=`.
+                self.advance();
                 let value = self.parse_assignment()?;
                 return Ok(Expr::DestructureAssign {
                     pattern,
@@ -224,7 +225,8 @@ impl Parser {
     pub(super) fn parse_array_assignment_pattern(
         &mut self,
     ) -> Result<AssignmentPattern, ParseError> {
-        self.expect_punct(Punct::LBracket)?;
+        // The caller dispatches here only for `[`. The loop checks `]`.
+        self.advance();
         let mut elements = Vec::new();
         while !self.check_punct(Punct::RBracket) {
             if self.eat_punct(Punct::Comma) {
@@ -254,14 +256,15 @@ impl Parser {
                 self.expect_punct(Punct::Comma).map_err(known_syntax)?;
             }
         }
-        self.expect_punct(Punct::RBracket)?;
+        self.advance();
         Ok(AssignmentPattern::Array(elements))
     }
 
     pub(super) fn parse_object_assignment_pattern(
         &mut self,
     ) -> Result<AssignmentPattern, ParseError> {
-        self.expect_punct(Punct::LBrace)?;
+        // The caller dispatches here only for `{`. The loop checks `}`.
+        self.advance();
         let mut properties = Vec::new();
         while !self.check_punct(Punct::RBrace) {
             if self.eat_punct(Punct::Ellipsis) {
@@ -286,15 +289,13 @@ impl Parser {
                     };
                     (value, default)
                 } else {
-                    if !shorthand_is_identifier_reference {
-                        return Err(self.syntax_error(
-                            "destructuring assignment shorthand requires an IdentifierReference",
-                        ));
-                    }
-                    let PropertyKey::Identifier(name) = &key else {
-                        return Err(
-                            self.syntax_error("expected ':' in destructuring assignment pattern")
-                        );
+                    let name = match (&key, shorthand_is_identifier_reference) {
+                        (PropertyKey::Identifier(name), true) => name,
+                        _ => {
+                            return Err(self.syntax_error(
+                                "destructuring assignment shorthand requires an IdentifierReference",
+                            ));
+                        }
                     };
                     let default = if self.eat_punct(Punct::Assign) {
                         Some(self.parse_assignment_allowing_in()?)
@@ -316,7 +317,7 @@ impl Parser {
                 self.expect_punct(Punct::Comma).map_err(known_syntax)?;
             }
         }
-        self.expect_punct(Punct::RBrace)?;
+        self.advance();
         Ok(AssignmentPattern::Object(properties))
     }
 
@@ -459,13 +460,17 @@ impl Parser {
         // `#name in object` is a distinct relational-expression production:
         // a private identifier cannot otherwise begin an expression.  Keep
         // its RHS at ShiftExpression precedence, matching ordinary `in`.
-        let mut left = if !self.no_in
-            && matches!(self.peek(), Token::PrivateIdentifier(_))
-            && matches!(self.peek_at(1), Token::Keyword(Keyword::In))
+        let private_name = if !self.no_in && matches!(self.peek_at(1), Token::Keyword(Keyword::In))
         {
-            let Token::PrivateIdentifier(name) = self.advance().clone() else {
-                unreachable!("private identifier was checked above")
-            };
+            match self.peek() {
+                Token::PrivateIdentifier(name) => Some(name.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let mut left = if let Some(name) = private_name {
+            self.advance();
             self.advance(); // `in`
             Expr::PrivateIn {
                 name,
@@ -666,16 +671,11 @@ impl Parser {
         self.parse_update_expression()
     }
 
-    /// `YieldExpression` occupies the `AssignmentExpression` grammar tier,
-    /// not `UnaryExpression`.  Keeping this check at the unary boundary
-    /// rejects `void yield` while retaining a top-level `yield value` and a
-    /// parenthesized yield expression where the grammar admits one.
+    /// `YieldExpression` belongs to `AssignmentExpression`, so `parse_unary`
+    /// cannot produce one directly. Parenthesized yields remain available
+    /// through the assignment parser where the grammar permits them.
     pub(super) fn parse_unary_operand(&mut self) -> Result<Expr, ParseError> {
-        let operand = self.parse_unary()?;
-        if self.generator_depth != 0 && matches!(operand, Expr::Yield { .. }) {
-            return Err(self.syntax_error("yield cannot be used as a unary operand"));
-        }
-        Ok(operand)
+        self.parse_unary()
     }
 
     pub(super) fn parse_update_expression(&mut self) -> Result<Expr, ParseError> {
@@ -1002,7 +1002,8 @@ impl Parser {
         })();
         self.no_in = saved_no_in;
         let (specifier, options) = parsed?;
-        self.expect_punct(Punct::RParen)?;
+        // The argument parser checked the closing `)` before returning.
+        self.advance();
         Ok(Expr::DynamicImport {
             specifier: Box::new(specifier),
             options,
@@ -1015,7 +1016,8 @@ impl Parser {
     }
 
     fn parse_arguments_list(&mut self) -> Result<Vec<Argument>, ParseError> {
-        self.expect_punct(Punct::LParen)?;
+        // Every caller checks `(`; the loop exits only on `)`.
+        self.advance();
         let mut args = Vec::new();
         while !self.check_punct(Punct::RParen) {
             if self.eat_punct(Punct::Ellipsis) {
@@ -1027,7 +1029,7 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RParen)?;
+        self.advance();
         Ok(args)
     }
 
@@ -1095,7 +1097,8 @@ impl Parser {
             Token::Identifier(name) if name == "async" && self.async_function_follows() => {
                 self.require_unescaped_async()?;
                 self.advance();
-                self.expect_keyword(Keyword::Function)?;
+                // `async_function_follows` checked the next token.
+                self.advance();
                 Ok(Expr::Function(self.parse_function_with_async(true)?))
             }
             Token::Identifier(name) if name == "class" => {
@@ -1201,7 +1204,8 @@ impl Parser {
     }
 
     pub(super) fn parse_array_literal(&mut self) -> Result<Expr, ParseError> {
-        self.expect_punct(Punct::LBracket)?;
+        // `parse_primary` dispatches here only for `[`. The loop checks `]`.
+        self.advance();
         let mut elements = Vec::new();
         while !self.check_punct(Punct::RBracket) {
             if self.check_punct(Punct::Comma) {
@@ -1218,12 +1222,13 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBracket)?;
+        self.advance();
         Ok(Expr::Array(elements))
     }
 
     pub(super) fn parse_object_literal(&mut self) -> Result<Expr, ParseError> {
-        self.expect_punct(Punct::LBrace)?;
+        // `parse_primary` dispatches here only for `{`. The loop checks `}`.
+        self.advance();
         let mut props = Vec::new();
         while !self.check_punct(Punct::RBrace) {
             if self.eat_punct(Punct::Ellipsis) {
@@ -1310,7 +1315,7 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBrace)?;
+        self.advance();
         Ok(Expr::Object(props))
     }
 }

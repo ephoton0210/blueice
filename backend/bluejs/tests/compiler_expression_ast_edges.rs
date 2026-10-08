@@ -18,6 +18,33 @@ fn expression_program(expr: Expr) -> Program {
     }
 }
 
+#[test]
+fn malformed_internal_class_fields_return_compile_errors() {
+    let field = |target| {
+        Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
+            op: AssignOp::Assign,
+            target: Box::new(target),
+            value: Box::new(Expr::Number(1.0)),
+        })))
+    };
+    for statement in [
+        Stmt::ClassField(Box::new(Stmt::Empty)),
+        field(Expr::Identifier("value".into())),
+        field(Expr::Member {
+            object: Box::new(Expr::Identifier("other".into())),
+            property: Box::new(Expr::Identifier("value".into())),
+            computed: false,
+        }),
+    ] {
+        assert!(matches!(
+            compile(&Program {
+                body: vec![statement],
+            }),
+            Err(CompileError::InvalidSyntax("invalid class field AST"))
+        ));
+    }
+}
+
 fn total_compiled_bytes(code: &Bytecode) -> usize {
     code.bytes().len()
         + code
@@ -132,6 +159,32 @@ fn malformed_ordinary_and_unbound_private_members_fail_during_compilation() {
             Err(CompileError::InvalidSyntax(message)) if message == expected
         ));
     }
+}
+
+#[test]
+fn externally_built_classes_reject_duplicate_private_fields() {
+    let field = ClassElement::Field {
+        key: PropertyKey::Identifier("#value".into()),
+        initializer: None,
+        is_static: false,
+        accessor: false,
+        decorators: Vec::new(),
+    };
+    let class = Class {
+        name: Some("C".into()),
+        extends: None,
+        elements: vec![field.clone(), field],
+        decorators: Vec::new(),
+        source_text: SourceText::default(),
+    };
+    assert!(matches!(
+        compile(&Program {
+            body: vec![Stmt::ClassDecl(class)],
+        }),
+        Err(CompileError::InvalidSyntax(
+            "duplicate private name in class body"
+        ))
+    ));
 }
 
 #[test]

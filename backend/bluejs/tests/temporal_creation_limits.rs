@@ -255,6 +255,26 @@ fn to_string_rounding_must_stay_within_the_representable_range() {
     );
 }
 
+#[test]
+fn date_string_methods_reject_foreign_receivers_and_round_non_iso_dates() {
+    for source in [
+        "Temporal.PlainDate.prototype.toString.call({})",
+        "Temporal.PlainDateTime.prototype.toString.call({})",
+        "Temporal.PlainDate.prototype.toLocaleString.call({})",
+        "Temporal.PlainDateTime.prototype.toLocaleString.call({})",
+    ] {
+        assert!(
+            matches!(evaluate_err(source), RuntimeError::TypeError(_)),
+            "{source}"
+        );
+    }
+    assert_string(
+        r#"new Temporal.PlainDateTime(2000, 1, 1, 23, 59, 59, 999, 0, 0, "gregory")
+            .toString({ smallestUnit: "second", roundingMode: "halfExpand" })"#,
+        "2000-01-02T00:00:00[u-ca=gregory]",
+    );
+}
+
 /// `PlainYearMonth/prototype/toPlainDate/limits.js`: the constructed date must
 /// be within `PlainDate`'s range even though the year-month is not.
 #[test]
@@ -285,6 +305,30 @@ fn arithmetic_at_the_edges_is_a_range_error() {
         "new Temporal.PlainDateTime(-271821, 4, 19, 0, 0, 0, 0, 0, 2).subtract({ nanoseconds: 1 }).toString()",
         "-271821-04-19T00:00:00.000000001",
     );
+}
+
+/// Non-ISO date addition must reject a landing year outside ICU's field or
+/// date-construction range, including both month-carry directions.
+#[test]
+fn non_iso_date_addition_rejects_unrepresentable_calendar_years() {
+    let start =
+        "Temporal.PlainDate.from({ year: 1970, monthCode: 'M03', day: 1, calendar: 'indian' })";
+    assert_range_error(&format!("{start}.add({{ years: 2147483648 }})"));
+    assert_range_error(&format!(
+        "{start}.add({{ years: -2147490000, months: -3 }})"
+    ));
+    assert_range_error(&format!(
+        "{start}.add({{ years: -2147490000, months: -1 }})"
+    ));
+    assert_range_error(&format!("{start}.add({{ years: 1000000000 }})"));
+    assert_range_error(&format!(
+        "{start}.add({{ years: -1000000000, months: -1 }})"
+    ));
+    // The year still fits in i32 after crossing the month boundary, but ICU
+    // cannot construct that calendar year's first month.
+    assert_range_error(&format!(
+        "const start = {start}; start.add({{ years: 2147483648 - start.year, months: -3 }})"
+    ));
 }
 
 /// The year-month range (`ISOYearMonthWithinLimits`) is checked at creation

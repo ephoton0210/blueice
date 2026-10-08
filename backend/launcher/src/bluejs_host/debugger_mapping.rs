@@ -339,3 +339,304 @@ pub(super) fn debugger_contract_value(value: CompilerContractValue) -> Result<Co
     let mut nodes = 0;
     convert(value, debugger_contract_validation_limits(), 0, &mut nodes)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn plan(root: Contract, definitions: BTreeMap<String, Contract>) -> ContractPlan {
+        ContractPlan {
+            id: "test-plan".to_string(),
+            root,
+            definitions,
+            fingerprint: "test-fingerprint".to_string(),
+        }
+    }
+
+    #[test]
+    fn bluets_bridge_category_maps_every_variant() {
+        assert_eq!(
+            bluets_bridge_category(BridgeError::BlueTs(Vec::new())),
+            "BlueTS compilation rejected the page script"
+        );
+        assert_eq!(
+            bluets_bridge_category(BridgeError::PageRuntime(
+                BlueJsPageRuntimeError::InvalidConfiguration
+            )),
+            page_runtime_category(BlueJsPageRuntimeError::InvalidConfiguration)
+        );
+        assert_eq!(
+            bluets_bridge_category(BridgeError::BlueJs(CompileError::ProgramTooLarge)),
+            "BlueJS compilation rejected the direct BlueTS page script"
+        );
+        assert_eq!(
+            bluets_bridge_category(BridgeError::BlueJsDebug(
+                blueice_bluejs::BlueJsProgramDebugError::GenerationExhausted
+            )),
+            "BlueJS compilation rejected the direct BlueTS page script"
+        );
+        assert_eq!(
+            bluets_bridge_category(BridgeError::UnsupportedRuntimeTarget {
+                span: blueice_bluets::SourceSpan {
+                    module: "m".to_string(),
+                    start: 0,
+                    end: 1,
+                },
+                message: "unsupported".to_string(),
+            }),
+            "BlueTS direct lowering rejected the page script"
+        );
+        assert_eq!(
+            bluets_bridge_category(BridgeError::InvalidSourceIdentity("bad".to_string())),
+            "BlueTS direct lowering rejected the page script"
+        );
+        assert_eq!(
+            bluets_bridge_category(BridgeError::ProvenanceAttachment("bad".to_string())),
+            "BlueTS direct lowering rejected the page script"
+        );
+        assert_eq!(
+            bluets_bridge_category(BridgeError::DebugAttachment(
+                blueice_bluets_bluejs::DirectDebugAttachmentError::LanguageVersionMismatch
+            )),
+            "BlueTS direct lowering rejected the page script"
+        );
+    }
+
+    #[test]
+    fn page_runtime_category_maps_every_group() {
+        assert_eq!(
+            page_runtime_category(BlueJsPageRuntimeError::BytecodeLimit {
+                tab_id: 1,
+                limit: 1
+            }),
+            "JavaScript page resource policy rejected the page script"
+        );
+        assert_eq!(
+            page_runtime_category(BlueJsPageRuntimeError::ProgramLimit {
+                tab_id: 1,
+                limit: 1
+            }),
+            "JavaScript page resource policy rejected the page script"
+        );
+        assert_eq!(
+            page_runtime_category(BlueJsPageRuntimeError::RealmLimit { limit: 1 }),
+            "JavaScript page resource policy rejected the page script"
+        );
+        assert_eq!(
+            page_runtime_category(BlueJsPageRuntimeError::Runtime(
+                RuntimeError::ModuleResolution("missing".to_string())
+            )),
+            "authorized JavaScript graph rejected the page script"
+        );
+        assert_eq!(
+            page_runtime_category(BlueJsPageRuntimeError::Runtime(
+                RuntimeError::InstructionLimit
+            )),
+            "BlueJS page execution failed"
+        );
+        assert_eq!(
+            page_runtime_category(BlueJsPageRuntimeError::InvalidConfiguration),
+            "BlueJS page host rejected the page script"
+        );
+    }
+
+    #[test]
+    fn value_preview_maps_every_shape_without_recursing_incorrectly() {
+        assert_eq!(
+            page_host_debugger_value_preview(VmDebuggerValuePreview::Undefined),
+            PageHostDebuggerValuePreview::Undefined
+        );
+        assert_eq!(
+            page_host_debugger_value_preview(VmDebuggerValuePreview::Null),
+            PageHostDebuggerValuePreview::Null
+        );
+        assert_eq!(
+            page_host_debugger_value_preview(VmDebuggerValuePreview::Bool(true)),
+            PageHostDebuggerValuePreview::Bool(true)
+        );
+        assert_eq!(
+            page_host_debugger_value_preview(VmDebuggerValuePreview::NumberBits(7)),
+            PageHostDebuggerValuePreview::NumberBits(7)
+        );
+        assert_eq!(
+            page_host_debugger_value_preview(VmDebuggerValuePreview::BigIntBytes(vec![1, 2])),
+            PageHostDebuggerValuePreview::BigIntBytes(vec![1, 2])
+        );
+        assert_eq!(
+            page_host_debugger_value_preview(VmDebuggerValuePreview::StringUnits(vec![
+                b'h' as u16
+            ])),
+            PageHostDebuggerValuePreview::StringUnits(vec![b'h' as u16])
+        );
+        assert_eq!(
+            page_host_debugger_value_preview(VmDebuggerValuePreview::Array(vec![
+                None,
+                Some(VmDebuggerValuePreview::Bool(false)),
+            ])),
+            PageHostDebuggerValuePreview::Array(vec![
+                None,
+                Some(PageHostDebuggerValuePreview::Bool(false)),
+            ])
+        );
+        assert_eq!(
+            page_host_debugger_value_preview(VmDebuggerValuePreview::Record(vec![(
+                blueice_bluejs::JsString::from("key"),
+                VmDebuggerValuePreview::Null,
+            )])),
+            PageHostDebuggerValuePreview::Record(vec![(
+                blueice_bluejs::JsString::from("key").as_code_units().to_vec(),
+                PageHostDebuggerValuePreview::Null,
+            )])
+        );
+    }
+
+    #[test]
+    fn contract_root_kind_maps_every_leaf_shape() {
+        assert_eq!(
+            debugger_contract_root_kind(&plan(Contract::Null, BTreeMap::new())),
+            DebuggerStaticMetadataContractRootKind::Null
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(Contract::Undefined, BTreeMap::new())),
+            DebuggerStaticMetadataContractRootKind::Undefined
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(Contract::Boolean, BTreeMap::new())),
+            DebuggerStaticMetadataContractRootKind::Boolean
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(Contract::Number, BTreeMap::new())),
+            DebuggerStaticMetadataContractRootKind::Number
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(Contract::String, BTreeMap::new())),
+            DebuggerStaticMetadataContractRootKind::String
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(
+                Contract::Literal("x".to_string()),
+                BTreeMap::new()
+            )),
+            DebuggerStaticMetadataContractRootKind::Literal
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(
+                Contract::Array(Box::new(Contract::Number)),
+                BTreeMap::new()
+            )),
+            DebuggerStaticMetadataContractRootKind::Array
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(Contract::Tuple(Vec::new()), BTreeMap::new())),
+            DebuggerStaticMetadataContractRootKind::Tuple
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(Contract::Union(Vec::new()), BTreeMap::new())),
+            DebuggerStaticMetadataContractRootKind::Union
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(
+                Contract::Intersection(Vec::new()),
+                BTreeMap::new()
+            )),
+            DebuggerStaticMetadataContractRootKind::Intersection
+        );
+    }
+
+    #[test]
+    fn contract_root_kind_resolves_a_reference_and_rejects_a_missing_one() {
+        let mut definitions = BTreeMap::new();
+        definitions.insert("Alias".to_string(), Contract::Boolean);
+        assert_eq!(
+            debugger_contract_root_kind(&plan(
+                Contract::Reference("Alias".to_string()),
+                definitions
+            )),
+            DebuggerStaticMetadataContractRootKind::Boolean
+        );
+        assert_eq!(
+            debugger_contract_root_kind(&plan(
+                Contract::Reference("Missing".to_string()),
+                BTreeMap::new()
+            )),
+            DebuggerStaticMetadataContractRootKind::Reference
+        );
+    }
+
+    #[test]
+    fn contract_value_converts_every_leaf_shape_and_rejects_non_finite_numbers() {
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::Null),
+            Ok(ContractValue::Null)
+        );
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::Undefined),
+            Ok(ContractValue::Undefined)
+        );
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::Number("1.5".to_string())),
+            Ok(ContractValue::Number(1.5))
+        );
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::Number("NaN".to_string())),
+            Err(())
+        );
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::Number("not-a-number".to_string())),
+            Err(())
+        );
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::String("ok".to_string())),
+            Ok(ContractValue::String("ok".to_string()))
+        );
+    }
+
+    #[test]
+    fn contract_value_rejects_an_array_over_the_collection_limit() {
+        let oversized = vec![
+            CompilerContractValue::Null;
+            DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_COLLECTION_ENTRIES + 1
+        ];
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::Array(oversized)),
+            Err(())
+        );
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::Array(vec![
+                CompilerContractValue::Boolean(true)
+            ])),
+            Ok(ContractValue::Array(vec![ContractValue::Boolean(true)]))
+        );
+    }
+
+    #[test]
+    fn contract_value_rejects_an_object_over_the_collection_or_key_limit() {
+        let mut too_many = BTreeMap::new();
+        for index in 0..DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_COLLECTION_ENTRIES + 1 {
+            too_many.insert(format!("k{index}"), CompilerContractValue::Null);
+        }
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::Object(too_many)),
+            Err(())
+        );
+        let mut oversized_key = BTreeMap::new();
+        oversized_key.insert(
+            "k".repeat(DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_STRING_BYTES + 1),
+            CompilerContractValue::Null,
+        );
+        assert_eq!(
+            debugger_contract_value(CompilerContractValue::Object(oversized_key)),
+            Err(())
+        );
+    }
+
+    #[test]
+    fn contract_value_rejects_a_value_deeper_than_the_depth_limit() {
+        let mut value = CompilerContractValue::Null;
+        for _ in 0..=DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_DEPTH + 1 {
+            value = CompilerContractValue::Array(vec![value]);
+        }
+        assert_eq!(debugger_contract_value(value), Err(()));
+    }
+}

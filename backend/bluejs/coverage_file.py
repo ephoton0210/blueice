@@ -6,7 +6,8 @@
 
 The test suite is deliberately never filtered by source path: any integration
 test may exercise the requested file. Each invocation clears the previous LLVM
-execution profiles while reusing Cargo's instrumented build artifacts.
+execution profiles while reusing Cargo's instrumented build artifacts. On
+Linux, disposable DWARF sections are stripped from reusable test executables.
 """
 
 from __future__ import annotations
@@ -16,9 +17,13 @@ import json
 import os
 import platform
 import re
+import shutil
+import signal
+import stat
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import date
 from pathlib import Path
 
@@ -34,6 +39,11 @@ LINUX_REPORT = (
     / "development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md"
 )
 METRICS = ("lines", "functions", "regions")
+TEST_GROWTH_LIMIT = 32 * 1024**3
+TEST_TARGET_LIMIT = 128 * 1024**3
+HOST_GROWTH_LIMIT = 32 * 1024**3
+HOST_FREE_FLOOR = 20 * 1024**3
+TEST_RECLAIM_THRESHOLD = 4 * 1024**3
 
 # Files without executable coverage targets are audited here. An unexpected
 # uninstrumented source file is an error rather than a silently omitted row.
@@ -47,6 +57,7 @@ NO_COUNTER_REASONS = {
     "parser/tests.rs": "Test source; not a coverage target",
     "vm/builtins/execution.rs": "Declarations/re-exports only; no executable code",
     "vm/builtins/native_dispatch.rs": "Declarations/re-exports only; no executable code",
+    "vm/builtins/numbers/tests.rs": "Test source; not a coverage target",
     "vm/builtins/tests.rs": "Test source; not a coverage target",
     "vm/temporal/conversion.rs": "Declarations/re-exports only; no executable code",
     "vm/temporal/dates.rs": "Declarations/re-exports only; no executable code",
@@ -54,7 +65,6 @@ NO_COUNTER_REASONS = {
     "vm/temporal/plain_date.rs": "Declarations/re-exports only; no executable code",
     "vm/temporal/plain_date/tests.rs": "Test source; not a coverage target",
     "vm/temporal/zoned.rs": "Declarations/re-exports only; no executable code",
-    "vm/tests.rs": "Test source; not a coverage target",
 }
 
 
@@ -117,6 +127,55 @@ def checked_export(payload: dict) -> tuple[dict[Path, dict], dict]:
         if not 0 <= covered <= count:
             raise ValueError(f"invalid {metric} coverage totals")
     return files, totals
+
+
+def best_instantiation_gaps(payload: dict) -> dict[str, dict]:
+    """Explain LLVM's maximum-per-definition region summaries without unions.
+
+    LLVM merges a function's instantiations with separate maxima for covered
+    regions and region count. Covering complementary branches in different
+    closure types therefore does not complete the function's raw summary.
+    """
+    groups: dict[str, dict[tuple[int, ...], list[dict]]] = {}
+    for function in payload["data"][0]["functions"]:
+        for index, filename in enumerate(function["filenames"]):
+            path = Path(filename)
+            if not path.is_relative_to(SOURCE_ROOT):
+                continue
+            regions = [region for region in function["regions"]
+                       if region[5] == index and region[7] == 0]
+            if not regions:
+                continue
+            groups.setdefault(str(path.relative_to(SOURCE_ROOT)), {}).setdefault(
+                tuple(regions[0][:4]), []
+            ).append({"name": function["name"], "regions": regions,
+                      "covered": sum(region[4] > 0 for region in regions)})
+    report = {}
+    for item in payload["data"][0]["files"]:
+        path = Path(item["filename"])
+        if not path.is_relative_to(SOURCE_ROOT):
+            continue
+        relative = str(path.relative_to(SOURCE_ROOT))
+        definitions = groups.get(relative, {})
+        count = covered = 0
+        gaps = []
+        for definition, instances in sorted(definitions.items()):
+            best = max(instances, key=lambda row: (row["covered"], len(row["regions"])))
+            maximum = max(len(row["regions"]) for row in instances)
+            count += maximum
+            covered += best["covered"]
+            if best["covered"] != maximum:
+                gaps.append({"definition": list(definition), "total": maximum,
+                             "covered": best["covered"], "name": best["name"],
+                             "best_instance_region_count": len(best["regions"]),
+                             "missing": [{"location": region[:4]}
+                                         for region in best["regions"] if region[4] == 0]})
+        raw = item["summary"]["regions"]
+        if (count, covered) != (raw["count"], raw["covered"]):
+            raise ValueError(f"function instantiation maxima do not reconcile for {relative}")
+        report[relative] = {"computed": {"count": count, "covered": covered},
+                            "raw": raw, "functions": gaps}
+    return report
 
 
 def source_union_export(payload: dict, show_text: str) -> tuple[dict[Path, dict], dict]:
@@ -268,29 +327,48 @@ def provenance() -> str:
     )
 
 
-def report_section(files: dict[Path, dict], totals: dict, update_option: str) -> str:
+def report_section(
+    files: dict[Path, dict], totals: dict, update_option: str, include_test262: bool = False
+) -> str:
     sources = sorted(
         SOURCE_ROOT.rglob("*.rs"),
         key=lambda path: path.relative_to(SOURCE_ROOT).as_posix(),
     )
     unmeasured = len(sources) - len(files)
     rows = [markdown_row(path, files.get(path)) for path in sources]
+    complete_files = sum(is_complete(summary) for summary in files.values())
     raw_totals = totals.get("_raw", totals)
     total_cells = " | ".join(f"**{metric_cell(raw_totals[metric])}**" for metric in METRICS)
     total_complete = "☑" if is_complete(totals) else "☐"
     rows.append(
         f"| **Total ({len(files)} instrumented files)** | {total_cells} | {total_complete} |  |"
     )
+    test262_option = " --include-test262" if include_test262 else ""
+    interpreter = "python" if include_test262 else "python3"
+    reproduction = (
+        "With Python and PyYAML installed, reproduce it with "
+        if include_test262
+        else "Reproduce it with "
+    )
+    test262_scope = (
+        "then ran the full pinned Test262 inventory with the instrumented "
+        "adapter, "
+        if include_test262
+        else ""
+    )
+    excluded_scope = "" if include_test262 else "The full Test262 runner was not included. "
     measurement_note = (
         f"This is a separate BlueJS coverage measurement at {provenance()}. "
-        "It measures the Rust test suite independently of the Test262 "
-        "inventory and historical verification above. "
-        f"`python3 backend/bluejs/coverage_file.py {update_option}` "
-        "cleared prior LLVM execution profiles, reused instrumented Cargo "
+        "It is independent of the Test262 status and historical verification above. "
+        f"{reproduction}"
+        f"`{interpreter} backend/bluejs/coverage_file.py {update_option}{test262_option}`. "
+        "This measurement cleared prior LLVM execution profiles, reused instrumented Cargo "
         "build artifacts, ran the complete default BlueJS Rust test suite, "
-        "and exported fresh per-file JSON and source-line text. "
-        "The opt-in Node "
-        "oracle and external full Test262 runner were not included. "
+        f"{test262_scope}"
+        "exported fresh per-file JSON and source-line text, and released raw "
+        "profiles and incremental compilation caches afterward. On Linux, "
+        "test-binary DWARF was removed while retaining the coverage maps. "
+        f"{excluded_scope}The opt-in Node oracle was not included. "
         "Workspace coverage was not remeasured at this revision."
     )
     table_note = (
@@ -309,9 +387,10 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
         "in the main columns determine completion. Region coverage "
         "is separate from branch coverage. "
         "To rerun any one "
-        "file independently, use `python3 backend/bluejs/coverage_file.py ast.rs` "
-        "(replace `ast.rs` with its source path). Each invocation reruns the "
-        "entire test suite, since tests outside a file can still exercise it."
+        f"file independently, use `python backend/bluejs/coverage_file.py "
+        f"ast.rs{test262_option}` (replace `ast.rs` with its source path). "
+        "Each invocation reruns the entire measured suite, since tests "
+        "outside a file can still exercise it."
     )
     return "\n".join(
         [
@@ -326,12 +405,20 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
             "| --- | ---: | ---: | ---: | :---: | --- |",
             *rows,
             "",
+            f"Raw LLVM lines, functions, and regions are all complete in "
+            f"**{complete_files} of {len(files)}** instrumented files; "
+            f"**{len(files) - complete_files}** remain incomplete.",
+            "",
         ]
     )
 
 
 def update_report(
-    report: Path, files: dict[Path, dict], totals: dict, update_option: str
+    report: Path,
+    files: dict[Path, dict],
+    totals: dict,
+    update_option: str,
+    include_test262: bool = False,
 ) -> None:
     text = report.read_text()
     start = text.find("## Later BlueJS per-file coverage (")
@@ -352,7 +439,12 @@ def update_report(
         raise ValueError("cannot find the section after BlueJS per-file coverage")
     if start < 0:
         start = end
-    new_text = text[:start] + report_section(files, totals, update_option) + "\n" + text[end:]
+    new_text = (
+        text[:start]
+        + report_section(files, totals, update_option, include_test262)
+        + "\n"
+        + text[end:]
+    )
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=report.parent, delete=False
     ) as output:
@@ -362,56 +454,357 @@ def update_report(
     os.replace(temporary, report)
 
 
-def update_macos_report(files: dict[Path, dict], totals: dict) -> None:
+def update_macos_report(
+    files: dict[Path, dict], totals: dict, include_test262: bool = False
+) -> None:
     if platform.system() != "Darwin":
         raise ValueError("the macOS report can only be regenerated on macOS")
-    update_report(MACOS_REPORT, files, totals, "--update-macos-report")
+    update_report(MACOS_REPORT, files, totals, "--update-macos-report", include_test262)
 
 
-def update_linux_report(files: dict[Path, dict], totals: dict) -> None:
+def update_linux_report(
+    files: dict[Path, dict], totals: dict, include_test262: bool = False
+) -> None:
     if platform.system() != "Linux":
         raise ValueError("the Linux report can only be regenerated on Linux")
-    update_report(LINUX_REPORT, files, totals, "--update-linux-report")
+    update_report(LINUX_REPORT, files, totals, "--update-linux-report", include_test262)
 
 
-def run_coverage() -> tuple[dict[Path, dict], dict]:
+def prune_superseded_test_executables(target: Path) -> None:
+    """Release old integration-test binaries while retaining current builds.
+
+    Cargo's dep-info identifies the test source. Grouping by executable name
+    alone is unsafe: a normal binary and its test harness can share that name.
+    Missing old feature variants are rebuilt on demand.
+    """
+    for deps in (target / "debug/deps", target / "llvm-cov-target/debug/deps"):
+        if not deps.is_dir():
+            continue
+        groups: dict[Path, list[Path]] = {}
+        for path in deps.iterdir():
+            name, separator, digest = path.name.rpartition("-")
+            if (
+                not separator
+                or not re.fullmatch(r"[0-9a-f]{16}", digest)
+                or not path.is_file()
+                or not stat.S_IMODE(path.stat().st_mode) & 0o111
+            ):
+                continue
+            dep_info = deps / f"{name}-{digest}.d"
+            if not dep_info.is_file():
+                continue
+            with dep_info.open() as source:
+                first_line = source.readline()
+            dependencies = first_line.partition(": ")[2].split()
+            if not dependencies:
+                continue
+            test_source = Path(dependencies[0])
+            if test_source.parent.name == "tests" and test_source.suffix == ".rs":
+                groups.setdefault(test_source, []).append(path)
+        for paths in groups.values():
+            newest = max(paths, key=lambda path: path.stat().st_mtime_ns)
+            for path in paths:
+                if path != newest:
+                    path.unlink()
+
+
+def strip_test_binary_debug(target: Path, *, min_age_seconds: int = 0) -> None:
+    """Release Linux DWARF while keeping test binaries and LLVM coverage maps."""
+    if platform.system() != "Linux":
+        return
+    saved = 0
+    stripped = 0
+    for deps in (target / "llvm-cov-target/debug/deps", target / "debug/deps"):
+        if not deps.is_dir():
+            continue
+        for path in deps.iterdir():
+            try:
+                snapshot = path.stat()
+            except FileNotFoundError:
+                continue
+            if (
+                not re.fullmatch(r"[^/]+-[0-9a-f]{16}", path.name)
+                or not stat.S_ISREG(snapshot.st_mode)
+                or not stat.S_IMODE(snapshot.st_mode) & 0o111
+                or time.time_ns() - snapshot.st_mtime_ns < min_age_seconds * 1_000_000_000
+            ):
+                continue
+            sections = subprocess.run(
+                ["readelf", "--section-headers", "--wide", str(path)],
+                capture_output=True,
+                text=True,
+            )
+            if sections.returncode:
+                continue
+            if ".debug_info" not in sections.stdout:
+                continue
+            try:
+                current = path.stat()
+            except FileNotFoundError:
+                continue
+            if (current.st_size, current.st_mtime_ns) != (
+                snapshot.st_size,
+                snapshot.st_mtime_ns,
+            ):
+                continue
+            before = snapshot.st_size
+            result = subprocess.run(
+                ["strip", "--strip-debug", str(path)], capture_output=True, text=True
+            )
+            if result.returncode:
+                if any(
+                    transient in result.stderr
+                    for transient in (
+                        "Text file busy",
+                        "file truncated",
+                        "file format not recognized",
+                    )
+                ):
+                    continue
+                raise RuntimeError(
+                    f"could not strip test binary {path}: {result.stderr.strip()}"
+                )
+            saved += before - path.stat().st_size
+            stripped += 1
+    if stripped:
+        print(f"Released {saved / 1024**3:.1f} GiB of test DWARF from {stripped} binaries")
+
+
+def cargo_target() -> Path:
+    target = Path(os.environ.get("CARGO_TARGET_DIR", REPO_ROOT / "target"))
+    return (target if target.is_absolute() else REPO_ROOT / target).resolve()
+
+
+def target_size_bytes(target: Path) -> int:
+    if not target.exists():
+        return 0
+    result = subprocess.run(
+        ["du", "-sk", str(target)], capture_output=True, text=True, check=False
+    )
+    # Cargo can replace an executable while du walks the directory. In that
+    # case du still prints the total for files that remain on disk.
+    transient_removals = result.stderr.splitlines() and all(
+        "No such file or directory" in line for line in result.stderr.splitlines()
+    )
+    if result.returncode not in (0, 1) or (result.returncode == 1 and not transient_removals):
+        raise RuntimeError(f"could not measure Cargo target size: {result.stderr.strip()}")
+    try:
+        return int(result.stdout.split()[0]) * 1024
+    except (IndexError, ValueError) as error:
+        raise RuntimeError("du did not report a Cargo target size") from error
+
+
+def stop_process_group(process: subprocess.Popen) -> None:
+    if process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+
+
+def run_bounded_command(
+    argv: list[str],
+    *,
+    cwd: Path,
+    target: Path,
+    growth_limit: int = TEST_GROWTH_LIMIT,
+    target_limit: int = TEST_TARGET_LIMIT,
+    host_growth_limit: int = HOST_GROWTH_LIMIT,
+    free_floor: int = HOST_FREE_FLOOR,
+    poll_interval: float = 5,
+    env: dict[str, str] | None = None,
+    accepted_returncodes: tuple[int, ...] = (0,),
+) -> None:
+    """Stop a test and its children before target or host growth exceeds budget."""
+    if target.is_relative_to(cwd):
+        strip_test_binary_debug(target)
+    starting_size = target_size_bytes(target)
+    if starting_size > target_limit:
+        raise RuntimeError("Cargo target already exceeds the test disk limit")
+    starting_free = shutil.disk_usage(cwd).free
+    if starting_free < free_floor:
+        raise RuntimeError("insufficient free disk space to start tests")
+    print(
+        f"Test disk budget: {growth_limit // 1024**3} GiB target growth, "
+        f"{target_limit // 1024**3} GiB total target, "
+        f"{host_growth_limit // 1024**3} GiB host growth, "
+        f"{free_floor // 1024**3} GiB host reserve",
+        flush=True,
+    )
+    process = subprocess.Popen(argv, cwd=cwd, env=env, start_new_session=True)
+    try:
+        while True:
+            try:
+                returncode = process.wait(timeout=poll_interval)
+            except subprocess.TimeoutExpired:
+                returncode = None
+            growth = target_size_bytes(target) - starting_size
+            free = shutil.disk_usage(cwd).free
+            if (
+                returncode is None
+                and target.is_relative_to(cwd)
+                and TEST_RECLAIM_THRESHOLD <= growth <= growth_limit
+                and starting_free - free <= host_growth_limit
+                and free >= free_floor
+            ):
+                strip_test_binary_debug(target, min_age_seconds=5)
+                growth = target_size_bytes(target) - starting_size
+                free = shutil.disk_usage(cwd).free
+            if (
+                growth > growth_limit
+                or starting_size + growth > target_limit
+                or starting_free - free > host_growth_limit
+                or free < free_floor
+            ):
+                stop_process_group(process)
+                raise RuntimeError(
+                    f"test disk budget exceeded: target grew {growth / 1024**3:.1f} GiB, "
+                    f"host grew {(starting_free - free) / 1024**3:.1f} GiB, "
+                    f"host free {free / 1024**3:.1f} GiB"
+                )
+            if returncode is not None:
+                if returncode not in accepted_returncodes:
+                    raise subprocess.CalledProcessError(returncode, argv)
+                return
+    finally:
+        stop_process_group(process)
+
+
+def run_test262_coverage(python: Path, output: Path, target: Path) -> None:
+    adapter = target / "llvm-cov-target/debug/bluejs-test262"
+    corpus = REPO_ROOT / "development/browser_core/reference/test262"
+    if not adapter.is_file():
+        raise ValueError(f"instrumented Test262 adapter is missing: {adapter}")
+    environment = os.environ.copy()
+    environment["LLVM_PROFILE_FILE"] = str(
+        target / "llvm-cov-target/blueice-%p-%m.profraw"
+    )
+    run_bounded_command(
+        [
+            str(python),
+            str(REPO_ROOT / "backend/bluejs/test262/run.py"),
+            "--corpus",
+            str(corpus),
+            "--adapter",
+            str(adapter),
+            "--output",
+            str(output),
+            "--jobs",
+            "8",
+            "--progress-interval",
+            "60",
+            "--flush-profiles",
+        ],
+        cwd=REPO_ROOT,
+        target=target,
+        env=environment,
+        accepted_returncodes=(0, 1),
+    )
+    summary = json.loads((output / "summary.json").read_text())
+    expected = {"pass": 102_921, "excluded": 4, "stale_corpus": 1}
+    if (
+        not summary.get("complete_inventory")
+        or summary.get("scheduled_modes") != 102_926
+        or summary.get("results") != expected
+    ):
+        raise ValueError(
+            f"instrumented Test262 inventory changed: {summary.get('results')}"
+        )
+
+
+def run_coverage(*, include_test262: bool = False) -> tuple[dict[Path, dict], dict]:
+    if include_test262:
+        try:
+            __import__("yaml")
+        except ImportError as error:
+            raise RuntimeError(
+                "--include-test262 requires PyYAML in the invoking Python environment"
+            ) from error
     with tempfile.TemporaryDirectory(prefix="bluejs-coverage-") as tmp:
         output = Path(tmp) / "coverage.json"
         text_output = Path(tmp) / "coverage.txt"
-        subprocess.run(
-            ["cargo", "llvm-cov", "clean", "--profraw-only"],
-            cwd=REPO_ROOT,
-            check=True,
-        )
-        subprocess.run(
-            [
-                "cargo",
-                "llvm-cov",
-                "-p",
-                "blueice-bluejs",
-                "--no-clean",
-                "--json",
-                "--output-path",
-                str(output),
-            ],
-            cwd=REPO_ROOT,
-            check=True,
-        )
-        subprocess.run(
-            [
-                "cargo",
-                "llvm-cov",
-                "report",
-                "-p",
-                "blueice-bluejs",
-                "--text",
-                "--output-path",
-                str(text_output),
-            ],
-            cwd=REPO_ROOT,
-            check=True,
-        )
-        return source_union_export(json.loads(output.read_text()), text_output.read_text())
+        try:
+            subprocess.run(
+                ["cargo", "llvm-cov", "clean", "--profraw-only"],
+                cwd=REPO_ROOT,
+                check=True,
+            )
+            run_bounded_command(
+                [
+                    "cargo",
+                    "llvm-cov",
+                    "-p",
+                    "blueice-bluejs",
+                    "--no-clean",
+                    "--json",
+                    "--output-path",
+                    str(output),
+                ],
+                cwd=REPO_ROOT,
+                target=cargo_target(),
+            )
+            if include_test262:
+                run_test262_coverage(sys.executable, Path(tmp) / "test262", cargo_target())
+                subprocess.run(
+                    [
+                        "cargo",
+                        "llvm-cov",
+                        "report",
+                        "-p",
+                        "blueice-bluejs",
+                        "--json",
+                        "--output-path",
+                        str(output),
+                    ],
+                    cwd=REPO_ROOT,
+                    check=True,
+                )
+            subprocess.run(
+                [
+                    "cargo",
+                    "llvm-cov",
+                    "report",
+                    "-p",
+                    "blueice-bluejs",
+                    "--text",
+                    "--output-path",
+                    str(text_output),
+                ],
+                cwd=REPO_ROOT,
+                check=True,
+            )
+            result = source_union_export(
+                json.loads(output.read_text()), text_output.read_text()
+            )
+            return result
+        finally:
+            try:
+                subprocess.run(
+                    ["cargo", "llvm-cov", "clean", "--profraw-only"],
+                    cwd=REPO_ROOT,
+                    check=True,
+                )
+            finally:
+                # Keep compiled dependencies for the next run; these two
+                # incremental directories are disposable and grow per test.
+                target = cargo_target()
+                if target.is_relative_to(REPO_ROOT):
+                    for path in (
+                        target / "debug/incremental",
+                        target / "llvm-cov-target/debug/incremental",
+                    ):
+                        if path.exists():
+                            shutil.rmtree(path)
+                    prune_superseded_test_executables(target)
+                    strip_test_binary_debug(target)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -431,6 +824,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="regenerate every row in the Linux report",
     )
+    parser.add_argument(
+        "--include-test262",
+        action="store_true",
+        help="combine the full pinned Test262 inventory with the Rust test suite",
+    )
     args = parser.parse_args(argv)
     if args.update_macos_report and args.update_linux_report:
         parser.error("update only one platform report")
@@ -438,12 +836,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("provide a source file or a platform report option")
     try:
         path = source_path(args.source_file) if args.source_file else None
-        files, totals = run_coverage()
+        files, totals = run_coverage(include_test262=args.include_test262)
         if args.update_macos_report:
-            update_macos_report(files, totals)
+            update_macos_report(files, totals, include_test262=args.include_test262)
             print(f"Updated {MACOS_REPORT.relative_to(REPO_ROOT)}")
         if args.update_linux_report:
-            update_linux_report(files, totals)
+            update_linux_report(files, totals, include_test262=args.include_test262)
             print(f"Updated {LINUX_REPORT.relative_to(REPO_ROOT)}")
         if path is not None:
             print(markdown_row(path, files.get(path)))

@@ -155,7 +155,7 @@ mod tests {
         for text in ["", "a + b", "é\u{1F438}\u{10EFFF}\u{10F801}\u{10FFFF}"] {
             let source = JsString::from(text);
             assert_eq!(encode(&source), text);
-            assert!(matches!(escape(text), Cow::Borrowed(_)), "{text:?}");
+            assert_eq!(escape(text).as_ptr(), text.as_ptr(), "{text:?}");
             assert_eq!(decode(text), source);
         }
     }

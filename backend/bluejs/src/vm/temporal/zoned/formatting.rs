@@ -21,7 +21,10 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        // Native dispatch already checked this receiver's Temporal brand.
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch requires a ZonedDateTime receiver");
         let base = self.stack.len();
         let result = (|| {
             let options = self.temporal_options(options)?;
@@ -90,10 +93,11 @@ impl Vm {
                     ),
                 },
             };
+            // A valid Temporal instant is bounded far inside i128's range.
             let epoch_i128: i128 = existing
                 .epoch_nanoseconds
                 .to_i128()
-                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.ZonedDateTime".into()))?;
+                .expect("a valid Temporal instant fits in i128");
             let rounded = duration_math::TimeDuration::from_nanoseconds(epoch_i128)
                 .round_as_if_positive(unit, increment, mode)
                 .total_nanoseconds();
@@ -119,7 +123,7 @@ impl Vm {
                 result.push(']');
             }
             let show = plain_date::parse_show_calendar(show_calendar.as_deref().unwrap_or("auto"))
-                .ok_or_else(|| RuntimeError::RangeError("invalid calendarName option".into()))?;
+                .expect("temporal_string_option validated calendarName");
             result.push_str(&plain_date::format_calendar_annotation(
                 &existing.calendar,
                 show,
@@ -147,11 +151,10 @@ pub(in super::super) fn format_offset_nanoseconds_exact(offset: i64) -> String {
     let mut result = format!("{sign}{hours:02}:{minutes:02}");
     if seconds != 0 || nanoseconds != 0 {
         result.push_str(&format!(":{seconds:02}"));
-        if nanoseconds != 0 {
-            let text = format!("{nanoseconds:09}");
-            result.push('.');
-            result.push_str(text.trim_end_matches('0'));
-        }
+        // A zero fraction becomes an empty suffix; nonzero fractions retain
+        // their leading zeroes while trailing zeroes are omitted.
+        let fraction = format!(".{nanoseconds:09}");
+        result.push_str(fraction.trim_end_matches('0').trim_end_matches('.'));
     }
     result
 }
@@ -198,4 +201,35 @@ pub(super) fn format_zoned_date_time_date_time(
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_offset_nanoseconds_exact;
+
+    #[test]
+    fn exact_offset_preserves_fractional_seconds_without_trailing_zeros() {
+        assert_eq!(
+            format_offset_nanoseconds_exact(19_812_345_600_000),
+            "+05:30:12.3456"
+        );
+        assert_eq!(
+            format_offset_nanoseconds_exact(-19_812_345_600_000),
+            "-05:30:12.3456"
+        );
+    }
+
+    #[test]
+    fn exact_offsets_show_seconds_and_a_trimmed_fraction() {
+        assert_eq!(format_offset_nanoseconds_exact(3_600_000_000_000), "+01:00");
+        assert_eq!(
+            format_offset_nanoseconds_exact(-2_670_000_000_000),
+            "-00:44:30"
+        );
+        assert_eq!(
+            format_offset_nanoseconds_exact(-2_670_500_000_000),
+            "-00:44:30.5"
+        );
+        assert_eq!(format_offset_nanoseconds_exact(1), "+00:00:00.000000001");
+    }
 }

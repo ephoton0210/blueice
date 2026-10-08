@@ -1032,6 +1032,27 @@ fn unique_internal_debugger_socket_path() -> PathBuf {
     ))
 }
 
+/// Connects to a socket a child process is still setting up. The socket
+/// file appears at `bind` but only accepts connections after `listen`, so
+/// `wait_for_socket` seeing the path does not mean the child is ready: on a
+/// loaded machine a connect in between is refused. Retry that briefly.
+fn connect_when_listening(path: &Path, timeout: Duration) -> io::Result<UnixStream> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match UnixStream::connect(path) {
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+                ) && Instant::now() < deadline =>
+            {
+                thread::sleep(Duration::from_millis(10));
+            }
+            result => return result,
+        }
+    }
+}
+
 fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {

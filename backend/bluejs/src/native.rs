@@ -1202,8 +1202,8 @@ pub(crate) fn integer(value: &Value) -> Result<f64, RuntimeError> {
     Ok(if number.is_nan() { 0.0 } else { number.trunc() })
 }
 
-pub(crate) fn uint32(value: &Value) -> Result<u32, RuntimeError> {
-    Ok(primitive::to_uint32(primitive::number(value)?))
+pub(crate) fn uint32(number: f64) -> u32 {
+    primitive::to_uint32(number)
 }
 
 pub(crate) fn length(value: &Value) -> Result<f64, RuntimeError> {
@@ -1252,14 +1252,8 @@ pub(crate) fn from_codes(
 }
 
 fn uri_append(output: &mut Vec<u16>, units: &[u16], limit: usize) -> Result<(), UriCodingError> {
-    let length = output
-        .len()
-        .checked_add(units.len())
-        .ok_or(UriCodingError::StringLimit { limit })?;
-    if length
-        .checked_mul(std::mem::size_of::<u16>())
-        .is_none_or(|bytes| bytes > limit)
-    {
+    let available_units = limit / std::mem::size_of::<u16>();
+    if output.len().saturating_add(units.len()) > available_units {
         return Err(UriCodingError::StringLimit { limit });
     }
     output.extend_from_slice(units);
@@ -1304,10 +1298,7 @@ fn uri_unescaped(code_point: u32, component: bool) -> bool {
 }
 
 fn uri_reserved(byte: u8) -> bool {
-    matches!(
-        byte,
-        b';' | b'/' | b'?' | b':' | b'@' | b'&' | b'=' | b'+' | b'$' | b',' | b'#'
-    )
+    b";/?:@&=+$,#".contains(&byte)
 }
 
 /// ECMA-262 §19.2.6.6 / §19.2.6.7 Encode.
@@ -1425,19 +1416,26 @@ pub(crate) fn escape(string: &JsString, limit: usize) -> Result<JsString, UriCod
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut output = Vec::with_capacity(string.as_code_units().len());
     for &unit in string.as_code_units() {
-        if u8::try_from(unit)
-            .is_ok_and(|byte| byte.is_ascii_alphanumeric() || b"@*_+-./".contains(&byte))
-        {
+        let unescaped = match u8::try_from(unit) {
+            Ok(byte) => byte.is_ascii_alphanumeric() || b"@*_+-./".contains(&byte),
+            Err(_) => false,
+        };
+        if unescaped {
             uri_append(&mut output, &[unit], limit)?;
             continue;
         }
-        let digit = |shift: u32| u16::from(HEX[usize::from((unit >> shift) & 0xf)]);
+        let digits = [
+            u16::from(HEX[usize::from((unit >> 12) & 0xf)]),
+            u16::from(HEX[usize::from((unit >> 8) & 0xf)]),
+            u16::from(HEX[usize::from((unit >> 4) & 0xf)]),
+            u16::from(HEX[usize::from(unit & 0xf)]),
+        ];
         if unit < 256 {
-            uri_append(&mut output, &[0x25, digit(4), digit(0)], limit)?;
+            uri_append(&mut output, &[0x25, digits[2], digits[3]], limit)?;
         } else {
             uri_append(
                 &mut output,
-                &[0x25, 0x75, digit(12), digit(8), digit(4), digit(0)],
+                &[0x25, 0x75, digits[0], digits[1], digits[2], digits[3]],
                 limit,
             )?;
         }
@@ -1557,9 +1555,7 @@ pub(crate) fn string_method(
                 if method == CharCodeAt || method == CodePointAt {
                     let point = if method == CodePointAt
                         && (0xd800..=0xdbff).contains(&unit)
-                        && units
-                            .get(index + 1)
-                            .is_some_and(|unit| (0xdc00..=0xdfff).contains(unit))
+                        && matches!(units.get(index + 1), Some(next) if (0xdc00..=0xdfff).contains(next))
                     {
                         (u32::from(unit) - 0xd800) * 0x400 + u32::from(units[index + 1]) - 0xdc00
                             + 0x10000
@@ -1579,15 +1575,20 @@ pub(crate) fn string_method(
             } else {
                 integer(second)?
             };
-            let bound = |index: f64| {
-                let index = if method == Slice && index < 0.0 {
-                    len as f64 + index
-                } else {
-                    index
-                };
-                index.clamp(0.0, len as f64) as usize
+            let start = if method == Slice && start < 0.0 {
+                len as f64 + start
+            } else {
+                start
             };
-            let (start, end) = (bound(start), bound(end));
+            let end = if method == Slice && end < 0.0 {
+                len as f64 + end
+            } else {
+                end
+            };
+            let (start, end) = (
+                start.clamp(0.0, len as f64) as usize,
+                end.clamp(0.0, len as f64) as usize,
+            );
             let (start, end) = if method == Substring {
                 (start.min(end), start.max(end))
             } else {
@@ -1616,20 +1617,31 @@ pub(crate) fn string_method(
                 StartsWith => Value::Bool(units[position..].starts_with(needle)),
                 EndsWith => Value::Bool(units[..position].ends_with(needle)),
                 _ => {
-                    let index = if needle.len() > len {
-                        None
-                    } else if method == LastIndexOf {
-                        (0..=position.min(len - needle.len()))
-                            .rev()
-                            .find(|&index| units[index..].starts_with(needle))
-                    } else {
-                        (position..=len - needle.len())
-                            .find(|&index| units[index..].starts_with(needle))
-                    };
+                    let mut index = None;
+                    if needle.len() <= len {
+                        if method == LastIndexOf {
+                            for candidate in (0..=position.min(len - needle.len())).rev() {
+                                if units[candidate..].starts_with(needle) {
+                                    index = Some(candidate);
+                                    break;
+                                }
+                            }
+                        } else {
+                            for candidate in position..=len - needle.len() {
+                                if units[candidate..].starts_with(needle) {
+                                    index = Some(candidate);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     if method == Includes {
                         Value::Bool(index.is_some())
                     } else {
-                        Value::Number(index.map_or(-1.0, |index| index as f64))
+                        Value::Number(match index {
+                            Some(index) => index as f64,
+                            None => -1.0,
+                        })
                     }
                 }
             }
@@ -1641,7 +1653,14 @@ pub(crate) fn string_method(
             Value::String(string)
         }
         IsWellFormed => {
-            Value::Bool(char::decode_utf16(units.iter().copied()).all(|unit| unit.is_ok()))
+            let mut well_formed = true;
+            for scalar in char::decode_utf16(units.iter().copied()) {
+                if scalar.is_err() {
+                    well_formed = false;
+                    break;
+                }
+            }
+            Value::Bool(well_formed)
         }
         ToWellFormed => {
             let mut result = JsString::default();
@@ -1701,22 +1720,22 @@ pub(crate) fn string_method(
             Value::String(JsString::from_code_units(units.repeat(count as usize)))
         }
         Trim | TrimStart | TrimEnd => {
-            let space =
-                |unit: &u16| char::from_u32(u32::from(*unit)).is_some_and(primitive::whitespace);
-            let start = if method == TrimEnd {
-                0
-            } else {
-                units.iter().take_while(|unit| space(unit)).count()
-            };
-            let end = if method == TrimStart {
-                len
-            } else {
-                len - units[start..]
-                    .iter()
-                    .rev()
-                    .take_while(|unit| space(unit))
-                    .count()
-            };
+            let mut start = 0;
+            if method != TrimEnd {
+                while start < len
+                    && char::from_u32(u32::from(units[start])).is_some_and(primitive::whitespace)
+                {
+                    start += 1;
+                }
+            }
+            let mut end = len;
+            if method != TrimStart {
+                while end > start
+                    && char::from_u32(u32::from(units[end - 1])).is_some_and(primitive::whitespace)
+                {
+                    end -= 1;
+                }
+            }
             Value::String(JsString::from_code_units(units[start..end].to_vec()))
         }
         Normalize | ToLowerCase | ToUpperCase => {
@@ -1729,10 +1748,7 @@ pub(crate) fn string_method(
                     } else {
                         primitive::string(first)?
                     };
-                    if !["NFC", "NFD", "NFKC", "NFKD"]
-                        .iter()
-                        .any(|name| form == *name)
-                    {
+                    if form != "NFC" && form != "NFD" && form != "NFKC" && form != "NFKD" {
                         return Err(RuntimeError::RangeError(
                             "invalid String normalization form".into(),
                         ));
@@ -1834,4 +1850,212 @@ fn transform_run(
         append(result, &part, limit)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::JsSymbol;
+
+    const ROOMY: usize = 1 << 20;
+
+    fn text(value: &str) -> Value {
+        Value::String(value.into())
+    }
+
+    fn symbol() -> Value {
+        Value::Symbol(JsSymbol::well_known("iterator"))
+    }
+
+    fn units(code_units: &[u16]) -> JsString {
+        JsString::from_code_units(code_units.to_vec())
+    }
+
+    #[test]
+    fn numeric_argument_helpers_reject_symbols() {
+        for message in [
+            integer(&symbol()).unwrap_err().to_string(),
+            length(&symbol()).unwrap_err().to_string(),
+        ] {
+            assert!(message.starts_with("TypeError"), "{message}");
+        }
+        assert_eq!(integer(&Value::Number(f64::NAN)), Ok(0.0));
+        assert_eq!(integer(&Value::Number(-2.7)), Ok(-2.0));
+        assert_eq!(uint32(4294967297.0), 1);
+        assert_eq!(length(&Value::Number(-5.0)), Ok(0.0));
+    }
+
+    #[test]
+    fn from_codes_builds_units_and_points_and_rejects_invalid_points() {
+        let numbers = |values: &[f64]| values.iter().map(|v| Value::Number(*v)).collect::<Vec<_>>();
+        assert_eq!(
+            from_codes(
+                &numbers(&[65.0, 66.0, 65601.5, f64::NAN, f64::INFINITY]),
+                false,
+                ROOMY
+            ),
+            Ok(Value::String(units(&[65, 66, 65, 0, 0])))
+        );
+        assert_eq!(
+            from_codes(&numbers(&[65.0, 128512.0]), true, ROOMY),
+            Ok(Value::String(units(&[65, 0xd83d, 0xde00])))
+        );
+        for invalid in [-1.0, 1114112.0, 1.5, f64::NAN] {
+            assert_eq!(
+                from_codes(&numbers(&[invalid]), true, ROOMY),
+                Err(RuntimeError::RangeError("invalid String code point".into())),
+                "{invalid}"
+            );
+        }
+        assert_eq!(
+            from_codes(&numbers(&[65.0, 66.0]), false, 2),
+            Err(RuntimeError::StringLimit { limit: 2 })
+        );
+    }
+
+    #[test]
+    fn growing_a_string_past_the_limit_fails_at_every_step() {
+        use StringMethod::*;
+        let mixed = Value::String(units(&[0x73, 0xe9, 0xd800, 0x7a]));
+        let calls: Vec<(StringMethod, Vec<Value>)> = vec![
+            (
+                Html {
+                    tag: "a",
+                    attribute: "name",
+                },
+                vec![text("x\"y")],
+            ),
+            (
+                Html {
+                    tag: "b",
+                    attribute: "",
+                },
+                vec![],
+            ),
+            (Concat, vec![text("def"), text("ghi")]),
+            (Normalize, vec![text("NFD")]),
+            (ToLowerCase, vec![]),
+            (ToUpperCase, vec![]),
+        ];
+        for limit in 0..=90 {
+            for (method, args) in &calls {
+                let result = string_method(*method, &mixed, args, limit);
+                if let Err(error) = result {
+                    assert_eq!(error, RuntimeError::StringLimit { limit });
+                }
+            }
+        }
+        for limit in 0..=8 {
+            let result = from_codes(&[Value::Number(65.0), Value::Number(66.0)], false, limit);
+            if let Err(error) = result {
+                assert_eq!(error, RuntimeError::StringLimit { limit });
+            }
+        }
+    }
+
+    #[test]
+    fn uri_encoding_escapes_reserved_characters_only_for_components() {
+        let source = JsString::from("a b/\u{e9}\u{1F600}");
+        let encode = |component| encode_uri(&source, component, ROOMY).unwrap();
+        assert_eq!(encode(false), JsString::from("a%20b/%C3%A9%F0%9F%98%80"));
+        assert_eq!(encode(true), JsString::from("a%20b%2F%C3%A9%F0%9F%98%80"));
+    }
+
+    #[test]
+    fn uri_encoding_rejects_unpaired_surrogates() {
+        for malformed in [units(&[0xd800]), units(&[0xd800, 0x61]), units(&[0xdc00])] {
+            assert_eq!(
+                encode_uri(&malformed, false, ROOMY),
+                Err(UriCodingError::Malformed)
+            );
+        }
+    }
+
+    #[test]
+    fn uri_decoding_handles_every_utf8_width_and_reserved_set() {
+        let decode = |input: &str, component| decode_uri(&JsString::from(input), component, ROOMY);
+        assert_eq!(decode("abc", false), Ok(JsString::from("abc")));
+        assert_eq!(decode("%41", false), Ok(JsString::from("A")));
+        assert_eq!(decode("%2F%3b", false), Ok(JsString::from("%2F%3b")));
+        assert_eq!(decode("%2F%3b", true), Ok(JsString::from("/;")));
+        assert_eq!(decode("%C3%A9", false), Ok(JsString::from("\u{e9}")));
+        assert_eq!(decode("%E2%82%AC", false), Ok(JsString::from("\u{20ac}")));
+        assert_eq!(
+            decode("%F0%9F%98%80", false),
+            Ok(JsString::from("\u{1F600}"))
+        );
+    }
+
+    #[test]
+    fn uri_decoding_rejects_malformed_percent_sequences() {
+        for input in [
+            "%",
+            "%4",
+            "%4Z",
+            "%Z1",
+            "%80",
+            "%C0",
+            "%F8",
+            "%C3",
+            "%C3x",
+            "%C3%41",
+            "%E0%80%80",
+            "%F5%80%80%80",
+            "%ED%A0%80",
+        ] {
+            assert_eq!(
+                decode_uri(&JsString::from(input), false, ROOMY),
+                Err(UriCodingError::Malformed),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn uri_coding_reports_the_string_limit_at_every_append() {
+        let encoded = JsString::from("a b\u{e9}%41%C3%A9%2F%zz");
+        let decodable = JsString::from("a%41%C3%A9%2F");
+        for limit in 0..=60 {
+            for result in [
+                encode_uri(&encoded, false, limit),
+                decode_uri(&decodable, false, limit),
+                decode_uri(&decodable, true, limit),
+                escape(&encoded, limit),
+                unescape(&encoded, limit),
+                escape(&JsString::from("\u{4e2d}"), limit),
+            ] {
+                if let Err(error) = result {
+                    assert_eq!(error, UriCodingError::StringLimit { limit });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn escape_and_unescape_round_trip_annex_b_forms() {
+        let source = JsString::from("a b\u{e9}\u{4e2d}@*_+-./");
+        let escaped = escape(&source, ROOMY).unwrap();
+        assert_eq!(escaped, JsString::from("a%20b%E9%u4E2D@*_+-./"));
+        assert_eq!(unescape(&escaped, ROOMY), Ok(source));
+        assert_eq!(
+            unescape(&JsString::from("%u00e9%e9%zz%u12%"), ROOMY),
+            Ok(JsString::from("\u{e9}\u{e9}%zz%u12%"))
+        );
+    }
+
+    #[test]
+    fn replacement_patterns_expand_and_respect_the_limit() {
+        let string = JsString::from("xaby");
+        let matched = JsString::from("ab");
+        let template = JsString::from("$$|$&|$`|$'|$1|$");
+        assert_eq!(
+            substitution(&string, &matched, 1, &template, ROOMY),
+            Ok(JsString::from("$|ab|x|y|$1|$"))
+        );
+        for limit in 0..=40 {
+            if let Err(error) = substitution(&string, &matched, 1, &template, limit) {
+                assert_eq!(error, RuntimeError::StringLimit { limit });
+            }
+        }
+    }
 }

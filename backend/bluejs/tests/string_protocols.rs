@@ -263,6 +263,17 @@ fn boxing_construction_and_template_identity() {
 }
 
 #[test]
+fn separately_compiled_tagged_templates_have_distinct_cached_objects() {
+    let source = "function tag(strings) { return strings; } tag`x`;";
+    let first = compile(&parse(source).unwrap()).unwrap();
+    let second = compile(&parse(source).unwrap()).unwrap();
+    let mut vm = Vm::default();
+    let first_object = vm.execute(&first).unwrap();
+    assert_eq!(vm.execute(&first), Ok(first_object.clone()));
+    assert_ne!(vm.execute(&second), Ok(first_object));
+}
+
+#[test]
 fn string_iterators_work_with_spread_and_throwing_callbacks() {
     check(&[
         "let a=[...'A😀B']; a.length === 3 && a[1] === '😀'",

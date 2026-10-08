@@ -788,6 +788,13 @@ fn list_format_debug_report_rejects_invalid_options_and_oversized_items() {
         Err("invalid list_type \"sequence\"; expected conjunction, disjunction, or unit".into())
     );
 
+    let mut invalid_style = list_format_params();
+    invalid_style.style = Some("condensed".into());
+    assert_eq!(
+        debug_list_format_report(invalid_style),
+        Err("invalid style \"condensed\"; expected wide, short, or narrow".into())
+    );
+
     let mut oversized = list_format_params();
     oversized.items = Some((0..=MAX_DEBUG_LIST_ITEMS).map(|_| "x".into()).collect());
     assert_eq!(
@@ -923,4 +930,253 @@ fn locale_debug_report_traces_typed_option_application() {
         serde_json::json!(["islamic-civil"])
     );
     assert_eq!(report["information"]["week_info"]["first_day"], 1);
+}
+
+#[test]
+fn collator_debug_report_rejects_invalid_locale_matcher_usage_case_first_and_sensitivity() {
+    let mut invalid_matcher = params();
+    invalid_matcher.locale_matcher = Some("nearest".into());
+    assert_eq!(
+        debug_collator_report(invalid_matcher),
+        Err("invalid locale_matcher \"nearest\"; expected lookup or best fit".into())
+    );
+
+    let mut invalid_usage = params();
+    invalid_usage.usage = Some("filter".into());
+    assert_eq!(
+        debug_collator_report(invalid_usage),
+        Err("invalid usage \"filter\"; expected sort or search".into())
+    );
+
+    let mut invalid_case_first = params();
+    invalid_case_first.case_first = Some("mixed".into());
+    assert_eq!(
+        debug_collator_report(invalid_case_first),
+        Err("invalid case_first \"mixed\"; expected upper, lower, or false".into())
+    );
+
+    let mut invalid_sensitivity = params();
+    invalid_sensitivity.sensitivity = Some("loose".into());
+    assert_eq!(
+        debug_collator_report(invalid_sensitivity),
+        Err("invalid sensitivity \"loose\"; expected base, accent, case, or variant".into())
+    );
+
+    let mut invalid_collation = params();
+    invalid_collation.collation = Some("!!".into());
+    assert_eq!(
+        debug_collator_report(invalid_collation),
+        Err("invalid collation; expected UTS 35 type subtags".into())
+    );
+}
+
+#[test]
+fn collator_debug_report_accepts_every_case_first_and_sensitivity_value() {
+    for case_first in ["upper", "lower", "false"] {
+        let mut request = params();
+        request.case_first = Some(case_first.into());
+        let report = debug_collator_report(request).unwrap();
+        assert_eq!(report["resolved_options"]["case_first"], case_first);
+    }
+    for sensitivity in ["base", "accent", "case", "variant"] {
+        let mut request = params();
+        request.sensitivity = Some(sensitivity.into());
+        let report = debug_collator_report(request).unwrap();
+        assert_eq!(report["resolved_options"]["sensitivity"], sensitivity);
+    }
+}
+
+#[test]
+fn collator_debug_report_compares_plain_text_inputs_in_both_directions() {
+    let mut none = params();
+    none.locales = Some(vec!["en".into()]);
+    let report = debug_collator_report(none).unwrap();
+    assert_eq!(report["comparison"], serde_json::Value::Null);
+
+    let mut less = params();
+    less.left = Some("a".into());
+    less.right = Some("b".into());
+    let report = debug_collator_report(less).unwrap();
+    assert_eq!(report["comparison"]["ordering"], "less");
+
+    let mut greater = params();
+    greater.left = Some("b".into());
+    greater.right = Some("a".into());
+    let report = debug_collator_report(greater).unwrap();
+    assert_eq!(report["comparison"]["ordering"], "greater");
+}
+
+#[test]
+fn collator_debug_report_rejects_a_locale_count_over_the_debug_limit_and_an_oversized_utf16_input() {
+    let mut too_many_locales = params();
+    too_many_locales.locales = Some((0..=MAX_DEBUG_LOCALES).map(|_| "en".into()).collect());
+    assert_eq!(
+        debug_collator_report(too_many_locales),
+        Err(format!(
+            "locales exceeds the {MAX_DEBUG_LOCALES}-locale debug limit"
+        ))
+    );
+
+    let mut oversized = params();
+    oversized.left_utf16 = Some(vec![0; MAX_DEBUG_UTF16_UNITS + 1]);
+    oversized.right_utf16 = Some(vec![0]);
+    assert_eq!(
+        debug_collator_report(oversized),
+        Err(format!(
+            "left input exceeds the {MAX_DEBUG_UTF16_UNITS}-unit debug limit"
+        ))
+    );
+}
+
+#[test]
+fn number_format_debug_report_rejects_a_locale_count_and_a_decimal_length_over_their_limits() {
+    let mut too_many_locales = number_format_params();
+    too_many_locales.locales = Some((0..=MAX_DEBUG_LOCALES).map(|_| "en".into()).collect());
+    assert_eq!(
+        debug_number_format_report(too_many_locales),
+        Err(format!(
+            "locales exceeds the {MAX_DEBUG_LOCALES}-locale debug limit"
+        ))
+    );
+
+    let mut oversized_decimal = number_format_params();
+    oversized_decimal.decimal = Some("1".repeat(MAX_DEBUG_DECIMAL_BYTES + 1));
+    assert_eq!(
+        debug_number_format_report(oversized_decimal),
+        Err(format!(
+            "decimal exceeds the {MAX_DEBUG_DECIMAL_BYTES}-byte debug limit"
+        ))
+    );
+}
+
+#[test]
+fn number_format_debug_report_accepts_every_use_grouping_value() {
+    for use_grouping in ["auto", "never", "always", "min2"] {
+        let mut request = number_format_params();
+        request.use_grouping = Some(use_grouping.into());
+        let report = debug_number_format_report(request).unwrap();
+        assert_eq!(report["resolved_options"]["use_grouping"], use_grouping);
+    }
+}
+
+#[test]
+fn plural_rules_debug_report_rejects_a_locale_count_and_a_decimal_length_over_their_limits() {
+    let mut too_many_locales = plural_rules_params();
+    too_many_locales.locales = Some((0..=MAX_DEBUG_LOCALES).map(|_| "en".into()).collect());
+    assert_eq!(
+        debug_plural_rules_report(too_many_locales),
+        Err(format!(
+            "locales exceeds the {MAX_DEBUG_LOCALES}-locale debug limit"
+        ))
+    );
+
+    let mut oversized_decimal = plural_rules_params();
+    oversized_decimal.decimal = Some("1".repeat(MAX_DEBUG_DECIMAL_BYTES + 1));
+    assert_eq!(
+        debug_plural_rules_report(oversized_decimal),
+        Err(format!(
+            "decimal exceeds the {MAX_DEBUG_DECIMAL_BYTES}-byte debug limit"
+        ))
+    );
+}
+
+#[test]
+fn plural_rules_debug_report_selects_every_visible_plural_category_in_arabic() {
+    // Arabic is the standard CLDR example with all six plural categories
+    // observably distinct, unlike English's two.
+    let expected = [
+        ("0", "zero"),
+        ("1", "one"),
+        ("2", "two"),
+        ("3", "few"),
+        ("11", "many"),
+        ("100", "other"),
+    ];
+    for (decimal, category) in expected {
+        let mut request = plural_rules_params();
+        request.locales = Some(vec!["ar".into()]);
+        request.decimal = Some(decimal.into());
+        let report = debug_plural_rules_report(request).unwrap();
+        assert_eq!(report["category"], category, "decimal {decimal} in ar");
+    }
+}
+
+#[test]
+fn list_format_debug_report_rejects_a_locale_count_and_a_total_item_byte_length_over_their_limits()
+{
+    let mut too_many_locales = list_format_params();
+    too_many_locales.locales = Some((0..=MAX_DEBUG_LOCALES).map(|_| "en".into()).collect());
+    assert_eq!(
+        debug_list_format_report(too_many_locales),
+        Err(format!(
+            "locales exceeds the {MAX_DEBUG_LOCALES}-locale debug limit"
+        ))
+    );
+
+    let mut oversized_bytes = list_format_params();
+    oversized_bytes.items = Some(vec!["x".repeat(MAX_DEBUG_LIST_BYTES + 1)]);
+    assert_eq!(
+        debug_list_format_report(oversized_bytes),
+        Err(format!(
+            "items exceed the {MAX_DEBUG_LIST_BYTES}-byte debug limit"
+        ))
+    );
+}
+
+#[test]
+fn list_format_debug_report_accepts_every_list_type_and_style_value() {
+    for list_type in ["conjunction", "disjunction", "unit"] {
+        let mut request = list_format_params();
+        request.list_type = Some(list_type.into());
+        request.items = Some(vec!["a".into(), "b".into()]);
+        let report = debug_list_format_report(request).unwrap();
+        assert_eq!(report["resolved_options"]["list_type"], list_type);
+    }
+    for style in ["wide", "short", "narrow"] {
+        let mut request = list_format_params();
+        request.style = Some(style.into());
+        request.items = Some(vec!["a".into(), "b".into()]);
+        let report = debug_list_format_report(request).unwrap();
+        assert_eq!(report["resolved_options"]["style"], style);
+    }
+}
+
+#[test]
+fn segmenter_debug_report_rejects_a_locale_count_and_a_text_byte_length_over_their_limits() {
+    let mut too_many_locales = segmenter_params();
+    too_many_locales.locales = Some((0..=MAX_DEBUG_LOCALES).map(|_| "en".into()).collect());
+    assert_eq!(
+        debug_segmenter_report(too_many_locales),
+        Err(format!(
+            "locales exceeds the {MAX_DEBUG_LOCALES}-locale debug limit"
+        ))
+    );
+
+    let mut oversized_text = segmenter_params();
+    oversized_text.text = Some("x".repeat(MAX_DEBUG_SEGMENTER_BYTES + 1));
+    assert_eq!(
+        debug_segmenter_report(oversized_text),
+        Err(format!(
+            "text exceeds the {MAX_DEBUG_SEGMENTER_BYTES}-byte debug limit"
+        ))
+    );
+}
+
+#[test]
+fn segmenter_debug_report_accepts_every_granularity_value() {
+    for granularity in ["grapheme", "word", "sentence"] {
+        let mut request = segmenter_params();
+        request.granularity = Some(granularity.into());
+        request.text = Some("hello world".into());
+        let report = debug_segmenter_report(request).unwrap();
+        assert_eq!(report["resolved_options"]["granularity"], granularity);
+    }
+}
+
+#[test]
+fn collator_debug_report_honors_a_best_fit_locale_matcher() {
+    let mut request = params();
+    request.locale_matcher = Some("best fit".into());
+    let report = debug_collator_report(request).unwrap();
+    assert_eq!(report["negotiation"]["matcher"], "best fit");
 }

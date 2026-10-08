@@ -505,3 +505,384 @@ fn reserved_oop_tab_does_not_delay_an_unreserved_pending_tab_or_spend_its_budget
         ]
     );
 }
+
+/// Every `PageHostConnection` debugger dispatch method is a thin wrapper
+/// around `request`/`request_while_pumping_script`: it forwards whatever the
+/// child replies without matching on the reply's variant (that validation
+/// lives one layer up, in `child_reply_validation.rs`). So a single fixed
+/// canned reply, echoed back once per request in call order, is sufficient
+/// to exercise every wrapper's own line without needing a realistic reply
+/// shape per method — the per-method request/reply *shape* pairing is
+/// already covered by more targeted tests elsewhere in this file (e.g.
+/// `private_exception_location_wrapper_preserves_the_exact_child_tuple`).
+#[test]
+fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_is_true() {
+    use blueice_ipc::page_host::PageHostDebuggerLinkedStackFrame;
+
+    let (core, mut child) = UnixStream::pair().unwrap();
+    let canned = PageHostReply::ShutdownAck;
+    let expected_calls = 45;
+    let child_task = thread::spawn(move || {
+        for _ in 0..expected_calls {
+            page_host::read_page_host_request(&mut child).unwrap();
+            page_host::write_page_host_reply(&mut child, &PageHostReply::ShutdownAck).unwrap();
+        }
+    });
+
+    let mut connection = PageHostConnection { stream: core };
+
+    assert!(connection.debugger_breakpoint_configuration_available());
+    assert!(connection.debugger_bluets_metadata_available());
+    assert!(connection.debugger_bluets_metadata_summary_available());
+    assert!(connection.debugger_bluets_metadata_lowering_summary_available());
+    assert!(connection.debugger_bluets_metadata_sources_available());
+    assert!(connection.debugger_bluets_metadata_source_provenance_available());
+    assert!(connection.debugger_bluets_metadata_types_available());
+    assert!(connection.debugger_bluets_metadata_type_display_available());
+    assert!(connection.debugger_bluets_metadata_symbols_available());
+    assert!(connection.debugger_bluets_metadata_contracts_available());
+    assert!(connection.debugger_bluets_metadata_contract_display_available());
+    assert!(connection.debugger_bluets_metadata_contract_validation_available());
+    assert!(connection.debugger_bluets_metadata_symbol_display_available());
+    assert!(connection.debugger_bluets_metadata_symbol_location_available());
+    assert!(connection.debugger_bluets_metadata_contract_location_available());
+    assert!(connection.debugger_bluets_safe_point_span_available());
+    assert!(connection.debugger_bluets_exception_location_available());
+    assert!(connection.debugger_bluets_source_breakpoint_available());
+    assert!(connection.debugger_bluets_metadata_symbol_type_available());
+    assert!(connection.debugger_bluets_metadata_symbol_contract_available());
+    assert!(connection.debugger_execution_control_available());
+    assert!(connection.debugger_nested_frames_available());
+    assert!(connection.debugger_linked_frames_available());
+    assert!(connection.debugger_stack_snapshot_available());
+    assert!(connection.debugger_value_snapshot_available());
+    assert!(connection.debugger_stepping_available());
+    assert!(connection.debugger_bluets_source_span_step_available());
+
+    let program = PageHostDebuggerProgram {
+        program_handle: 1,
+        program_generation: 1,
+    };
+    let dependency_program = PageHostDebuggerProgram {
+        program_handle: 2,
+        program_generation: 2,
+    };
+    let metadata = PageHostDebuggerMetadataHandle {
+        metadata_handle: 1,
+        metadata_generation: 1,
+    };
+    let safe_point = PageHostDebuggerSafePoint {
+        program,
+        code_unit_ordinal: 0,
+        bytecode_offset: 0,
+    };
+    let scope_entry = PageHostDebuggerScopeEntry {
+        slot_ordinal: 0,
+        scope_depth: 0,
+    };
+    let value_target = PageHostDebuggerValueTarget {
+        tab_id: 1,
+        document_generation: 1,
+        program,
+        frame: None,
+        frame_index: 0,
+        safe_point,
+        scope_entry,
+    };
+    let frame = PageHostDebuggerFrame {
+        tab_id: 1,
+        document_generation: 1,
+        program,
+        code_unit_ordinal: 1,
+        invocation_serial: 1,
+    };
+    let linked_frame = PageHostDebuggerLinkedFrame {
+        tab_id: 1,
+        document_generation: 1,
+        entry_program: program,
+        dependency_program,
+        code_unit_ordinal: 1,
+        invocation_serial: 1,
+    };
+    let linked_stack_frame = PageHostDebuggerLinkedStackFrame {
+        safe_point,
+        scope_entries: Vec::new(),
+        scope_truncated: false,
+    };
+    let linked_snapshot = PageHostDebuggerLinkedStackSnapshot {
+        frames: [linked_stack_frame.clone(), linked_stack_frame],
+        stack_truncated: false,
+        max_scope_entries: 1,
+    };
+    let linked_source = PageHostDebuggerLinkedSource {
+        metadata,
+        source_id: 0,
+    };
+    let static_scope_target = PageHostDebuggerStaticScopeTarget::Ordinary {
+        metadata,
+        target: value_target,
+    };
+    let linked_value_target = PageHostDebuggerLinkedValueTarget {
+        frame: linked_frame,
+        expected_stack: Box::new(linked_snapshot.clone()),
+        frame_index: 1,
+        scope_entry,
+    };
+
+    assert_eq!(
+        connection.debugger_realm_stats(1, 1).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(connection.child_stats().unwrap(), canned.clone());
+    assert_eq!(
+        connection.debugger_programs(1, 1).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection.debugger_bluets_metadata(1, 1, program).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_summary(1, 1, program, metadata)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_lowering_summary(1, 1, program, metadata)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_sources(1, 1, program, metadata)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_source_provenance(1, 1, program, metadata, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_types(1, 1, program, metadata)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_type_display(1, 1, program, metadata, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_symbols(1, 1, program, metadata)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_contracts(1, 1, program, metadata)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_contract_display(1, 1, program, metadata, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_contract_validation(
+                1,
+                1,
+                program,
+                metadata,
+                0,
+                CompilerContractValue::Null,
+            )
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_symbol_display(1, 1, program, metadata, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_symbol_location(1, 1, program, metadata, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_contract_location(1, 1, program, metadata, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_safe_point_span(1, 1, metadata, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_exception_location(1, 1, program, metadata)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_source_breakpoint(1, 1, program, metadata, 0, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_symbol_type(1, 1, program, metadata, 0, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_bluets_metadata_symbol_contract(1, 1, program, metadata, 0, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection.debugger_safe_points(1, 1, program).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .validate_debugger_safe_point(1, 1, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .set_debugger_breakpoint(1, 1, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection.debugger_breakpoints(1, 1).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .clear_debugger_breakpoint(1, 1, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_stack_snapshot(1, 1, program, None, 1, 1)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection.debugger_value_snapshot(value_target).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_linked_value_snapshot(linked_value_target)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_static_scope_relation(static_scope_target)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .arm_debugger_nested_safe_point_breakpoint(1, 1, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection.step_debugger_nested_instruction(frame).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .resume_debugger_nested_execution(frame)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .arm_debugger_linked_nested_safe_point_breakpoint(1, 1, program, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_linked_stack_snapshot(linked_frame, 1)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_linked_stack_spans(linked_frame, linked_snapshot, [linked_source, linked_source])
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .resume_debugger_linked_nested_execution(linked_frame)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .arm_debugger_root_safe_point_breakpoint(1, 1, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_execution_state(1, 1, program)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection.resume_debugger_execution(1, 1, program).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .step_debugger_root_instruction(1, 1, program)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .step_debugger_bluets_source_span(1, 1, metadata, 0, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection.advance_debugger_execution(1, 1).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .advance_debugger_execution_with_script_pump(1, 1, &mut || Ok(()))
+            .unwrap(),
+        canned
+    );
+
+    child_task.join().unwrap();
+}

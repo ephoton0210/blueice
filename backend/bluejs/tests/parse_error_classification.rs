@@ -47,6 +47,30 @@ fn a_mandatory_token_that_is_missing_is_a_syntax_error() {
 }
 
 #[test]
+fn malformed_binding_patterns_report_syntax_errors() {
+    for source in [
+        "async function f(\\u0061wait) {}",
+        "function* g(\\u0079ield) {}",
+        "let [...42] = [];",
+        "let [42] = [];",
+        "let [a = ] = [];",
+        "let [a b] = [];",
+        "let [a = 1;",
+        "let {...42} = {};",
+        "let {a: 42} = {};",
+        "let {a: b = } = {};",
+        "let {a = } = {};",
+        "let {a b} = {};",
+        "let {a: b;",
+        "'use strict'; let {'\\1': a} = {};",
+        "let {[1: a} = {};",
+        "let {#x: a} = {};",
+    ] {
+        assert_known_syntax_error(source);
+    }
+}
+
+#[test]
 fn a_token_that_cannot_begin_an_expression_is_a_syntax_error() {
     for source in [
         "var a=1,b=2; if(a>b)\nelse b=a",

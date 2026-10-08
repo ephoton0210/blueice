@@ -35,6 +35,41 @@ fn document() -> PageHostDocument {
 }
 
 #[test]
+fn owned_heap_payload_bytes_sums_retained_capacity_and_is_zero_for_an_empty_graph() {
+    let graph = PageHostModuleGraph {
+        entry: "blueice://page/main.js".to_string(),
+        modules: vec![source()],
+        resolutions: vec![PageHostStaticResolution {
+            from_module: "blueice://page/main.js".to_string(),
+            specifier: "./value.js".to_string(),
+            canonical_target: "blueice://page/value.js".to_string(),
+        }],
+        resolver_fingerprint: "core-loader-v1".to_string(),
+    };
+    let bytes = graph.owned_heap_payload_bytes().unwrap();
+    assert!(
+        bytes
+            >= graph.entry.len()
+                + graph.resolver_fingerprint.len()
+                + graph.modules[0].canonical_module_id.len()
+                + graph.modules[0].source.len()
+                + graph.modules[0].source_hash.len()
+                + graph.resolutions[0].from_module.len()
+                + graph.resolutions[0].specifier.len()
+                + graph.resolutions[0].canonical_target.len(),
+        "must at least count every retained string's own bytes"
+    );
+
+    let empty = PageHostModuleGraph {
+        entry: String::new(),
+        modules: Vec::new(),
+        resolutions: Vec::new(),
+        resolver_fingerprint: String::new(),
+    };
+    assert_eq!(empty.owned_heap_payload_bytes(), Some(0));
+}
+
+#[test]
 fn requests_and_replies_round_trip_over_a_real_socket() {
     let requests = [
         PageHostRequest::Hello {

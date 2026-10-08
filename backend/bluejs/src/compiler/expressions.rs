@@ -16,26 +16,40 @@ fn argument_expr(argument: &Argument) -> &Expr {
     }
 }
 
-fn next_template_site_id(counter: &std::sync::atomic::AtomicU64) -> Result<u64, CompileError> {
-    counter
-        .fetch_update(
-            std::sync::atomic::Ordering::Relaxed,
-            std::sync::atomic::Ordering::Relaxed,
-            |id| id.checked_add(1),
-        )
-        .map_err(|_| CompileError::ProgramTooLarge)
-}
-
-fn private_update_operand(owner: u32, op: UpdateOp, prefix: bool) -> Result<u32, CompileError> {
-    let owner = owner.checked_mul(4).ok_or(CompileError::ProgramTooLarge)?;
-    Ok(owner | u32::from(op == UpdateOp::Dec) | (u32::from(prefix) << 1))
-}
-
 #[derive(Clone, Copy)]
 enum PreparedMemberKind {
     Ordinary,
     Super,
     Private(u32),
+}
+
+#[derive(Clone, Copy)]
+struct OptionalMemberParts<'a> {
+    object: &'a Expr,
+    property: &'a Expr,
+    computed: bool,
+    optional: bool,
+}
+
+fn optional_member_parts(expr: &Expr) -> Option<OptionalMemberParts<'_>> {
+    match expr {
+        Expr::Member {
+            object,
+            property,
+            computed,
+        }
+        | Expr::OptionalMember {
+            object,
+            property,
+            computed,
+        } => Some(OptionalMemberParts {
+            object,
+            property,
+            computed: *computed,
+            optional: matches!(expr, Expr::OptionalMember { .. }),
+        }),
+        _ => None,
+    }
 }
 
 impl Compiler {
@@ -45,7 +59,6 @@ impl Compiler {
         raw: &[JsString],
         cooked: &[Option<JsString>],
         expressions: &[Expr],
-        counter: &std::sync::atomic::AtomicU64,
     ) -> Result<(), CompileError> {
         let argument_count = self.list_count(expressions.len().saturating_add(1))?;
         let tail = std::mem::take(&mut self.tail_call_pending);
@@ -65,10 +78,9 @@ impl Compiler {
             self.expression(tag)?;
             self.constant(Value::Undefined)?;
         }
-        let id = next_template_site_id(counter)?;
         let site = self.bytecode.templates.len() as u32;
         self.bytecode.templates.push(crate::bytecode::TemplateSite {
-            id,
+            id: crate::bytecode::TemplateSiteId::new(),
             raw: raw.to_vec(),
             cooked: cooked.to_vec(),
         });
@@ -85,21 +97,27 @@ impl Compiler {
     }
 
     pub(super) fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
-        if optional_chain_root(expr) {
-            let mut exits = Vec::new();
-            self.optional_chain_expression(expr, &mut exits)?;
-            let end = self.offset();
-            for exit in exits {
-                self.patch(exit, end);
-            }
-            Ok(())
-        } else {
-            self.expression_plain(expr)
+        self.expression_plain(expr)
+    }
+
+    fn compile_optional_chain(&mut self, expr: &Expr) -> Result<(), CompileError> {
+        let mut exits = Vec::new();
+        self.optional_chain_expression(expr, &mut exits)?;
+        let end = self.offset();
+        for exit in exits {
+            self.patch(exit, end);
         }
+        Ok(())
     }
 
     pub(super) fn expression_plain(&mut self, expr: &Expr) -> Result<(), CompileError> {
         match expr {
+            Expr::OptionalMember { .. } | Expr::OptionalCall { .. } => {
+                self.compile_optional_chain(expr)?;
+            }
+            Expr::Member { .. } | Expr::Call { .. } if optional_chain_root(expr) => {
+                self.compile_optional_chain(expr)?;
+            }
             Expr::RegExp { pattern, flags } => {
                 self.constant(Value::String(pattern.clone()))?;
                 self.constant(Value::String(flags.clone()))?;
@@ -111,9 +129,7 @@ impl Compiler {
                 cooked,
                 expressions,
             } => {
-                static NEXT_SITE: std::sync::atomic::AtomicU64 =
-                    std::sync::atomic::AtomicU64::new(1);
-                return self.tagged_template_expression(tag, raw, cooked, expressions, &NEXT_SITE);
+                return self.tagged_template_expression(tag, raw, cooked, expressions);
             }
             Expr::Number(n) => self.constant(Value::Number(*n))?,
             Expr::BigInt(n) => self.constant(Value::BigInt(n.clone()))?,
@@ -238,8 +254,8 @@ impl Compiler {
                     UnaryOp::Delete | UnaryOp::Void => Opcode::DeleteProperty,
                 };
                 if *op == UnaryOp::Delete {
-                    if matches!(&**arg, Expr::Member { .. } | Expr::OptionalMember { .. })
-                        && optional_chain_root(arg)
+                    if let Some(member) =
+                        optional_member_parts(arg).filter(|_| optional_chain_root(arg))
                     {
                         // `delete a?.b` and `delete a?.b.c` delete the chain's
                         // final Reference. A `?.` that short-circuits skips
@@ -251,7 +267,7 @@ impl Compiler {
                             ));
                         }
                         let mut exits = Vec::new();
-                        self.optional_chain_member_reference(arg, &mut exits)?;
+                        self.optional_chain_member_reference(member, &mut exits)?;
                         self.emit(opcode, 0)?;
                         let deleted = self.emit(Opcode::Jump, 0)?;
                         let short_circuited = self.offset();
@@ -642,9 +658,6 @@ impl Compiler {
                 }
             }
             Expr::Parenthesized(expr) => self.expression(expr)?,
-            Expr::OptionalMember { .. } => {
-                return Err(CompileError::Unsupported("optional chaining"))
-            }
             Expr::Assign { op, target, value } => self.assignment(*op, target, value)?,
             Expr::DestructureAssign { pattern, value } => {
                 self.destructuring_assignment(pattern, value)?
@@ -708,8 +721,13 @@ impl Compiler {
                 {
                     if let Some(name) = private_member_name(arg) {
                         let owner = self.private_member_reference(object, name)?;
-                        let operand = private_update_operand(owner, *op, *prefix)?;
-                        self.emit(Opcode::PrivateUpdate, operand)?;
+                        let opcode = match (*op, *prefix) {
+                            (UpdateOp::Inc, false) => Opcode::PrivatePostIncrement,
+                            (UpdateOp::Inc, true) => Opcode::PrivatePreIncrement,
+                            (UpdateOp::Dec, false) => Opcode::PrivatePostDecrement,
+                            (UpdateOp::Dec, true) => Opcode::PrivatePreDecrement,
+                        };
+                        self.emit(opcode, owner)?;
                     } else if matches!(&**object, Expr::Super) {
                         self.super_reference(property, *computed)?;
                         // GetValue converts the key immediately; the later
@@ -868,9 +886,6 @@ impl Compiler {
                     argument_count,
                 )?;
             }
-            Expr::OptionalCall { .. } => {
-                return Err(CompileError::Unsupported("optional chaining"))
-            }
             Expr::This => self.emit_this()?,
             Expr::NewTarget => {
                 if !self.bytecode.new_target_allowed {
@@ -1006,18 +1021,25 @@ impl Compiler {
         exits: &mut Vec<usize>,
     ) -> Result<(), CompileError> {
         match expr {
-            Expr::Member { object, .. } | Expr::OptionalMember { object, .. } => {
+            Expr::Member { object, .. } | Expr::OptionalMember { object, .. }
+                if optional_chain_root(expr) =>
+            {
                 if let Some(name) = private_member_name(expr) {
                     let owner = self.private_member_chain_reference(object, name, exits)?;
                     self.emit(Opcode::PrivateGet, owner)?;
                 } else {
-                    match self.optional_chain_member_reference(expr, exits)? {
+                    match self.optional_chain_member_reference(
+                        optional_member_parts(expr).expect("chain member was checked"),
+                        exits,
+                    )? {
                         Some(owner) => self.emit(Opcode::PrivateGet, owner)?,
                         None => self.emit(Opcode::GetProperty, 0)?,
                     };
                 }
             }
-            Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
+            Expr::Call { callee, args } | Expr::OptionalCall { callee, args }
+                if optional_chain_root(expr) =>
+            {
                 let argument_count = self.list_count(args.len())?;
                 let optional_call = matches!(expr, Expr::OptionalCall { .. });
                 match callee.as_ref() {
@@ -1035,7 +1057,10 @@ impl Compiler {
                             let owner = self.private_member_chain_reference(object, name, exits)?;
                             self.emit(Opcode::PrivateGetMethod, owner)?;
                         } else {
-                            match self.optional_chain_member_reference(callee, exits)? {
+                            match self.optional_chain_member_reference(
+                                optional_member_parts(callee).expect("call member was checked"),
+                                exits,
+                            )? {
                                 Some(owner) => self.emit(Opcode::PrivateGetMethod, owner)?,
                                 None => self.emit(Opcode::GetMethod, 0)?,
                             };
@@ -1049,12 +1074,8 @@ impl Compiler {
                     {
                         self.parenthesized_optional_member_method(inner)?;
                     }
-                    _ if optional_chain_root(callee) => {
-                        self.optional_chain_expression(callee, exits)?;
-                        self.constant(Value::Undefined)?;
-                    }
                     _ => {
-                        self.expression(callee)?;
+                        self.optional_chain_expression(callee, exits)?;
                         self.constant(Value::Undefined)?;
                     }
                 }
@@ -1098,33 +1119,19 @@ impl Compiler {
     /// Evaluates the `object, key` operands of a member of an optional chain.
     /// A private name (`?.#x`) leaves the private name as its `key` instead
     /// and returns the binding slot of its owner.
-    pub(super) fn optional_chain_member_reference(
+    fn optional_chain_member_reference(
         &mut self,
-        expr: &Expr,
+        member: OptionalMemberParts<'_>,
         exits: &mut Vec<usize>,
     ) -> Result<Option<u32>, CompileError> {
-        let (object, property, computed, optional) = match expr {
-            Expr::Member {
-                object,
-                property,
-                computed,
-            } => (object, property, *computed, false),
-            Expr::OptionalMember {
-                object,
-                property,
-                computed,
-            } => (object, property, *computed, true),
-            _ => {
-                return Err(CompileError::InvalidSyntax(
-                    "invalid optional-chain member AST",
-                ))
-            }
-        };
-        if optional_chain_root(object) {
-            self.optional_chain_expression(object, exits)?;
-        } else {
-            self.expression(object)?;
-        }
+        let OptionalMemberParts {
+            object,
+            property,
+            computed,
+            optional,
+            ..
+        } = member;
+        self.optional_chain_expression(object, exits)?;
         if optional {
             // Keep the base below the test.  A nullish base becomes the
             // chain's undefined result and jumps beyond every remaining
@@ -1138,7 +1145,7 @@ impl Compiler {
         }
         if computed {
             self.expression(property)?;
-        } else if let Expr::Identifier(name) = property.as_ref() {
+        } else if let Expr::Identifier(name) = property {
             if let Some(private) = name.strip_prefix('#') {
                 let owner = self.resolve_private_name(private)?;
                 self.constant(Value::String(private.into()))?;
@@ -1164,11 +1171,7 @@ impl Compiler {
         exits: &mut Vec<usize>,
     ) -> Result<u32, CompileError> {
         let owner = self.resolve_private_name(name)?;
-        if optional_chain_root(object) {
-            self.optional_chain_expression(object, exits)?;
-        } else {
-            self.expression(object)?;
-        }
+        self.optional_chain_expression(object, exits)?;
         self.constant(Value::String(name.into()))?;
         Ok(owner)
     }
@@ -1181,6 +1184,7 @@ impl Compiler {
         &mut self,
         expr: &Expr,
     ) -> Result<(), CompileError> {
+        let member = optional_member_parts(expr).expect("caller checked parenthesized member");
         if is_super_member(expr) {
             self.member_reference(expr)?;
             self.emit_this()?;
@@ -1192,21 +1196,17 @@ impl Compiler {
             self.emit(Opcode::PrivateGetMethod, owner)?;
             return Ok(());
         }
-        if matches!(expr, Expr::Member { .. }) {
+        if !member.optional {
             self.member_reference(expr)?;
             self.emit(Opcode::GetMethod, 0)?;
             return Ok(());
         }
-        let Expr::OptionalMember {
+        let OptionalMemberParts {
             object,
             property,
             computed,
-        } = expr
-        else {
-            return Err(CompileError::InvalidSyntax(
-                "invalid parenthesized optional member AST",
-            ));
-        };
+            ..
+        } = member;
         self.expression(object)?;
         self.emit(Opcode::Dup, 0)?;
         let non_nullish = self.emit(Opcode::JumpIfNotNullish, 0)?;
@@ -1215,9 +1215,9 @@ impl Compiler {
         self.constant(Value::Undefined)?;
         let end = self.emit(Opcode::Jump, 0)?;
         self.patch(non_nullish, self.offset());
-        if *computed {
+        if computed {
             self.expression(property)?;
-        } else if let Expr::Identifier(name) = property.as_ref() {
+        } else if let Expr::Identifier(name) = property {
             if let Some(private) = name.strip_prefix('#') {
                 let owner = self.resolve_private_name(private)?;
                 self.constant(Value::String(private.into()))?;
@@ -1369,7 +1369,7 @@ impl Compiler {
             // comment), so the disposal wrapper is per-iteration here: it
             // wraps just this iteration's binding and body, inside the
             // per-iteration scope already entered above.
-            self.wrap_with_disposal(is_async, |this| {
+            self.wrap_with_disposal(is_async, &mut |this| {
                 this.emit(Opcode::Dup, 0)?;
                 this.bind_pattern(pattern, kind)?;
                 this.emit(Opcode::AddDisposableResource, u32::from(is_async))?;
@@ -1821,7 +1821,15 @@ impl Compiler {
     /// the outer assignment pattern keeps its duplicate RHS beneath it.
     pub(super) fn assign_pattern_target(&mut self, target: &Expr) -> Result<(), CompileError> {
         if let Expr::Identifier(name) = target {
-            if let Some(slot) = self.resolve(name) {
+            if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                // For-in/of assignment heads and destructuring leaves perform
+                // PutValue through the active object environments, just as an
+                // ordinary assignment does. The leaf value is already on the
+                // stack, so use the existing value-before-reference consumer.
+                let index = self.name_constant(name)?;
+                self.emit(Opcode::ResolveWithReference, index)?;
+                self.emit(Opcode::StoreResolvedWithReference, 0)?;
+            } else if let Some(slot) = self.resolve(name) {
                 self.emit(Opcode::StoreBinding, slot)?;
             } else {
                 let index = self.name_constant(name)?;

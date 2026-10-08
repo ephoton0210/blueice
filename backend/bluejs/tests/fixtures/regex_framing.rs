@@ -74,6 +74,19 @@ fn closed_request_channel_fails_before_waiting() {
 }
 
 #[test]
+fn missing_executable_path_is_reported_before_spawning_a_worker() {
+    let missing = || io::Error::new(io::ErrorKind::NotFound, "missing executable path");
+    assert!(matches!(
+        Worker::sibling_worker_path(Err(missing())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound
+    ));
+    assert!(matches!(
+        Worker::start_from_path(Err(missing())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound
+    ));
+}
+
+#[test]
 fn timed_out_transport_releases_the_cached_process() {
     assert!(matches!(
         super::find(
@@ -124,15 +137,34 @@ fn cached_find_with_a_replaced_pattern_is_not_decoded_as_compile() {
     ));
 }
 
+#[test]
+fn batch_validation_uses_the_real_cached_worker() {
+    assert_eq!(
+        super::validate(
+            vec![(vec![97], String::new()), (vec![40], String::new())],
+            DEFAULT_TIMEOUT,
+        )
+        .unwrap(),
+        vec![true, false]
+    );
+}
+
 /// A worker whose transport is two in-memory channels, so a test controls
 /// exactly what "the worker" replies. `_requests` keeps the request side open.
 fn scripted_worker(replies: Vec<Reply>) -> (Worker, Receiver<Vec<u8>>) {
+    scripted_worker_bytes(
+        replies
+            .iter()
+            .map(|reply| serde_json::to_vec(reply).unwrap())
+            .collect(),
+    )
+}
+
+fn scripted_worker_bytes(replies: Vec<Vec<u8>>) -> (Worker, Receiver<Vec<u8>>) {
     let (sender, requests) = mpsc::channel();
     let (reply, incoming) = mpsc::channel();
     for scripted in replies {
-        reply
-            .send(Ok(serde_json::to_vec(&scripted).unwrap()))
-            .unwrap();
+        reply.send(Ok(scripted)).unwrap();
     }
     let worker = Worker {
         child: exited_child(),
@@ -144,6 +176,22 @@ fn scripted_worker(replies: Vec<Reply>) -> (Worker, Receiver<Vec<u8>>) {
         input: None,
     };
     (worker, requests)
+}
+
+#[test]
+fn malformed_worker_reply_is_reported_as_a_transport_failure() {
+    let (mut worker, _requests) = scripted_worker_bytes(vec![b"{".to_vec()]);
+    assert!(matches!(
+        worker.request(
+            Request::Compile {
+                source: vec![97],
+                flags: String::new(),
+            },
+            Duration::from_millis(100),
+            None,
+        ),
+        Err(RuntimeError::RegexWorker(_))
+    ));
 }
 
 #[test]
@@ -168,6 +216,15 @@ fn validation_expects_a_validated_reply() {
     assert!(matches!(
         worker.validate(vec![(vec![97], String::new())], Duration::from_millis(100)),
         Err(RuntimeError::RegexWorker(message)) if message == "unexpected validation reply"
+    ));
+}
+
+#[test]
+fn validation_propagates_a_disconnected_worker_reply() {
+    let (mut worker, _requests) = scripted_worker(Vec::new());
+    assert!(matches!(
+        worker.validate(vec![(vec![97], String::new())], Duration::from_millis(100)),
+        Err(RuntimeError::RegexWorker(_))
     ));
 }
 
@@ -298,6 +355,20 @@ struct FailingWriter {
     budget: usize,
 }
 
+#[test]
+fn frame_io_reports_failed_payload_writes_and_truncated_payload_reads() {
+    let mut writer = FailingWriter { budget: 4 };
+    assert_eq!(
+        frame_write(&mut writer, b"a").unwrap_err().kind(),
+        io::ErrorKind::BrokenPipe
+    );
+    let mut truncated = io::Cursor::new(vec![3, 0, 0, 0, 1, 2]);
+    assert_eq!(
+        frame_read(&mut truncated).unwrap_err().kind(),
+        io::ErrorKind::UnexpectedEof
+    );
+}
+
 impl Write for FailingWriter {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if self.budget == 0 {
@@ -315,6 +386,12 @@ impl Write for FailingWriter {
 
 #[test]
 fn the_worker_ends_when_a_frame_cannot_be_read_or_its_answer_cannot_be_written() {
+    let ready = serve_on(
+        &mut io::Cursor::new(Vec::<u8>::new()),
+        &mut FailingWriter { budget: 0 },
+    );
+    assert_eq!(ready.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+
     // A length prefix beyond the frame limit is a read error, not end of input.
     let oversized = ((MAX_FRAME + 1) as u32).to_le_bytes().to_vec();
     let ended = serve_on(&mut io::Cursor::new(oversized), &mut Vec::new());
@@ -330,6 +407,25 @@ fn the_worker_ends_when_a_frame_cannot_be_read_or_its_answer_cannot_be_written()
         budget: 4 + READY.len(),
     };
     let ended = serve_on(&mut io::Cursor::new(input), &mut sink);
+    assert_eq!(ended.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+
+    let mut malformed = Vec::new();
+    frame_write(&mut malformed, b"{").unwrap();
+    assert!(serve_on(&mut io::Cursor::new(malformed), &mut Vec::new()).is_err());
+
+    let mut compile = Vec::new();
+    frame_write(
+        &mut compile,
+        &serde_json::to_vec(&serde_json::json!({
+            "operation": "compile", "source": [97], "flags": ""
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let mut sink = FailingWriter {
+        budget: 4 + READY.len(),
+    };
+    let ended = serve_on(&mut io::Cursor::new(compile), &mut sink);
     assert_eq!(ended.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
 }
 
@@ -352,4 +448,21 @@ fn the_worker_answers_compile_find_and_validate_requests() {
     assert_eq!(replies[2], serde_json::json!({"Found": null}));
     assert_eq!(replies[3]["Found"]["captures"], whole);
     assert_eq!(replies[4], serde_json::json!({"Validated": [true, false]}));
+}
+
+#[test]
+fn the_worker_serializes_named_capture_ranges() {
+    let pattern: Vec<u16> = "(?<word>a)".encode_utf16().collect();
+    let (ended, replies) = serve_requests(&[serde_json::json!({
+        "operation": "find",
+        "source": pattern,
+        "flags": "",
+        "input": [97],
+        "start": 0
+    })]);
+    assert!(ended.is_ok());
+    assert_eq!(
+        replies[0]["Found"]["names"],
+        serde_json::json!([["word", { "start": 0, "end": 1 }]])
+    );
 }

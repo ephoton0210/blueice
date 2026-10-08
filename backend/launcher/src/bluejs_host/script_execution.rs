@@ -488,3 +488,124 @@ pub(super) fn parse_category(_: ParseError) -> &'static str {
 pub(super) fn compile_category(_: CompileError) -> &'static str {
     "BlueJS compilation rejected the page script"
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use blueice_bluets::{Diagnostic, DiagnosticCode, SourceSpan};
+
+    fn graph_with_one_module(module_id: &str, source: &str) -> PageHostModuleGraph {
+        PageHostModuleGraph {
+            entry: module_id.to_string(),
+            modules: vec![PageHostSource::new(module_id, source)],
+            resolutions: Vec::new(),
+            resolver_fingerprint: "test-fingerprint".to_string(),
+        }
+    }
+
+    #[test]
+    fn parse_category_and_compile_category_are_fixed_strings() {
+        assert_eq!(
+            parse_category(ParseError {
+                message: "boom".to_string(),
+                resource: None,
+                known_syntax: false,
+            }),
+            "JavaScript parsing rejected the page script"
+        );
+        assert_eq!(
+            compile_category(CompileError::ProgramTooLarge),
+            "BlueJS compilation rejected the page script"
+        );
+    }
+
+    #[test]
+    fn discard_programs_accepts_an_empty_handle_list() {
+        let mut runtime = BlueJsPageRuntime::new(BlueJsPageRuntimeConfig::default()).unwrap();
+        discard_programs(&mut runtime, 1, &[]);
+    }
+
+    #[test]
+    fn bluets_bridge_position_resolves_a_bluets_diagnostics_matching_span() {
+        let graph = graph_with_one_module("blueice://page/a.ts", "const x: number = 1;");
+        let error = BridgeError::BlueTs(vec![Diagnostic::error(
+            DiagnosticCode::ParseError,
+            SourceSpan {
+                module: "blueice://page/a.ts".to_string(),
+                start: 0,
+                end: 5,
+            },
+            "unexpected token",
+        )]);
+        let position = bluets_bridge_position(&error, &graph).unwrap();
+        assert_eq!(position.module_id, "blueice://page/a.ts");
+        assert_eq!(position.start, 0);
+        assert_eq!(position.end, 5);
+    }
+
+    #[test]
+    fn bluets_bridge_position_resolves_an_unsupported_runtime_target_span() {
+        let graph = graph_with_one_module("blueice://page/a.ts", "const x: number = 1;");
+        let error = BridgeError::UnsupportedRuntimeTarget {
+            span: SourceSpan {
+                module: "blueice://page/a.ts".to_string(),
+                start: 6,
+                end: 7,
+            },
+            message: "unsupported".to_string(),
+        };
+        let position = bluets_bridge_position(&error, &graph).unwrap();
+        assert_eq!(position.start, 6);
+        assert_eq!(position.end, 7);
+    }
+
+    #[test]
+    fn bluets_bridge_position_is_none_for_every_other_error_category() {
+        let graph = graph_with_one_module("blueice://page/a.ts", "const x: number = 1;");
+        assert!(
+            bluets_bridge_position(&BridgeError::InvalidSourceIdentity("bad".to_string()), &graph)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn bluets_bridge_position_is_none_for_a_span_outside_the_graphs_modules() {
+        let graph = graph_with_one_module("blueice://page/a.ts", "const x: number = 1;");
+        let error = BridgeError::BlueTs(vec![Diagnostic::error(
+            DiagnosticCode::ParseError,
+            SourceSpan {
+                module: "blueice://page/other.ts".to_string(),
+                start: 0,
+                end: 1,
+            },
+            "unexpected token",
+        )]);
+        assert!(bluets_bridge_position(&error, &graph).is_none());
+    }
+
+    #[test]
+    fn bluets_bridge_position_is_none_for_a_malformed_span() {
+        let graph = graph_with_one_module("blueice://page/a.ts", "const x: number = 1;");
+        let backwards = BridgeError::BlueTs(vec![Diagnostic::error(
+            DiagnosticCode::ParseError,
+            SourceSpan {
+                module: "blueice://page/a.ts".to_string(),
+                start: 5,
+                end: 5,
+            },
+            "unexpected token",
+        )]);
+        assert!(bluets_bridge_position(&backwards, &graph).is_none());
+
+        let out_of_bounds = BridgeError::BlueTs(vec![Diagnostic::error(
+            DiagnosticCode::ParseError,
+            SourceSpan {
+                module: "blueice://page/a.ts".to_string(),
+                start: 0,
+                end: 10_000,
+            },
+            "unexpected token",
+        )]);
+        assert!(bluets_bridge_position(&out_of_bounds, &graph).is_none());
+    }
+}

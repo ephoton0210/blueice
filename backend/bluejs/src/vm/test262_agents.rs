@@ -252,13 +252,12 @@ impl Test262AgentHost {
     }
 
     fn shutdown(&self) -> Result<(), RuntimeError> {
-        let (controls, handles, errors) = {
+        let (controls, handles) = {
             let mut state = self.state.lock().expect("Test262 agent host lock poisoned");
             state.shutting_down = true;
             let controls = state.controls.clone();
             let handles = std::mem::take(&mut state.handles);
-            let errors = std::mem::take(&mut state.errors);
-            (controls, handles, errors)
+            (controls, handles)
         };
         for control in controls {
             control.broadcast_ready.notify_all();
@@ -266,6 +265,15 @@ impl Test262AgentHost {
         for handle in handles {
             let _ = handle.join();
         }
+        // A worker may report its final failure while shutdown is joining it.
+        // Drain only after every registered worker has finished reporting.
+        let errors = std::mem::take(
+            &mut self
+                .state
+                .lock()
+                .expect("Test262 agent host lock poisoned")
+                .errors,
+        );
         if let Some(error) = errors.into_iter().next() {
             return Err(RuntimeError::Test262(format!("agent failed: {error}")));
         }
@@ -294,27 +302,16 @@ impl Vm {
                 false,
                 true,
             )?;
-            for (name, length) in [
-                ("start", 1),
-                ("broadcast", 1),
-                ("receiveBroadcast", 1),
-                ("report", 1),
-                ("getReport", 0),
-                ("sleep", 1),
-                ("monotonicNow", 0),
-                ("leaving", 0),
+            for (name, length, native) in [
+                ("start", 1, "agentStart"),
+                ("broadcast", 1, "agentBroadcast"),
+                ("receiveBroadcast", 1, "agentReceiveBroadcast"),
+                ("report", 1, "agentReport"),
+                ("getReport", 0, "agentGetReport"),
+                ("sleep", 1, "agentSleep"),
+                ("monotonicNow", 0, "agentMonotonicNow"),
+                ("leaving", 0, "agentLeaving"),
             ] {
-                let native = match name {
-                    "start" => "agentStart",
-                    "broadcast" => "agentBroadcast",
-                    "receiveBroadcast" => "agentReceiveBroadcast",
-                    "report" => "agentReport",
-                    "getReport" => "agentGetReport",
-                    "sleep" => "agentSleep",
-                    "monotonicNow" => "agentMonotonicNow",
-                    "leaving" => "agentLeaving",
-                    _ => unreachable!(),
-                };
                 self.install_native(
                     agent,
                     function_prototype,
@@ -360,11 +357,13 @@ impl Vm {
         Some(result)
     }
 
-    fn agent_host(&self) -> Result<Arc<Test262AgentHost>, RuntimeError> {
+    /// The natives that call this are installed together with the host, so it
+    /// is always there.
+    fn agent_host(&self) -> Arc<Test262AgentHost> {
         self.test262_agent_host
             .as_ref()
             .cloned()
-            .ok_or_else(|| RuntimeError::TypeError("Test262 agent host is unavailable".into()))
+            .expect("the agent natives are installed with their host")
     }
 
     fn test262_agent_start(&mut self, source: &Value) -> Result<Value, RuntimeError> {
@@ -372,7 +371,7 @@ impl Vm {
             .coerce_string(source)?
             .to_utf8()
             .map_err(|_| RuntimeError::TypeError("agent source is not UTF-8".into()))?;
-        let host = self.agent_host()?;
+        let host = self.agent_host();
         let control = host.register();
         let config = self.config;
         let thread_host = Arc::clone(&host);
@@ -423,9 +422,15 @@ impl Vm {
             RuntimeError::TypeError("agent.broadcast requires a SharedArrayBuffer".into())
         })?;
         let backing = self.heap.shared_buffer_backing(buffer)?;
-        let maximum = self.heap.buffer_max_byte_length(buffer)?;
-        let byte_length = self.heap.buffer_byte_length(buffer)?;
-        self.agent_host()?.broadcast(Broadcast {
+        let maximum = self
+            .heap
+            .buffer_max_byte_length(buffer)
+            .expect("the preceding shared-backing lookup validated this buffer");
+        let byte_length = self
+            .heap
+            .buffer_byte_length(buffer)
+            .expect("the shared backing remains valid without intervening user code");
+        self.agent_host().broadcast(Broadcast {
             backing,
             max_byte_length: (maximum != byte_length).then_some(maximum),
         });
@@ -438,7 +443,7 @@ impl Vm {
                 "agent.receiveBroadcast callback must be callable".into(),
             ));
         }
-        let host = self.agent_host()?;
+        let host = self.agent_host();
         let control = self
             .test262_agent_control
             .as_ref()
@@ -449,11 +454,10 @@ impl Vm {
         };
         let constructor = self.global("SharedArrayBuffer")?;
         let prototype = self
-            .get_property(&constructor, &"prototype".into())?
+            .get_property(&constructor, &"prototype".into())
+            .expect("the native constructor has an immutable own prototype data property")
             .object_id()
-            .ok_or_else(|| {
-                RuntimeError::TypeError("SharedArrayBuffer prototype is unavailable".into())
-            })?;
+            .expect("the native constructor initialized its prototype as an object");
         let buffer = self.with_roots(|heap| {
             heap.alloc_shared_array_buffer_backing(
                 broadcast.backing,
@@ -471,13 +475,13 @@ impl Vm {
     }
 
     fn test262_agent_report(&mut self, value: &Value) -> Result<Value, RuntimeError> {
-        self.agent_host()?.report(self.coerce_string(value)?);
+        self.agent_host().report(self.coerce_string(value)?);
         Ok(Value::Undefined)
     }
 
     fn test262_agent_get_report(&self) -> Result<Value, RuntimeError> {
         Ok(self
-            .agent_host()?
+            .agent_host()
             .get_report()
             .map_or(Value::Null, Value::String))
     }
@@ -492,7 +496,7 @@ impl Vm {
 
     fn test262_agent_monotonic_now(&self) -> Result<Value, RuntimeError> {
         Ok(Value::Number(
-            self.agent_host()?.started.elapsed().as_secs_f64() * 1_000.0,
+            self.agent_host().started.elapsed().as_secs_f64() * 1_000.0,
         ))
     }
 
@@ -559,10 +563,10 @@ impl Vm {
                         crate::heap::SharedWaitResult::Ok => "ok",
                         crate::heap::SharedWaitResult::TimedOut => "timed-out",
                     };
-                    self.settle_promise(
+                    self.settle_tracked_promise(
                         promise,
                         PromiseStatus::Fulfilled(Value::String(value.into())),
-                    )?;
+                    );
                 }
                 AsyncHostEvent::Timer { callback, root } => {
                     let result = self.call_native(
@@ -571,7 +575,7 @@ impl Vm {
                         Vec::new(),
                         false,
                     );
-                    self.heap.unroot(root)?;
+                    self.release_root(root);
                     result?;
                 }
             }
@@ -610,9 +614,14 @@ impl Vm {
     }
 }
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/agent_host_boundaries.rs"]
+mod boundary_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Barrier, Once};
 
     #[test]
     fn shutdown_wakes_an_agent_waiting_for_its_first_broadcast() {
@@ -620,11 +629,19 @@ mod tests {
         let control = host.register();
         let waiting_host = Arc::clone(&host);
         let waiting_control = Arc::clone(&control);
-        let waiter =
-            thread::spawn(move || waiting_host.receive_broadcast(&waiting_control).is_none());
+        let gate = Arc::new(Barrier::new(2));
+        let waiting_gate = Arc::clone(&gate);
+        let waiter = thread::spawn(move || {
+            waiting_gate.wait();
+            waiting_host.receive_broadcast(&waiting_control).is_none()
+        });
 
         let deadline = Instant::now() + Duration::from_secs(5);
+        let release = Once::new();
         while !control.wait_started_for_test.load(Ordering::Acquire) {
+            release.call_once(|| {
+                gate.wait();
+            });
             assert!(Instant::now() < deadline, "agent did not start waiting");
             thread::yield_now();
         }

@@ -159,6 +159,61 @@ fn subtract_months_bubbles_backward_into_a_leap_month() {
     );
 }
 
+/// Borrowing one month from M01 crosses the year boundary and lands on the
+/// preceding year's last month, including in a leap-month calendar.
+#[test]
+fn subtracting_from_the_first_chinese_month_borrows_the_previous_year() {
+    assert_true(
+        r#"
+        (function() {
+          const first = Temporal.PlainDate.from({ year: 2020, monthCode: "M01", day: 1, calendar: "chinese" });
+          const previous = first.subtract({ months: 1 });
+          return previous.year === 2019 && previous.monthCode === "M12" && previous.day === 1;
+        })()
+        "#,
+    );
+}
+
+/// Borrowing across the lower ICU Chinese calendar boundary has no prior
+/// calendar year to borrow from. The large years component lands directly on
+/// that boundary, so this also checks the public add path without walking
+/// hundreds of thousands of intermediate months.
+#[test]
+fn borrowing_from_the_first_supported_chinese_year_reports_range_error() {
+    assert_true(
+        r#"
+        (function() {
+          const first = Temporal.PlainDate.from({ year: 2020, monthCode: "M01", day: 1, calendar: "chinese" });
+          let error;
+          try {
+            first.add({ years: -999999 - first.year, months: -1 });
+          } catch (caught) {
+            error = caught;
+          }
+          return error instanceof RangeError;
+        })()
+        "#,
+    );
+}
+
+#[test]
+fn borrowing_from_the_first_supported_indian_year_reports_range_error() {
+    assert_true(
+        r#"
+        (function() {
+          const first = Temporal.PlainDate.from({ year: 2020, month: 6, day: 1, calendar: "indian" });
+          let error;
+          try {
+            first.add({ years: -1000077 - first.year, months: -first.month });
+          } catch (caught) {
+            error = caught;
+          }
+          return error instanceof RangeError;
+        })()
+        "#,
+    );
+}
+
 /// `hebrew` calendar sanity check (not just `chinese`): subtracting 1 year
 /// from Adar I (`M05L`, only exists in a leap year) must constrain to the
 /// *next* month, Adar (`M06`) -- confirmed directly against

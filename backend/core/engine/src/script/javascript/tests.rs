@@ -80,6 +80,32 @@ fn rejected_declaration_does_not_block_a_later_script() {
 }
 
 #[test]
+fn a_script_that_parses_but_fails_to_compile_is_rejected_and_does_not_block_a_later_script() {
+    let (tabs, tab_id) = loaded_tabs(
+        concat!(
+            "<script>let duplicate; let duplicate;</script>",
+            "<script>41 + 1;</script>"
+        ),
+        "https://example.test/app/index.html",
+    );
+    let mut executor = JavaScriptPageExecutor::default();
+
+    executor.synchronize_and_execute(&tabs).unwrap();
+
+    let reports = reports(&mut executor, tab_id);
+    assert!(matches!(
+        reports.as_slice(),
+        [
+            JavaScriptPageExecutionReport::Rejected {
+                category: "BlueJS compilation rejected the page script",
+                ..
+            },
+            JavaScriptPageExecutionReport::Executed { .. }
+        ]
+    ));
+}
+
+#[test]
 fn copied_document_text_binding_executes_and_rejects_arguments() {
     let (tabs, tab_id) = loaded_tabs(
         concat!(

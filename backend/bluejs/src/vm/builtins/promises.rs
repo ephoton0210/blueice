@@ -67,104 +67,109 @@ impl Vm {
         if let Some(prototype) = cached {
             return Ok(prototype);
         }
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let function_prototype = self.function_prototype()?;
         self.stack.push(Value::Object(prototype));
-        let result: Result<(), RuntimeError> = (|| {
-            self.define_data(
-                prototype,
-                JsSymbol::well_known("toStringTag"),
-                Value::String(if map { "Map" } else { "Set" }.into()),
-                false,
-                false,
-                true,
-            )?;
-            if map {
-                self.install_native_getter(
-                    prototype,
-                    function_prototype,
-                    "size",
-                    NativeFunction::MapSize,
-                )?;
-                for (name, length, method) in [
-                    ("clear", 0, MapMethod::Clear),
-                    ("delete", 1, MapMethod::Delete),
-                    ("entries", 0, MapMethod::Entries),
-                    ("forEach", 1, MapMethod::ForEach),
-                    ("get", 1, MapMethod::Get),
-                    ("getOrInsert", 2, MapMethod::GetOrInsert),
-                    ("getOrInsertComputed", 2, MapMethod::GetOrInsertComputed),
-                    ("has", 1, MapMethod::Has),
-                    ("keys", 0, MapMethod::Keys),
-                    ("set", 2, MapMethod::Set),
-                    ("values", 0, MapMethod::Values),
-                ] {
-                    self.install_native(
-                        prototype,
-                        function_prototype,
-                        name,
-                        length,
-                        NativeFunction::MapMethod(method),
-                    )?;
-                }
-                // `Map.prototype[@@iterator]` is the same function object as
-                // `Map.prototype.entries`.
-                let entries = self.heap.get(prototype, "entries")?;
+        let result: Result<(), RuntimeError> =
+            (|| {
                 self.define_data(
                     prototype,
-                    JsSymbol::well_known("iterator"),
-                    entries,
-                    true,
+                    JsSymbol::well_known("toStringTag"),
+                    Value::String(if map { "Map" } else { "Set" }.into()),
+                    false,
                     false,
                     true,
                 )?;
-            } else {
-                self.install_native_getter(
-                    prototype,
-                    function_prototype,
-                    "size",
-                    NativeFunction::SetSize,
-                )?;
-                for (name, length, method) in [
-                    ("add", 1, SetMethod::Add),
-                    ("clear", 0, SetMethod::Clear),
-                    ("delete", 1, SetMethod::Delete),
-                    ("entries", 0, SetMethod::Entries),
-                    ("forEach", 1, SetMethod::ForEach),
-                    ("has", 1, SetMethod::Has),
-                    ("values", 0, SetMethod::Values),
-                    ("union", 1, SetMethod::Union),
-                    ("intersection", 1, SetMethod::Intersection),
-                    ("difference", 1, SetMethod::Difference),
-                    ("symmetricDifference", 1, SetMethod::SymmetricDifference),
-                    ("isSubsetOf", 1, SetMethod::IsSubsetOf),
-                    ("isSupersetOf", 1, SetMethod::IsSupersetOf),
-                    ("isDisjointFrom", 1, SetMethod::IsDisjointFrom),
-                ] {
-                    self.install_native(
+                if map {
+                    self.install_native_getter(
                         prototype,
                         function_prototype,
-                        name,
-                        length,
-                        NativeFunction::SetMethod(method),
+                        "size",
+                        NativeFunction::MapSize,
+                    )?;
+                    for (name, length, method) in [
+                        ("clear", 0, MapMethod::Clear),
+                        ("delete", 1, MapMethod::Delete),
+                        ("entries", 0, MapMethod::Entries),
+                        ("forEach", 1, MapMethod::ForEach),
+                        ("get", 1, MapMethod::Get),
+                        ("getOrInsert", 2, MapMethod::GetOrInsert),
+                        ("getOrInsertComputed", 2, MapMethod::GetOrInsertComputed),
+                        ("has", 1, MapMethod::Has),
+                        ("keys", 0, MapMethod::Keys),
+                        ("set", 2, MapMethod::Set),
+                        ("values", 0, MapMethod::Values),
+                    ] {
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            name,
+                            length,
+                            NativeFunction::MapMethod(method),
+                        )?;
+                    }
+                    // `Map.prototype[@@iterator]` is the same function object as
+                    // `Map.prototype.entries`.
+                    let entries = self.heap.get(prototype, "entries").expect(
+                        "the private rooted Map prototype owns its installed entries method",
+                    );
+                    self.define_data(
+                        prototype,
+                        JsSymbol::well_known("iterator"),
+                        entries,
+                        true,
+                        false,
+                        true,
+                    )?;
+                } else {
+                    self.install_native_getter(
+                        prototype,
+                        function_prototype,
+                        "size",
+                        NativeFunction::SetSize,
+                    )?;
+                    for (name, length, method) in [
+                        ("add", 1, SetMethod::Add),
+                        ("clear", 0, SetMethod::Clear),
+                        ("delete", 1, SetMethod::Delete),
+                        ("entries", 0, SetMethod::Entries),
+                        ("forEach", 1, SetMethod::ForEach),
+                        ("has", 1, SetMethod::Has),
+                        ("values", 0, SetMethod::Values),
+                        ("union", 1, SetMethod::Union),
+                        ("intersection", 1, SetMethod::Intersection),
+                        ("difference", 1, SetMethod::Difference),
+                        ("symmetricDifference", 1, SetMethod::SymmetricDifference),
+                        ("isSubsetOf", 1, SetMethod::IsSubsetOf),
+                        ("isSupersetOf", 1, SetMethod::IsSupersetOf),
+                        ("isDisjointFrom", 1, SetMethod::IsDisjointFrom),
+                    ] {
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            name,
+                            length,
+                            NativeFunction::SetMethod(method),
+                        )?;
+                    }
+                    // `Set.prototype.keys` and `Set.prototype[@@iterator]` are the
+                    // same function object as `Set.prototype.values`.
+                    let values = self.heap.get(prototype, "values").expect(
+                        "the private rooted Set prototype owns its installed values method",
+                    );
+                    self.define_data(prototype, "keys", values.clone(), true, false, true)?;
+                    self.define_data(
+                        prototype,
+                        JsSymbol::well_known("iterator"),
+                        values,
+                        true,
+                        false,
+                        true,
                     )?;
                 }
-                // `Set.prototype.keys` and `Set.prototype[@@iterator]` are the
-                // same function object as `Set.prototype.values`.
-                let values = self.heap.get(prototype, "values")?;
-                self.define_data(prototype, "keys", values.clone(), true, false, true)?;
-                self.define_data(
-                    prototype,
-                    JsSymbol::well_known("iterator"),
-                    values,
-                    true,
-                    false,
-                    true,
-                )?;
-            }
-            Ok(())
-        })();
+                Ok(())
+            })();
         self.stack.pop();
         result?;
         if map {
@@ -216,7 +221,10 @@ impl Vm {
                 &(if map { "set" } else { "add" }).into(),
             )?;
             self.stack.push(adder.clone());
-            if !self.is_callable(&adder)? {
+            if !self
+                .is_callable(&adder)
+                .expect("the adder getter returned a live local value or retained membrane facade")
+            {
                 return Err(RuntimeError::TypeError(
                     "collection adder must be callable".into(),
                 ));
@@ -283,15 +291,29 @@ impl Vm {
         let key = native::argument(args, 0);
         match method {
             MapMethod::Clear => {
-                self.heap.collection_clear(map)?;
+                self.heap
+                    .collection_clear(map)
+                    .expect("the Map brand was checked without running user code");
                 Ok(Value::Undefined)
             }
-            MapMethod::Delete => Ok(Value::Bool(self.heap.map_delete(map, key)?)),
+            MapMethod::Delete => {
+                Ok(Value::Bool(self.heap.map_delete(map, key).expect(
+                    "the Map brand was checked without running user code",
+                )))
+            }
             MapMethod::Entries => self.collection_iterator(map, true, ArrayIteratorKind::Entries),
             MapMethod::ForEach => self.collection_for_each(map, true, args),
-            MapMethod::Get => Ok(self.heap.map_get(map, key)?.unwrap_or(Value::Undefined)),
+            MapMethod::Get => Ok(self
+                .heap
+                .map_get(map, key)
+                .expect("the Map brand was checked without running user code")
+                .unwrap_or(Value::Undefined)),
             MapMethod::GetOrInsert => {
-                if let Some(value) = self.heap.map_get(map, key)? {
+                if let Some(value) = self
+                    .heap
+                    .map_get(map, key)
+                    .expect("the Map brand was checked without running user code")
+                {
                     return Ok(value);
                 }
                 let value = native::argument(args, 1).clone();
@@ -305,7 +327,11 @@ impl Vm {
                         "Map getOrInsertComputed callback must be callable".into(),
                     ));
                 }
-                if let Some(value) = self.heap.map_get(map, key)? {
+                if let Some(value) = self
+                    .heap
+                    .map_get(map, key)
+                    .expect("the Map brand was checked without running user code")
+                {
                     return Ok(value);
                 }
                 // CanonicalizeKeyedCollectionKey: the callback observes +0
@@ -329,7 +355,11 @@ impl Vm {
                 self.stack.truncate(base);
                 stored
             }
-            MapMethod::Has => Ok(Value::Bool(self.heap.map_has(map, key)?)),
+            MapMethod::Has => {
+                Ok(Value::Bool(self.heap.map_has(map, key).expect(
+                    "the Map brand was checked without running user code",
+                )))
+            }
             MapMethod::Keys => self.collection_iterator(map, true, ArrayIteratorKind::Keys),
             MapMethod::Set => {
                 self.with_roots(|heap| {
@@ -364,13 +394,23 @@ impl Vm {
                 Ok(Value::Object(set))
             }
             SetMethod::Clear => {
-                self.heap.collection_clear(set)?;
+                self.heap
+                    .collection_clear(set)
+                    .expect("the Set brand was checked without running user code");
                 Ok(Value::Undefined)
             }
-            SetMethod::Delete => Ok(Value::Bool(self.heap.set_delete(set, key)?)),
+            SetMethod::Delete => {
+                Ok(Value::Bool(self.heap.set_delete(set, key).expect(
+                    "the Set brand was checked without running user code",
+                )))
+            }
             SetMethod::Entries => self.collection_iterator(set, false, ArrayIteratorKind::Entries),
             SetMethod::ForEach => self.collection_for_each(set, false, args),
-            SetMethod::Has => Ok(Value::Bool(self.heap.set_has(set, key)?)),
+            SetMethod::Has => {
+                Ok(Value::Bool(self.heap.set_has(set, key).expect(
+                    "the Set brand was checked without running user code",
+                )))
+            }
             SetMethod::Values => self.collection_iterator(set, false, ArrayIteratorKind::Values),
             SetMethod::Union
             | SetMethod::Intersection
@@ -386,9 +426,9 @@ impl Vm {
         if let Some(prototype) = self.weak_ref_prototype {
             return Ok(prototype);
         }
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let function_prototype = self.function_prototype()?;
         self.stack.push(Value::Object(prototype));
         let result: Result<(), RuntimeError> = (|| {
             self.define_data(
@@ -470,9 +510,9 @@ impl Vm {
         if let Some(prototype) = self.finalization_registry_prototype {
             return Ok(prototype);
         }
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let function_prototype = self.function_prototype()?;
         self.stack.push(Value::Object(prototype));
         let result: Result<(), RuntimeError> = (|| {
             self.define_data(
@@ -605,9 +645,14 @@ impl Vm {
                 "FinalizationRegistry unregister token cannot be held weakly".into(),
             ));
         }
-        Ok(Value::Bool(self.with_roots(|heap| {
-            heap.finalization_registry_unregister(registry, unregister_token)
-        })?))
+        Ok(Value::Bool(
+            self.with_roots(|heap| {
+                heap.finalization_registry_unregister(registry, unregister_token)
+            })
+            .expect(
+                "the checked registry and weak token remain valid; unregister only removes cells",
+            ),
+        ))
     }
 
     pub(in super::super) fn weak_collection_prototype(
@@ -622,9 +667,9 @@ impl Vm {
         if let Some(prototype) = cached {
             return Ok(prototype);
         }
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let function_prototype = self.function_prototype()?;
         self.stack.push(Value::Object(prototype));
         let result: Result<(), RuntimeError> = (|| {
             self.define_data(
@@ -712,7 +757,10 @@ impl Vm {
                 &(if map { "set" } else { "add" }).into(),
             )?;
             self.stack.push(adder.clone());
-            if !self.is_callable(&adder)? {
+            if !self
+                .is_callable(&adder)
+                .expect("the adder getter returned a live local value or retained membrane facade")
+            {
                 return Err(RuntimeError::TypeError(
                     "weak collection adder must be callable".into(),
                 ));
@@ -818,7 +866,8 @@ impl Vm {
                 }
                 Ok(self
                     .heap
-                    .weak_collection_get(collection, key)?
+                    .weak_collection_get(collection, key)
+                    .expect("the weak collection brand was checked without running user code")
                     .unwrap_or(Value::Undefined))
             }
             WeakCollectionMethod::GetOrInsert => {
@@ -827,7 +876,11 @@ impl Vm {
                         "Weak collection key cannot be held weakly".into(),
                     ));
                 }
-                if let Some(value) = self.heap.weak_collection_get(collection, key)? {
+                if let Some(value) = self
+                    .heap
+                    .weak_collection_get(collection, key)
+                    .expect("the weak collection brand was checked without running user code")
+                {
                     return Ok(value);
                 }
                 let value = native::argument(args, 1).clone();
@@ -848,7 +901,11 @@ impl Vm {
                         "Weak collection key cannot be held weakly".into(),
                     ));
                 }
-                if let Some(value) = self.heap.weak_collection_get(collection, key)? {
+                if let Some(value) = self
+                    .heap
+                    .weak_collection_get(collection, key)
+                    .expect("the weak collection brand was checked without running user code")
+                {
                     return Ok(value);
                 }
                 // The callback may allocate or mutate this very map. Keep
@@ -878,7 +935,10 @@ impl Vm {
                     return Ok(Value::Bool(false));
                 }
                 Ok(Value::Bool(
-                    self.heap.weak_collection_get(collection, key)?.is_some(),
+                    self.heap
+                        .weak_collection_get(collection, key)
+                        .expect("the weak collection brand was checked without running user code")
+                        .is_some(),
                 ))
             }
             WeakCollectionMethod::Delete => {
@@ -886,7 +946,9 @@ impl Vm {
                     return Ok(Value::Bool(false));
                 }
                 Ok(Value::Bool(
-                    self.heap.weak_collection_delete(collection, key)?,
+                    self.heap
+                        .weak_collection_delete(collection, key)
+                        .expect("the weak collection brand was checked without running user code"),
                 ))
             }
         }
@@ -1010,7 +1072,10 @@ impl Vm {
                     // NewPromiseReactionJob: a missing handler passes the
                     // settlement through; either way the outcome is delivered
                     // through the reaction's resolve/reject.
-                    let outcome = if self.is_callable(&handler)? {
+                    let outcome = if self
+                        .is_callable(&handler)
+                        .expect("the queued reaction retains its validated handler")
+                    {
                         self.call_native(handler, Value::Undefined, vec![value], false)
                     } else if fulfilled {
                         Ok(value)
@@ -1023,7 +1088,7 @@ impl Vm {
                         }
                         (ReactionTarget::Native(promise), Err(error)) => {
                             let error = self.error_value(error)?;
-                            self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+                            self.settle_tracked_promise(promise, PromiseStatus::Rejected(error));
                         }
                         (ReactionTarget::Capability(capability), Ok(value)) => {
                             self.stack.push(value.clone());
@@ -1081,7 +1146,10 @@ impl Vm {
                     let result = self.dynamic_import_job(&referrer, &specifier, module_type, phase);
                     match result {
                         Ok(DynamicImportResult::Fulfilled(namespace)) => {
-                            self.settle_promise(target, PromiseStatus::Fulfilled(namespace))?
+                            // ContinueDynamicImport calls the capability's
+                            // Resolve function, including an exported `then`.
+                            self.resolve_promise(target, namespace)
+                                .expect("dynamic import produced a retained namespace: completed export cells are initialized, and a deferred namespace omits then; callable exports execute in later fallible jobs")
                         }
                         Ok(DynamicImportResult::WaitingDeferred { namespace, modules }) => {
                             self.deferred_import_waiters.push(DeferredImportWaiter {
@@ -1098,7 +1166,7 @@ impl Vm {
                         }
                         Err(error) => {
                             let error = self.error_value(error)?;
-                            self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                            self.settle_tracked_promise(target, PromiseStatus::Rejected(error));
                         }
                     }
                 }

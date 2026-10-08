@@ -72,6 +72,25 @@ fn check(body: &str) {
     }
 }
 
+#[test]
+fn zoned_round_propagates_each_option_getter_error() {
+    check(
+        r#"
+      const value = new Temporal.ZonedDateTime(0n, "UTC");
+      for (const name of ["roundingIncrement", "roundingMode", "smallestUnit"]) {
+        const expected = {};
+        const options = {};
+        Object.defineProperty(options, name, { get() { throw expected; } });
+        let caught = false;
+        try { value.round(options); }
+        catch (error) { caught = error === expected; }
+        if (!caught) throw new Error(name);
+      }
+      assertRangeError(() => value.round("\uD800"), "unpaired surrogate unit");
+    "#,
+    );
+}
+
 /// `intl402/Temporal/ZonedDateTime/prototype/until/dst-rounding-result.js`:
 /// "Rounding up to hours causes one more day of overflow" — `2 days 23:59`
 /// rounds to `24` hours, which is the whole (24-hour) day, so it must carry.
@@ -381,6 +400,22 @@ fn round_rejects_unrepresentable_day_bounds_and_out_of_range_increments() {
         // At the last instant there is no next day to round toward.
         assertRangeError(() => new Temporal.ZonedDateTime(86400_0000_0000_000_000_000n, "UTC").round({ smallestUnit: "day" }),
           "upper bound");
+        const maxInstant = 864n * 10n ** 19n;
+        assertRangeError(() => new Temporal.ZonedDateTime(maxInstant, "+13").round({
+          smallestUnit: "hour", roundingIncrement: 12, roundingMode: "ceil",
+        }), "subday rounding carries beyond the last date");
+        for (const calendar of [
+          "gregory", "buddhist", "chinese", "coptic", "dangi", "ethiopic", "ethioaa",
+          "hebrew", "indian", "islamic-civil", "islamic-tbla", "islamic-umalqura",
+          "japanese", "persian", "roc",
+        ]) {
+          assertRangeError(() => new Temporal.ZonedDateTime(maxInstant, "+13", calendar).round({
+            smallestUnit: "hour", roundingIncrement: 12, roundingMode: "ceil",
+          }), "subday rounding with " + calendar + " beyond the last date");
+        }
+        assertRangeError(() => new Temporal.ZonedDateTime(maxInstant, "+01").round({
+          smallestUnit: "hour", roundingIncrement: 12, roundingMode: "ceil",
+        }), "subday rounding exceeds the last instant");
         // `GetStartOfDay` of the edge dates is not a representable instant.
         for (const [epoch, zone] of [[-864n * 10n ** 19n, "-01"], [-864n * 10n ** 19n, "+01"],
                                      [864n * 10n ** 19n, "-01"], [864n * 10n ** 19n, "+00"], [864n * 10n ** 19n, "+01"]]) {

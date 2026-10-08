@@ -5,7 +5,7 @@
 //! `Math.max`/`min`/`hypot` argument coercion, `Math.pow`'s and `**`'s NaN
 //! rules, and the exactness of `Math.round`.
 
-use blueice_bluejs::{compile, parse, Value, Vm};
+use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
 fn evaluate(source: &str) -> Value {
     Vm::default()
@@ -19,6 +19,17 @@ fn assert_true(source: &str) {
         Value::Bool(true) => {}
         Value::String(reason) => panic!("{}", reason.to_utf8().unwrap()),
         other => panic!("{source}\n  -> {other:?}"),
+    }
+}
+
+#[test]
+fn symbol_numeric_and_relational_operations_reject_both_operand_orders() {
+    for source in ["-Symbol()", "Symbol() < 1", "1 < Symbol()"] {
+        let result = Vm::default().execute(&compile(&parse(source).unwrap()).unwrap());
+        assert!(
+            matches!(result, Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -124,5 +135,24 @@ fn acosh_and_atanh_stay_accurate_near_their_singularities() {
           if (!Number.isNaN(Math.atanh(1.0000001)) || !Number.isNaN(Math.atanh(-2)) || !Number.isNaN(Math.atanh(NaN))) return "atanh NaN cases";
           return true;
         })()"#,
+    );
+}
+
+#[test]
+fn ordinary_math_inputs_cover_the_midrange_and_empty_hypotenuse() {
+    assert_true(
+        r#"Math.hypot() === 0 &&
+            Math.sign(3) === 1 && Math.sign(-3) === -1 &&
+            Math.abs(Math.acosh(3) - 1.762747174039086) < 1e-15 &&
+            Math.abs(Math.atanh(0.25) - 0.25541281188299536) < 1e-15"#,
+    );
+}
+
+#[test]
+fn precise_sum_rounds_once_at_halfway_and_at_the_finite_limit() {
+    assert_true(
+        r#"Math.sumPrecise([1, 2 ** -53]) === 1 &&
+            Math.sumPrecise([1, 2 ** -53, 2 ** -54]) === 1 + Number.EPSILON &&
+            Math.sumPrecise([Number.MAX_VALUE, 2 ** 970]) === Infinity"#,
     );
 }
