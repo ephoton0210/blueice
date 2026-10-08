@@ -5637,7 +5637,9 @@ the `/var` alias while the project loader canonicalized its root to
 check. The modifier runtime/declaration harness now canonicalizes its temporary
 root before creating any project or output paths. Compiler confinement remains
 unchanged. The correction is validated with a symlinked `TMPDIR` on Linux;
-full cross-platform CI must be rerun on the corrected commit.
+full cross-platform CI passes on the corrected commit.
+
+*Final CI verification (2026-10-09):* Corrected-source CI [37797735267](https://github.com/ephoton0210/blueice/actions/runs/37797735267) on `bb580bdf9` passes all 29 jobs: complete workspace build/test/fmt/all-target Clippy across 25 platform configurations, both pinned TypeScript oracle jobs, coverage and the final gate. Workspace line coverage is 95.04% (194,767 lines, 9,664 missed); independent BlueJS line coverage is 99.53% (81,248 lines, 384 missed). No coverage exclusion is added. The macOS oracle temporary-root mismatch is resolved. No BlueTS regression from the merged Test262 branch is observed in these gates. K.5.2/K.5.3 and M8 remain open.
 
 Largest changed production source: 1,188 lines; focused modules own the new
 responsibilities. The generated refusal inventory contains 162 sites and
