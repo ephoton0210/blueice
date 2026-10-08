@@ -5471,3 +5471,16 @@ Ten supplemental fixtures now carry the required MPL-2.0 headers. Their program 
 ### K.3/K.4 CI bootstrap correction — 2026-10-08
 
 Initial final-source CI [37698111419](https://github.com/ephoton0210/blueice/actions/runs/37698111419) exposes an openSUSE Leap 15.6 x86_64 initialization failure before checkout or Rust build/test: the unused OpenH264 repository cannot connect, so zypper reports exit 106 after installing the required packages. The SUSE bootstrap now disables only `repo-openh264` when its configuration file exists; required repositories and package-install failures retain their existing behavior. The exact corrected CI step succeeds in a fresh Linux openSUSE Leap 15.6 aarch64 container, with all twelve required RPMs verified. Evidence: `/private/tmp/blueice-k47-ci-suse-failure.log` and `/private/tmp/blueice-k47-suse-install.log`. The vendor documents exit 106 as a skipped repository at [zypper(8)](https://manpages.opensuse.org/Leap-15.6/zypper/zypper.8.en.html). Production sources and Rust test harnesses are unchanged. The initial coverage job passes with workspace line coverage 90.65% and independent BlueJS 93.00%; no coverage exclusion is added. A fresh final-source CI run is required after this bootstrap correction.
+
+### K.3/K.4 final workspace verification — 2026-10-08
+
+Final-source CI [37702047861](https://github.com/ephoton0210/blueice/actions/runs/37702047861) on `40de14abd` passes all 29 jobs, including complete workspace build/test/fmt/all-target Clippy across 25 platform configurations and both pinned TypeScript oracle jobs. Workspace line coverage is 90.65% (188,432 lines, 17,621 missed); independent BlueJS line coverage is 93.00% (77,553 lines, 5,425 missed). No coverage exclusion is added. K.3 and the measured K.4 leaves are complete. M8 remains open for K.5–K.9 and the inventory retains unmeasured combinations.
+
+The RHEL UBI 9 x86_64 job initially fails while downloading the crates.io index
+before compilation. Rerunning that job and its dependent gate succeeds on the
+same source SHA; the other 27 successful job results are retained.
+
+The source commit and final documentation commit have identical backend, build,
+CI and script inputs. The largest production source remains 1,153 lines; the
+1,200-line review threshold and 1,300-line split threshold are not reached.
+Fixture correction evidence: `/private/tmp/blueice-k14-linux/blueice-k47-headers-status.json` and its compatibility/diagnostics logs.

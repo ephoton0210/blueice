@@ -89,6 +89,11 @@ including all 141 ignored oracles in 39 differential suite files. All 88
 compatibility programs and four exact runtime/declaration witnesses pass. The
 shared diagnostic corpus contains 2,014 programs and 167 templates.
 
+The final K.3/K.4 source CI passes all 29 jobs on `40de14abd`; workspace line
+coverage is 90.65%, independent BlueJS 93.00%, with no added exclusions.
+Evidence: [CI 37702047861](https://github.com/ephoton0210/blueice/actions/runs/37702047861). The remaining M8 leaves
+and recorded unmeasured combinations stay open.
+
 ### Measured pass rate (2026-10-06, Linux aarch64 in Colima on Apple silicon, pinned `typescript@5.9.3`, Node 26)
 
 Every differential suite of section 1 was run against the pinned compiler with none skipped:

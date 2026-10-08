@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current gate: final K.3/K.4 workspace and coverage verification.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.5.1 (abstract and implements).** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -395,6 +395,8 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   - *Fixture provenance (2026-10-08):* Ten supplemental fixtures now carry the required MPL-2.0 headers. Their program bodies are unchanged; the pinned compatibility and shared diagnostic recorders regenerate only source positions. The frozen 12-file Linux replay passes format, format check, both-crate all-target Clippy and all eight compatibility/diagnostics tests, including both pinned recorders and all four runtime/declaration witnesses. Production sources and Rust test harness inputs match `4abe6111f`. Evidence: `/private/tmp/blueice-k14-linux/blueice-k47-headers-status.json` and its compatibility/diagnostics logs. Final workspace CI remains open while an unrelated openSUSE repository initialization failure is repaired.
 
   - *CI bootstrap correction (2026-10-08):* Initial final-source CI [37698111419](https://github.com/ephoton0210/blueice/actions/runs/37698111419) exposes an openSUSE Leap 15.6 x86_64 initialization failure before checkout or Rust build/test: the unused OpenH264 repository cannot connect, so zypper reports exit 106 after installing the required packages. The SUSE bootstrap now disables only `repo-openh264` when its configuration file exists; required repositories and package-install failures retain their existing behavior. The exact corrected CI step succeeds in a fresh Linux openSUSE Leap 15.6 aarch64 container, with all twelve required RPMs verified. Evidence: `/private/tmp/blueice-k47-ci-suse-failure.log` and `/private/tmp/blueice-k47-suse-install.log`. The vendor documents exit 106 as a skipped repository at [zypper(8)](https://manpages.opensuse.org/Leap-15.6/zypper/zypper.8.en.html). Production sources and Rust test harnesses are unchanged. The initial coverage job passes with workspace line coverage 90.65% and independent BlueJS 93.00%; no coverage exclusion is added. A fresh final-source CI run is required after this bootstrap correction.
+
+  - *Final K.3/K.4 verification (2026-10-08):* Final-source CI [37702047861](https://github.com/ephoton0210/blueice/actions/runs/37702047861) on `40de14abd` passes all 29 jobs, including complete workspace build/test/fmt/all-target Clippy across 25 platform configurations and both pinned TypeScript oracle jobs. Workspace line coverage is 90.65% (188,432 lines, 17,621 missed); independent BlueJS line coverage is 93.00% (77,553 lines, 5,425 missed). No coverage exclusion is added. K.3 and the measured K.4 leaves are complete. M8 remains open for K.5–K.9 and the inventory retains unmeasured combinations.
 
 ### K.5 Remaining class forms — M8 — gap G-T9
 
