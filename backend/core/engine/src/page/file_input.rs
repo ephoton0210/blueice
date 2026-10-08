@@ -10,6 +10,128 @@ use blueice_ipc::file_input::{
 };
 
 impl Page {
+    pub(crate) fn script_file_value(&self, handle: u64) -> Result<Option<String>, String> {
+        let node = self.script_node(handle)?;
+        if tag(&self.doc, node) != "input" || input_type(&self.doc, node) != "file" {
+            return Ok(None);
+        }
+        Ok(Some(
+            self.native_files
+                .get(&node)
+                .and_then(|files| files.first())
+                .map_or_else(String::new, |file| format!("C:\\fakepath\\{}", file.name)),
+        ))
+    }
+    pub(crate) fn script_clear_input_files(&mut self, handle: u64) -> Result<(), String> {
+        let node = self.script_node(handle)?;
+        if tag(&self.doc, node) != "input" || input_type(&self.doc, node) != "file" {
+            return Err("Not a file input".into());
+        }
+        self.native_files.remove(&node);
+        self.doc.set_file_control_names(node, vec![]);
+        self.native_file_revision = self.native_file_revision.wrapping_add(1);
+        self.relayout();
+        Ok(())
+    }
+    pub(crate) fn script_reset_form(&mut self, handle: u64) -> Result<(), String> {
+        let node = self.script_node(handle)?;
+        if tag(&self.doc, node) != "form" {
+            return Err("Not a form".into());
+        }
+        self.reset_native_form(node);
+        self.relayout();
+        Ok(())
+    }
+    pub(crate) fn script_document_handle(&mut self) -> u64 {
+        self.script_handle_for_node(self.doc.root())
+    }
+    pub fn validate_file_input(
+        &self,
+        context: &FileInputContext,
+        source: u64,
+    ) -> Result<FileInputState, String> {
+        let mut current =
+            self.file_input_state(context.node_id, source, context.document_generation)?;
+        current.context.tab_id = context.tab_id;
+        if current.context != *context {
+            return Err("File selection is stale".into());
+        }
+        Ok(current)
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn script_file_event_path(&mut self, node: u64) -> Option<Vec<u64>> {
+        let mut node = NodeId::from_u64(node);
+        if !self.doc.contains(node) {
+            return None;
+        }
+        let mut raw = vec![node];
+        while let Some(parent) = self.doc.parent(node) {
+            if raw.len() >= 256 {
+                return None;
+            }
+            raw.push(parent);
+            node = parent;
+        }
+        Some(
+            raw.into_iter()
+                .map(|node| self.script_handle_for_node(node))
+                .collect(),
+        )
+    }
+    pub(crate) fn script_input_files(
+        &self,
+        handle: u64,
+    ) -> Result<(u64, Option<Vec<blueice_ipc::script::ScriptFileMetadata>>), String> {
+        let node = self.script_node(handle)?;
+        let files = if tag(&self.doc, node) == "input" && input_type(&self.doc, node) == "file" {
+            Some(
+                self.native_files
+                    .get(&node)
+                    .into_iter()
+                    .flatten()
+                    .map(|file| blueice_ipc::script::ScriptFileMetadata {
+                        name: file.name.clone(),
+                        media_type: file.media_type.clone(),
+                        last_modified: file.last_modified,
+                        size: file.bytes.len(),
+                    })
+                    .collect(),
+            )
+        } else {
+            None
+        };
+        Ok((self.native_file_revision, files))
+    }
+
+    pub(crate) fn script_read_input_file(
+        &self,
+        handle: u64,
+        revision: u64,
+        index: usize,
+        offset: usize,
+        length: usize,
+    ) -> Result<Vec<u8>, String> {
+        let node = self.script_node(handle)?;
+        if revision != self.native_file_revision
+            || tag(&self.doc, node) != "input"
+            || input_type(&self.doc, node) != "file"
+            || length > blueice_ipc::script::SCRIPT_MAX_FILE_CHUNK_BYTES
+        {
+            return Err("Selected file revision or range is unavailable".into());
+        }
+        let file = self
+            .native_files
+            .get(&node)
+            .and_then(|files| files.get(index))
+            .ok_or("Selected file is unavailable")?;
+        let end = offset
+            .checked_add(length)
+            .filter(|end| *end <= file.bytes.len())
+            .ok_or("Selected file range is unavailable")?;
+        Ok(file.bytes[offset..end].to_vec())
+    }
+
     pub fn file_input_state(
         &self,
         node: u64,
@@ -48,12 +170,7 @@ impl Page {
         source: u64,
         files: Vec<FileData>,
     ) -> Result<FileInputState, String> {
-        let mut current =
-            self.file_input_state(context.node_id, source, context.document_generation)?;
-        current.context.tab_id = context.tab_id;
-        if current.context != *context {
-            return Err("File selection is stale".into());
-        }
+        let current = self.validate_file_input(context, source)?;
         let id = NodeId::from_u64(context.node_id);
         let total = files
             .iter()

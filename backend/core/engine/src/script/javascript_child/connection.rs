@@ -174,6 +174,25 @@ impl PageHostClient for PageHostConnection {
         self.request_while_pumping_script(PageHostRequest::SynchronizeDocument { document }, pump)
     }
 
+    fn dispatch_file_selection_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        nodes: Vec<u64>,
+        event: blueice_ipc::page_host::PageHostFileSelectionEvent,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::DispatchFileSelection {
+                tab_id,
+                document_generation,
+                nodes,
+                event,
+            },
+            pump,
+        )
+    }
+
     fn dispatch_click_with_script_pump(
         &mut self,
         tab_id: u64,

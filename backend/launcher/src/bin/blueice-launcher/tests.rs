@@ -272,6 +272,7 @@ fn every_flag_is_parsed() {
             gatekeeper_socket: Some(PathBuf::from("/tmp/gatekeeper.sock")),
             owned_gatekeeper_socket: None,
             out_of_process_bluejs: true,
+            page_dom_bindings: false,
             compiler_mcp_socket: Some(PathBuf::from("/tmp/compiler-mcp.sock")),
             compiler_catalog_file: None,
             page_http_policy_file: None,

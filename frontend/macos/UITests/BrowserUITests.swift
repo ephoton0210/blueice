@@ -692,6 +692,113 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: panel)],timeout: 10),.completed)
     }
 
+    func testOrdinaryPageScriptRunsIsolatedDOMAndCancelsLinkNavigation() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch(); enter(fixture.origin + "/dom-script")
+        waitPageContent("Ordinary script ready")
+        pageContent("Run page listener").click()
+        waitPageContent("Ordinary listener completed")
+        XCTAssertEqual(app.textFields["address"].value as? String, fixture.origin + "/dom-script")
+        XCTAssertEqual(app.textFields["Retained script editor"].value as? String, "retained 中文")
+        XCTAssertEqual(fixture.requests, ["/dom-script"])
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "macos-ordinary-page-script"; image.lifetime = .keepAlways; add(image)
+    }
+    func testNativeFileSelectionRunsPageFileAPIAndOrderedChangeCancelEvents() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bi-file-script-ui-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("chosen-中文.bin")
+        try Data([0,255,13,10,7]).write(to: file)
+        app.launchArguments += ["-AppleLanguages","(en)","-AppleLocale","en_US"]
+        launch(); enter(fixture.origin + "/file-script")
+        waitPageContent("File API ready")
+        let upload = app.groups["page"].buttons["Script upload"]
+        XCTAssertTrue(upload.waitForExistence(timeout: 15), app.debugDescription)
+        upload.click(); try chooseFileAtPath(file.path)
+        waitPageContent("input,change,bubble:chosen-中文.bin:5:0,255,13,10,7")
+        waitValue(upload, file.lastPathComponent)
+        upload.click()
+        let panel = app.sheets["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), app.debugDescription)
+        panel.buttons["Cancel"].click()
+        waitPageContent("input,change,bubble,cancel:chosen-中文.bin")
+        waitValue(upload, file.lastPathComponent)
+        waitValue(app.groups["page"].textFields["Retained script editor"], "retained 中文")
+        waitValue(app.textFields["address"], fixture.origin + "/file-script")
+        XCTAssertEqual(fixture.requests, ["/file-script"])
+        let screenshot = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        screenshot.name = "macos-file-api-events"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+
+    func testScriptFileClearAndFormResetRetainSnapshotsWithoutSelectionEvents() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("bi-file-clear-ui-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory,withIntermediateDirectories: false,attributes: [.posixPermissions:0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("chosen-中文.bin")
+        try Data([0,255,13,10,7]).write(to: file)
+        launch(); enter(fixture.origin + "/file-script"); waitPageContent("File API ready")
+        app.buttons["Script upload"].click(); try chooseFileAtPath(file.path)
+        waitPageContent("input,change,bubble:chosen-中文.bin:5:0,255,13,10,7")
+        pageContent("Clear script file").click()
+        waitPageContent("clear:input,change,bubble:chosen-中文.bin:0,255,13,10,7")
+        XCTAssertEqual(app.buttons["Script upload"].value as? String, "")
+        app.buttons["Script upload"].click(); try chooseFileAtPath(file.path)
+        waitPageContent("input,change,bubble,input,change,bubble:chosen-中文.bin:5:0,255,13,10,7")
+        pageContent("Reset script form").click()
+        waitPageContent("reset:input,change,bubble,input,change,bubble:chosen-中文.bin:0,255,13,10,7")
+        XCTAssertEqual(app.textFields["Retained script editor"].value as? String, "retained 中文")
+        XCTAssertEqual(app.textFields["address"].value as? String,fixture.origin + "/file-script")
+        XCTAssertEqual(fixture.requests,["/file-script"])
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "macos-file-api-clear-reset"; image.lifetime = .keepAlways; add(image)
+    }
+    func testPageFileSnapshotsStayWithTheirWindowAndNavigationStartsEmpty() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("bi-file-windows-ui-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory,withIntermediateDirectories: false,attributes: [.posixPermissions:0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let firstFile = directory.appendingPathComponent("chosen-中文.bin")
+        let secondFile = directory.appendingPathComponent("second.bin")
+        try Data([0,255,13,10,7]).write(to: firstFile)
+        try Data([8,9]).write(to: secondFile)
+        func content(_ window: XCUIElement, _ text: String) -> XCUIElement {
+            window.groups["page"].descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR value == %@",text,text)).firstMatch
+        }
+        launch(); let first = app.windows["browser-window"]
+        enter(fixture.origin + "/file-script",in: first)
+        XCTAssertTrue(content(first,"File API ready").waitForExistence(timeout: 15))
+        first.buttons["Script upload"].click(); try chooseFileAtPath(firstFile.path)
+        XCTAssertTrue(content(first,"input,change,bubble:chosen-中文.bin:5:0,255,13,10,7").waitForExistence(timeout: 15))
+        app.typeKey("n",modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15))
+        enter(fixture.origin + "/file-script",in: second)
+        XCTAssertTrue(content(second,"File API ready").waitForExistence(timeout: 15))
+        XCTAssertEqual(second.buttons["Script upload"].value as? String, "")
+        second.buttons["Script upload"].click(); try chooseFileAtPath(secondFile.path)
+        XCTAssertTrue(content(second,"input,change,bubble:second.bin:2:8,9").waitForExistence(timeout: 15))
+        activateWindow(1)
+        content(first,"Clear script file").click()
+        XCTAssertTrue(content(first,"clear:input,change,bubble:chosen-中文.bin:0,255,13,10,7").waitForExistence(timeout: 15))
+        waitValue(first.buttons["Script upload"], "")
+        waitValue(second.buttons["Script upload"], "second.bin")
+        enter("about:credits",in: first)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),object: content(first,"clear:input,change,bubble:chosen-中文.bin:0,255,13,10,7"))],timeout: 15),.completed)
+        first.buttons["back"].click()
+        waitValue(first.textFields["address"],fixture.origin + "/file-script")
+        XCTAssertTrue(content(first,"File API ready").waitForExistence(timeout: 15))
+        waitValue(first.buttons["Script upload"], "")
+        waitValue(second.buttons["Script upload"], "second.bin")
+        XCTAssertTrue(content(second,"input,change,bubble:second.bin:2:8,9").exists)
+        XCTAssertEqual(fixture.requests, ["/file-script","/file-script","/file-script"])
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "macos-file-api-window-isolation"; image.lifetime = .keepAlways; add(image)
+    }
+
     func testNativeFilePickerUploadsBinaryAndRetainsOnlyBasenames() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
@@ -3737,7 +3844,7 @@ final class BrowserUITests: XCTestCase {
             NSPredicate(format: "enabled == true"), object: app.buttons["restart-browser"])], timeout: 10), .completed)
         XCTAssertFalse(app.buttons["reload"].isEnabled)
         let bundled = try XCTUnwrap(application.bundleURL).appendingPathComponent("Contents/MacOS")
-        for name in ["blueice-launcher", "blueice-core", "blueice-ai-gatekeeper", "BlueIcePanels.app"] {
+        for name in ["blueice-launcher", "blueice-core", "blueice-bluejs-host", "bluejs-regexp-worker", "blueice-ai-gatekeeper", "BlueIcePanels.app"] {
             try FileManager.default.createSymbolicLink(at: directory.appendingPathComponent(name), withDestinationURL: bundled.appendingPathComponent(name))
         }
         app.buttons["restart-browser"].click()

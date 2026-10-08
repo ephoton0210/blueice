@@ -10,6 +10,7 @@ fn file_content_has_no_path_shape_and_cannot_inject_multipart_headers() {
     let mut file = FileData {
         name: "中文\".txt".into(),
         media_type: "text/plain".into(),
+        last_modified: 123,
         bytes: vec![0, 255, 13, 10],
     };
     assert!(file.valid());
@@ -47,6 +48,7 @@ fn bounded_file_messages_round_trip_as_contents_without_exposing_bytes_in_debug(
         files: vec![FileData {
             name: "private-file.txt".into(),
             media_type: "text/plain".into(),
+            last_modified: 123,
             bytes: b"private-file-body".to_vec(),
         }],
     });

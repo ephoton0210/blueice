@@ -65,7 +65,7 @@ fn private_value_target_requires_exact_root_or_nested_frame_shape() {
     target.safe_point.program.program_generation -= 1;
     target.frame_index = 2;
     assert!(!target.is_well_formed());
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 44);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 45);
 }
 
 #[test]
@@ -402,7 +402,7 @@ fn private_static_scope_relation_round_trips_without_values_or_displays() {
     let (mut writer, mut reader) = UnixStream::pair().unwrap();
     write_page_host_reply(&mut writer, &reply).unwrap();
     assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 44);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 45);
 }
 
 #[test]

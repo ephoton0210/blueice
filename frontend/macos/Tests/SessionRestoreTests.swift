@@ -79,7 +79,7 @@ final class SessionRestoreTests: XCTestCase {
         var recovered: BrowserWorkspace?
         retry.onRecovery = { replacement in recovered = replacement; await replacement.startReplacement() }
         XCTAssertTrue(retry.canRestart)
-        for name in ["blueice-launcher", "blueice-core", "blueice-ai-gatekeeper", "BlueIcePanels.app"] {
+        for name in ["blueice-launcher", "blueice-core", "blueice-bluejs-host", "bluejs-regexp-worker", "blueice-ai-gatekeeper", "BlueIcePanels.app"] {
             try FileManager.default.createSymbolicLink(at: directory.appendingPathComponent(name), withDestinationURL: bundled.appendingPathComponent(name))
         }
         await retry.restartBrowser()

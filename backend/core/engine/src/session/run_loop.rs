@@ -843,7 +843,21 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         use blueice_ipc::file_input::FileInputAction;
                         let source = shm::frame_source_id(frame_dir);
                         let mut dispatched = false;
-                        let result = match action {
+                        let selection = match &action {
+                            FileInputAction::Set { context, .. } => Some((
+                                *context,
+                                vec![
+                                    blueice_ipc::page_host::PageHostFileSelectionEvent::Input,
+                                    blueice_ipc::page_host::PageHostFileSelectionEvent::Change,
+                                ],
+                            )),
+                            FileInputAction::Cancel { context } => Some((
+                                *context,
+                                vec![blueice_ipc::page_host::PageHostFileSelectionEvent::Cancel],
+                            )),
+                            _ => None,
+                        };
+                        let mut result = match action {
                             FileInputAction::Prepare {
                                 frame_source,
                                 document_generation,
@@ -892,6 +906,8 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 }
                             }
                             FileInputAction::Set { context, .. }
+                            | FileInputAction::Cancel { context }
+                            | FileInputAction::Validate { context }
                                 if context.tab_id != target.as_u64() =>
                             {
                                 Err("File selection belongs to another tab".into())
@@ -900,7 +916,51 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 .get_mut(target)
                                 .ok_or_else(|| "Unknown file tab".to_string())
                                 .and_then(|page| page.set_file_input(&context, source, files)),
+                            FileInputAction::Cancel { context }
+                            | FileInputAction::Validate { context } => tabs
+                                .get(target)
+                                .ok_or_else(|| "Unknown file tab".to_string())
+                                .and_then(|page| page.validate_file_input(&context, source)),
                         };
+                        if result.is_ok() {
+                            if let Some((context, events)) = selection {
+                                for event in events {
+                                    dispatched = true;
+                                    if let Some(executor) =
+                                        page_script_runtime.javascript_executor.as_deref_mut()
+                                    {
+                                        if executor
+                                            .dispatch_file_selection_serving_script(
+                                                tabs,
+                                                target,
+                                                context.node_id,
+                                                event,
+                                                requests.script,
+                                            )
+                                            .is_err()
+                                        {
+                                            result =
+                                                Err("Page selection listener unavailable".into());
+                                            break;
+                                        }
+                                    }
+                                }
+                                if result.is_ok() {
+                                    result = tabs
+                                        .get(target)
+                                        .ok_or_else(|| {
+                                            "File tab is no longer available".to_string()
+                                        })
+                                        .and_then(|page| {
+                                            page.file_input_state(
+                                                context.node_id,
+                                                source,
+                                                context.document_generation,
+                                            )
+                                        });
+                                }
+                            }
+                        }
                         match result {
                             Ok(mut state) => {
                                 state.context.tab_id = target.as_u64();

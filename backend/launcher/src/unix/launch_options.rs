@@ -89,6 +89,15 @@ impl CoreLaunchOptions {
         self
     }
 
+    /// Runs admitted page JavaScript with the bounded live DOM and click
+    /// bindings. This is an embedding-owner startup choice; page traffic
+    /// cannot create the child, select its endpoint or enable bindings.
+    pub fn supervise_out_of_process_bluejs_with_page_dom(mut self) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.core_dom_file_bindings = true;
+        self
+    }
+
     pub fn supervise_out_of_process_bluejs_with_dom_event_fixture(mut self) -> Self {
         self.supervise_out_of_process_bluejs = true;
         self.core_dom_event_fixture = true;

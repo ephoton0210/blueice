@@ -113,12 +113,23 @@ final class BrowserModel: ObservableObject {
         guard fileInputIsCurrent(context,tab: tab) else { return false }
         guard let state = await fileReply(.set(context,files),tab: tab),
               state.context.frame_source == context.frame_source, state.context.document_generation == context.document_generation,
-              state.context.node_id == context.node_id, state.context.revision == context.revision &+ 1,
-              state.names == files.map(\.name) else {
+              state.context.node_id == context.node_id, state.context.revision != context.revision,
+              state.names.count <= 16, state.names.allSatisfy(SelectedFile.validName) else {
             if fileInputIsCurrent(context,tab: tab) { presentFileInputError("The file selection could not be applied. Please choose the files again.") }
             return false
         }
         return true
+    }
+    func validateFileInput(_ context: FileInputContext, tab: UInt64) async -> Bool {
+        guard fileInputIsCurrent(context,tab: tab),
+              let state = await fileReply(.validate(context),tab: tab) else { return false }
+        return state.context == context
+    }
+    func cancelFileInput(_ context: FileInputContext, tab: UInt64) async -> Bool {
+        guard fileInputIsCurrent(context,tab: tab),
+              let state = await fileReply(.cancel(context),tab: tab) else { return false }
+        return state.context.tab_id == tab && state.context.frame_source == context.frame_source
+            && state.context.document_generation == context.document_generation && state.context.node_id == context.node_id
     }
     @Published private(set) var printBusy = false
     @Published var printErrorPresented = false

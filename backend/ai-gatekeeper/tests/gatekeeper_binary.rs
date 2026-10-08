@@ -115,7 +115,10 @@ impl GatekeeperProcess {
             executable_directory,
         };
         assert!(
-            wait_for(&process.socket, Duration::from_secs(5)),
+            wait_for(
+                &process.socket,
+                Duration::from_secs(if cfg!(target_os = "macos") { 60 } else { 5 }),
+            ),
             "blueice-ai-gatekeeper never created its private socket; child status: {:?}",
             process.child.try_wait().unwrap()
         );

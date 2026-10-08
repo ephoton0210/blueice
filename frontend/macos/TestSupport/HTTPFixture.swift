@@ -119,6 +119,70 @@ final class HTTPFixture: @unchecked Sendable {
                     <input type="file" disabled aria-label="Disabled file" style="display:block;width:520px;height:40px">
                     </body></html>
                     """
+                case "/dom-script": body = """
+                    <h1>Ordinary page script</h1><p id="dom-report">Script not started</p>
+                    <a id="dom-link" href="/script-must-not-navigate">Run page listener</a>
+                    <input type="text" aria-label="Retained script editor" value="retained 中文">
+                    <script>
+                    const report=document.getElementById('dom-report');
+                    document.getElementById('dom-link').addEventListener('click',function(event){
+                        event.preventDefault();
+                        Promise.resolve().then(function(){report.textContent='Ordinary listener completed';});
+                    });
+                    if (!/^BlueIce$/u.test('BlueIce') || !/ice/i.test('BlueIce')) {
+                        throw new Error('Ordinary RegExp worker unavailable');
+                    }
+                    report.textContent='Ordinary script ready';
+                    </script>
+                    """
+                case "/file-script": body = """
+                    <html><body><h1>Script file selection fixture</h1>
+                    <p id="file-report">File API not started</p>
+                    <form id="file-form"><input id="file-upload" type="file" aria-label="Script upload" style="display:block;width:520px;height:40px"></form>
+                    <a id="clear-file" href="/clear-must-not-navigate">Clear script file</a>
+                    <a id="reset-file" href="/reset-must-not-navigate">Reset script form</a>
+                    <input aria-label="Retained script editor" value="retained 中文" style="display:block;width:280px;height:32px">
+                    <script>
+                    const report = document.getElementById('file-report');
+                    const upload = document.getElementById('file-upload');
+                    const events = [];
+                    const blob = new Blob(['ready'], {type:'TEXT/PLAIN'});
+                    if (blob.size !== 5 || blob.type !== 'text/plain') throw 'Blob metadata';
+                    upload.addEventListener('input', function(event) {
+                        events.push(event.type);
+                    });
+                    upload.addEventListener('change', function(event) {
+                        events.push(event.type);
+                        const list = upload.files;
+                        const file = list.item(0);
+                        if (list.length !== 1 || file !== list[0] || !(file instanceof File) || !(file instanceof Blob)) throw 'FileList';
+                        file.bytes().then(function(bytes) {
+                            report.textContent = events.join(',') + ':' + file.name + ':' + file.size + ':' + Array.from(bytes).join(',');
+                        });
+                    });
+                    upload.addEventListener('cancel', function(event) {
+                        events.push(event.type);
+                        report.textContent = events.join(',') + ':' + upload.files.item(0).name;
+                    });
+                    document.addEventListener('change',function(event) {
+                        if (event.target !== upload || event.currentTarget !== document || !event.bubbles || event.cancelable || event.composed) throw 'Document selection event';
+                        events.push('bubble');
+                    });
+                    function clearSelection(event,reset) {
+                        event.preventDefault();
+                        const saved=upload.files.item(0);
+                        if(reset) document.getElementById('file-form').reset();
+                        else upload.value='';
+                        if(upload.files.length!==0 || upload.value!=='') throw 'Selection was not cleared';
+                        saved.bytes().then(function(bytes) {
+                            report.textContent=(reset?'reset':'clear')+':'+events.join(',')+':'+saved.name+':'+Array.from(bytes).join(',');
+                        });
+                    }
+                    document.getElementById('clear-file').addEventListener('click',function(event){clearSelection(event,false);});
+                    document.getElementById('reset-file').addEventListener('click',function(event){clearSelection(event,true);});
+                    report.textContent = 'File API ready';
+                    </script></body></html>
+                    """
                 case "/upload-received": body = "<h1>Files received</h1>"
                 case "/printing": body = """
                     <html><head><style>

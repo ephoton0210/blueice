@@ -212,6 +212,49 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
                 |_| ScriptReply::Ack,
             )
         }),
+        ScriptRequest::GetFileValue { target, node } => with_document(tabs, target, |page| {
+            page.script_file_value(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |value| ScriptReply::FileValue { value },
+            )
+        }),
+        ScriptRequest::ClearInputFiles { target, node } => with_document(tabs, target, |page| {
+            page.script_clear_input_files(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |()| ScriptReply::Ack,
+            )
+        }),
+        ScriptRequest::ResetForm { target, node } => with_document(tabs, target, |page| {
+            page.script_reset_form(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |()| ScriptReply::Ack,
+            )
+        }),
+        ScriptRequest::GetDocument { target } => {
+            with_document(tabs, target, |page| ScriptReply::NodeCreated {
+                node: page.script_document_handle(),
+            })
+        }
+        ScriptRequest::GetInputFiles { target, node } => with_document(tabs, target, |page| {
+            page.script_input_files(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |(revision, files)| ScriptReply::InputFiles { revision, files },
+            )
+        }),
+        ScriptRequest::ReadInputFile {
+            target,
+            node,
+            revision,
+            index,
+            offset,
+            length,
+        } => with_document(tabs, target, |page| {
+            page.script_read_input_file(node, revision, index, offset, length)
+                .map_or_else(
+                    |message| ScriptReply::Error { message },
+                    |bytes| ScriptReply::InputFileBytes { bytes },
+                )
+        }),
         ScriptRequest::GetTextContent { target, node } => with_document(tabs, target, |page| {
             page.script_text_content(node).map_or_else(
                 |message| ScriptReply::Error { message },

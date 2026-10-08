@@ -184,6 +184,25 @@ pub(crate) enum DatePart {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
+    Blob,
+    File,
+    BlobSize,
+    BlobType,
+    BlobSlice,
+    BlobText,
+    BlobArrayBuffer,
+    BlobBytes,
+    FileName,
+    FileLastModified,
+    FileList,
+    FileListLength,
+    FileListItem,
+    FileListIterator,
+    FileListIteratorNext,
+    HostInputFiles(u32),
+    HostSelectionCurrentTarget,
+    HostSelectionPreventDefault,
+    HostSelectionStopPropagation(bool),
     /// A realm-private embedding callback stored in [`crate::Vm`].
     Host(u32),
     /// A realm-private callback whose opaque key is materialized as a rooted

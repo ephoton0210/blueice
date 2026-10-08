@@ -16,6 +16,10 @@ pub const MAX_DOCUMENT_SELECTED_FILES: usize = 64;
 pub struct FileData {
     pub name: String,
     pub media_type: String,
+    /// Milliseconds since the Unix epoch, read from the selected descriptor.
+    /// Missing legacy metadata is represented by zero.
+    #[serde(default)]
+    pub last_modified: i64,
     pub bytes: Vec<u8>,
 }
 impl std::fmt::Debug for FileData {
@@ -62,6 +66,11 @@ pub struct FileInputState {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileInputAction {
+    /// Checks the context before a native frontend starts reading its selected
+    /// descriptors. It does not deliver another activation/click event.
+    Validate { context: FileInputContext },
+    /// Dismissal preserves selected content and delivers the cancel event.
+    Cancel { context: FileInputContext },
     /// Validates and applies the page's ordinary click default, then returns
     /// hints. Receiving this reply must never itself open a native picker.
     Prepare {

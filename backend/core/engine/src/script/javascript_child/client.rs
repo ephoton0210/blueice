@@ -8,6 +8,19 @@ use super::*;
 /// separate from a VM/registry prevents the core from bypassing the child's
 /// process boundary and lets focused tests use a recording child peer.
 pub trait PageHostClient {
+    fn dispatch_file_selection_with_script_pump(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _nodes: Vec<u64>,
+        _event: blueice_ipc::page_host::PageHostFileSelectionEvent,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Page host does not implement file selection events",
+        ))
+    }
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply>;
     fn dispatch_click_with_script_pump(
         &mut self,

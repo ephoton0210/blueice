@@ -94,6 +94,36 @@ impl Vm {
         };
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::FileListIteratorNext => self.web_file_list_iterator_next(&receiver),
+            NativeFunction::HostSelectionCurrentTarget => {
+                self.host_selection_current_target(&receiver)
+            }
+            NativeFunction::HostSelectionPreventDefault => {
+                self.host_selection_prevent_default(&receiver)
+            }
+            NativeFunction::HostSelectionStopPropagation(immediate) => {
+                self.host_selection_stop_propagation(&receiver, immediate)
+            }
+            NativeFunction::FileList => Err(RuntimeError::TypeError(
+                "Illegal FileList constructor".into(),
+            )),
+            NativeFunction::FileListLength
+            | NativeFunction::FileListItem
+            | NativeFunction::FileListIterator => {
+                self.web_file_list_call(function, &receiver, &args)
+            }
+            NativeFunction::HostInputFiles(index) => self.web_input_files(index, &receiver),
+            NativeFunction::Blob | NativeFunction::File => {
+                self.web_blob_construct(&args, construct, function == NativeFunction::File)
+            }
+            NativeFunction::BlobSize
+            | NativeFunction::BlobType
+            | NativeFunction::BlobSlice
+            | NativeFunction::BlobText
+            | NativeFunction::BlobArrayBuffer
+            | NativeFunction::BlobBytes
+            | NativeFunction::FileName
+            | NativeFunction::FileLastModified => self.web_blob_call(function, &receiver, &args),
             NativeFunction::Host(index) => {
                 self.host_function_call(index, receiver, &args, construct)
             }

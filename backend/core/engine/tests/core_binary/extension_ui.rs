@@ -4,6 +4,118 @@
 
 use super::*;
 
+fn connect_ui_frontend(path: &Path, timeout: Duration) -> std::io::Result<UnixStream> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match UnixStream::connect(path) {
+            Ok(stream) => return Ok(stream),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+                ) && Instant::now() < deadline =>
+            {
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+struct UiCoreCleanup {
+    child: Child,
+    sockets: Vec<PathBuf>,
+    directories: Vec<PathBuf>,
+}
+
+impl Drop for UiCoreCleanup {
+    fn drop(&mut self) {
+        if self.child.try_wait().ok().flatten().is_none() {
+            if let Ok(mut stream) =
+                connect_ui_frontend(&self.sockets[0], Duration::from_millis(200))
+            {
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
+                let _ = stream.set_write_timeout(Some(Duration::from_millis(200)));
+                if blueice_ipc::client_handshake(&mut stream).is_ok() {
+                    let _ = blueice_ipc::write_client_message(
+                        &mut stream,
+                        &blueice_ipc::ClientMessage::Shutdown,
+                    );
+                }
+            }
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while self.child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(20));
+            }
+            if self.child.try_wait().ok().flatten().is_none() {
+                let _ = self.child.kill();
+            }
+        }
+        let _ = self.child.wait();
+        for socket in &self.sockets {
+            let _ = std::fs::remove_file(socket);
+        }
+        for directory in &self.directories {
+            let _ = std::fs::remove_dir_all(directory);
+        }
+    }
+}
+
+#[test]
+fn frontend_connection_waits_for_a_socket_to_become_listening() {
+    let _guard = core_process_test_guard();
+    let socket = unique_socket_path("ui-readiness");
+    let _ = std::fs::remove_file(&socket);
+    drop(UnixListener::bind(&socket).unwrap());
+    let endpoint = socket.clone();
+    let worker = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(50));
+        let result = (|| -> std::io::Result<()> {
+            std::fs::remove_file(&endpoint)?;
+            let listener = UnixListener::bind(&endpoint)?;
+            listener.set_nonblocking(true)?;
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(error)
+                        if error.kind() == std::io::ErrorKind::WouldBlock
+                            && Instant::now() < deadline =>
+                    {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => return Err(error),
+                }
+            };
+            stream.set_nonblocking(false)?;
+            stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+            stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+            let mut request = [0];
+            stream.read_exact(&mut request)?;
+            assert_eq!(request, [7]);
+            stream.write_all(&[8])
+        })();
+        let _ = std::fs::remove_file(endpoint);
+        result
+    });
+    let result = connect_ui_frontend(&socket, Duration::from_secs(5)).and_then(|mut stream| {
+        stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+        stream.write_all(&[7])?;
+        let mut reply = [0];
+        stream.read_exact(&mut reply)?;
+        assert_eq!(reply, [8]);
+        Ok(())
+    });
+    let server = worker.join().unwrap();
+    assert!(
+        result.is_ok(),
+        "frontend readiness: {result:?}; server: {server:?}"
+    );
+    server.unwrap();
+    assert!(!socket.exists());
+}
+
 #[test]
 fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
     let _guard = core_process_test_guard();
@@ -22,7 +134,7 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
     let _ = std::fs::remove_file(&core_socket);
     let _ = std::fs::remove_file(&extension_socket);
     let _ = std::fs::remove_dir_all(&frame_dir);
-    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+    let child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
         .args([
             "--socket",
             core_socket.to_str().unwrap(),
@@ -39,8 +151,16 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
         ])
         .spawn()
         .expect("failed to spawn core with its native UI extension host");
-    assert!(wait_for(&core_socket, Duration::from_secs(15)));
-    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    let mut core = UiCoreCleanup {
+        child,
+        sockets: vec![
+            core_socket.clone(),
+            extension_socket.clone(),
+            gatekeeper_socket,
+        ],
+        directories: vec![frame_dir.clone(), package_root],
+    };
+    let mut frontend = connect_ui_frontend(&core_socket, Duration::from_secs(15)).unwrap();
     frontend
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
@@ -121,10 +241,8 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
     );
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();
-    assert!(core.wait().unwrap().success());
+    assert!(core.child.wait_timeout_or_kill().success());
     assert!(!core_socket.exists());
     assert!(!extension_socket.exists());
     assert!(!frame_dir.exists());
-    let _ = std::fs::remove_file(gatekeeper_socket);
-    let _ = std::fs::remove_dir_all(package_root);
 }

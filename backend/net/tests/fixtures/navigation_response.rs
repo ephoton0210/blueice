@@ -61,6 +61,9 @@ impl ResponseServer {
                     Err(error) => return Err(error),
                 }
             };
+            // Accepted sockets can inherit the listener's nonblocking mode.
+            // A client may connect before it sends its first request bytes.
+            stream.set_nonblocking(false)?;
             stream.set_read_timeout(Some(Duration::from_secs(3)))?;
             stream.set_write_timeout(Some(Duration::from_secs(3)))?;
             let request = read_request(&mut stream)?;

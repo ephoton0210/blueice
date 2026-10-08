@@ -777,11 +777,13 @@ fn selected_binary_files_submit_ordered_multipart_without_path_or_content_in_rev
                 FileData {
                     name: "中文.bin".into(),
                     media_type: "application/octet-stream".into(),
+                    last_modified: 123,
                     bytes: bytes.clone()
                 },
                 FileData {
                     name: "quoted\".txt".into(),
                     media_type: "text/plain".into(),
+                    last_modified: 123,
                     bytes: b"one\ntwo\rthree".to_vec()
                 }
             ]
@@ -827,6 +829,7 @@ fn reset_file_selection_rejects_late_picker_and_required_submission() {
             vec![FileData {
                 name: "selected.txt".into(),
                 media_type: "text/plain".into(),
+                last_modified: 123,
                 bytes: b"chosen".to_vec()
             }]
         ),
@@ -877,6 +880,7 @@ fn file_context_cannot_be_retargeted_to_another_tab_and_get_sends_only_filename(
             vec![FileData {
                 name: "filename.txt".into(),
                 media_type: "text/plain".into(),
+                last_modified: 123,
                 bytes: b"private-file-bytes".to_vec()
             }]
         ),

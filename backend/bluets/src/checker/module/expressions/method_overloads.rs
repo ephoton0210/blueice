@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Exact two-tag callback method selection shared by checking and inference.
+//! Two disjoint, bounded literal-tag groups shared by checking and inference.
 
 use super::*;
 
@@ -45,47 +45,36 @@ pub(super) fn select_callback_method_overload<'a>(
     let [first, second] = overloads else {
         return Err(MethodOverloadError::Unsupported);
     };
-    let Some(first_tag) = callback_method_tag(first) else {
+    let Some(first_tags) = callback_method_tags(first) else {
         return Err(MethodOverloadError::Unsupported);
     };
-    let Some(second_tag) = callback_method_tag(second) else {
+    let Some(second_tags) = callback_method_tags(second) else {
         return Err(MethodOverloadError::Unsupported);
     };
-    if first_tag == second_tag {
+    if first_tags.iter().any(|tag| second_tags.contains(tag)) {
         return Err(MethodOverloadError::Unsupported);
     }
     if actuals.len() != 2 {
         return Err(MethodOverloadError::NoMatch);
     }
-    match &actuals[0] {
-        Type::Literal(raw) => match literal_string_value(raw) {
-            Some(tag) if tag == first_tag => Ok(first),
-            Some(tag) if tag == second_tag => Ok(second),
-            _ => Err(MethodOverloadError::NoMatch),
-        },
-        Type::Union(parts) if parts.len() == 2 => {
-            let tags = parts
-                .iter()
-                .map(|part| match part {
-                    Type::Literal(raw) => literal_string_value(raw),
-                    _ => None,
-                })
-                .collect::<Option<Vec<_>>>();
-            match tags.as_deref() {
-                Some([left, right])
-                    if (left == &first_tag && right == &second_tag)
-                        || (left == &second_tag && right == &first_tag) =>
-                {
-                    Err(MethodOverloadError::Ambiguous)
-                }
-                _ => Err(MethodOverloadError::NoMatch),
-            }
-        }
-        _ => Err(MethodOverloadError::NoMatch),
+    let Some(actual_tags) = literal_string_tags(&actuals[0]) else {
+        return Err(MethodOverloadError::NoMatch);
+    };
+    if actual_tags.iter().all(|tag| first_tags.contains(tag)) {
+        Ok(first)
+    } else if actual_tags.iter().all(|tag| second_tags.contains(tag)) {
+        Ok(second)
+    } else if actual_tags
+        .iter()
+        .all(|tag| first_tags.contains(tag) || second_tags.contains(tag))
+    {
+        Err(MethodOverloadError::Ambiguous)
+    } else {
+        Err(MethodOverloadError::NoMatch)
     }
 }
 
-fn callback_method_tag(value: &Type) -> Option<&str> {
+fn callback_method_tags(value: &Type) -> Option<Vec<&str>> {
     let Type::Function { parameters, result } = value else {
         return None;
     };
@@ -99,9 +88,6 @@ fn callback_method_tag(value: &Type) -> Option<&str> {
     {
         return None;
     }
-    let Type::Literal(raw_tag) = tag.annotation.as_ref()? else {
-        return None;
-    };
     let Type::Function {
         parameters: callback_parameters,
         result: callback_result,
@@ -116,14 +102,34 @@ fn callback_method_tag(value: &Type) -> Option<&str> {
         || callback_parameter.optional
         || callback_parameter.rest
         || callback_parameter.default.is_some()
-        || !matches!(
-            callback_parameter.annotation,
-            Some(Type::String | Type::Number | Type::Boolean)
-        )
+        || !callback_parameter.annotation.as_ref().is_some_and(|value| {
+            matches!(value, Type::String | Type::Number | Type::Boolean)
+                || matches!(value, Type::Named { arguments, .. } if arguments.is_empty())
+        })
     {
         return None;
     }
-    literal_string_value(raw_tag)
+    literal_string_tags(tag.annotation.as_ref()?)
+}
+
+fn literal_string_tags(value: &Type) -> Option<Vec<&str>> {
+    let values = match value {
+        Type::Literal(raw) => return literal_string_value(raw).map(|tag| vec![tag]),
+        Type::Union(parts) if !parts.is_empty() && parts.len() <= 16 => parts,
+        _ => return None,
+    };
+    let mut tags = Vec::with_capacity(values.len());
+    for value in values {
+        let Type::Literal(raw) = value else {
+            return None;
+        };
+        let tag = literal_string_value(raw)?;
+        if tags.contains(&tag) {
+            return None;
+        }
+        tags.push(tag);
+    }
+    Some(tags)
 }
 
 fn literal_string_value(raw: &str) -> Option<&str> {

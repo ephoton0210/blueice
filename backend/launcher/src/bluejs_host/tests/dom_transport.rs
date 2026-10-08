@@ -5,6 +5,101 @@
 use super::*;
 
 #[test]
+fn ordinary_file_realms_share_one_serialized_owner_connection() {
+    let socket_path =
+        std::env::temp_dir().join(format!("bi-dom-owner-channel-{}.sock", std::process::id()));
+    let listener = UnixListener::bind(&socket_path).unwrap();
+    let capability = "a".repeat(script::SCRIPT_SESSION_TOKEN_HEX_BYTES);
+    let server_capability = capability.clone();
+    let server = std::thread::spawn(move || {
+        let (mut peer, _) = listener.accept().unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        assert_eq!(
+            script::read_script_request(&mut peer).unwrap(),
+            ScriptRequest::Hello {
+                protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                session_token: server_capability,
+            }
+        );
+        script::write_script_reply(
+            &mut peer,
+            &ScriptReply::HelloAck {
+                protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        let mut completed = Vec::new();
+        let mut next_id = 1;
+        while completed.len() < 3 {
+            let ScriptRequest::Call {
+                request_id,
+                request,
+            } = script::read_script_request(&mut peer).unwrap()
+            else {
+                panic!("one authenticated owner channel");
+            };
+            assert_eq!(request_id, next_id);
+            next_id += 1;
+            let target = request.document_target().unwrap();
+            let root = target.tab_id * 10 + target.document_generation * 2;
+            let reply = match *request {
+                ScriptRequest::GetDocument { .. } => ScriptReply::NodeCreated { node: root },
+                ScriptRequest::GetElementById { id, .. } => {
+                    assert_eq!(id, "status");
+                    ScriptReply::Node {
+                        node: Some(root + 1),
+                    }
+                }
+                ScriptRequest::ValidateNode { node, .. } => {
+                    assert!(node == root || node == root + 1);
+                    ScriptReply::Ack
+                }
+                ScriptRequest::SetTextContent { node, value, .. } => {
+                    assert_eq!(node, root + 1);
+                    assert_eq!(value, "ready");
+                    completed.push((target.tab_id, target.document_generation));
+                    ScriptReply::Ack
+                }
+                other => panic!("unexpected DOM operation: {other:?}"),
+            };
+            script::write_script_reply(
+                &mut peer,
+                &ScriptReply::CallResult {
+                    request_id,
+                    target,
+                    reply: Box::new(reply),
+                },
+            )
+            .unwrap();
+        }
+        completed
+    });
+    let mut host = BlueJsChildHost::default();
+    host.configure_script_file_dom_capability(socket_path.clone(), capability)
+        .unwrap();
+    for (tab, generation) in [(7, 1), (8, 1), (7, 2)] {
+        let mut document = document(
+            generation,
+            vec![classic(
+                0,
+                "document.getElementById('status').textContent='ready';",
+            )],
+        );
+        document.tab_id = tab;
+        let PageHostReply::Synchronized { reports, .. } =
+            host.handle_request(PageHostRequest::SynchronizeDocument { document })
+        else {
+            panic!("document must synchronize");
+        };
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].outcome, PageHostScriptOutcome::Executed);
+    }
+    drop(host);
+    assert_eq!(server.join().unwrap(), vec![(7, 1), (8, 1), (7, 2)]);
+    std::fs::remove_file(socket_path).unwrap();
+}
+
+#[test]
 fn child_wrapper_rechecks_core_liveness_and_does_not_survive_realm_replacement() {
     let socket_path = std::env::temp_dir().join(format!(
         "bi-dom-wrapper-lifetime-{}.sock",
@@ -668,6 +763,7 @@ fn child_rejects_unbound_or_mismatched_dom_replies_and_closes_the_stream() {
         let (client_stream, mut fake_core) = UnixStream::pair().unwrap();
         let mut client = ScriptDomClient {
             capability: ScriptDomCapability {
+                enable_dom_file_profile: false,
                 socket_path: PathBuf::new(),
                 session_token: String::new(),
                 enable_lookup_probe: true,

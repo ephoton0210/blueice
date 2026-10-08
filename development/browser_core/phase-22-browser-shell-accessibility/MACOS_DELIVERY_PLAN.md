@@ -634,8 +634,9 @@ does not attest consent or confer private owner/permission authority.
 Actual UI tests choose multiple files through the system folder/path panel,
 submit and inspect binary HTTP bodies, cancel/reopen with Space, and reset while
 retaining ordinary editor content. The acceptance record is
-[file-input results](MACOS_FILE_INPUT_RESULTS.md). Directory/capture, label click
-forwarding, drag/drop, full File/Blob/FileList and input/change/cancel events,
+[file-input results](MACOS_FILE_INPUT_RESULTS.md). Selected-file FileList/File/Blob values and
+input/change/cancel events are now accepted, see [file API results](MACOS_FILE_API_RESULTS.md).
+Directory/capture, label click forwarding, drag/drop, remaining File API interfaces,
 private owner panels and the other delivery gates remain open.
 
 ## Completion audit
@@ -749,3 +750,18 @@ physical Zhuyin limitation recorded. See the [contract](MACOS_RESPONSE_DOWNLOADS
 and [dated results](MACOS_RESPONSE_DOWNLOADS_RESULTS.md). General page/OS drag-and-drop,
 storage partitioning, remote protocol interoperability, physical IME/VoiceOver
 and remaining browser requirements stay open.
+
+## Ordinary selected-file API and event increment
+
+Normal macOS browsing now starts the owned isolated BlueJS host and includes its
+RegExp worker. Admitted page scripts can inspect selected FileList/File snapshots,
+construct and slice Blob/File values, read their exact bytes/text asynchronously
+and observe bubbling input/change/cancel events. Script clear and form reset keep
+retained snapshots without selection events. Tab/document/revision checks reject
+stale native callbacks, while one owner DOM channel serves isolated window realms.
+
+The complete Rust gates and exact unfiltered native suite passed. See the
+[contract](MACOS_FILE_API_CONTRACT.md) and [dated results](MACOS_FILE_API_RESULTS.md).
+Remaining File API stream methods, FileReader/object URLs, BlueTS numeric index
+signatures/host new-expression inference and general page/OS drag-and-drop stay
+open alongside storage partitioning, remote protocol and physical hardware gates.

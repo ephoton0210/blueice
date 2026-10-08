@@ -5,6 +5,49 @@
 use super::*;
 
 #[test]
+fn callback_method_literal_groups_select_named_event_types_and_reject_overlap() {
+    let declarations = "interface Click { readonly type: 'click'; } interface Selection { readonly type: 'input' | 'change' | 'cancel'; } interface Events { listen(kind: 'click', callback: (event: Click) => void): void; listen(kind: 'input' | 'change' | 'cancel', callback: (event: Selection) => void): void; } declare const events: Events;";
+    let check = |source: &str, declarations: &str| {
+        crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ModuleSource::new(
+                    "memory:///events.d.ts",
+                    declarations,
+                )],
+                require_declared_global_calls: true,
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    for source in [
+        "function click(event: Click): void {} events.listen('click', click);",
+        "function changed(event: Selection): void {} events.listen('change', changed);",
+        "function changed(event: Selection): void {} function listen(kind: 'input' | 'cancel'): void { events.listen(kind, changed); }",
+    ] {
+        let result = check(source, declarations);
+        assert!(!result.has_errors(), "{source}: {:#?}", result.diagnostics);
+    }
+    for source in [
+        "function click(event: Click): void {} events.listen('change', click);",
+        "function changed(event: Selection): void {} events.listen('click', changed);",
+        "function changed(event: Selection): void {} events.listen('unknown', changed);",
+        "function changed(event: Selection): void {} function listen(kind: 'click' | 'change'): void { events.listen(kind, changed); }",
+        "events.listen('change', (event: Selection) => {});",
+    ] {
+        let result = check(source, declarations);
+        assert!(result.has_errors(), "{source}");
+    }
+    let overlap = declarations.replace("kind: 'click'", "kind: 'click' | 'change'");
+    assert!(check(
+        "function changed(event: Selection): void {} events.listen('change', changed);",
+        &overlap
+    )
+    .has_errors());
+}
+
+#[test]
 fn property_lookup_keeps_both_callback_method_overloads_without_first_wins() {
     let module = crate::parse_module(
         "memory:///main.ts",

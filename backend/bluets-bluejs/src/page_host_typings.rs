@@ -46,6 +46,11 @@ pub const PAGE_HOST_DOM_EVENT_DECLARATION_MODULE_ID_V1: &str =
     "blueice:///profiles/core-script-dom-event-v1/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_EVENT_HOST_API_VERSION_V1: &str = "blueice-core-script-v4";
 
+pub const PAGE_HOST_DOM_FILE_PROFILE_V1: &str = "core-script-dom-file-v1";
+pub const PAGE_HOST_DOM_FILE_DECLARATION_MODULE_ID_V1: &str =
+    "blueice:///profiles/core-script-dom-file-v1/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1: &str = "blueice-core-script-v5";
+
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
 
 /// One runtime global represented by the fixed page-host profile.
@@ -260,6 +265,97 @@ pub fn page_host_dom_event_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 1
     })
 }
 
+// File declarations use complete records because BlueTS rejects ambient
+// interface merging. The older proof profiles keep their exact inventories.
+const PAGE_HOST_DOM_FILE_BINDINGS_V1: [PageHostDocumentBindingV1; 16] = [
+    PAGE_HOST_DOM_EVENT_BINDINGS_V1[0],
+    PAGE_HOST_DOM_EVENT_BINDINGS_V1[1],
+    PageHostDocumentBindingV1 {
+        declaration: "interface BlueIceNode { textContent: string; appendChild(child: BlueIceNode): BlueIceNode; readonly files: BlueIceFileList | null; value: string | undefined; reset(): void; addEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; addEventListener(eventType: 'input' | 'change' | 'cancel', listener: (event: BlueIceSelectionEvent) => void): void; removeEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; removeEventListener(eventType: 'input' | 'change' | 'cancel', listener: (event: BlueIceSelectionEvent) => void): void; }\ninterface BlueIceDocument { getElementById(id: string): BlueIceNode | null; createElement(tagName: string): BlueIceNode; createTextNode(data: string): BlueIceNode; textContent: string; appendChild(child: BlueIceNode): BlueIceNode; readonly files: BlueIceFileList | null; value: string | undefined; reset(): void; addEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; addEventListener(eventType: 'input' | 'change' | 'cancel', listener: (event: BlueIceSelectionEvent) => void): void; removeEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; removeEventListener(eventType: 'input' | 'change' | 'cancel', listener: (event: BlueIceSelectionEvent) => void): void; }\ndeclare const document: BlueIceDocument;",
+        feature_flag: "live-dom-file",
+        first_host_api_version: PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1,
+        ..PAGE_HOST_DOM_EVENT_BINDINGS_V1[2]
+    },
+    PAGE_HOST_DOM_EVENT_BINDINGS_V1[3],
+    PAGE_HOST_DOM_EVENT_BINDINGS_V1[4],
+    PAGE_HOST_DOM_EVENT_BINDINGS_V1[5],
+    PageHostDocumentBindingV1 {
+        declaration: "interface BlueIceClickEvent { readonly type: 'click'; readonly target: BlueIceNode; readonly currentTarget: BlueIceNode; preventDefault(): void; }",
+        feature_flag: "live-dom-file",
+        first_host_api_version: PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1,
+        ..PAGE_HOST_DOM_EVENT_BINDINGS_V1[6]
+    },
+    PAGE_HOST_DOM_EVENT_BINDINGS_V1[7],
+    PageHostDocumentBindingV1 {
+        declaration: "interface BlueIceSelectionEvent { readonly type: 'input' | 'change' | 'cancel'; readonly target: BlueIceNode; readonly currentTarget: BlueIceNode | null; readonly bubbles: boolean; readonly cancelable: boolean; readonly composed: boolean; readonly isTrusted: boolean; readonly defaultPrevented: boolean; preventDefault(): void; stopPropagation(): void; stopImmediatePropagation(): void; }",
+        feature_flag: "live-dom-file",
+        first_host_api_version: PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1,
+        ..PAGE_HOST_DOM_EVENT_BINDINGS_V1[8]
+    },
+    PAGE_HOST_DOM_EVENT_BINDINGS_V1[9],
+    PageHostDocumentBindingV1 {
+        stable_id: "file.blob",
+        declaration: "interface BlueIceFilePromise<T> { then(onfulfilled: (value: T) => unknown): BlueIceFilePromise<unknown>; catch(onrejected: (reason: unknown) => unknown): BlueIceFilePromise<unknown>; finally(onfinally: () => void): BlueIceFilePromise<T>; }\ninterface BlueIceBlob { readonly size: number; readonly type: string; slice(start?: number, end?: number, contentType?: string): BlueIceBlob; text(): BlueIceFilePromise<string>; arrayBuffer(): BlueIceFilePromise<unknown>; bytes(): BlueIceFilePromise<unknown>; }\ndeclare const Blob: { new(parts?: unknown[], options?: { type?: string; endings?: 'transparent' | 'native' }): BlueIceBlob; readonly prototype: BlueIceBlob; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.Blob",
+        capability: "selected-file-read",
+        feature_flag: "live-dom-file",
+        first_host_api_version: PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "file.file",
+        declaration: "interface BlueIceFile extends BlueIceBlob { readonly name: string; readonly lastModified: number; }\ndeclare const File: { new(parts: unknown[], name: string, options?: { type?: string; endings?: 'transparent' | 'native'; lastModified?: number }): BlueIceFile; readonly prototype: BlueIceFile; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.File",
+        capability: "selected-file-read",
+        feature_flag: "live-dom-file",
+        first_host_api_version: PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "file.file-list",
+        declaration: "interface BlueIceFileList { readonly length: number; item(index: number): BlueIceFile | null; }\ndeclare const FileList: { readonly prototype: BlueIceFileList; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.FileList",
+        capability: "selected-file-read",
+        feature_flag: "live-dom-file",
+        first_host_api_version: PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-node-files",
+        declaration: "interface BlueIceNodeFiles { readonly files: BlueIceFileList | null; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "node.files",
+        capability: "selected-file-read",
+        feature_flag: "live-dom-file",
+        first_host_api_version: PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-node-file-value",
+        declaration: "interface BlueIceNodeFileValue { value: string | undefined; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "node.value",
+        capability: "selected-file-write",
+        feature_flag: "live-dom-file",
+        first_host_api_version: PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-node-form-reset",
+        declaration: "interface BlueIceNodeFormReset { reset(): void; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "node.reset",
+        capability: "dom-write",
+        feature_flag: "live-dom-file",
+        first_host_api_version: PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1,
+    },
+];
+
+pub fn page_host_dom_file_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 16] {
+    PAGE_HOST_DOM_FILE_BINDINGS_V1.map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -318,6 +414,13 @@ impl PageHostDocumentTypingsV1 {
         Self::generate_from(
             PAGE_HOST_DOM_EVENT_PROFILE_V1,
             page_host_dom_event_bindings_v1(),
+        )
+    }
+
+    pub fn generate_dom_file() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_FILE_PROFILE_V1,
+            &PAGE_HOST_DOM_FILE_BINDINGS_V1,
         )
     }
 
@@ -411,6 +514,17 @@ impl PageHostDocumentTypingsV1 {
         )
     }
 
+    pub fn verified_dom_file_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_file(),
+            PAGE_HOST_DOM_FILE_DECLARATION_MODULE_ID_V1,
+            installed_bindings,
+        )
+    }
+
     fn verified_module_for(
         &self,
         generated: Self,
@@ -469,6 +583,48 @@ fn stable_hash(prefix: &str, source: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_profile_preserves_click_types_and_checks_selection_metadata() {
+        use blueice_bluets::{CompilerOptions, MapLoader, RuntimePolicy};
+
+        let artifact = PageHostDocumentTypingsV1::generate_dom_file();
+        let bindings = page_host_dom_file_runtime_bindings_v1();
+        assert_eq!(artifact.profile, PAGE_HOST_DOM_FILE_PROFILE_V1);
+        assert_eq!(bindings.len(), 16);
+        assert!(artifact.verify_runtime_bindings(&bindings[..15]).is_err());
+        assert!(artifact
+            .verify_runtime_bindings(&page_host_dom_event_runtime_bindings_v1())
+            .is_err());
+        let ambient = artifact
+            .verified_dom_file_ambient_module(&bindings)
+            .unwrap();
+        assert_eq!(ambient.id, PAGE_HOST_DOM_FILE_DECLARATION_MODULE_ID_V1);
+        let compile = |source| {
+            crate::compile_direct_script(
+                "memory:///file.ts",
+                &MapLoader::from([ModuleSource::new("memory:///file.ts", source)]),
+                CompilerOptions {
+                    runtime_policy: RuntimePolicy::Checked,
+                    require_declared_global_calls: true,
+                    ambient_declaration_modules: vec![ambient.clone()],
+                    ..CompilerOptions::default()
+                },
+            )
+        };
+        compile("function onClick(event: BlueIceClickEvent): void { event.preventDefault(); } document.getElementById('link')!.addEventListener('click', onClick);").unwrap();
+        compile("function onChange(event: BlueIceSelectionEvent): void { const file = event.target.files!.item(0)!; const size: number = file.size; const name: string = file.name; const changed: number = file.lastModified; event.stopPropagation(); } document.addEventListener('change', onChange);").unwrap();
+        compile("const file = new File(['abc'], 'chosen.bin', { lastModified: 123 }); const blob: BlueIceBlob = file.slice(0, 2); document.getElementById('upload')!.value = ''; document.getElementById('form')!.reset();").unwrap();
+        for source in [
+            "document.getElementById('upload')!.files = null;",
+            "document.getElementById('upload')!.files!.item(0)!.name = 'changed';",
+            "document.getElementById('upload')!.dispatchEvent('change');",
+            "document.getElementById('upload')!.addEventListener('unknown', () => {});",
+            "function check(blob: BlueIceBlob): void { blob.stream(); }",
+        ] {
+            assert!(compile(source).is_err(), "{source}");
+        }
+    }
 
     #[test]
     fn generated_document_profile_has_only_the_two_installed_callbacks() {

@@ -1225,6 +1225,58 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
         }
     }
 
+    fn dispatch_file_selection_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        tab_id: TabId,
+        node_id: u64,
+        event: blueice_ipc::page_host::PageHostFileSelectionEvent,
+        script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        let Some(identity) = tabs.get(tab_id).and_then(live_page_identity) else {
+            return Ok(());
+        };
+        if self.live_documents.get(&tab_id) != Some(&identity) {
+            return Ok(());
+        }
+        let Some(script_requests) = script_requests else {
+            return Ok(());
+        };
+        let Some(nodes) = tabs
+            .get_mut(tab_id)
+            .and_then(|page| page.script_file_event_path(node_id))
+        else {
+            return Ok(());
+        };
+        let target = ScriptDocumentTarget {
+            tab_id: tab_id.as_u64(),
+            document_generation: identity.document_generation,
+        };
+        let mut remaining = MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT;
+        let mut pump = || {
+            pump_script_requests_during_child_wait(script_requests, tabs, target, &mut remaining)
+        };
+        match self.child.dispatch_file_selection_with_script_pump(
+            target.tab_id,
+            target.document_generation,
+            nodes,
+            event,
+            &mut pump,
+        )? {
+            PageHostReply::FileSelectionDispatched {
+                tab_id,
+                document_generation,
+                event: reply_event,
+            } if tab_id == target.tab_id
+                && document_generation == target.document_generation
+                && reply_event == event =>
+            {
+                Ok(())
+            }
+            _ => Err(io::Error::other("File selection event response invalid")),
+        }
+    }
+
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport> {
         Self::drain_reports_for_tab(self, tab_id)
     }

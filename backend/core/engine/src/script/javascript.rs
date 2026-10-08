@@ -197,6 +197,17 @@ pub trait PageJavaScriptExecutor {
         Ok(None)
     }
 
+    fn dispatch_file_selection_serving_script(
+        &mut self,
+        _tabs: &mut TabManager,
+        _tab_id: TabId,
+        _node_id: u64,
+        _event: blueice_ipc::page_host::PageHostFileSelectionEvent,
+        _script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        Ok(())
+    }
+
     /// Drains one tab's reports without exposing or consuming another tab's
     /// records.
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport>;

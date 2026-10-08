@@ -49,6 +49,7 @@ mod lifecycle;
 mod object_storage;
 #[cfg(test)]
 mod tests;
+mod web_file_api;
 
 /// A persistent root registration, independent of other registrations
 /// of the same object. Release it with [`Heap::unroot`]. Copying or
@@ -596,6 +597,13 @@ impl GeneratorState {
 }
 
 #[derive(Clone)]
+pub(crate) struct WebBlobData {
+    pub bytes: Vec<u8>,
+    pub media_type: JsString,
+    pub file: Option<(JsString, i64)>,
+}
+
+#[derive(Clone)]
 pub(crate) struct BoundFunction {
     pub target: ObjectId,
     pub this: Value,
@@ -872,6 +880,11 @@ enum ObjectKind {
         /// is always an unshared, fixed-length, never-detached ArrayBuffer
         /// whose bytes nothing may write after that allocation.
         immutable: bool,
+    },
+    WebBlob(WebBlobData),
+    WebFileList(Vec<ObjectId>),
+    HostSelectionEvent {
+        current_target: Option<ObjectId>,
     },
     DataView {
         buffer: ObjectId,
@@ -1325,6 +1338,10 @@ impl Object {
                     .chain(bound.args.iter().filter_map(Value::object_id))
                     .collect(),
                 ObjectKind::NativeFunction { function, .. } => function.references(),
+                ObjectKind::WebFileList(files) => files.clone(),
+                ObjectKind::HostSelectionEvent { current_target } => {
+                    current_target.iter().copied().collect()
+                }
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
                 ObjectKind::DateTimeFormat { format, .. } => format.iter().copied().collect(),
@@ -1533,6 +1550,10 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
                 .chain(bound.args.iter().filter_map(Value::object_id))
                 .collect(),
             ObjectKind::NativeFunction { function, .. } => function.references(),
+            ObjectKind::WebFileList(files) => files.clone(),
+            ObjectKind::HostSelectionEvent { current_target } => {
+                current_target.iter().copied().collect()
+            }
             ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
             ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
             ObjectKind::DateTimeFormat { format, .. } => format.iter().copied().collect(),

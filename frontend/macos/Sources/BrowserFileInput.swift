@@ -22,7 +22,11 @@ struct FileInputState: Decodable, Sendable {
 struct SelectedFile: Encodable, Sendable {
     let name: String
     let media_type: String
+    let last_modified: Int64
     let bytes: [UInt8]
+    init(name: String, media_type: String, bytes: [UInt8], last_modified: Int64 = 0) {
+        self.name = name; self.media_type = media_type; self.bytes = bytes; self.last_modified = last_modified
+    }
     static let maximumBytes = 1_048_576
     static func validName(_ name: String) -> Bool {
         !name.isEmpty && name.utf8.count <= 255 && name != "." && name != ".."
@@ -59,21 +63,27 @@ struct SelectedFile: Encodable, Sendable {
             }
             total += data.count
             let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-            result.append(SelectedFile(name: url.lastPathComponent,media_type: mime,bytes: Array(data)))
+            let (seconds, overflow) = Int64(before.st_mtimespec.tv_sec).multipliedReportingOverflow(by: 1000)
+            let (milliseconds, additionOverflow) = seconds.addingReportingOverflow(Int64(before.st_mtimespec.tv_nsec) / 1_000_000)
+            guard !overflow, !additionOverflow else { throw BrowserFailure.invalid("Unsupported selected file timestamp.") }
+            result.append(SelectedFile(name: url.lastPathComponent,media_type: mime,bytes: Array(data),last_modified: milliseconds))
         }
         return result
     }
 }
 enum FileInputAction: Encodable, Sendable {
-    case prepare(UInt64,UInt64,UInt64), set(FileInputContext,[SelectedFile])
-    private enum Keys: String,CodingKey { case Prepare, Set }
+    case prepare(UInt64,UInt64,UInt64), set(FileInputContext,[SelectedFile]), validate(FileInputContext), cancel(FileInputContext)
+    private enum Keys: String,CodingKey { case Prepare, Set, Validate, Cancel }
     private struct Prepare: Encodable { let frame_source: UInt64; let document_generation: UInt64; let node_id: UInt64 }
     private struct Set: Encodable { let context: FileInputContext; let files: [SelectedFile] }
+    private struct Context: Encodable { let context: FileInputContext }
     func encode(to encoder: Encoder) throws {
         var value = encoder.container(keyedBy: Keys.self)
         switch self {
         case .prepare(let source,let document,let node): try value.encode(Prepare(frame_source: source,document_generation: document,node_id: node),forKey: .Prepare)
         case .set(let context,let files): try value.encode(Set(context: context,files: files),forKey: .Set)
+        case .validate(let context): try value.encode(Context(context: context),forKey: .Validate)
+        case .cancel(let context): try value.encode(Context(context: context),forKey: .Cancel)
         }
     }
 }
@@ -118,7 +128,13 @@ final class BrowserFilePicker {
             let response = await withCheckedContinuation { continuation in
                 panel.beginSheetModal(for: window) { response in continuation.resume(returning: response) }
             }
-            guard response == .OK, !Task.isCancelled, model.fileInputIsCurrent(state.context,tab: tab) else { return }
+            guard !Task.isCancelled, model.fileInputIsCurrent(state.context,tab: tab) else { return }
+            if response == .cancel {
+                _ = await model.cancelFileInput(state.context,tab: tab)
+                return
+            }
+            guard response == .OK, await model.validateFileInput(state.context,tab: tab),
+                  !Task.isCancelled, model.fileInputIsCurrent(state.context,tab: tab) else { return }
             do {
                 let urls = panel.urls; let multiple = state.multiple
                 let files = try await Task.detached(priority: .userInitiated) { try SelectedFile.read(urls,multiple: multiple) }.value

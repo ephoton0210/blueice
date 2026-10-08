@@ -841,6 +841,8 @@ impl Vm {
             self.heap.native_function(*id)?,
             Some(
                 NativeFunction::Function
+                    | NativeFunction::Blob
+                    | NativeFunction::File
                     | NativeFunction::String
                     | NativeFunction::Array
                     | NativeFunction::Date

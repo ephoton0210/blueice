@@ -12,6 +12,7 @@ fn file(name: &str) -> FileData {
     FileData {
         name: name.into(),
         media_type: "application/octet-stream".into(),
+        last_modified: 123,
         bytes: vec![0, 255, 13, 10, 7],
     }
 }

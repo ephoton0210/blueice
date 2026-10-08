@@ -377,6 +377,12 @@ impl Heap {
                 | ObjectKind::StringIterator { string, .. }
                 | ObjectKind::RegExpIterator { string, .. } => string.byte_len(),
                 ObjectKind::ArrayBuffer { bytes, .. } => bytes.len(),
+                ObjectKind::WebFileList(files) => files.len().saturating_mul(size_of::<ObjectId>()),
+                ObjectKind::WebBlob(blob) => blob
+                    .bytes
+                    .len()
+                    .saturating_add(blob.media_type.byte_len())
+                    .saturating_add(blob.file.as_ref().map_or(0, |(name, _)| name.byte_len())),
                 ObjectKind::RegExp(regexp) => exotic::regexp_bytes(regexp),
                 ObjectKind::Collator { data, .. } => data.bytes(),
                 ObjectKind::NumberFormat { data, .. } => data.bytes(),

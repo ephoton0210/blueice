@@ -7,6 +7,8 @@
 //! wrapper. Neither a heap object handle nor the key is serialized to script.
 
 use super::*;
+mod file_selection_events;
+pub use file_selection_events::HostFileSelectionEvent;
 
 /// A fixed bound on permanently rooted wrappers in one host-object family.
 /// The bound includes unreachable wrappers because retaining their identity
@@ -126,6 +128,7 @@ pub(super) struct HostObjectFamilyState {
     _prototype_root: RootId,
     wrappers: HashMap<HostObjectKey, (ObjectId, RootId)>,
     keys_by_wrapper: HashMap<ObjectId, HostObjectKey>,
+    file_events: bool,
 }
 
 pub(super) struct HostObjectFactoryRegistration {
@@ -149,14 +152,72 @@ pub(super) struct HostClickListener {
     key: HostObjectKey,
     callback: ObjectId,
     root: RootId,
+    selection: Option<HostFileSelectionEvent>,
 }
 
 pub(super) struct ActiveHostClickEvent {
     object: ObjectId,
     default_prevented: bool,
+    propagation_stopped: bool,
+    immediate_stopped: bool,
 }
 
 impl Vm {
+    /// Installs one minted wrapper as a global while preserving its family
+    /// identity. Its opaque owner key remains inaccessible to JavaScript.
+    pub fn install_host_family_object(
+        &mut self,
+        name: &str,
+        family: HostObjectFamily,
+        key: HostObjectKey,
+    ) -> Result<HostObject, RuntimeError> {
+        self.host_family_prototype(family)?;
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("global object");
+        if !host_property_name_is_valid(name) || self.heap.get_own(global, name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "Host global already defined".into(),
+            ));
+        }
+        let object = self.mint_host_wrapper(family.index as usize, key)?;
+        self.define_data(global, name, Value::Object(object), false, false, false)?;
+        Ok(HostObject(object))
+    }
+
+    pub(super) fn host_family_prototype(
+        &self,
+        family: HostObjectFamily,
+    ) -> Result<ObjectId, RuntimeError> {
+        if family.heap != self.object_prototype.heap {
+            return Err(RuntimeError::TypeError(
+                "Host family belongs to another realm".into(),
+            ));
+        }
+        self.host_object_families
+            .get(family.index as usize)
+            .map(|state| state.prototype)
+            .ok_or_else(|| RuntimeError::TypeError("Host family is unavailable".into()))
+    }
+
+    pub(super) fn host_receiver_key(
+        &self,
+        family: HostObjectFamily,
+        receiver: &Value,
+    ) -> Result<HostObjectKey, RuntimeError> {
+        self.host_family_prototype(family)?;
+        receiver
+            .object_id()
+            .and_then(|id| {
+                self.host_object_families[family.index as usize]
+                    .keys_by_wrapper
+                    .get(&id)
+                    .copied()
+            })
+            .ok_or_else(|| RuntimeError::TypeError("Invalid host object receiver".into()))
+    }
+
     /// Installs only the exact `click` add/remove listener pair on one private
     /// wrapper family. JavaScript callbacks stay in this VM's rooted table;
     /// neither a function object nor a numeric function handle reaches the
@@ -231,7 +292,11 @@ impl Vm {
         let callbacks = self
             .host_click_listeners
             .iter()
-            .filter(|listener| listener.family_index == family.index && listener.key == key)
+            .filter(|listener| {
+                listener.family_index == family.index
+                    && listener.key == key
+                    && listener.selection.is_none()
+            })
             .map(|listener| listener.callback)
             .collect::<Vec<_>>();
         if callbacks.is_empty() {
@@ -295,6 +360,8 @@ impl Vm {
             self.active_host_click_event = Some(ActiveHostClickEvent {
                 object: event,
                 default_prevented: false,
+                propagation_stopped: false,
+                immediate_stopped: false,
             });
             let mut result = Ok(());
             for callback in callbacks {
@@ -302,6 +369,7 @@ impl Vm {
                     listener.family_index == family_index
                         && listener.key == key
                         && listener.callback == *callback
+                        && listener.selection.is_none()
                 }) {
                     continue;
                 }
@@ -349,7 +417,7 @@ impl Vm {
         construct: bool,
         add: bool,
     ) -> Result<Value, RuntimeError> {
-        if construct || args.len() != 2 || args[0] != Value::String("click".into()) {
+        if construct || args.len() != 2 {
             return Err(RuntimeError::TypeError(
                 "host listener method requires a click type and one callback".into(),
             ));
@@ -358,6 +426,15 @@ impl Vm {
             .host_object_families
             .get(family_index as usize)
             .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?;
+        let selection = if args[0] == Value::String("click".into()) {
+            None
+        } else if family.file_events {
+            Some(HostFileSelectionEvent::from_value(&args[0])?)
+        } else {
+            return Err(RuntimeError::TypeError(
+                "host listener requires an admitted event type".into(),
+            ));
+        };
         let key = receiver
             .object_id()
             .and_then(|object| family.keys_by_wrapper.get(&object).copied())
@@ -374,6 +451,7 @@ impl Vm {
             listener.family_index == family_index
                 && listener.key == key
                 && listener.callback == callback
+                && listener.selection == selection
         });
         if add {
             if existing.is_none() {
@@ -393,6 +471,7 @@ impl Vm {
                     key,
                     callback,
                     root,
+                    selection,
                 });
             }
         } else if let Some(index) = existing {
@@ -440,6 +519,7 @@ impl Vm {
             _prototype_root: root,
             wrappers: HashMap::new(),
             keys_by_wrapper: HashMap::new(),
+            file_events: false,
         });
         Ok(HostObjectFamily {
             heap: self.object_prototype.heap,
@@ -693,9 +773,17 @@ impl Vm {
         else {
             return Ok(Value::Null);
         };
+        self.mint_host_wrapper(family_index, key).map(Value::Object)
+    }
+
+    fn mint_host_wrapper(
+        &mut self,
+        family_index: usize,
+        key: HostObjectKey,
+    ) -> Result<ObjectId, RuntimeError> {
         let family = &self.host_object_families[family_index];
         if let Some(&(object, _root)) = family.wrappers.get(&key) {
-            return Ok(Value::Object(object));
+            return Ok(object);
         }
         if family.wrappers.len() >= MAX_HOST_OBJECTS_PER_FAMILY {
             return Err(RuntimeError::RangeError(
@@ -711,7 +799,7 @@ impl Vm {
         self.host_object_families[family_index]
             .keys_by_wrapper
             .insert(object, key);
-        Ok(Value::Object(object))
+        Ok(object)
     }
 
     pub(super) fn host_object_method_call(

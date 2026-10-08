@@ -84,16 +84,28 @@ impl ExtensionHost {
             .spawn()
             .expect("failed to spawn blueice-extension-host");
 
+        // Own the child before readiness or permissions assertions can panic.
+        // Cold macOS executable validation can block before Rust main for
+        // tens of seconds. Bound that startup separately from protocol reads.
+        let mut host = ExtensionHost { child, socket };
         assert!(
-            wait_for(&socket, Duration::from_secs(5)),
-            "blueice-extension-host never created its socket"
+            wait_for(
+                &host.socket,
+                Duration::from_secs(if cfg!(target_os = "macos") { 60 } else { 5 }),
+            ),
+            "blueice-extension-host never accepted a connection; child status: {:?}",
+            host.child.try_wait().unwrap()
         );
         assert_eq!(
-            std::fs::metadata(&socket).unwrap().permissions().mode() & 0o777,
+            std::fs::metadata(&host.socket)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
             0o600,
             "the standalone extension listener must not be connectable by another local user"
         );
-        ExtensionHost { child, socket }
+        host
     }
 
     fn connect(&self) -> UnixStream {

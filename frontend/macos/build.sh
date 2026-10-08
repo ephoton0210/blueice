@@ -7,8 +7,8 @@ set -euo pipefail
 frontend_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$frontend_dir/../.." && pwd)
 configuration=${1:-Debug}
-cargo_flags=(build -p blueice-engine -p blueice-launcher -p blueice-ai-gatekeeper -p blueice-downloads -p blueice-extension-host -p blueice-ai-assistant
-    --bin blueice-core --bin blueice-launcher --bin blueice-ai-gatekeeper --bin blueice-downloads --bin blueice-extension-host --bin blueice-ai-assistant --locked)
+cargo_flags=(build -p blueice-engine -p blueice-launcher -p blueice-bluejs -p blueice-ai-gatekeeper -p blueice-downloads -p blueice-extension-host -p blueice-ai-assistant
+    --bin blueice-core --bin blueice-launcher --bin blueice-bluejs-host --bin bluejs-regexp-worker --bin blueice-ai-gatekeeper --bin blueice-downloads --bin blueice-extension-host --bin blueice-ai-assistant --locked)
 case "$configuration" in
     Debug) ;;
     Release) cargo_flags+=(--release) ;;

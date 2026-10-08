@@ -621,7 +621,7 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
         &frame_dir,
         CoreLaunchOptions::default()
             .with_gatekeeper_socket(gatekeeper_path.clone())
-            .supervise_out_of_process_bluejs_with_dom_event_fixture(),
+            .supervise_out_of_process_bluejs_with_page_dom(),
     )
     .expect("launcher must supervise an event-capable child");
     let mut stream = core.stream.try_clone().unwrap();

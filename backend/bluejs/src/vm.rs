@@ -42,6 +42,8 @@ mod shadow_realm;
 mod temporal;
 mod test262;
 mod test262_agents;
+mod web_file_api;
+mod web_file_input;
 use completion::{
     call_stack_exhausted, Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
 };
@@ -60,9 +62,11 @@ use host_objects::{
     HostObjectMethodRegistration, HostObjectPairMethodRegistration,
 };
 pub use host_objects::{
-    HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod, HostObjectPairMethod,
+    HostFileSelectionEvent, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
+    HostObjectPairMethod,
 };
 use std::fmt;
+pub use web_file_input::{HostFileData, HostInputFilesReader, HostInputFilesUpdate};
 
 /// A private interpreter suspension boundary. `Offset` is also used by
 /// generator/module setup; only the debugger requests one executed root
@@ -970,6 +974,7 @@ pub struct Vm {
     host_object_methods: Vec<HostObjectMethodRegistration>,
     host_object_pair_methods: Vec<HostObjectPairMethodRegistration>,
     host_object_families: Vec<HostObjectFamilyState>,
+    host_file_inputs: Vec<web_file_input::HostFileInputRegistration>,
     host_click_listeners: Vec<HostClickListener>,
     active_host_click_event: Option<ActiveHostClickEvent>,
     global_bindings: HashMap<String, GlobalBinding>,
@@ -1135,6 +1140,11 @@ pub struct Vm {
 }
 
 impl Vm {
+    /// Installs the owner-selected browser File API in this realm.
+    pub fn install_web_file_api(&mut self) -> Result<(), RuntimeError> {
+        self.install_web_files()
+    }
+
     /// Installs one non-constructable host function as an own property of
     /// `globalThis`. The name is rejected when a global property already
     /// exists, so an embedder cannot silently replace an ECMAScript global.
@@ -1704,6 +1714,8 @@ impl Vm {
             && !matches!(
                 function,
                 NativeFunction::String
+                    | NativeFunction::Blob
+                    | NativeFunction::File
                     | NativeFunction::Array
                     | NativeFunction::Date
                     | NativeFunction::TemporalConstructor(_)

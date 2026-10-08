@@ -19,10 +19,10 @@ use blueice_bluejs::{
     BlueJsPageDebuggerLinkedExecutionState, BlueJsPageDebuggerLinkedFrame,
     BlueJsPageDebuggerNestedExecutionState, BlueJsPageDebuggerValueTarget, BlueJsPageOrigin,
     BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle,
-    BlueJsProgramV1, BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError,
-    HostObjectFamily, HostObjectKey, HostValue, Module, ParseError, RuntimeError, Value, Vm,
-    VmConfig, VmDebuggerScopeEntry, VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES,
-    VM_DEBUGGER_MAX_STACK_FRAMES,
+    BlueJsProgramV1, BlueJsSourceIdentity, CompileError, HeapConfig, HostFileData,
+    HostFunctionError, HostInputFilesUpdate, HostObjectFamily, HostObjectKey, HostValue, Module,
+    ParseError, RuntimeError, Value, Vm, VmConfig, VmDebuggerScopeEntry, VmDebuggerValuePreview,
+    VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
@@ -30,8 +30,8 @@ use blueice_bluets::{
 };
 use blueice_bluets_bluejs::page_host_typings::{
     page_host_document_runtime_bindings_v1, page_host_dom_event_runtime_bindings_v1,
-    page_host_dom_mutation_runtime_bindings_v1, page_host_dom_text_runtime_bindings_v1,
-    PageHostDocumentTypingsV1,
+    page_host_dom_file_runtime_bindings_v1, page_host_dom_mutation_runtime_bindings_v1,
+    page_host_dom_text_runtime_bindings_v1, PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
@@ -400,6 +400,7 @@ struct ScriptDomCapability {
     enable_dom_text_profile: bool,
     enable_dom_mutation_profile: bool,
     enable_dom_event_profile: bool,
+    enable_dom_file_profile: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -408,11 +409,14 @@ enum PageDomProfile {
     Text,
     Mutation,
     Event,
+    File,
 }
 
 impl ScriptDomCapability {
     fn profile(&self) -> PageDomProfile {
-        if self.enable_dom_event_profile {
+        if self.enable_dom_file_profile {
+            PageDomProfile::File
+        } else if self.enable_dom_event_profile {
             PageDomProfile::Event
         } else if self.enable_dom_mutation_profile {
             PageDomProfile::Mutation
@@ -433,6 +437,121 @@ struct ScriptDomClient {
 }
 
 impl ScriptDomClient {
+    fn file_value(&mut self, target: ScriptDocumentTarget, node: u64) -> io::Result<HostValue> {
+        match self.call(target, ScriptRequest::GetFileValue { target, node })? {
+            ScriptReply::FileValue { value } => Ok(value.map_or(HostValue::Undefined, |value| {
+                HostValue::String(value.into())
+            })),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "File value unavailable",
+            )),
+        }
+    }
+    fn file_action(
+        &mut self,
+        target: ScriptDocumentTarget,
+        node: u64,
+        reset: bool,
+    ) -> io::Result<()> {
+        let request = if reset {
+            ScriptRequest::ResetForm { target, node }
+        } else {
+            ScriptRequest::ClearInputFiles { target, node }
+        };
+        match self.call(target, request)? {
+            ScriptReply::Ack => Ok(()),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "File action unavailable",
+            )),
+        }
+    }
+    fn get_document(&mut self, target: ScriptDocumentTarget) -> io::Result<u64> {
+        match self.call(target, ScriptRequest::GetDocument { target })? {
+            ScriptReply::NodeCreated { node } if node != 0 => Ok(node),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Live document unavailable",
+            )),
+        }
+    }
+    fn get_input_files(
+        &mut self,
+        target: ScriptDocumentTarget,
+        node: u64,
+        known_revision: Option<u64>,
+    ) -> io::Result<HostInputFilesUpdate> {
+        let ScriptReply::InputFiles { revision, files } =
+            self.call(target, ScriptRequest::GetInputFiles { target, node })?
+        else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Selected metadata unavailable",
+            ));
+        };
+        let Some(files) = files else {
+            return Ok(HostInputFilesUpdate::NotFileInput);
+        };
+        if files.len() > 16
+            || files
+                .iter()
+                .fold(0usize, |total, file| total.saturating_add(file.size))
+                > 1_048_576
+            || files
+                .iter()
+                .any(|file| file.name.len() > 255 || file.media_type.len() > 127)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Selected metadata exceeds limits",
+            ));
+        }
+        if known_revision == Some(revision) {
+            return Ok(HostInputFilesUpdate::Unchanged);
+        }
+        let mut selected = Vec::with_capacity(files.len());
+        for (index, file) in files.into_iter().enumerate() {
+            let mut bytes = Vec::with_capacity(file.size);
+            while bytes.len() < file.size {
+                let length = (file.size - bytes.len()).min(script::SCRIPT_MAX_FILE_CHUNK_BYTES);
+                let reply = self.call(
+                    target,
+                    ScriptRequest::ReadInputFile {
+                        target,
+                        node,
+                        revision,
+                        index,
+                        offset: bytes.len(),
+                        length,
+                    },
+                )?;
+                let ScriptReply::InputFileBytes { bytes: chunk } = reply else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Selected content unavailable",
+                    ));
+                };
+                if chunk.len() != length {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Selected content range invalid",
+                    ));
+                }
+                bytes.extend(chunk);
+            }
+            selected.push(HostFileData {
+                name: file.name,
+                media_type: file.media_type,
+                last_modified: file.last_modified,
+                bytes,
+            });
+        }
+        Ok(HostInputFilesUpdate::Selected {
+            revision,
+            files: selected,
+        })
+    }
     fn new(capability: ScriptDomCapability) -> Self {
         Self {
             capability,
@@ -729,6 +848,9 @@ pub struct BlueJsChildHost {
     next_debugger_metadata_handle: u64,
     next_debugger_metadata_generation: u64,
     script_dom_capability: Option<ScriptDomCapability>,
+    // Core serializes long-lived script connections. Ordinary file realms
+    // share one owner channel; each call still carries its exact document.
+    file_dom_client: Option<Rc<RefCell<ScriptDomClient>>>,
 }
 
 mod execution_drive;
@@ -882,6 +1004,7 @@ fn install_document_snapshot_bindings(
     document_generation: u64,
     snapshot: &PageHostDocumentSnapshot,
     script_dom_capability: Option<ScriptDomCapability>,
+    file_dom_client: Option<Rc<RefCell<ScriptDomClient>>>,
 ) -> Result<Option<HostObjectFamily>, BlueJsPageRuntimeError> {
     let page_dom_profile = script_dom_capability
         .as_ref()
@@ -891,12 +1014,14 @@ fn install_document_snapshot_bindings(
         PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text(),
         PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation(),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event(),
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_file(),
     };
     let expected_bindings = match page_dom_profile {
         PageDomProfile::Snapshot => page_host_document_runtime_bindings_v1().to_vec(),
         PageDomProfile::Text => page_host_dom_text_runtime_bindings_v1().to_vec(),
         PageDomProfile::Mutation => page_host_dom_mutation_runtime_bindings_v1().to_vec(),
         PageDomProfile::Event => page_host_dom_event_runtime_bindings_v1().to_vec(),
+        PageDomProfile::File => page_host_dom_file_runtime_bindings_v1().to_vec(),
     };
     artifact
         .verify_runtime_bindings(&expected_bindings)
@@ -1004,9 +1129,27 @@ fn install_document_snapshot_bindings(
                 tab_id,
                 document_generation,
             };
-            let client = Rc::new(RefCell::new(ScriptDomClient::new(capability)));
-            let document = bindings.install_global_object("document")?;
+            let client = if page_dom_profile == PageDomProfile::File {
+                file_dom_client.clone().ok_or_else(|| {
+                    RuntimeError::TypeError("Owner file DOM channel unavailable".into())
+                })?
+            } else {
+                Rc::new(RefCell::new(ScriptDomClient::new(capability)))
+            };
             let family = bindings.create_host_object_family()?;
+            let document = if page_dom_profile == PageDomProfile::File {
+                let root = client
+                    .borrow_mut()
+                    .get_document(target)
+                    .map_err(|_| RuntimeError::TypeError("Live document unavailable".into()))?;
+                bindings.install_global_family_object(
+                    "document",
+                    family,
+                    HostObjectKey::new(tab_id, document_generation, root),
+                )?
+            } else {
+                bindings.install_global_object("document")?
+            };
             let lookup_client = Rc::clone(&client);
             bindings.install_host_object_factory_method(
                 document,
@@ -1063,7 +1206,7 @@ fn install_document_snapshot_bindings(
             )?;
             if matches!(
                 page_dom_profile,
-                PageDomProfile::Mutation | PageDomProfile::Event
+                PageDomProfile::Mutation | PageDomProfile::Event | PageDomProfile::File
             ) {
                 let element_client = Rc::clone(&client);
                 bindings.install_host_object_factory_method(
@@ -1099,6 +1242,7 @@ fn install_document_snapshot_bindings(
                             })
                     },
                 )?;
+                let file_client = Rc::clone(&client);
                 bindings.install_host_object_pair_method(
                     family,
                     "appendChild",
@@ -1119,11 +1263,84 @@ fn install_document_snapshot_bindings(
                 )?;
                 installed_bindings
                     .extend_from_slice(&page_host_dom_mutation_runtime_bindings_v1()[2..]);
-                if page_dom_profile == PageDomProfile::Event {
-                    bindings.install_host_click_event_methods(family)?;
+                if matches!(
+                    page_dom_profile,
+                    PageDomProfile::Event | PageDomProfile::File
+                ) {
+                    if page_dom_profile == PageDomProfile::File {
+                        bindings.install_host_file_selection_event_methods(family)?;
+                    } else {
+                        bindings.install_host_click_event_methods(family)?;
+                    }
                     *installed_click_event_family.borrow_mut() = Some(family);
                     let event_bindings = page_host_dom_event_runtime_bindings_v1();
                     installed_bindings.extend([event_bindings[6], event_bindings[8]]);
+                }
+                if page_dom_profile == PageDomProfile::File {
+                    let value_reader = Rc::clone(&file_client);
+                    let value_writer = Rc::clone(&file_client);
+                    let form_client = Rc::clone(&file_client);
+                    bindings.install_web_file_api()?;
+                    bindings.install_host_object_accessor(
+                        family,
+                        "value",
+                        move |key: HostObjectKey, args: &[HostValue]| {
+                            require_no_arguments(args, "file value")?;
+                            if !key.matches_owner(tab_id, document_generation) {
+                                return Err(HostFunctionError::new("Stale file input"));
+                            }
+                            value_reader
+                                .borrow_mut()
+                                .file_value(target, key.object())
+                                .map_err(|_| HostFunctionError::new("File value unavailable"))
+                        },
+                        move |key: HostObjectKey, args: &[HostValue]| {
+                            if !key.matches_owner(tab_id, document_generation)
+                                || !matches!(args,[HostValue::String(value)] if value.is_empty())
+                            {
+                                return Err(HostFunctionError::new(
+                                    "A file input may only be cleared with an empty value",
+                                ));
+                            }
+                            value_writer
+                                .borrow_mut()
+                                .file_action(target, key.object(), false)
+                                .map_err(|_| HostFunctionError::new("File clear unavailable"))?;
+                            Ok(HostValue::Undefined)
+                        },
+                    )?;
+                    bindings.install_host_object_method(
+                        family,
+                        "reset",
+                        0,
+                        move |key: HostObjectKey, args: &[HostValue]| {
+                            require_no_arguments(args, "form reset")?;
+                            if !key.matches_owner(tab_id, document_generation) {
+                                return Err(HostFunctionError::new("Stale form"));
+                            }
+                            form_client
+                                .borrow_mut()
+                                .file_action(target, key.object(), true)
+                                .map_err(|_| HostFunctionError::new("Form reset unavailable"))?;
+                            Ok(HostValue::Undefined)
+                        },
+                    )?;
+                    bindings.install_host_file_input_reader(
+                        family,
+                        move |key: HostObjectKey, revision: Option<u64>| {
+                            if !key.matches_owner(tab_id, document_generation) {
+                                return Err(HostFunctionError::new(
+                                    "Selected files belong to another document",
+                                ));
+                            }
+                            file_client
+                                .borrow_mut()
+                                .get_input_files(target, key.object(), revision)
+                                .map_err(|_| HostFunctionError::new("Selected files unavailable"))
+                        },
+                    )?;
+                    installed_bindings
+                        .extend_from_slice(&page_host_dom_file_runtime_bindings_v1()[10..]);
                 }
             } else {
                 installed_bindings

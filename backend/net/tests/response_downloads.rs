@@ -18,6 +18,34 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+#[test]
+fn response_fixture_waits_for_a_request_sent_after_accept() {
+    use std::io::{Read, Write};
+    let server = ResponseServer::start("200 OK", &[("Content-Type", "text/html")], b"ready", false);
+    let address = server
+        .url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap();
+    let mut client = std::net::TcpStream::connect(address).unwrap();
+    client
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    thread::sleep(Duration::from_millis(50));
+    let write = client.write_all(b"GET /response HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    let mut response = Vec::new();
+    let read = client.read_to_end(&mut response);
+    let request = server.finish();
+    write.unwrap();
+    read.unwrap();
+    assert_eq!(request.method, "GET");
+    assert_eq!(request.target, "/response");
+    assert!(request.body.is_empty());
+    assert!(response.ends_with(b"\r\n\r\nready"));
+}
+
 fn assert_download_bytes(hop: FetchHop, expected: &[u8]) {
     use std::io::Read;
     let FetchHop::Download(download) = hop else {

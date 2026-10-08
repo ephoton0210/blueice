@@ -55,10 +55,11 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
+/// V7 adds bounded selected-file metadata/byte reads and file clear/form reset.
 /// V6 makes child-private node handles distinct from core DOM NodeIds and
 /// unique across documents. Older peers could confuse equal raw NodeIds in
 /// different tabs even when their document targets were authenticated.
-pub const SCRIPT_PROTOCOL_VERSION: u32 = 6;
+pub const SCRIPT_PROTOCOL_VERSION: u32 = 7;
 pub const SCRIPT_SESSION_TOKEN_HEX_BYTES: usize = 64;
 pub const SCRIPT_MAX_FRAME_BYTES: usize = 1_100_000;
 pub const SCRIPT_MAX_NAME_BYTES: usize = 4_096;
@@ -76,6 +77,36 @@ pub struct ScriptDocumentTarget {
 /// long-lived connection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ScriptRequest {
+    GetFileValue {
+        target: ScriptDocumentTarget,
+        node: u64,
+    },
+    ClearInputFiles {
+        target: ScriptDocumentTarget,
+        node: u64,
+    },
+    ResetForm {
+        target: ScriptDocumentTarget,
+        node: u64,
+    },
+    GetDocument {
+        target: ScriptDocumentTarget,
+    },
+    /// Reads metadata for this exact document's file input, never an OS path.
+    GetInputFiles {
+        target: ScriptDocumentTarget,
+        node: u64,
+    },
+    /// Copies a bounded range of already selected content. A changed selection
+    /// revision invalidates the read before successor bytes are returned.
+    ReadInputFile {
+        target: ScriptDocumentTarget,
+        node: u64,
+        revision: u64,
+        index: usize,
+        offset: usize,
+        length: usize,
+    },
     /// Sent once, first, on a fresh connection -- the same
     /// `Hello`-handshake shape [`crate::extension::ExtensionRequest::Hello`]
     /// uses, layered onto `gatekeeper`'s framing style, per this
@@ -144,6 +175,10 @@ impl ScriptRequest {
     pub fn document_target(&self) -> Option<ScriptDocumentTarget> {
         match self {
             Self::Hello { .. } | Self::Call { .. } => None,
+            Self::GetDocument { target } => Some(*target),
+            Self::GetFileValue { target, .. }
+            | Self::ClearInputFiles { target, .. }
+            | Self::ResetForm { target, .. } => Some(*target),
             Self::GetElementById { target, .. }
             | Self::ValidateNode { target, .. }
             | Self::CreateElement { target, .. }
@@ -151,6 +186,9 @@ impl ScriptRequest {
             | Self::AppendChild { target, .. }
             | Self::GetTextContent { target, .. }
             | Self::SetTextContent { target, .. } => Some(*target),
+            Self::GetInputFiles { target, .. } | Self::ReadInputFile { target, .. } => {
+                Some(*target)
+            }
         }
     }
 }
@@ -158,8 +196,20 @@ impl ScriptRequest {
 /// `core`'s reply to one [`ScriptRequest`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ScriptReply {
+    FileValue {
+        value: Option<String>,
+    },
+    InputFiles {
+        revision: u64,
+        files: Option<Vec<ScriptFileMetadata>>,
+    },
+    InputFileBytes {
+        bytes: Vec<u8>,
+    },
     /// Reply to [`ScriptRequest::Hello`].
-    HelloAck { protocol_version: u32 },
+    HelloAck {
+        protocol_version: u32,
+    },
     /// Exact response to one post-handshake call. The child rejects an ID or
     /// target mismatch before it can treat any inner result as page data.
     CallResult {
@@ -171,24 +221,45 @@ pub enum ScriptReply {
     /// element with that ID exists in the addressed tab, matching
     /// `document.getElementById`'s own `null`-on-miss behavior rather
     /// than treating a miss as an error.
-    Node { node: Option<u64> },
+    Node {
+        node: Option<u64>,
+    },
     /// Reply to [`ScriptRequest::CreateElement`]/
     /// [`ScriptRequest::CreateTextNode`] -- creation is infallible
     /// given a valid tab, so this carries its child-private handle directly
     /// rather than an `Option`.
-    NodeCreated { node: u64 },
+    NodeCreated {
+        node: u64,
+    },
     /// Reply to [`ScriptRequest::ValidateNode`],
     /// [`ScriptRequest::AppendChild`], or
     /// [`ScriptRequest::SetTextContent`].
     Ack,
     /// Reply to [`ScriptRequest::GetTextContent`].
-    Text { value: String },
+    Text {
+        value: String,
+    },
     /// Reply to any request naming a tab or node that doesn't exist --
     /// a structured error, mirroring
     /// [`crate::extension::ExtensionReply::CapabilityDenied`]'s
     /// "structured, not a silent no-op" precedent.
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
+
+/// Metadata and ranges belong to a single authenticated document call.
+/// No pathname, native-reader descriptor or picker capability is serialized.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptFileMetadata {
+    pub name: String,
+    pub media_type: String,
+    pub last_modified: i64,
+    pub size: usize,
+}
+
+pub const SCRIPT_MAX_FILE_CHUNK_BYTES: usize = 65_536;
 
 pub fn write_script_request<W: Write>(w: &mut W, msg: &ScriptRequest) -> io::Result<()> {
     crate::write_framed_with_limit(w, msg, SCRIPT_MAX_FRAME_BYTES)

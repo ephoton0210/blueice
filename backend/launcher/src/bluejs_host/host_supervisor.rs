@@ -104,6 +104,7 @@ impl SpawnedBlueJsHost {
         enable_dom_text_profile: bool,
         enable_dom_mutation_profile: bool,
         enable_dom_event_profile: bool,
+        enable_dom_file_profile: bool,
     ) -> io::Result<(Self, BlueJsHostCoreConfig)> {
         if !script_socket.is_absolute()
             || [
@@ -111,6 +112,7 @@ impl SpawnedBlueJsHost {
                 enable_dom_text_profile,
                 enable_dom_mutation_profile,
                 enable_dom_event_profile,
+                enable_dom_file_profile,
             ]
             .into_iter()
             .filter(|enabled| *enabled)
@@ -130,6 +132,7 @@ impl SpawnedBlueJsHost {
                 enable_dom_text_profile,
                 enable_dom_mutation_profile,
                 enable_dom_event_profile,
+                enable_dom_file_profile,
             )),
         )?;
         let config = BlueJsHostCoreConfig {
@@ -141,7 +144,7 @@ impl SpawnedBlueJsHost {
 
     fn spawn_unconnected(
         limits: BlueJsHostRuntimeLimits,
-        script_socket: Option<(&Path, bool, bool, bool, bool)>,
+        script_socket: Option<(&Path, bool, bool, bool, bool, bool)>,
     ) -> io::Result<Self> {
         limits
             .runtime_config()
@@ -177,6 +180,7 @@ impl SpawnedBlueJsHost {
             enable_dom_text_profile,
             enable_dom_mutation_profile,
             enable_dom_event_profile,
+            enable_dom_file_profile,
         )) = script_socket
         {
             command.arg("--script-socket").arg(script_socket);
@@ -191,6 +195,9 @@ impl SpawnedBlueJsHost {
             }
             if enable_dom_event_profile {
                 command.arg("--enable-dom-event-profile");
+            }
+            if enable_dom_file_profile {
+                command.arg("--enable-dom-file-profile");
             }
         }
         let mut child = command.spawn()?;
@@ -406,6 +413,7 @@ mod tests {
             false,
             false,
             false,
+            false,
         ) else {
             panic!("a relative script socket must be rejected");
         };
@@ -419,6 +427,7 @@ mod tests {
             BlueJsHostRuntimeLimits::default(),
             true,
             true,
+            false,
             false,
             false,
         ) else {

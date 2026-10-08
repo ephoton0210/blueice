@@ -84,6 +84,8 @@ struct Args {
     /// BlueJS page-host child for each core generation. The endpoint/token
     /// are generated internally and are never CLI values.
     out_of_process_bluejs: bool,
+    /// Enables bounded live DOM bindings in the owned page host.
+    page_dom_bindings: bool,
     /// Explicit opt-in compiler MCP attachment endpoint. Without an owner
     /// catalog file, the launcher passes its fixed core-owned fixture.
     compiler_mcp_socket: Option<PathBuf>,
@@ -203,6 +205,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut gatekeeper_socket = None;
     let mut owned_gatekeeper_socket = None;
     let mut out_of_process_bluejs = false;
+    let mut page_dom_bindings = false;
     let mut compiler_mcp_socket = None;
     let mut compiler_catalog_file = None;
     let mut page_http_policy_file = None;
@@ -271,6 +274,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--owned-gatekeeper-socket" => owned_gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--out-of-process-bluejs" => out_of_process_bluejs = true,
+            "--page-dom-bindings" => page_dom_bindings = true,
             "--compiler-mcp-socket" => compiler_mcp_socket = Some(PathBuf::from(value()?)),
             "--compiler-catalog-file" => compiler_catalog_file = Some(PathBuf::from(value()?)),
             "--page-http-policy-file" => page_http_policy_file = Some(PathBuf::from(value()?)),
@@ -591,6 +595,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if page_http_policy_file.is_some() && !out_of_process_bluejs {
         return Err("--page-http-policy-file requires --out-of-process-bluejs".to_string());
     }
+    if page_dom_bindings && !out_of_process_bluejs {
+        return Err("--page-dom-bindings requires --out-of-process-bluejs".to_string());
+    }
     if gatekeeper_socket.is_some() && owned_gatekeeper_socket.is_some() {
         return Err("Select an owned gatekeeper endpoint or an external override, not both".into());
     }
@@ -606,6 +613,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         gatekeeper_socket,
         owned_gatekeeper_socket,
         out_of_process_bluejs,
+        page_dom_bindings,
         compiler_mcp_socket,
         compiler_catalog_file,
         page_http_policy_file,
@@ -733,6 +741,9 @@ fn main() -> ExitCode {
     }
     if args.out_of_process_bluejs {
         core_options = core_options.supervise_out_of_process_bluejs();
+    }
+    if args.page_dom_bindings {
+        core_options = core_options.supervise_out_of_process_bluejs_with_page_dom();
     }
     if let Some(compiler_mcp_socket) = args.compiler_mcp_socket.clone() {
         core_options = if let Some(path) = args.compiler_catalog_file.as_deref() {

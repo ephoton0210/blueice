@@ -108,6 +108,7 @@ pub struct CoreLaunchOptions {
     /// Separate owner-selected click-event profile. It includes bounded
     /// live DOM mutation and exact VM-owned listener registration.
     core_dom_event_fixture: bool,
+    core_dom_file_bindings: bool,
     /// A caller-selected Unix endpoint for a sealed core compiler catalog.
     /// The default builder selects the fixed compiled-in fixture; the
     /// separate trusted-owner builder may supply a complete closed graph.
@@ -916,6 +917,7 @@ impl PrivatePageHostLaunch {
                 options.core_dom_text_fixture,
                 options.core_dom_mutation_fixture,
                 options.core_dom_event_fixture,
+                options.core_dom_file_bindings,
             )?;
         Ok(Some(Self {
             host,

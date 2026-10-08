@@ -14,8 +14,10 @@ final class FileInputTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let file = root.appendingPathComponent("中文.bin")
         let bytes = Data([0,255,13,10,7]); try bytes.write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1234.125)],ofItemAtPath: file.path)
         let selected = try SelectedFile.read([file],multiple: false)
         XCTAssertEqual(selected.count,1); XCTAssertEqual(selected[0].name,"中文.bin"); XCTAssertEqual(Data(selected[0].bytes),bytes)
+        XCTAssertEqual(selected[0].last_modified,1234125)
         let link = root.appendingPathComponent("link.bin")
         try FileManager.default.createSymbolicLink(at: link,withDestinationURL: file)
         XCTAssertThrowsError(try SelectedFile.read([link],multiple: false))
@@ -71,6 +73,9 @@ final class FileInputTests: XCTestCase {
         model.address = "about:credits"; model.navigateAddress()
         XCTAssertFalse(model.fileInputIsCurrent(updated.context,tab: 1))
         XCTAssertEqual(fixture.requests,["/file-input"])
+        let staleValidation = await model.validateFileInput(updated.context,tab: 1)
+        let staleCancel = await model.cancelFileInput(updated.context,tab: 1)
+        XCTAssertFalse(staleValidation); XCTAssertFalse(staleCancel)
         await workspace.stop()
     }
 }

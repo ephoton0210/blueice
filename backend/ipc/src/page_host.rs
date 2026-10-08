@@ -125,13 +125,14 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V45 adds document-bound native file-selection event dispatch.
 /// V44 adds a bounded private BlueTS rejection-position candidate. V43 adds
 /// bounded child-retained static and deferred payload totals to realm
 /// accounting. V42 adds the private linked entry-root value route. V41 adds the private
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 44;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 45;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -437,6 +438,13 @@ impl PageHostChildStats {
 /// cannot claim the child before its launcher does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageHostRequest {
+    /// Core-selected live ancestry for a completed native selection task.
+    DispatchFileSelection {
+        tab_id: u64,
+        document_generation: u64,
+        nodes: Vec<u64>,
+        event: PageHostFileSelectionEvent,
+    },
     Hello {
         protocol_version: u32,
         session_token: String,
@@ -809,6 +817,11 @@ pub enum PageHostRequest {
 /// Child replies for [`PageHostRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageHostReply {
+    FileSelectionDispatched {
+        tab_id: u64,
+        document_generation: u64,
+        event: PageHostFileSelectionEvent,
+    },
     HelloAck {
         protocol_version: u32,
     },
@@ -1115,6 +1128,13 @@ pub enum PageHostReply {
         /// Fixed host-owned prose only; callers branch on `code`.
         message: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PageHostFileSelectionEvent {
+    Input,
+    Change,
+    Cancel,
 }
 
 /// Stable transport/lifecycle failure categories.

@@ -28,6 +28,7 @@ impl BlueJsChildHost {
             next_debugger_metadata_handle: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             next_debugger_metadata_generation: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             script_dom_capability: None,
+            file_dom_client: None,
         })
     }
 
@@ -70,7 +71,36 @@ impl BlueJsChildHost {
             enable_dom_text_profile,
             enable_dom_mutation_profile,
             enable_dom_event_profile,
+            enable_dom_file_profile: false,
         });
+        Ok(())
+    }
+
+    /// Configures the ordinary browser's owner-selected file DOM profile.
+    /// All prior proof profiles retain their original inventories.
+    pub fn configure_script_file_dom_capability(
+        &mut self,
+        socket_path: PathBuf,
+        session_token: String,
+    ) -> io::Result<()> {
+        self.configure_script_dom_capability(
+            socket_path,
+            session_token,
+            false,
+            false,
+            false,
+            false,
+        )?;
+        self.script_dom_capability
+            .as_mut()
+            .expect("configured above")
+            .enable_dom_file_profile = true;
+        self.file_dom_client = Some(Rc::new(RefCell::new(ScriptDomClient::new(
+            self.script_dom_capability
+                .as_ref()
+                .expect("configured above")
+                .clone(),
+        ))));
         Ok(())
     }
 
@@ -88,6 +118,12 @@ impl BlueJsChildHost {
     /// than accidentally resetting host state.
     pub fn handle_request(&mut self, request: PageHostRequest) -> PageHostReply {
         match request {
+            PageHostRequest::DispatchFileSelection {
+                tab_id,
+                document_generation,
+                nodes,
+                event,
+            } => self.dispatch_file_selection(tab_id, document_generation, nodes, event),
             PageHostRequest::SynchronizeDocument { document } => self.synchronize(document),
             PageHostRequest::DispatchClick {
                 tab_id,
@@ -549,6 +585,7 @@ impl BlueJsChildHost {
             document.document_generation,
             &document.snapshot,
             self.script_dom_capability.clone(),
+            self.file_dom_client.clone(),
         ) {
             Ok(family) => family,
             Err(_) => {
@@ -702,6 +739,61 @@ impl BlueJsChildHost {
             document_generation: document.document_generation,
             already_current: false,
             reports,
+        }
+    }
+
+    pub(super) fn dispatch_file_selection(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        nodes: Vec<u64>,
+        event: blueice_ipc::page_host::PageHostFileSelectionEvent,
+    ) -> PageHostReply {
+        let Some(document) = self.documents.get(&tab_id) else {
+            return stale_document();
+        };
+        if document.generation != document_generation {
+            return stale_document();
+        }
+        if self
+            .script_dom_capability
+            .as_ref()
+            .map(ScriptDomCapability::profile)
+            != Some(PageDomProfile::File)
+            || nodes.is_empty()
+            || nodes.len() > 256
+        {
+            return invalid_request();
+        }
+        let Some(family) = document.click_event_family else {
+            return host_failure();
+        };
+        let path = nodes
+            .into_iter()
+            .map(|node| HostObjectKey::new(tab_id, document_generation, node))
+            .collect::<Vec<_>>();
+        let kind = match event {
+            blueice_ipc::page_host::PageHostFileSelectionEvent::Input => {
+                blueice_bluejs::HostFileSelectionEvent::Input
+            }
+            blueice_ipc::page_host::PageHostFileSelectionEvent::Change => {
+                blueice_bluejs::HostFileSelectionEvent::Change
+            }
+            blueice_ipc::page_host::PageHostFileSelectionEvent::Cancel => {
+                blueice_bluejs::HostFileSelectionEvent::Cancel
+            }
+        };
+        if self
+            .runtime
+            .dispatch_host_file_selection_event(tab_id, family, &path, kind)
+            .is_err()
+        {
+            return host_failure();
+        }
+        PageHostReply::FileSelectionDispatched {
+            tab_id,
+            document_generation,
+            event,
         }
     }
 
