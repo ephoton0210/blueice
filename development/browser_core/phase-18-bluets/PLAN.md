@@ -5548,3 +5548,36 @@ No runtime deadline, test assertion, fixture or skip policy changes.
 The final documentation commit retains identical backend, build, CI and script
 inputs to the verified source commit. K.3 and the measured K.4 leaves remain
 complete; M8 remains open for K.5–K.9.
+
+### K.5.1 class modifiers failing baseline — 2026-10-08
+
+The pinned TypeScript 5.9.3 corpus records 95 isolated programs: 45 accepted and
+50 rejected. The `modifiers-` prefix keeps these cases outside the older class
+matrix. Cases cover abstract class instantiation and constructor-type aliases,
+inherited abstract method/field/accessor obligations, structural `implements`
+checks including generic interfaces, explicit `override`, independent
+`noImplicitOverride` policy, parameter properties and imported boundaries.
+Five programs compare Node execution; six compare every emitted declaration,
+including an abstract constructor type and protected/readonly abstract members.
+
+The public project CLI replay uses strict ES2022 settings and each recorded
+checking flag. Emission options are supplied through the project configuration.
+The shared strict diagnostic replay now preserves sibling TypeScript imports
+from each isolated fixture. Both recorders run in Linux against the pinned
+compiler; the shared corpus grows to 2,109 programs (971 accepted, 1,138 rejected)
+and 184 diagnostic templates.
+
+The frozen-source Linux replay records 94 verdict/primary-diagnostic differences
+and six emission failures. Fixture completeness and the pinned recorder pass:
+two tests pass and two fail. All 115 frozen changed backend files match the host
+snapshot. Evidence: `/private/tmp/blueice-k14-linux/blueice-k51-red-gate.log` and
+`blueice-k51-red-status.json`. These are intentional test-first failures;
+production sources retain the verified post-Test262 merge behavior.
+Workspace format checking and both-crate all-target Clippy with warnings denied
+pass; lint evidence is `blueice-k51-baseline-clippy-status.json`.
+
+Commit the failing replay before implementing these forms, then verify public
+API and direct-runtime behavior, exact diagnostics and declarations, the full
+two-crate K.0 gate and regenerated refusal inventory. Keep modifier policy and
+constructor signatures in focused modules: the largest production source is
+currently 1,153 lines. K.5.1 and all subsequent K.5–K.10 leaves remain open.

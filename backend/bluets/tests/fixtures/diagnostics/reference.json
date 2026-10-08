@@ -31,6 +31,10 @@
       "message": "Enum member must have initializer."
     },
     {
+      "code": 1089,
+      "message": "'{0}' modifier cannot appear on a constructor declaration."
+    },
+    {
       "code": 1095,
       "message": "A 'set' accessor cannot have a return type annotation."
     },
@@ -95,8 +99,28 @@
       "message": "Unable to resolve signature of property decorator when called as an expression."
     },
     {
+      "code": 1242,
+      "message": "'abstract' modifier can only appear on a class, method, or property declaration."
+    },
+    {
+      "code": 1243,
+      "message": "'{0}' modifier cannot be used with '{1}' modifier."
+    },
+    {
+      "code": 1244,
+      "message": "Abstract methods can only appear within an abstract class."
+    },
+    {
+      "code": 1245,
+      "message": "Method '{0}' cannot have an implementation because it is marked abstract."
+    },
+    {
       "code": 1249,
       "message": "A decorator can only decorate a method implementation, not an overload."
+    },
+    {
+      "code": 1267,
+      "message": "Property '{0}' cannot have an initializer because it is marked abstract."
     },
     {
       "code": 1268,
@@ -113,6 +137,10 @@
     {
       "code": 1317,
       "message": "A parameter property cannot be declared using a rest parameter."
+    },
+    {
+      "code": 1318,
+      "message": "An abstract accessor cannot have an implementation."
     },
     {
       "code": 1329,
@@ -291,6 +319,14 @@
       "message": "Class static side '{0}' incorrectly extends base class static side '{1}'."
     },
     {
+      "code": 2420,
+      "message": "Class '{0}' incorrectly implements interface '{1}'."
+    },
+    {
+      "code": 2422,
+      "message": "A class can only implement an object type or intersection of object types with statically known members."
+    },
+    {
       "code": 2423,
       "message": "Class '{0}' defines instance member function '{1}', but extended class '{2}' defines it as instance member accessor."
     },
@@ -357,6 +393,18 @@
     {
       "code": 2507,
       "message": "Type '{0}' is not a constructor function type."
+    },
+    {
+      "code": 2511,
+      "message": "Cannot create an instance of an abstract class."
+    },
+    {
+      "code": 2513,
+      "message": "Abstract method '{0}' in class '{1}' cannot be accessed via super expression."
+    },
+    {
+      "code": 2515,
+      "message": "Non-abstract class '{0}' does not implement inherited abstract member {1} from class '{2}'."
     },
     {
       "code": 2540,
@@ -551,6 +599,10 @@
       "message": "Type '{0}' is not assignable to type '{1}'. Did you mean '{2}'?"
     },
     {
+      "code": 2864,
+      "message": "A class cannot implement a primitive type like '{0}'. It can only implement other named object types."
+    },
+    {
       "code": 2874,
       "message": "This JSX tag requires '{0}' to be in scope, but it could not be found."
     },
@@ -561,6 +613,22 @@
     {
       "code": 4104,
       "message": "The type '{0}' is 'readonly' and cannot be assigned to the mutable type '{1}'."
+    },
+    {
+      "code": 4112,
+      "message": "This member cannot have an 'override' modifier because its containing class '{0}' does not extend another class."
+    },
+    {
+      "code": 4113,
+      "message": "This member cannot have an 'override' modifier because it is not declared in the base class '{0}'."
+    },
+    {
+      "code": 4114,
+      "message": "This member must have an 'override' modifier because it overrides a member in the base class '{0}'."
+    },
+    {
+      "code": 4115,
+      "message": "This parameter property must have an 'override' modifier because it overrides a member in base class '{0}'."
     },
     {
       "code": 6133,
@@ -19650,6 +19718,3227 @@
       "verdict": "accept",
       "inputs": [
         "typescript_oracle/tuple-literal-return-class-valid/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-accessor-body/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-accessor-body/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-accessor-body/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1318,
+        "category": "error",
+        "message": "An abstract accessor cannot have an implementation.",
+        "file": "typescript_oracle/modifiers-abstract-accessor-body/main.ts",
+        "start": 239,
+        "length": 5,
+        "line": 5,
+        "column": 36
+      },
+      "diagnostics": [
+        {
+          "code": 1318,
+          "category": "error",
+          "message": "An abstract accessor cannot have an implementation.",
+          "file": "typescript_oracle/modifiers-abstract-accessor-body/main.ts",
+          "start": 239,
+          "length": 5,
+          "line": 5,
+          "column": 36
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-accessor-pair/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-accessor-pair/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-accessor-pair/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-concrete-member/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-concrete-member/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-concrete-member/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-constructor-keyword/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-constructor-keyword/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-constructor-keyword/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1242,
+        "category": "error",
+        "message": "'abstract' modifier can only appear on a class, method, or property declaration.",
+        "file": "typescript_oracle/modifiers-abstract-constructor-keyword/main.ts",
+        "start": 226,
+        "length": 8,
+        "line": 5,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 1242,
+          "category": "error",
+          "message": "'abstract' modifier can only appear on a class, method, or property declaration.",
+          "file": "typescript_oracle/modifiers-abstract-constructor-keyword/main.ts",
+          "start": 226,
+          "length": 8,
+          "line": 5,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-empty/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-empty/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-empty/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-field-complete/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-field-complete/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-field-complete/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-field-initializer/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-field-initializer/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-field-initializer/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1267,
+        "category": "error",
+        "message": "Property 'value' cannot have an initializer because it is marked abstract.",
+        "file": "typescript_oracle/modifiers-abstract-field-initializer/main.ts",
+        "start": 235,
+        "length": 5,
+        "line": 5,
+        "column": 32
+      },
+      "diagnostics": [
+        {
+          "code": 1267,
+          "category": "error",
+          "message": "Property 'value' cannot have an initializer because it is marked abstract.",
+          "file": "typescript_oracle/modifiers-abstract-field-initializer/main.ts",
+          "start": 235,
+          "length": 5,
+          "line": 5,
+          "column": 32
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-field-missing/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-field-missing/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-field-missing/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2515,
+        "category": "error",
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member value from class 'Base'.",
+        "file": "typescript_oracle/modifiers-abstract-field-missing/main.ts",
+        "start": 258,
+        "length": 5,
+        "line": 5,
+        "column": 55
+      },
+      "diagnostics": [
+        {
+          "code": 2515,
+          "category": "error",
+          "message": "Non-abstract class 'Child' does not implement inherited abstract member value from class 'Base'.",
+          "file": "typescript_oracle/modifiers-abstract-field-missing/main.ts",
+          "start": 258,
+          "length": 5,
+          "line": 5,
+          "column": 55
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-field-optional/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-field-optional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-field-optional/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2515,
+        "category": "error",
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member value from class 'Base'.",
+        "file": "typescript_oracle/modifiers-abstract-field-optional/main.ts",
+        "start": 259,
+        "length": 5,
+        "line": 5,
+        "column": 56
+      },
+      "diagnostics": [
+        {
+          "code": 2515,
+          "category": "error",
+          "message": "Non-abstract class 'Child' does not implement inherited abstract member value from class 'Base'.",
+          "file": "typescript_oracle/modifiers-abstract-field-optional/main.ts",
+          "start": 259,
+          "length": 5,
+          "line": 5,
+          "column": 56
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-field-protected/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-field-protected/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-field-protected/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-field-readonly/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-field-readonly/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-field-readonly/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-field-wrong-type/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-field-wrong-type/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-field-wrong-type/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'value' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/modifiers-abstract-field-wrong-type/main.ts",
+        "start": 279,
+        "length": 5,
+        "line": 5,
+        "column": 76
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'value' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/modifiers-abstract-field-wrong-type/main.ts",
+          "start": 279,
+          "length": 5,
+          "line": 5,
+          "column": 76
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-getter-complete/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-getter-complete/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-getter-complete/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-getter-field/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-getter-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-getter-field/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-getter-missing/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-getter-missing/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-getter-missing/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2515,
+        "category": "error",
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member value from class 'Base'.",
+        "file": "typescript_oracle/modifiers-abstract-getter-missing/main.ts",
+        "start": 264,
+        "length": 5,
+        "line": 5,
+        "column": 61
+      },
+      "diagnostics": [
+        {
+          "code": 2515,
+          "category": "error",
+          "message": "Non-abstract class 'Child' does not implement inherited abstract member value from class 'Base'.",
+          "file": "typescript_oracle/modifiers-abstract-getter-missing/main.ts",
+          "start": 264,
+          "length": 5,
+          "line": 5,
+          "column": 61
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-instance-structural/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-instance-structural/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-instance-structural/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-body/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-body/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-body/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1245,
+        "category": "error",
+        "message": "Method 'read' cannot have an implementation because it is marked abstract.",
+        "file": "typescript_oracle/modifiers-abstract-method-body/main.ts",
+        "start": 235,
+        "length": 4,
+        "line": 5,
+        "column": 32
+      },
+      "diagnostics": [
+        {
+          "code": 1245,
+          "category": "error",
+          "message": "Method 'read' cannot have an implementation because it is marked abstract.",
+          "file": "typescript_oracle/modifiers-abstract-method-body/main.ts",
+          "start": 235,
+          "length": 4,
+          "line": 5,
+          "column": 32
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-chain-complete/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-chain-complete/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-chain-complete/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-chain-missing/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-chain-missing/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-chain-missing/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2515,
+        "category": "error",
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Middle'.",
+        "file": "typescript_oracle/modifiers-abstract-method-chain-missing/main.ts",
+        "start": 297,
+        "length": 5,
+        "line": 5,
+        "column": 94
+      },
+      "diagnostics": [
+        {
+          "code": 2515,
+          "category": "error",
+          "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Middle'.",
+          "file": "typescript_oracle/modifiers-abstract-method-chain-missing/main.ts",
+          "start": 297,
+          "length": 5,
+          "line": 5,
+          "column": 94
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-complete/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-complete/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-complete/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-missing/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-missing/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-missing/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2515,
+        "category": "error",
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Base'.",
+        "file": "typescript_oracle/modifiers-abstract-method-missing/main.ts",
+        "start": 259,
+        "length": 5,
+        "line": 5,
+        "column": 56
+      },
+      "diagnostics": [
+        {
+          "code": 2515,
+          "category": "error",
+          "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Base'.",
+          "file": "typescript_oracle/modifiers-abstract-method-missing/main.ts",
+          "start": 259,
+          "length": 5,
+          "line": 5,
+          "column": 56
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-nonabstract/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-nonabstract/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-nonabstract/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1244,
+        "category": "error",
+        "message": "Abstract methods can only appear within an abstract class.",
+        "file": "typescript_oracle/modifiers-abstract-method-nonabstract/main.ts",
+        "start": 217,
+        "length": 8,
+        "line": 5,
+        "column": 14
+      },
+      "diagnostics": [
+        {
+          "code": 1244,
+          "category": "error",
+          "message": "Abstract methods can only appear within an abstract class.",
+          "file": "typescript_oracle/modifiers-abstract-method-nonabstract/main.ts",
+          "start": 217,
+          "length": 8,
+          "line": 5,
+          "column": 14
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-optional/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-optional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-optional/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2515,
+        "category": "error",
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Base'.",
+        "file": "typescript_oracle/modifiers-abstract-method-optional/main.ts",
+        "start": 260,
+        "length": 5,
+        "line": 5,
+        "column": 57
+      },
+      "diagnostics": [
+        {
+          "code": 2515,
+          "category": "error",
+          "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Base'.",
+          "file": "typescript_oracle/modifiers-abstract-method-optional/main.ts",
+          "start": 260,
+          "length": 5,
+          "line": 5,
+          "column": 57
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-partial/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-partial/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-partial/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2515,
+        "category": "error",
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member second from class 'Base'.",
+        "file": "typescript_oracle/modifiers-abstract-method-partial/main.ts",
+        "start": 287,
+        "length": 5,
+        "line": 5,
+        "column": 84
+      },
+      "diagnostics": [
+        {
+          "code": 2515,
+          "category": "error",
+          "message": "Non-abstract class 'Child' does not implement inherited abstract member second from class 'Base'.",
+          "file": "typescript_oracle/modifiers-abstract-method-partial/main.ts",
+          "start": 287,
+          "length": 5,
+          "line": 5,
+          "column": 84
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-private/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-private/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-private/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1243,
+        "category": "error",
+        "message": "'private' modifier cannot be used with 'abstract' modifier.",
+        "file": "typescript_oracle/modifiers-abstract-method-private/main.ts",
+        "start": 234,
+        "length": 8,
+        "line": 5,
+        "column": 31
+      },
+      "diagnostics": [
+        {
+          "code": 1243,
+          "category": "error",
+          "message": "'private' modifier cannot be used with 'abstract' modifier.",
+          "file": "typescript_oracle/modifiers-abstract-method-private/main.ts",
+          "start": 234,
+          "length": 8,
+          "line": 5,
+          "column": 31
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-protected/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-protected/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-protected/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-static/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-static/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-static/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1243,
+        "category": "error",
+        "message": "'static' modifier cannot be used with 'abstract' modifier.",
+        "file": "typescript_oracle/modifiers-abstract-method-static/main.ts",
+        "start": 233,
+        "length": 8,
+        "line": 5,
+        "column": 30
+      },
+      "diagnostics": [
+        {
+          "code": 1243,
+          "category": "error",
+          "message": "'static' modifier cannot be used with 'abstract' modifier.",
+          "file": "typescript_oracle/modifiers-abstract-method-static/main.ts",
+          "start": 233,
+          "length": 8,
+          "line": 5,
+          "column": 30
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-wrong-parameter/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-wrong-parameter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-wrong-parameter/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/modifiers-abstract-method-wrong-parameter/main.ts",
+        "start": 293,
+        "length": 4,
+        "line": 5,
+        "column": 90
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/modifiers-abstract-method-wrong-parameter/main.ts",
+          "start": 293,
+          "length": 4,
+          "line": 5,
+          "column": 90
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-method-wrong-return/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-method-wrong-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-method-wrong-return/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/modifiers-abstract-method-wrong-return/main.ts",
+        "start": 280,
+        "length": 4,
+        "line": 5,
+        "column": 77
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/modifiers-abstract-method-wrong-return/main.ts",
+          "start": 280,
+          "length": 4,
+          "line": 5,
+          "column": 77
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-new/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-new/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-new/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2511,
+        "category": "error",
+        "message": "Cannot create an instance of an abstract class.",
+        "file": "typescript_oracle/modifiers-abstract-new/main.ts",
+        "start": 227,
+        "length": 10,
+        "line": 5,
+        "column": 24
+      },
+      "diagnostics": [
+        {
+          "code": 2511,
+          "category": "error",
+          "message": "Cannot create an instance of an abstract class.",
+          "file": "typescript_oracle/modifiers-abstract-new/main.ts",
+          "start": 227,
+          "length": 10,
+          "line": 5,
+          "column": 24
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-new-alias/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-new-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-new-alias/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2511,
+        "category": "error",
+        "message": "Cannot create an instance of an abstract class.",
+        "file": "typescript_oracle/modifiers-abstract-new-alias/main.ts",
+        "start": 247,
+        "length": 11,
+        "line": 5,
+        "column": 44
+      },
+      "diagnostics": [
+        {
+          "code": 2511,
+          "category": "error",
+          "message": "Cannot create an instance of an abstract class.",
+          "file": "typescript_oracle/modifiers-abstract-new-alias/main.ts",
+          "start": 247,
+          "length": 11,
+          "line": 5,
+          "column": 44
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-new-signature/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-new-signature/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-new-signature/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-new-signature-call/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-new-signature-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-new-signature-call/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2511,
+        "category": "error",
+        "message": "Cannot create an instance of an abstract class.",
+        "file": "typescript_oracle/modifiers-abstract-new-signature-call/main.ts",
+        "start": 280,
+        "length": 10,
+        "line": 5,
+        "column": 77
+      },
+      "diagnostics": [
+        {
+          "code": 2511,
+          "category": "error",
+          "message": "Cannot create an instance of an abstract class.",
+          "file": "typescript_oracle/modifiers-abstract-new-signature-call/main.ts",
+          "start": 280,
+          "length": 10,
+          "line": 5,
+          "column": 77
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-new-signature-concrete/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-new-signature-concrete/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-new-signature-concrete/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-new-to-concrete/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-new-to-concrete/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-new-to-concrete/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'typeof Base' is not assignable to type 'Ctor'.\n  Cannot assign an abstract constructor type to a non-abstract constructor type.",
+        "file": "typescript_oracle/modifiers-abstract-new-to-concrete/main.ts",
+        "start": 261,
+        "length": 4,
+        "line": 5,
+        "column": 58
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'typeof Base' is not assignable to type 'Ctor'.\n  Cannot assign an abstract constructor type to a non-abstract constructor type.",
+          "file": "typescript_oracle/modifiers-abstract-new-to-concrete/main.ts",
+          "start": 261,
+          "length": 4,
+          "line": 5,
+          "column": 58
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-new-typeof/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-new-typeof/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-new-typeof/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2511,
+        "category": "error",
+        "message": "Cannot create an instance of an abstract class.",
+        "file": "typescript_oracle/modifiers-abstract-new-typeof/main.ts",
+        "start": 275,
+        "length": 10,
+        "line": 5,
+        "column": 72
+      },
+      "diagnostics": [
+        {
+          "code": 2511,
+          "category": "error",
+          "message": "Cannot create an instance of an abstract class.",
+          "file": "typescript_oracle/modifiers-abstract-new-typeof/main.ts",
+          "start": 275,
+          "length": 10,
+          "line": 5,
+          "column": 72
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-private-constructor/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-private-constructor/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-private-constructor/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2675,
+        "category": "error",
+        "message": "Cannot extend a class 'Base'. Class constructor is marked as private.",
+        "file": "typescript_oracle/modifiers-abstract-private-constructor/main.ts",
+        "start": 273,
+        "length": 4,
+        "line": 5,
+        "column": 70
+      },
+      "diagnostics": [
+        {
+          "code": 2675,
+          "category": "error",
+          "message": "Cannot extend a class 'Base'. Class constructor is marked as private.",
+          "file": "typescript_oracle/modifiers-abstract-private-constructor/main.ts",
+          "start": 273,
+          "length": 4,
+          "line": 5,
+          "column": 70
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-protected-constructor/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-protected-constructor/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-protected-constructor/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-redeclare-concrete/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-redeclare-concrete/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-redeclare-concrete/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2515,
+        "category": "error",
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Middle'.",
+        "file": "typescript_oracle/modifiers-abstract-redeclare-concrete/main.ts",
+        "start": 318,
+        "length": 5,
+        "line": 5,
+        "column": 115
+      },
+      "diagnostics": [
+        {
+          "code": 2515,
+          "category": "error",
+          "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Middle'.",
+          "file": "typescript_oracle/modifiers-abstract-redeclare-concrete/main.ts",
+          "start": 318,
+          "length": 5,
+          "line": 5,
+          "column": 115
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-abstract-super-call/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-abstract-super-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-abstract-super-call/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2513,
+        "category": "error",
+        "message": "Abstract method 'read' in class 'Base' cannot be accessed via super expression.",
+        "file": "typescript_oracle/modifiers-abstract-super-call/main.ts",
+        "start": 310,
+        "length": 4,
+        "line": 5,
+        "column": 107
+      },
+      "diagnostics": [
+        {
+          "code": 2513,
+          "category": "error",
+          "message": "Abstract method 'read' in class 'Base' cannot be accessed via super expression.",
+          "file": "typescript_oracle/modifiers-abstract-super-call/main.ts",
+          "start": 310,
+          "length": 4,
+          "line": 5,
+          "column": 107
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-declarations-abstract-surface/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-declarations-abstract-surface/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-declarations-abstract-surface/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-abstract-member/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-abstract-member/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-abstract-member/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-abstract-not-exempt/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-abstract-not-exempt/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-abstract-not-exempt/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2420,
+        "category": "error",
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'read' is missing in type 'Item' but required in type 'Shape'.",
+        "file": "typescript_oracle/modifiers-implements-abstract-not-exempt/main.ts",
+        "start": 254,
+        "length": 4,
+        "line": 5,
+        "column": 51,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'read' is declared here.",
+            "file": "typescript_oracle/modifiers-implements-abstract-not-exempt/main.ts",
+            "start": 222,
+            "length": 14,
+            "line": 5,
+            "column": 19
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2420,
+          "category": "error",
+          "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'read' is missing in type 'Item' but required in type 'Shape'.",
+          "file": "typescript_oracle/modifiers-implements-abstract-not-exempt/main.ts",
+          "start": 254,
+          "length": 4,
+          "line": 5,
+          "column": 51,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'read' is declared here.",
+              "file": "typescript_oracle/modifiers-implements-abstract-not-exempt/main.ts",
+              "start": 222,
+              "length": 14,
+              "line": 5,
+              "column": 19
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-alias/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-empty/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-empty/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-empty/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-field/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-field/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-generic-interface/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-generic-interface/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-generic-interface/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-generic-mismatch/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-generic-mismatch/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-generic-mismatch/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'value' in type 'Item' is not assignable to the same property in base type 'Shape<string>'.\n  Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/modifiers-implements-generic-mismatch/main.ts",
+        "start": 274,
+        "length": 5,
+        "line": 5,
+        "column": 71
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'value' in type 'Item' is not assignable to the same property in base type 'Shape<string>'.\n  Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/modifiers-implements-generic-mismatch/main.ts",
+          "start": 274,
+          "length": 5,
+          "line": 5,
+          "column": 71
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-inherited/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-inherited/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-inherited/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-method/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-method/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-method/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-missing-field/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-missing-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-missing-field/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2420,
+        "category": "error",
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is missing in type 'Item' but required in type 'Shape'.",
+        "file": "typescript_oracle/modifiers-implements-missing-field/main.ts",
+        "start": 244,
+        "length": 4,
+        "line": 5,
+        "column": 41,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'value' is declared here.",
+            "file": "typescript_oracle/modifiers-implements-missing-field/main.ts",
+            "start": 222,
+            "length": 5,
+            "line": 5,
+            "column": 19
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2420,
+          "category": "error",
+          "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is missing in type 'Item' but required in type 'Shape'.",
+          "file": "typescript_oracle/modifiers-implements-missing-field/main.ts",
+          "start": 244,
+          "length": 4,
+          "line": 5,
+          "column": 41,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'value' is declared here.",
+              "file": "typescript_oracle/modifiers-implements-missing-field/main.ts",
+              "start": 222,
+              "length": 5,
+              "line": 5,
+              "column": 19
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-missing-method/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-missing-method/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-missing-method/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2420,
+        "category": "error",
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'read' is missing in type 'Item' but required in type 'Shape'.",
+        "file": "typescript_oracle/modifiers-implements-missing-method/main.ts",
+        "start": 245,
+        "length": 4,
+        "line": 5,
+        "column": 42,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'read' is declared here.",
+            "file": "typescript_oracle/modifiers-implements-missing-method/main.ts",
+            "start": 222,
+            "length": 14,
+            "line": 5,
+            "column": 19
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2420,
+          "category": "error",
+          "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'read' is missing in type 'Item' but required in type 'Shape'.",
+          "file": "typescript_oracle/modifiers-implements-missing-method/main.ts",
+          "start": 245,
+          "length": 4,
+          "line": 5,
+          "column": 42,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'read' is declared here.",
+              "file": "typescript_oracle/modifiers-implements-missing-method/main.ts",
+              "start": 222,
+              "length": 14,
+              "line": 5,
+              "column": 19
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-multiple/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-multiple/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-multiple/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-multiple-missing/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-multiple-missing/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-multiple-missing/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2420,
+        "category": "error",
+        "message": "Class 'Item' incorrectly implements interface 'Second'.\n  Property 'read' is missing in type 'Item' but required in type 'Second'.",
+        "file": "typescript_oracle/modifiers-implements-multiple-missing/main.ts",
+        "start": 280,
+        "length": 4,
+        "line": 5,
+        "column": 77,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'read' is declared here.",
+            "file": "typescript_oracle/modifiers-implements-multiple-missing/main.ts",
+            "start": 257,
+            "length": 14,
+            "line": 5,
+            "column": 54
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2420,
+          "category": "error",
+          "message": "Class 'Item' incorrectly implements interface 'Second'.\n  Property 'read' is missing in type 'Item' but required in type 'Second'.",
+          "file": "typescript_oracle/modifiers-implements-multiple-missing/main.ts",
+          "start": 280,
+          "length": 4,
+          "line": 5,
+          "column": 77,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'read' is declared here.",
+              "file": "typescript_oracle/modifiers-implements-multiple-missing/main.ts",
+              "start": 257,
+              "length": 14,
+              "line": 5,
+              "column": 54
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-optional/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-optional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-optional/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-primitive/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-primitive/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-primitive/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2864,
+        "category": "error",
+        "message": "A class cannot implement a primitive type like 'number'. It can only implement other named object types.",
+        "file": "typescript_oracle/modifiers-implements-primitive/main.ts",
+        "start": 226,
+        "length": 6,
+        "line": 5,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2864,
+          "category": "error",
+          "message": "A class cannot implement a primitive type like 'number'. It can only implement other named object types.",
+          "file": "typescript_oracle/modifiers-implements-primitive/main.ts",
+          "start": 226,
+          "length": 6,
+          "line": 5,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-private/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-private/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-private/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2420,
+        "category": "error",
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is private in type 'Item' but not in type 'Shape'.",
+        "file": "typescript_oracle/modifiers-implements-private/main.ts",
+        "start": 244,
+        "length": 4,
+        "line": 5,
+        "column": 41
+      },
+      "diagnostics": [
+        {
+          "code": 2420,
+          "category": "error",
+          "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is private in type 'Item' but not in type 'Shape'.",
+          "file": "typescript_oracle/modifiers-implements-private/main.ts",
+          "start": 244,
+          "length": 4,
+          "line": 5,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-protected/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-protected/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-protected/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2420,
+        "category": "error",
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is protected in type 'Item' but public in type 'Shape'.",
+        "file": "typescript_oracle/modifiers-implements-protected/main.ts",
+        "start": 244,
+        "length": 4,
+        "line": 5,
+        "column": 41
+      },
+      "diagnostics": [
+        {
+          "code": 2420,
+          "category": "error",
+          "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is protected in type 'Item' but public in type 'Shape'.",
+          "file": "typescript_oracle/modifiers-implements-protected/main.ts",
+          "start": 244,
+          "length": 4,
+          "line": 5,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-readonly/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-readonly/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-readonly/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-static-only/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-static-only/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-static-only/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2420,
+        "category": "error",
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is missing in type 'Item' but required in type 'Shape'.",
+        "file": "typescript_oracle/modifiers-implements-static-only/main.ts",
+        "start": 244,
+        "length": 4,
+        "line": 5,
+        "column": 41,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'value' is declared here.",
+            "file": "typescript_oracle/modifiers-implements-static-only/main.ts",
+            "start": 222,
+            "length": 5,
+            "line": 5,
+            "column": 19
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2420,
+          "category": "error",
+          "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is missing in type 'Item' but required in type 'Shape'.",
+          "file": "typescript_oracle/modifiers-implements-static-only/main.ts",
+          "start": 244,
+          "length": 4,
+          "line": 5,
+          "column": 41,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'value' is declared here.",
+              "file": "typescript_oracle/modifiers-implements-static-only/main.ts",
+              "start": 222,
+              "length": 5,
+              "line": 5,
+              "column": 19
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-union/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-union/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-union/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2422,
+        "category": "error",
+        "message": "A class can only implement an object type or intersection of object types with statically known members.",
+        "file": "typescript_oracle/modifiers-implements-union/main.ts",
+        "start": 278,
+        "length": 5,
+        "line": 5,
+        "column": 75
+      },
+      "diagnostics": [
+        {
+          "code": 2422,
+          "category": "error",
+          "message": "A class can only implement an object type or intersection of object types with statically known members.",
+          "file": "typescript_oracle/modifiers-implements-union/main.ts",
+          "start": 278,
+          "length": 5,
+          "line": 5,
+          "column": 75
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-unknown/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-unknown/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-unknown/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2304,
+        "category": "error",
+        "message": "Cannot find name 'Missing'.",
+        "file": "typescript_oracle/modifiers-implements-unknown/main.ts",
+        "start": 226,
+        "length": 7,
+        "line": 5,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2304,
+          "category": "error",
+          "message": "Cannot find name 'Missing'.",
+          "file": "typescript_oracle/modifiers-implements-unknown/main.ts",
+          "start": 226,
+          "length": 7,
+          "line": 5,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-wrong-field/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-wrong-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-wrong-field/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'value' in type 'Item' is not assignable to the same property in base type 'Shape'.\n  Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/modifiers-implements-wrong-field/main.ts",
+        "start": 268,
+        "length": 5,
+        "line": 5,
+        "column": 65
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'value' in type 'Item' is not assignable to the same property in base type 'Shape'.\n  Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/modifiers-implements-wrong-field/main.ts",
+          "start": 268,
+          "length": 5,
+          "line": 5,
+          "column": 65
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-implements-wrong-method-return/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-implements-wrong-method-return/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-implements-wrong-method-return/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'read' in type 'Item' is not assignable to the same property in base type 'Shape'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/modifiers-implements-wrong-method-return/main.ts",
+        "start": 269,
+        "length": 4,
+        "line": 5,
+        "column": 66
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'read' in type 'Item' is not assignable to the same property in base type 'Shape'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/modifiers-implements-wrong-method-return/main.ts",
+          "start": 269,
+          "length": 4,
+          "line": 5,
+          "column": 66
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-imported-abstract-base/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-imported-abstract-base/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-imported-abstract-base/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-imported-implements/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-imported-implements/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-imported-implements/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-abstract-implementation/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-abstract-implementation/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-abstract-implementation/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-default-off/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-default-off/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-default-off/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-field-required/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-field-required/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-field-required/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 4114,
+        "category": "error",
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "file": "typescript_oracle/modifiers-noimplicit-field-required/main.ts",
+        "start": 265,
+        "length": 5,
+        "line": 5,
+        "column": 62
+      },
+      "diagnostics": [
+        {
+          "code": 4114,
+          "category": "error",
+          "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+          "file": "typescript_oracle/modifiers-noimplicit-field-required/main.ts",
+          "start": 265,
+          "length": 5,
+          "line": 5,
+          "column": 62
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-getter-required/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-getter-required/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-getter-required/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 4114,
+        "category": "error",
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "file": "typescript_oracle/modifiers-noimplicit-getter-required/main.ts",
+        "start": 284,
+        "length": 5,
+        "line": 5,
+        "column": 81
+      },
+      "diagnostics": [
+        {
+          "code": 4114,
+          "category": "error",
+          "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+          "file": "typescript_oracle/modifiers-noimplicit-getter-required/main.ts",
+          "start": 284,
+          "length": 5,
+          "line": 5,
+          "column": 81
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-method-present/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-method-present/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-method-present/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-method-required/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-method-required/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-method-required/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 4114,
+        "category": "error",
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "file": "typescript_oracle/modifiers-noimplicit-method-required/main.ts",
+        "start": 275,
+        "length": 4,
+        "line": 5,
+        "column": 72
+      },
+      "diagnostics": [
+        {
+          "code": 4114,
+          "category": "error",
+          "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+          "file": "typescript_oracle/modifiers-noimplicit-method-required/main.ts",
+          "start": 275,
+          "length": 4,
+          "line": 5,
+          "column": 72
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-new-member/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-new-member/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-new-member/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-parameter-property/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-parameter-property/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-parameter-property/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 4115,
+        "category": "error",
+        "message": "This parameter property must have an 'override' modifier because it overrides a member in base class 'Base'.",
+        "file": "typescript_oracle/modifiers-noimplicit-parameter-property/main.ts",
+        "start": 277,
+        "length": 20,
+        "line": 5,
+        "column": 74
+      },
+      "diagnostics": [
+        {
+          "code": 4115,
+          "category": "error",
+          "message": "This parameter property must have an 'override' modifier because it overrides a member in base class 'Base'.",
+          "file": "typescript_oracle/modifiers-noimplicit-parameter-property/main.ts",
+          "start": 277,
+          "length": 20,
+          "line": 5,
+          "column": 74
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-parameter-property-present/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-parameter-property-present/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-parameter-property-present/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-reabstract-required/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-reabstract-required/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-reabstract-required/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 4114,
+        "category": "error",
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "file": "typescript_oracle/modifiers-noimplicit-reabstract-required/main.ts",
+        "start": 293,
+        "length": 4,
+        "line": 5,
+        "column": 90
+      },
+      "diagnostics": [
+        {
+          "code": 4114,
+          "category": "error",
+          "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+          "file": "typescript_oracle/modifiers-noimplicit-reabstract-required/main.ts",
+          "start": 293,
+          "length": 4,
+          "line": 5,
+          "column": 90
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-noimplicit-static-required/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-noimplicit-static-required/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-noimplicit-static-required/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 4114,
+        "category": "error",
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "file": "typescript_oracle/modifiers-noimplicit-static-required/main.ts",
+        "start": 289,
+        "length": 4,
+        "line": 5,
+        "column": 86
+      },
+      "diagnostics": [
+        {
+          "code": 4114,
+          "category": "error",
+          "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+          "file": "typescript_oracle/modifiers-noimplicit-static-required/main.ts",
+          "start": 289,
+          "length": 4,
+          "line": 5,
+          "column": 86
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-override-abstract/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-abstract/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-abstract/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-override-chain/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-chain/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-chain/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-override-constructor/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-constructor/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-constructor/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1089,
+        "category": "error",
+        "message": "'override' modifier cannot appear on a constructor declaration.",
+        "file": "typescript_oracle/modifiers-override-constructor/main.ts",
+        "start": 245,
+        "length": 8,
+        "line": 5,
+        "column": 42
+      },
+      "diagnostics": [
+        {
+          "code": 1089,
+          "category": "error",
+          "message": "'override' modifier cannot appear on a constructor declaration.",
+          "file": "typescript_oracle/modifiers-override-constructor/main.ts",
+          "start": 245,
+          "length": 8,
+          "line": 5,
+          "column": 42
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-override-field/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-field/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-field/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-override-getter/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-getter/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-getter/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-override-method/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-method/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-method/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-override-missing/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-missing/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-missing/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 4113,
+        "category": "error",
+        "message": "This member cannot have an 'override' modifier because it is not declared in the base class 'Base'.",
+        "file": "typescript_oracle/modifiers-override-missing/main.ts",
+        "start": 254,
+        "length": 4,
+        "line": 5,
+        "column": 51
+      },
+      "diagnostics": [
+        {
+          "code": 4113,
+          "category": "error",
+          "message": "This member cannot have an 'override' modifier because it is not declared in the base class 'Base'.",
+          "file": "typescript_oracle/modifiers-override-missing/main.ts",
+          "start": 254,
+          "length": 4,
+          "line": 5,
+          "column": 51
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-override-modifier-order/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-modifier-order/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-modifier-order/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1029,
+        "category": "error",
+        "message": "'protected' modifier must precede 'override' modifier.",
+        "file": "typescript_oracle/modifiers-override-modifier-order/main.ts",
+        "start": 284,
+        "length": 9,
+        "line": 5,
+        "column": 81
+      },
+      "diagnostics": [
+        {
+          "code": 1029,
+          "category": "error",
+          "message": "'protected' modifier must precede 'override' modifier.",
+          "file": "typescript_oracle/modifiers-override-modifier-order/main.ts",
+          "start": 284,
+          "length": 9,
+          "line": 5,
+          "column": 81
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-override-no-base/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-no-base/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-no-base/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 4112,
+        "category": "error",
+        "message": "This member cannot have an 'override' modifier because its containing class 'Child' does not extend another class.",
+        "file": "typescript_oracle/modifiers-override-no-base/main.ts",
+        "start": 227,
+        "length": 4,
+        "line": 5,
+        "column": 24
+      },
+      "diagnostics": [
+        {
+          "code": 4112,
+          "category": "error",
+          "message": "This member cannot have an 'override' modifier because its containing class 'Child' does not extend another class.",
+          "file": "typescript_oracle/modifiers-override-no-base/main.ts",
+          "start": 227,
+          "length": 4,
+          "line": 5,
+          "column": 24
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-override-private-base/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-private-base/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-private-base/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2415,
+        "category": "error",
+        "message": "Class 'Child' incorrectly extends base class 'Base'.\n  Property 'read' is private in type 'Base' but not in type 'Child'.",
+        "file": "typescript_oracle/modifiers-override-private-base/main.ts",
+        "start": 262,
+        "length": 5,
+        "line": 5,
+        "column": 59
+      },
+      "diagnostics": [
+        {
+          "code": 2415,
+          "category": "error",
+          "message": "Class 'Child' incorrectly extends base class 'Base'.\n  Property 'read' is private in type 'Base' but not in type 'Child'.",
+          "file": "typescript_oracle/modifiers-override-private-base/main.ts",
+          "start": 262,
+          "length": 5,
+          "line": 5,
+          "column": 59
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-override-reabstract/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-reabstract/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-reabstract/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-override-static/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-static/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-static/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-override-wrong-type/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-override-wrong-type/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-override-wrong-type/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2416,
+        "category": "error",
+        "message": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/modifiers-override-wrong-type/main.ts",
+        "start": 284,
+        "length": 4,
+        "line": 5,
+        "column": 81
+      },
+      "diagnostics": [
+        {
+          "code": 2416,
+          "category": "error",
+          "message": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/modifiers-override-wrong-type/main.ts",
+          "start": 284,
+          "length": 4,
+          "line": 5,
+          "column": 81
+        }
+      ]
+    },
+    {
+      "id": "class-modifiers:modifiers-runtime-abstract/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-runtime-abstract/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-runtime-abstract/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-runtime-accessors/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-runtime-accessors/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-runtime-accessors/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-runtime-constructor/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-runtime-constructor/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-runtime-constructor/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-runtime-implements/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-runtime-implements/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-runtime-implements/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "class-modifiers:modifiers-runtime-noimplicit/main.ts",
+      "matrix": "class-modifiers",
+      "entry": "modifiers-runtime-noimplicit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--noImplicitOverride"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modifiers-runtime-noimplicit/main.ts"
       ],
       "accepts": true,
       "first": null,

@@ -68,6 +68,18 @@ fn replay(case: &Value) -> std::process::Output {
             fs::create_dir_all(destination.parent().unwrap()).unwrap();
             fs::copy(fixtures().join(input), destination).unwrap();
         }
+        // A recorded program lists its roots; sibling imports still belong to
+        // the same isolated fixture and must be available during replay.
+        for input in fs::read_dir(fixtures().join(source_root)).unwrap() {
+            let input = input.unwrap();
+            if input
+                .path()
+                .extension()
+                .is_some_and(|suffix| suffix == "ts")
+            {
+                fs::copy(input.path(), directory.join(input.file_name())).unwrap();
+            }
+        }
         let mut options = serde_json::Map::new();
         let mut flags = case["flags"].as_array().unwrap().iter().peekable();
         while let Some(flag) = flags.next() {

@@ -50,6 +50,10 @@ function commandOptions(matrix, entry, target) {
     if (matrix === 'lib' || matrix === 'infer-return') flags.push('--lib', target);
     if (matrix === 'legacy-decorators') flags.push('--experimentalDecorators');
     if (entry.startsWith('imported-type-cjs-interop-')) flags.push('--esModuleInterop');
+    if (matrix === 'class-modifiers') {
+        const filename = path.join(corpus, path.dirname(entry), 'flags.txt');
+        if (fs.existsSync(filename)) flags.push(...fs.readFileSync(filename, 'utf8').trim().split(/\s+/));
+    }
     if (matrix === 'jsx') {
         const filename = path.join(corpus, path.dirname(entry), 'flags.txt');
         flags.push(...(fs.existsSync(filename)

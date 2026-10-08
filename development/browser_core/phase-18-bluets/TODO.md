@@ -402,6 +402,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
 
 - [ ] **K.5.1 Abstract and implements (M).** `abstract` classes/members/constructors, `implements`
   (checked structurally), `override` and `noImplicitOverride`; emit erases all of them.
+  - *Failing baseline (2026-10-08):* 95 isolated pinned programs (45 accept, 50 reject), five Node/runtime witnesses and six exact declaration witnesses cover abstract member obligations and constructor types, structural implementations, override rules and imported boundaries. The frozen-source Linux replay records 94 verdict/primary-diagnostic differences and six emission failures; completeness and the pinned recorder pass (two tests pass, two fail). The shared diagnostic corpus contains 2,109 programs (971 accept, 1,138 reject) and 184 templates. Production sources are unchanged from the verified post-Test262 merge source. Evidence: `/private/tmp/blueice-k14-linux/blueice-k51-red-gate.log`. Commit this failing replay before implementation; the leaf stays open.
 - [ ] **K.5.2 Generic and dynamic classes (L; needs K.4.3).** `class C<T> extends B<T>`, generic methods
   and static members rules, class expressions (named and anonymous, `NamedEvaluation`), computed and
   string-literal member names, index-signature members, `declare` fields.
