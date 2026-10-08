@@ -5523,3 +5523,28 @@ dependencies belong to the workspace. The largest package has 334 targets and
 approximately 24,012 command-line characters at the failing runner's checkout
 path, below the Windows limit. Other platforms retain the original workspace
 invocation. No target or format rule is excluded. Final full CI remains pending.
+
+### Post-Test262 merge final workspace verification — 2026-10-08
+
+Final-source CI [37735122952](https://github.com/ephoton0210/blueice/actions/runs/37735122952)
+on `61534ff2f` passes all 29 jobs: complete workspace build/test, all three
+Node differential matrices, all-target Clippy and format checks across 25
+platform configurations, both pinned TypeScript oracle jobs, coverage and the
+aggregate gate. All five Windows configurations preserve the pinned LF, CR and
+CRLF fixture bytes and pass the complete per-package format check. The Windows
+Test262 Function corpus passes.
+
+Workspace line coverage is 95.07% (193,634 lines, 9,543 missed); independent
+BlueJS line coverage is 99.53% (81,248 lines, 384 missed). The existing 90% and
+88% thresholds and coverage exclusions remain unchanged.
+
+The first attempt exposes two macOS x86_64 timing-sensitive tests: macOS 15
+hits the regex worker deadline while parsing the AST payload fixture, and
+macOS 26 observes a completed debugger program after its implicit pending
+scheduling interval. Both complete jobs and their dependent gate pass when
+rerun on the same source SHA; the other 26 successful results are retained.
+No runtime deadline, test assertion, fixture or skip policy changes.
+
+The final documentation commit retains identical backend, build, CI and script
+inputs to the verified source commit. K.3 and the measured K.4 leaves remain
+complete; M8 remains open for K.5–K.9.
