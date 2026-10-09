@@ -6211,3 +6211,13 @@ The generated inventory contains 161 refusal sites in 11 areas. Production
 construction in a separately verified commit/push before K.6.3. Hosted complete
 CI remains open; the preceding source still has a macOS real-core navigation
 timeout, which is being diagnosed separately.
+
+### K.6.R.2 compiler responsibility split (2026-10-09)
+
+Move the closed graph loader, its private traversal state and its existing
+limits into `compiler/project_builder.rs`. Move artifact fingerprint construction
+into `compiler/fingerprint.rs`; keep the crate-visible root re-export. The
+parent exposes only the child members it already consumes. This split adds
+no graph edge, input authority, policy or behavior.
+
+Mechanical comparison after formatting preserves graph-loader and fingerprint bodies and string literals, apart from required `pub(super)` visibility. Source sizes are `compiler.rs` 756, `project_builder.rs` 348 and `fingerprint.rs` 140 lines; largest production source is the CLI at 1,165 lines. Public APIs, canonical bounds, per-edge modes, resolver observations, work limits, cache identity/reuse and source provenance are preserved. The frozen Linux gate passes format, BlueTS/bridge/engine all-target Clippy with warnings denied, all 507 engine tests, 1,036 ordinary BlueTS/bridge tests and all 1,192 tests in 92 groups, including every 156 ignored oracle in 49 suite files. All 331 backend hashes match, and the actual 2,464-program diagnostics record is byte-identical. Evidence: `/private/tmp/blueice-k14-linux/blueice-k62-refactor-final-{status,report}.json`, logs/hashes and `blueice-k62-refactor-mechanical-report.json`. Inventory remains 161 sites in 11 areas. Full hosted workspace/platform/coverage CI remains open; test-only navigation/HTTP diagnostics are integrated for the unresolved macOS timeout, without changing assertions or timeouts.

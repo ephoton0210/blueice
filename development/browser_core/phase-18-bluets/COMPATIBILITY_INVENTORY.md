@@ -263,7 +263,7 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### compiler (1)
 
-- `backend/bluets/src/compiler.rs:555` — strict-runtime JSON assets require a supported runtime profile
+- `backend/bluets/src/compiler.rs:560` — strict-runtime JSON assets require a supported runtime profile
 
 ### diagnostic (1)
 
