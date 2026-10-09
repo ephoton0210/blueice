@@ -60,16 +60,32 @@ struct FontSet {
 fn fonts() -> &'static FontSet {
     static FONTS: OnceLock<FontSet> = OnceLock::new();
     FONTS.get_or_init(|| {
-        let load = |bytes| {
-            fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
-                .expect("bundled font must parse")
+        let load = |name, bytes| {
+            let started = std::time::Instant::now();
+            let trace = std::env::var_os("BLUEICE_NAV_DIAGNOSTICS").is_some();
+            if trace {
+                eprintln!(
+                    "font-stage pid={} font={name} stage=parse-start",
+                    std::process::id()
+                );
+            }
+            let font = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
+                .expect("bundled font must parse");
+            if trace {
+                eprintln!(
+                    "font-stage pid={} font={name} elapsed_ms={} stage=parse-end",
+                    std::process::id(),
+                    started.elapsed().as_millis()
+                );
+            }
+            font
         };
         FontSet {
-            regular: load(FONT_REGULAR),
-            bold: load(FONT_BOLD),
-            italic: load(FONT_ITALIC),
-            bold_italic: load(FONT_BOLD_ITALIC),
-            cjk_fallback: load(FONT_CJK_FALLBACK),
+            regular: load("regular", FONT_REGULAR),
+            bold: load("bold", FONT_BOLD),
+            italic: load("italic", FONT_ITALIC),
+            bold_italic: load("bold-italic", FONT_BOLD_ITALIC),
+            cjk_fallback: load("cjk-fallback", FONT_CJK_FALLBACK),
         }
     })
 }
