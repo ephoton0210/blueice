@@ -1,4 +1,4 @@
-name: CI macOS 15 cold font navigation diagnostic
+name: CI macOS 15 full workload font diagnostic
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Diagnostic branch only: isolate the original-profile core binary tests.
+        # Diagnostic branch only: preserve the full platform job workload.
         include:
           - { label: "macOS 15 x86_64", os: macos-15-intel }
     steps:
@@ -140,8 +140,24 @@ jobs:
         run: |
           git clone --filter=blob:none --sparse --depth 1 https://github.com/web-platform-tests/wpt.git development/browser_core/reference/wpt
           git -C development/browser_core/reference/wpt sparse-checkout set html/syntax/parsing
-      - name: Test cold core subprocess font initialization
-        run: cargo test -p blueice-engine --test core_binary -- --nocapture
+      - name: Build
+        run: cargo build --workspace --all-targets
+      - name: Test
+        run: cargo test --workspace
+      - name: NumberFormat Node differential matrix
+        run: >-
+          cargo test -p blueice-bluejs --test node_differential
+          number_format_matrix_matches_node -- --ignored
+      - name: NumberFormat interval Node differential matrix
+        run: >-
+          cargo test -p blueice-bluejs --test node_differential
+          number_format_range_matrix_matches_node -- --ignored
+      - name: Intl locale-data Node differential matrix
+        run: >-
+          cargo test -p blueice-bluejs --test node_differential
+          intl_locale_data_matrix_matches_node -- --ignored
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rustfmt
         if: runner.os != 'Windows'
         run: cargo fmt --all -- --check
