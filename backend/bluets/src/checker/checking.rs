@@ -25,8 +25,12 @@ pub(crate) fn check_incremental(
         types: project::exported_types(project),
         classes: project::exported_classes(project, max_type_expansions),
         enums: project::exported_enums(project),
-        exported_names: project::exported_names(project),
+        exported_names: reexports::exported_names(project),
     };
+    let origins = reexports::origins(project);
+    exports.types = reexports::forward(&origins, &exports.types);
+    exports.classes = reexports::forward(&origins, &exports.classes);
+    exports.enums = reexports::forward(&origins, &exports.enums);
     let empty_namespaces = BTreeMap::new();
     exports.values = project
         .modules
@@ -48,6 +52,7 @@ pub(crate) fn check_incremental(
             (id.clone(), checker.exported_values(true))
         })
         .collect();
+    exports.values = reexports::forward(&origins, &exports.values);
     let mut checked_modules: BTreeMap<String, CheckedModule> = BTreeMap::new();
     // What each checked module exports as a namespace, for the modules that
     // import it; modules are checked after the modules they import.
@@ -62,6 +67,7 @@ pub(crate) fn check_incremental(
                 exports
                     .values
                     .insert(module_id.clone(), previous.value_exports.clone());
+                exports.values = reexports::forward(&origins, &exports.values);
                 checked_modules.insert(module_id.clone(), previous.clone());
                 continue;
             }
@@ -95,6 +101,7 @@ pub(crate) fn check_incremental(
         exports
             .values
             .insert(module_id.clone(), value_exports.clone());
+        exports.values = reexports::forward(&origins, &exports.values);
         checked_modules.insert(
             module_id.clone(),
             CheckedModule {

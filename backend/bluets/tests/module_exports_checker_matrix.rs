@@ -206,6 +206,7 @@ fn incremental_reexports_retain_and_refresh_dependency_types() {
         ("string", "3", true),
         ("number", "'changed'", true),
         ("string", "'changed'", false),
+        ("number", "'changed'", true),
     ]
     .into_iter()
     .enumerate()
@@ -233,7 +234,7 @@ fn incremental_reexports_retain_and_refresh_dependency_types() {
             result.compilation.diagnostics
         );
         assert_eq!(result.compilation.output.is_none(), errors);
-        if index == 1 || index == 3 {
+        if index == 1 || index == 4 {
             for module in ["graph/base.ts", "graph/middle.ts", "graph/barrel.ts"] {
                 assert!(
                     result.reused_checked_modules.contains(module),
@@ -242,7 +243,7 @@ fn incremental_reexports_retain_and_refresh_dependency_types() {
                 );
             }
         }
-        if index == 2 {
+        if index == 2 || index == 3 {
             for module in [
                 "graph/base.ts",
                 "graph/middle.ts",

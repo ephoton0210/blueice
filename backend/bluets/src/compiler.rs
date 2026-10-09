@@ -852,6 +852,15 @@ impl<'a> ProjectBuilder<'a> {
                     };
                     (specifier, &export.span)
                 }
+                crate::parser::Declaration::ValueExport(export) => {
+                    let Some(specifier) = &export.specifier else {
+                        continue;
+                    };
+                    (
+                        specifier,
+                        export.specifier_span.as_ref().unwrap_or(&export.span),
+                    )
+                }
                 _ => continue,
             };
             if self.project.ambient_declaration_modules.contains(module_id) {
@@ -993,6 +1002,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::diagnostic::DIAGNOSTICS_VERSION);
     add(crate::checker::FLOW_VERSION);
     add(crate::checker::CLASS_SURFACE_VERSION);
+    add(crate::checker::MODULE_EXPORTS_VERSION);
     add(crate::standard_library::VERSION);
     add(&crate::standard_library::identity(options.target).source_fingerprint);
     add(options.target.as_str());

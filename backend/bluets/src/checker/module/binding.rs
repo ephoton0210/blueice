@@ -16,6 +16,7 @@ pub(in crate::checker::module) use generators::GeneratorContext;
 mod modules;
 mod names;
 mod predicates;
+mod reexports;
 mod return_types;
 mod standard_library;
 
@@ -62,6 +63,7 @@ impl<'a> ModuleChecker<'a> {
             namespace_exports,
             pending_imports: BTreeSet::new(),
             module_namespace_imports: BTreeSet::new(),
+            module_namespace_targets: BTreeMap::new(),
             enforce_types: policy.enforce_types,
             require_declared_global_calls: policy.require_declared_global_calls,
             define_class_fields: policy.define_class_fields,

@@ -212,6 +212,23 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn bind_class(&mut self, class: &ClassDeclaration) {
+        if class.default_export
+            && class.anonymous
+            && self.target == crate::EcmaTarget::Es2020
+            && class.members.iter().any(|member| {
+                member
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| name.starts_with('#'))
+            })
+        {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                class.span.clone(),
+                "an anonymous default class with private names on ES2020 is not supported: the pinned TypeScript 5.9.3 output fails at runtime; use a named default class or ES2022",
+            ));
+            return;
+        }
         let existing_type = self
             .types
             .get(&class.name)

@@ -4080,14 +4080,6 @@ fn braced_while_checks_condition_and_body_calls_with_existing_rules() {
 fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
     for (source, message) in [
         (
-            "export default 1;",
-            "default export expressions are not in the initial BlueTS matrix",
-        ),
-        (
-            "export default function () { return 1; }",
-            "anonymous default function exports are not in the initial BlueTS matrix",
-        ),
-        (
             "export = foo.bar;",
             "only `export = name;` of a local declaration is supported",
         ),
@@ -4146,10 +4138,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
         (
             "import { type A, b } from './a.ts';",
             "mixed value/type imports are not in the initial BlueTS matrix",
-        ),
-        (
-            "export { a } from './a.ts';",
-            "value re-exports from another module are not in the initial BlueTS matrix",
         ),
         (
             "type A = number; interface B extends A { x: string }",

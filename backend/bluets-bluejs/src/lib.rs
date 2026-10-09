@@ -730,23 +730,27 @@ fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>
             ));
         }
         for declaration in &module.declarations {
-            let Declaration::Import(import) = declaration else {
-                continue;
+            let (specifier, span) = match declaration {
+                Declaration::Import(import) if !import.type_only => {
+                    (&import.specifier, &import.specifier_span)
+                }
+                Declaration::ValueExport(export) if export.specifier.is_some() => (
+                    export.specifier.as_ref().unwrap(),
+                    export.specifier_span.as_ref().unwrap(),
+                ),
+                _ => continue,
             };
-            if import.type_only {
-                continue;
-            }
             let target = project
-                .resolved_module(&module.id, &import.specifier)
+                .resolved_module(&module.id, specifier)
                 .ok_or_else(|| {
                     unsupported(
-                        import.specifier_span.clone(),
+                        span.clone(),
                         "BlueTS did not retain a canonical target for this runtime import",
                     )
                 })?;
             if blueice_bluets::is_external_library_module(target) {
                 return Err(unsupported(
-                    import.specifier_span.clone(),
+                    span.clone(),
                     "the direct bridge links no installed packages: a runtime import of a package \
                      needs the host-provided module loader of the `bluetsc build` route",
                 ));

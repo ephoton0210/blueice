@@ -71,7 +71,7 @@ declare namespace Math { export const PI: number; export const E: number; export
 declare const JSON: { parse(text: string): any; stringify(value: any, replacer?: ((key: string, item: any) => any) | (string | number)[] | null, space?: string | number): string; };
 declare const Object: { keys(value: object | string): string[]; getOwnPropertyNames(value: any): string[]; };
 interface PropertyDescriptor { value?: any; writable?: boolean; configurable?: boolean; enumerable?: boolean; get?: () => any; set?: (value: any) => void; }
-declare namespace Object { export function assign<T extends object, U>(target: T, source: U): T & U; export function getPrototypeOf(value: any): any; export function defineProperty<T>(value: T, key: string | number | symbol, descriptor: PropertyDescriptor): T; }
+declare namespace Object { export function assign<T extends object, U>(target: T, source: U): T & U; export function getPrototypeOf(value: any): any; export function setPrototypeOf(value: any, prototype: object | null): any; export function defineProperty<T>(value: T, key: string | number | symbol, descriptor: PropertyDescriptor): T; }
 declare const Symbol: { for(key: string): symbol; keyFor(value: symbol): string | undefined; };
 declare function Symbol(description?: string | number): symbol;
 interface Error { name: string; message: string; stack?: string;}

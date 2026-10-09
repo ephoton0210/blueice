@@ -23,25 +23,70 @@ pub(super) fn specialize_imported_class_type(
 
 impl<'a> ModuleChecker<'a> {
     pub(in crate::checker::module) fn validate_default_exports(&mut self) {
+        let tokens = crate::syntax::lex(&self.module.id, &self.module.source).unwrap_or_default();
         let defaults = self
             .module
             .declarations
             .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::DefaultExport(export) => Some(export.span.clone()),
+            .flat_map(|declaration| match declaration {
+                Declaration::DefaultExport(export) => vec![if export.expression {
+                    export.span.clone()
+                } else {
+                    tokens
+                        .iter()
+                        .find(|token| {
+                            token.start >= export.span.start
+                                && token.end <= export.span.end
+                                && token.text == export.name
+                        })
+                        .map(|token| token.span(&self.module.id))
+                        .unwrap_or_else(|| export.span.clone())
+                }],
                 Declaration::Function(function) if function.default_export => {
-                    Some(function.span.clone())
+                    vec![function.span.clone()]
                 }
-                _ => None,
+                Declaration::Class(class) if class.default_export => vec![class.span.clone()],
+                Declaration::ValueExport(export) => export
+                    .bindings
+                    .iter()
+                    .filter(|binding| binding.exported == "default")
+                    .map(|binding| {
+                        tokens
+                            .iter()
+                            .find(|token| {
+                                token.start >= binding.span.start
+                                    && token.end <= binding.span.end
+                                    && token.is("default")
+                            })
+                            .map(|token| token.span(&self.module.id))
+                            .unwrap_or_else(|| binding.span.clone())
+                    })
+                    .collect(),
+                _ => Vec::new(),
             })
             .collect::<Vec<_>>();
         if defaults.len() > 1 {
-            for span in defaults.iter().skip(1) {
-                self.diagnostics.push(Diagnostic::error(
+            for span in &defaults {
+                let mut diagnostic = Diagnostic::error(
                     DiagnosticCode::DuplicateDeclaration,
                     span.clone(),
                     "a module can have only one default export",
-                ));
+                )
+                .with_typescript(2528, Vec::new());
+                diagnostic
+                    .typescript
+                    .as_mut()
+                    .unwrap()
+                    .related_information
+                    .extend(defaults.iter().filter(|other| *other != span).map(|other| {
+                        crate::TypeScriptRelatedInformation {
+                            code: 2753,
+                            message: "Another export default is here.".to_string(),
+                            span: other.clone(),
+                            position: None,
+                        }
+                    }));
+                self.diagnostics.push(diagnostic);
             }
         }
 
@@ -67,12 +112,27 @@ impl<'a> ModuleChecker<'a> {
                                 && !item.declared
                                 && namespaces::body_has_values(&item.body)
                         }
+                        Declaration::Import(import) => {
+                            !import.type_only
+                                && import.bindings.iter().any(|binding| {
+                                    binding.local == export.name && !binding.type_only
+                                })
+                        }
                         _ => false,
                     });
             if !has_local_runtime_binding {
                 self.diagnostics.push(Diagnostic::error(
                     DiagnosticCode::UnknownName,
-                    export.span.clone(),
+                    crate::syntax::lex(&self.module.id, &self.module.source)
+                        .unwrap_or_default()
+                        .iter()
+                        .find(|token| {
+                            token.start >= export.span.start
+                                && token.end <= export.span.end
+                                && token.text == export.name
+                        })
+                        .map(|token| token.span(&self.module.id))
+                        .unwrap_or_else(|| export.span.clone()),
                     format!(
                         "default export `{}` must name a local runtime declaration",
                         export.name
@@ -105,6 +165,10 @@ impl<'a> ModuleChecker<'a> {
             let Declaration::ValueExport(export) = declaration else {
                 continue;
             };
+            if export.specifier.is_some() {
+                self.validate_reexport(export);
+                continue;
+            }
             for binding in &export.bindings {
                 let has_local_runtime_binding =
                     self.module
@@ -254,6 +318,17 @@ impl<'a> ModuleChecker<'a> {
             } else {
                 binding
             };
+            if let Some((source, _)) = crate::checker::reexports::origins(self.project)
+                .get(resolved)
+                .and_then(|names| names.get(&binding.imported))
+                .filter(|origins| origins.len() == 1)
+                .and_then(|origins| origins.first())
+                .filter(|(_, name)| name == "*")
+                .cloned()
+            {
+                self.bind_module_namespace(&binding.local, &source, &import.span, false);
+                continue;
+            }
             if let Some(namespace) = self
                 .namespace_exports
                 .get(resolved)
@@ -437,17 +512,21 @@ impl<'a> ModuleChecker<'a> {
                             vec![import.specifier.clone(), binding.imported.clone()],
                         )
                     };
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            DiagnosticCode::UnknownName,
-                            import.span.clone(),
-                            format!(
-                                "module `{}` has no exported member `{}`",
-                                import.specifier, binding.imported
-                            ),
-                        )
-                        .with_typescript(typescript_code, arguments),
-                    );
+                    let diagnostic = Diagnostic::error(
+                        DiagnosticCode::UnknownName,
+                        import.span.clone(),
+                        format!(
+                            "module `{}` has no exported member `{}`",
+                            import.specifier, binding.imported
+                        ),
+                    )
+                    .with_typescript(typescript_code, arguments);
+                    let diagnostic = if typescript_code == 1192 {
+                        self.refine_missing_default(import, binding, resolved, diagnostic)
+                    } else {
+                        diagnostic
+                    };
+                    self.diagnostics.push(diagnostic);
                     continue;
                 }
                 if let Some(class) = exported_classes
@@ -508,6 +587,16 @@ impl<'a> ModuleChecker<'a> {
                     .cloned()
                 {
                     self.bind_imported_value(&binding.local, &value, &import.span);
+                } else if let Some(definition) =
+                    exported.and_then(|types| types.get(&binding.imported))
+                {
+                    self.insert_type(
+                        &binding.local,
+                        definition.clone(),
+                        import.span.clone(),
+                        SymbolKind::Import,
+                        false,
+                    );
                 } else {
                     self.insert_value(
                         &binding.local,

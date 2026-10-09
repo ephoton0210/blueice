@@ -68,37 +68,16 @@ impl Parser {
             self.bump();
         } else {
             if self.consume("{") {
-                while !self.at_eof() && !self.consume("}") {
-                    let binding_type_only = self.consume("type");
-                    let Some(imported) = self.consume_identifier() else {
-                        self.error_here(DiagnosticCode::ParseError, "expected an imported binding");
-                        self.skip_until(&["}", ";"]);
-                        self.consume("}");
-                        break;
-                    };
-                    let local = if self.consume("as") {
-                        self.require_identifier("expected a local import name")
-                    } else {
-                        imported.clone()
-                    };
-                    bindings.push(ImportBinding {
-                        imported,
-                        local,
-                        type_only: type_only || binding_type_only,
-                    });
-                    if !self.consume(",") {
-                        self.expect("}");
-                        break;
-                    }
-                }
+                self.parse_named_import_bindings(&mut bindings, type_only);
             } else if let Some(local) = self.consume_identifier() {
                 bindings.push(ImportBinding {
                     imported: "default".to_string(),
                     local,
                     type_only,
                 });
-                self.consume(",");
-                if self.consume("*") {
+                if self.consume(",") && self.consume("{") {
+                    self.parse_named_import_bindings(&mut bindings, type_only);
+                } else if self.consume("*") {
                     self.expect("as");
                     let local = self.require_identifier("expected namespace import name");
                     bindings.push(ImportBinding {
@@ -167,6 +146,36 @@ impl Parser {
             }));
     }
 
+    fn parse_named_import_bindings(&mut self, bindings: &mut Vec<ImportBinding>, type_only: bool) {
+        while !self.at_eof() && !self.consume("}") {
+            let binding_type_only = self.consume("type");
+            let imported = if self.consume("default") {
+                "default".to_string()
+            } else if let Some(name) = self.consume_identifier() {
+                name
+            } else {
+                self.error_here(DiagnosticCode::ParseError, "expected an imported binding");
+                self.skip_until(&["}", ";"]);
+                self.consume("}");
+                break;
+            };
+            let local = if self.consume("as") {
+                self.require_identifier("expected a local import name")
+            } else {
+                imported.clone()
+            };
+            bindings.push(ImportBinding {
+                imported,
+                local,
+                type_only: type_only || binding_type_only,
+            });
+            if !self.consume(",") {
+                self.expect("}");
+                break;
+            }
+        }
+    }
+
     /// `export = name;` with the cursor on the `=`.
     pub(in crate::parser::implementation) fn parse_export_assignment(&mut self, start: usize) {
         self.expect("=");
@@ -192,6 +201,10 @@ impl Parser {
         self.declarations
             .push(Declaration::ValueExport(ValueExportDeclaration {
                 export_assignment: true,
+                specifier: None,
+                specifier_span: None,
+                star: false,
+                namespace: None,
                 bindings: vec![ValueExportBinding {
                     local: name,
                     exported: "export=".to_string(),
@@ -266,14 +279,23 @@ impl Parser {
         self.declarations
             .push(Declaration::DefaultExport(DefaultExportDeclaration {
                 name,
+                expression: false,
                 span: SourceSpan::new(&self.id, start, end),
             }));
     }
 
     pub(in crate::parser::implementation) fn parse_value_export(&mut self, start: usize) {
-        self.expect("{");
+        let star = self.consume("*");
+        let namespace = if star && self.consume("as") {
+            Some(self.require_identifier("expected a namespace export name"))
+        } else {
+            None
+        };
+        if !star {
+            self.expect("{");
+        }
         let mut bindings = Vec::new();
-        while !self.at_eof() && !self.consume("}") {
+        while !star && !self.at_eof() && !self.consume("}") {
             if self.peek("type") {
                 self.unsupported(
                     self.current().span(&self.id),
@@ -283,18 +305,12 @@ impl Parser {
                 return;
             }
             let binding_start = self.current().start;
-            let local = self.require_identifier("expected a value export name");
+            let local = self.require_export_name();
             let exported = if self.consume("as") {
-                self.require_identifier("expected an exported value name")
+                self.require_export_name()
             } else {
                 local.clone()
             };
-            if exported == "default" {
-                self.unsupported(
-                    SourceSpan::new(&self.id, binding_start, self.previous().end),
-                    "default aliases in named value exports are not in the initial BlueTS matrix",
-                );
-            }
             bindings.push(ValueExportBinding {
                 local,
                 exported,
@@ -305,21 +321,46 @@ impl Parser {
                 break;
             }
         }
-        if self.consume("from") {
-            self.unsupported(
-                self.previous().span(&self.id),
-                "value re-exports from another module are not in the initial BlueTS matrix",
-            );
-            self.skip_statement();
-            return;
-        }
+        let (specifier, specifier_span) = if self.consume("from") {
+            let span = self.current().span(&self.id);
+            let value = string_contents(self.current());
+            if value.is_some() {
+                self.bump();
+            } else {
+                self.error_here(
+                    DiagnosticCode::ParseError,
+                    "expected a string module specifier",
+                );
+            }
+            (value, Some(span))
+        } else {
+            if star {
+                self.error_here(
+                    DiagnosticCode::ParseError,
+                    "expected from after a star export",
+                );
+            }
+            (None, None)
+        };
         self.consume(";");
         let end = self.previous().end;
         self.declarations
             .push(Declaration::ValueExport(ValueExportDeclaration {
                 export_assignment: false,
                 bindings,
+                specifier,
+                specifier_span,
+                star,
+                namespace,
                 span: SourceSpan::new(&self.id, start, end),
             }));
+    }
+
+    fn require_export_name(&mut self) -> String {
+        if self.consume("default") {
+            "default".to_string()
+        } else {
+            self.require_identifier("expected an export binding name")
+        }
     }
 }

@@ -25,6 +25,14 @@ pub(super) fn parameter_source_name(name: &str) -> Option<&str> {
 }
 
 impl ClassDeclaration {
+    pub fn export_name(&self) -> &str {
+        if self.default_export {
+            "default"
+        } else {
+            &self.name
+        }
+    }
+
     pub(crate) fn instance_parameters(&self) -> Vec<TypeParameter> {
         self.captured_type_parameters
             .iter()

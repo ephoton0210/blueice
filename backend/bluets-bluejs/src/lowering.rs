@@ -4,6 +4,7 @@
 
 pub(super) mod classes;
 mod computed_fields;
+mod module_exports;
 mod namespaces;
 
 use classes::*;
@@ -168,7 +169,7 @@ pub(super) fn lower_module(
         match declaration {
             Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
             Declaration::Variable(variable) if !variable.declared => {
-                body.push(lower_variable(module, variable)?);
+                body.push(module_exports::variable(module, variable)?);
                 provenance.push((variable.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if variable.exported {
                     exports.push(bluejs::ExportEntry::Local {
@@ -178,13 +179,21 @@ pub(super) fn lower_module(
                 }
             }
             Declaration::Function(function) if !function.declared && !function.overload => {
-                body.push(lower_function(module, function)?);
+                if function.default_export && function.anonymous {
+                    body.push(module_exports::anonymous_function(module, function)?);
+                } else {
+                    body.push(lower_function(module, function)?);
+                }
                 declared.insert(function.name.clone());
                 provenance.push((function.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if function.default_export {
                     exports.push(bluejs::ExportEntry::Local {
                         export_name: "default".to_string(),
-                        local_name: function.name.clone(),
+                        local_name: if function.anonymous {
+                            module_exports::DEFAULT_BINDING.to_string()
+                        } else {
+                            function.name.clone()
+                        },
                     });
                 } else if function.exported {
                     exports.push(bluejs::ExportEntry::Local {
@@ -199,11 +208,59 @@ pub(super) fn lower_module(
                 ));
                 provenance.push((raw.span.clone(), LoweringProvenanceKind::Copied));
             }
-            Declaration::DefaultExport(export) => exports.push(bluejs::ExportEntry::Local {
-                export_name: "default".to_string(),
-                local_name: export.name.clone(),
-            }),
+            Declaration::DefaultExport(export) => {
+                let local_name = module_exports::DEFAULT_BINDING.to_string();
+                if !export.expression {
+                    body.push(bluejs::Stmt::VarDecl(
+                        bluejs::DeclKind::Const,
+                        vec![bluejs::VarDeclarator {
+                            pattern: bluejs::Pattern::Identifier(local_name.clone()),
+                            init: Some(bluejs::Expr::Identifier(export.name.clone())),
+                        }],
+                    ));
+                }
+                exports.push(bluejs::ExportEntry::Local {
+                    export_name: "default".to_string(),
+                    local_name,
+                });
+            }
             Declaration::ValueExport(export) => {
+                if let Some(specifier) = &export.specifier {
+                    let request = project
+                        .and_then(|project| project.resolved_module(&module.id, specifier))
+                        .ok_or_else(|| {
+                            unsupported(
+                                export.span.clone(),
+                                "re-exports require a retained module-graph edge",
+                            )
+                        })?
+                        .to_string();
+                    if !requests.contains(&request) {
+                        requests.push(request.clone());
+                    }
+                    if let Some(name) = &export.namespace {
+                        exports.push(bluejs::ExportEntry::Namespace {
+                            export_name: name.clone(),
+                            module_request: request,
+                            module_type: bluejs::ModuleType::JavaScript,
+                        });
+                    } else if export.star {
+                        exports.push(bluejs::ExportEntry::Star {
+                            module_request: request,
+                            module_type: bluejs::ModuleType::JavaScript,
+                        });
+                    } else {
+                        exports.extend(export.bindings.iter().map(|binding| {
+                            bluejs::ExportEntry::Indirect {
+                                export_name: binding.exported.clone(),
+                                module_request: request.clone(),
+                                import_name: binding.local.clone(),
+                                module_type: bluejs::ModuleType::JavaScript,
+                            }
+                        }));
+                    }
+                    continue;
+                }
                 exports.extend(
                     export
                         .bindings
@@ -268,12 +325,24 @@ pub(super) fn lower_module(
             }
             Declaration::Class(class) => {
                 declared.insert(class.name.clone());
-                body.push(lower_class(module, class, define_class_fields)?);
+                if class.default_export && class.anonymous {
+                    body.push(module_exports::anonymous_class(
+                        module,
+                        class,
+                        define_class_fields,
+                    )?);
+                } else {
+                    body.push(lower_class(module, class, define_class_fields)?);
+                }
                 provenance.push((class.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if class.exported {
                     exports.push(bluejs::ExportEntry::Local {
-                        export_name: class.name.clone(),
-                        local_name: class.name.clone(),
+                        export_name: class.export_name().to_string(),
+                        local_name: if class.default_export && class.anonymous {
+                            module_exports::DEFAULT_BINDING.to_string()
+                        } else {
+                            class.name.clone()
+                        },
                     });
                 }
             }

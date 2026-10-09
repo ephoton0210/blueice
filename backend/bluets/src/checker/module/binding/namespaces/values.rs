@@ -62,7 +62,7 @@ impl ModuleChecker<'_> {
                     );
                 }
                 Declaration::Class(item) if item.exported => {
-                    names.insert(item.name.clone(), item.name.clone());
+                    names.insert(item.export_name().to_string(), item.name.clone());
                 }
                 Declaration::Enum(item) if item.exported => {
                     names.insert(item.name.clone(), item.name.clone());
@@ -73,7 +73,7 @@ impl ModuleChecker<'_> {
                 Declaration::DefaultExport(item) => {
                     names.insert("default".to_string(), item.name.clone());
                 }
-                Declaration::ValueExport(item) => {
+                Declaration::ValueExport(item) if item.specifier.is_none() => {
                     for binding in &item.bindings {
                         names.insert(binding.exported.clone(), binding.local.clone());
                     }
@@ -163,6 +163,32 @@ impl ModuleChecker<'_> {
             .get(resolved)
             .cloned()
             .unwrap_or_default();
+        if let Some(types) = self.exports.types.get(resolved).cloned() {
+            for (name, mut definition) in types {
+                let qualified = format!("{local}.{name}");
+                if let Some(class) = self
+                    .exports
+                    .classes
+                    .get(resolved)
+                    .and_then(|classes| classes.get(&name))
+                {
+                    definition.value = super::super::modules::specialize_imported_class_type(
+                        &class.instance_type,
+                        &class.source_name,
+                        &qualified,
+                    );
+                }
+                if !self.types.contains_key(&qualified) {
+                    self.insert_type(
+                        &qualified,
+                        definition,
+                        span.clone(),
+                        SymbolKind::Import,
+                        false,
+                    );
+                }
+            }
+        }
         let mut fields = Vec::new();
         for (name, value) in values {
             if name == "export=" {
@@ -202,6 +228,8 @@ impl ModuleChecker<'_> {
             false,
         );
         self.module_namespace_imports.insert(local.to_string());
+        self.module_namespace_targets
+            .insert(local.to_string(), resolved.to_string());
     }
 
     pub(in crate::checker::module) fn bind_export_assignment_member(

@@ -247,6 +247,7 @@ impl Parser {
         self.declarations
             .push(Declaration::Function(FunctionDeclaration {
                 name,
+                anonymous: false,
                 async_function: async_start,
                 generator,
                 body_open,

@@ -5878,3 +5878,71 @@ JavaScript and Node errors are retained in `default-ctor-probes/`. The runtime
 matrix uses valid public-field witnesses; it does not weaken a Node comparison
 to accept invalid output. Preserve this measured private-field boundary while
 implementing supported defaults and re-exports.
+
+### K.6.1 Default and re-export implementation — 2026-10-09
+
+Default expressions retain an internal snapshot binding; anonymous functions
+and classes retain their structured declarations and original source spans.
+The parser records named, star and namespace re-export edges, and the compiler
+resolves each through the existing canonical graph and resource budgets.
+Declaration-only inputs do not acquire runtime authority.
+
+The bounded export-origin solver preserves module/local binding identities,
+deduplicates diamonds, excludes defaults from star exports and lets explicit
+exports resolve star conflicts. Checked value, class, enum and type surfaces
+follow those origins without replacing existing static-only exports. Incremental
+reuse republishes retained dependency types before checking importers. A public
+five-step regression alternates accepted and rejected importer/dependency edits;
+the original wrong-type acceptance is recorded before its correction.
+
+ESM retains source syntax with rewritten JavaScript graph specifiers. Original
+CommonJS lowering uses live getters for named and star re-exports. Its measured
+star traversal includes enumerable inherited properties, matching the pinned
+runtime witness, and preserves explicit exports and default exclusion. Local
+mutable aliases remain live; default identifier/expression exports snapshot
+their values. Exact declaration output retains anonymous declarations and
+synthetic literal annotations.
+
+The direct bridge lowers re-exports into existing BlueJS indirect, star and
+namespace export entries. Anonymous defaults reuse BlueJS's existing private
+module binding and default-function AST so named evaluation and function
+instantiation preserve the name `default`; no BlueJS production change is
+needed. A separately committed failing VM regression covers anonymous
+function/class names and default snapshot versus live alias behavior. Arrow
+expressions retain the existing direct-profile refusal; the corrected test
+checks that boundary instead of adding runtime syntax outside this profile.
+Five isolated pinned TypeScript/Node controls confirm function/class/arrow
+default names and identifier snapshot/live-alias results for emitted ESM;
+their retained evidence is `blueice-k61-default-names-reference/report.json`.
+Constructor property lookup falls back to the declared Function interface
+after checking own static members, retaining readonly name metadata without
+adding inherited members to the class's declared structural surface.
+The older AST test now checks the snapshot declaration while retaining its
+runtime result.
+
+Anonymous ES2020 default classes containing private names keep a precise
+unsupported-syntax refusal. The public boundary test covers ESM/CommonJS and
+both field policies, with ES2022 private and ES2020 named-private/public
+positive controls. Its failing baseline is committed before implementation.
+No comparison allowance, diagnostic counterpart omission or runtime grant is
+added. Assignment diagnostics widen primitive literals without losing nominal
+enum names; the full shared diagnostic replay verifies existing messages.
+
+Final K.0 verification passes on the frozen 255-file source: format, both-crate
+all-target Clippy with warnings denied, all 1,019 ordinary tests and all 1,169
+tests in 83 groups with every one of the 150 ignored oracles in 44 suite files
+executed. No test fails or remains ignored; every backend hash matches the host.
+All 74 pinned programs, 41 Node and 47 exact declaration witnesses, the live
+recorder, five direct tests and private/cache boundary controls pass. The shared
+2,378-program, 198-template corpus also passes its complete pinned replay.
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k61-full-fifth-status.json`,
+`blueice-k61-full-fifth-report.json`, logs and frozen hashes. Generated inventory
+contains 160 refusal sites in ten areas. K.6.1 closes in this measured form;
+hosted full-workspace/platform/coverage verification remains open.
+
+Parser and emitter source review finds
+1,207 and 1,208 lines respectively. After the verified implementation is
+committed and pushed, split module-declaration AST records and declaration
+emission into focused modules, preserve the public API and provenance, and
+run the complete two-crate gate before the separate refactor commit/push.
+K.6.2/K.6.3 and the remaining milestones stay open.

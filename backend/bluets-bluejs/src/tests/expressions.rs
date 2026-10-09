@@ -748,8 +748,10 @@ fn lowers_local_named_and_default_exports_to_a_bluejs_module() {
     };
     assert!(matches!(
         module.body.as_slice(),
-        [bluejs::Stmt::VarDecl(_, _), bluejs::Stmt::Expr(bluejs::Expr::Identifier(name))]
-            if name == "answer"
+        [bluejs::Stmt::VarDecl(_, _), bluejs::Stmt::VarDecl(bluejs::DeclKind::Const, snapshot), bluejs::Stmt::Expr(bluejs::Expr::Identifier(name))]
+            if name == "answer" && matches!(snapshot.as_slice(), [bluejs::VarDeclarator {
+                pattern: bluejs::Pattern::Identifier(binding), init: Some(bluejs::Expr::Identifier(source))
+            }] if binding == "\0bluejs_module_default" && source == "answer")
     ));
     assert!(module.imports.is_empty());
     assert!(module.requests.is_empty());
@@ -762,7 +764,7 @@ fn lowers_local_named_and_default_exports_to_a_bluejs_module() {
             },
             bluejs::ExportEntry::Local {
                 export_name: "default".to_string(),
-                local_name: "answer".to_string(),
+                local_name: "\0bluejs_module_default".to_string(),
             },
         ]
     );

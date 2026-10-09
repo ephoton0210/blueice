@@ -168,6 +168,7 @@ impl ModuleChecker<'_> {
             locals,
             exported: false,
             default_export: false,
+            anonymous: false,
             declared: false,
             overload: false,
             span: arrow.span.clone(),

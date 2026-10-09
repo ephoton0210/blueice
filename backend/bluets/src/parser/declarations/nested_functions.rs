@@ -132,6 +132,7 @@ impl Parser {
             locals,
             exported: false,
             default_export: false,
+            anonymous: false,
             declared: false,
             overload: false,
             span: SourceSpan::new(&self.id, start_offset, body_end),

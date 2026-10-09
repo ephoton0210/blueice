@@ -49,6 +49,7 @@ pub(super) struct ModuleChecker<'a> {
     namespace_exports: &'a NamespaceExports,
     pending_imports: BTreeSet<String>,
     module_namespace_imports: BTreeSet<String>,
+    module_namespace_targets: BTreeMap<String, String>,
     enforce_types: bool,
     require_declared_global_calls: bool,
     define_class_fields: bool,

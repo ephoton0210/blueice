@@ -183,6 +183,8 @@ pub struct TypeExportDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefaultExportDeclaration {
     pub name: String,
+    /// Expressions use an internal snapshot binding, absent from source text.
+    pub expression: bool,
     pub span: SourceSpan,
 }
 
@@ -196,6 +198,12 @@ pub struct ValueExportDeclaration {
     /// binding named `export=`.
     pub export_assignment: bool,
     pub bindings: Vec<ValueExportBinding>,
+    /// A retained, closed graph edge for `export ... from "module"`.
+    pub specifier: Option<String>,
+    pub specifier_span: Option<SourceSpan>,
+    /// `export *`, excluding `default`; an optional name denotes `* as name`.
+    pub star: bool,
+    pub namespace: Option<String>,
     pub span: SourceSpan,
 }
 
@@ -221,6 +229,8 @@ pub struct RawDeclaration {
 /// That intermediate state is rejected by the checker before any emission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassDeclaration {
+    pub default_export: bool,
+    pub anonymous: bool,
     /// An erased `abstract` keyword; its origin remains available to checking.
     pub abstract_modifier: Option<SourceSpan>,
     /// Structural instance obligations, with each original heritage type span.
@@ -764,6 +774,7 @@ impl VariableKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDeclaration {
     pub name: String,
+    pub anonymous: bool,
     /// `async` changes the runtime result to a Promise and cannot satisfy a
     /// primitive-string emitted boundary after type erasure.
     pub async_function: bool,

@@ -18,6 +18,23 @@ impl ModuleChecker<'_> {
             "property `{member}` does not exist on type `{}`",
             type_label(receiver)
         );
+        if let Some(target) = receiver_name
+            .filter(|name| self.values.get(*name) == Some(receiver))
+            .and_then(|name| self.module_namespace_targets.get(name))
+        {
+            let name = target
+                .strip_suffix(".d.ts")
+                .or_else(|| target.strip_suffix(".ts"))
+                .unwrap_or(target);
+            self.typescript_type_error(
+                span,
+                message,
+                DiagnosticCode::TypeMismatch,
+                2339,
+                vec![member.into(), format!("typeof import({name:?})")],
+            );
+            return;
+        }
         if let Type::Named { name, .. } = receiver {
             let class_name = name
                 .strip_prefix("super ")

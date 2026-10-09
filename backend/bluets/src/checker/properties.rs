@@ -220,6 +220,21 @@ fn property_type_with_access(
                 readonly |= field.readonly;
             }
             match values.len() {
+                0 if matches!(value, Type::CallableRecord { signatures, .. } if !signatures.is_empty())
+                    && aliases.contains_key("Function") =>
+                {
+                    property_type_with_access(
+                        &Type::Named {
+                            name: "Function".into(),
+                            arguments: Vec::new(),
+                        },
+                        property,
+                        aliases,
+                        visited,
+                        budget,
+                        writing,
+                    )
+                }
                 0 => PropertyType::Missing,
                 1 => PropertyType::Found {
                     value: values.pop().expect("one matching field"),

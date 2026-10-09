@@ -22,6 +22,7 @@ mod inference;
 use inference::infer_call_substitutions;
 
 mod checking;
+mod reexports;
 pub(crate) use checking::check_incremental;
 mod member_calls;
 use member_calls::{member_call_parts, member_call_ranges};
@@ -29,6 +30,7 @@ mod properties;
 mod scopes;
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
+pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v2";
 mod type_operators;
 mod type_relations;
 use properties::{

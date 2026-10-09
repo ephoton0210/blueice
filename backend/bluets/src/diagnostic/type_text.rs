@@ -317,6 +317,17 @@ pub(crate) fn argument_in(actual: &Type, expected: &Type, project: &crate::Proje
         value
     }
 }
+
+pub(crate) fn assignment_in(actual: &Type, expected: &Type, project: &crate::Project) -> String {
+    if matches!(actual, Type::Literal(value) if value.starts_with(['\'', '"'])
+        || value.parse::<f64>().is_ok() || matches!(value.as_str(), "true" | "false"))
+    {
+        argument_in(actual, expected, project)
+    } else {
+        // Enum member encodings retain their nominal, module-owned identity.
+        render_in(actual, project)
+    }
+}
 pub(crate) fn default_parameter(value: &Type, parameter: &Parameter) -> Type {
     if parameter.default.is_none() {
         return value.clone();

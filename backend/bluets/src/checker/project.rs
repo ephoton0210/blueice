@@ -10,6 +10,23 @@ pub(super) fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnosti
     let mut diagnostics = Vec::new();
     for (module_id, module) in &project.modules {
         for declaration in &module.declarations {
+            if let Declaration::ValueExport(export) = declaration {
+                if let Some(resolved) = export.specifier.as_ref().and_then(|specifier| {
+                    project
+                        .resolutions
+                        .get(&(module_id.clone(), specifier.clone()))
+                }) {
+                    if is_declaration_module(resolved)
+                        && !crate::compiler::is_external_library_module(resolved)
+                    {
+                        diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::InvalidDeclarationFile,
+                            export.span.clone(),
+                            "value re-export resolves to a declaration module; declaration modules are type-only",
+                        ));
+                    }
+                }
+            }
             if let Declaration::Import(import) = declaration {
                 if !import.type_only
                     && project
@@ -100,7 +117,7 @@ pub(super) fn exported_types(
                 }
                 Declaration::Class(class) if class.exported => {
                     values.insert(
-                        class.name.clone(),
+                        class.export_name().to_string(),
                         TypeDefinition {
                             kind: TypeDefinitionKind::Class,
                             parameters: module::class_definition_parameters(class),
@@ -108,7 +125,7 @@ pub(super) fn exported_types(
                         },
                     );
                 }
-                Declaration::ValueExport(export) => {
+                Declaration::ValueExport(export) if export.specifier.is_none() => {
                     for binding in &export.bindings {
                         if let Some(definition) = declared
                             .get(&binding.local)
@@ -343,10 +360,10 @@ fn local_exported_class_surfaces(
         match declaration {
             Declaration::Class(class) if class.exported => {
                 if let Some(value) = declared.get(&class.name) {
-                    exports.insert(class.name.clone(), value.clone());
+                    exports.insert(class.export_name().to_string(), value.clone());
                 }
             }
-            Declaration::ValueExport(export) => {
+            Declaration::ValueExport(export) if export.specifier.is_none() => {
                 for binding in &export.bindings {
                     if let Some(value) = declared.get(&binding.local) {
                         let mut value = value.clone();
@@ -595,6 +612,9 @@ pub(super) fn exported_enums(
         }
         for declaration in &module.declarations {
             if let Declaration::ValueExport(export) = declaration {
+                if export.specifier.is_some() {
+                    continue;
+                }
                 for binding in &export.bindings {
                     if let Some((value, _)) = merged.get(&binding.local) {
                         exported.insert(binding.exported.clone(), value.clone());
@@ -607,13 +627,16 @@ pub(super) fn exported_enums(
     modules
 }
 
-/// The names each module exports, as values or as types, and whether the set is
-/// open (a type re-export from another module could add more). Value
-/// re-exports from another module are not supported, so only types can.
-pub(super) fn exported_names(project: &Project) -> BTreeMap<String, (BTreeSet<String>, bool)> {
+/// Explicit names and the pre-existing closed static re-export surface.
+/// Runtime forwarding is resolved separately without adding value authority to
+/// declarations reached through type-only edges.
+pub(super) fn local_exported_names(
+    project: &Project,
+) -> BTreeMap<String, (BTreeSet<String>, bool)> {
+    let static_types = exported_types(project);
     let mut modules = BTreeMap::new();
     for (id, module) in &project.modules {
-        let mut names = BTreeSet::new();
+        let mut names = static_types[id].keys().cloned().collect::<BTreeSet<_>>();
         let mut open = false;
         for declaration in &module.declarations {
             match declaration {
@@ -626,7 +649,7 @@ pub(super) fn exported_names(project: &Project) -> BTreeMap<String, (BTreeSet<St
                     names.insert(function.name.clone());
                 }
                 Declaration::Class(class) if class.exported => {
-                    names.insert(class.name.clone());
+                    names.insert(class.export_name().to_string());
                 }
                 Declaration::Enum(declaration) if declaration.exported => {
                     names.insert(declaration.name.clone());
@@ -641,6 +664,9 @@ pub(super) fn exported_names(project: &Project) -> BTreeMap<String, (BTreeSet<St
                     names.insert(interface.name.clone());
                 }
                 Declaration::ValueExport(export) => {
+                    if let Some(name) = &export.namespace {
+                        names.insert(name.clone());
+                    }
                     names.extend(
                         export
                             .bindings

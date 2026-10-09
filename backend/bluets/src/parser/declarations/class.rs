@@ -205,6 +205,8 @@ impl Parser {
         self.index = closing + 1;
         let decorators = std::mem::take(&mut self.pending_decorators);
         self.declarations.push(Declaration::Class(ClassDeclaration {
+            default_export: false,
+            anonymous: false,
             abstract_modifier,
             implements,
             decorators,

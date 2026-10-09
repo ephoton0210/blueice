@@ -89,6 +89,8 @@ impl<'a> Context<'a> {
                     if text.starts_with(['\'', '"', '`']) || text.parse::<f64>().is_ok() || matches!(text.as_str(), "true" | "false"));
             let initializer = variable.kind == VariableKind::Const
                 && literal
+                && !module.declarations.iter().any(|declaration| matches!(declaration,
+                    Declaration::DefaultExport(export) if export.expression && export.name == variable.name))
                 && (!primitive
                     || fresh_variable(module, variable, project, &mut BTreeSet::new(), 0));
             context

@@ -154,6 +154,7 @@ impl ModuleChecker<'_> {
                 locals: Vec::new(),
                 exported: false,
                 default_export: false,
+                anonymous: false,
                 declared: false,
                 overload: false,
                 span: span.clone(),

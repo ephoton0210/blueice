@@ -276,6 +276,7 @@ impl ModuleChecker<'_> {
         sub.namespace_path = path.to_string();
         sub.pending_imports = self.pending_imports.clone();
         sub.module_namespace_imports = self.module_namespace_imports.clone();
+        sub.module_namespace_targets = self.module_namespace_targets.clone();
         sub.namespaces = self.namespaces.clone();
         sub.type_only_namespaces = self.type_only_namespaces.clone();
         sub.types = self.types.clone();

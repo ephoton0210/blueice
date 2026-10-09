@@ -162,37 +162,7 @@ impl Parser {
                 continue;
             }
             if exported && self.consume("default") {
-                let default_span = self.previous().span(&self.id);
-                let async_start = self.consume("async");
-                if self.consume("function") {
-                    if self.current().kind == TokenKind::Identifier {
-                        self.parse_function(start, true, true, false, async_start);
-                    } else {
-                        self.unsupported(
-                            default_span,
-                            "anonymous default function exports are not in the initial BlueTS matrix",
-                        );
-                        self.skip_statement();
-                    }
-                } else if !async_start
-                    && self.current().kind == TokenKind::Identifier
-                    && (self
-                        .tokens
-                        .get(self.index + 1)
-                        .is_some_and(|token| token.is(";"))
-                        || self
-                            .tokens
-                            .get(self.index + 1)
-                            .is_some_and(|token| token.kind == TokenKind::Eof))
-                {
-                    self.parse_default_export(start);
-                } else {
-                    self.unsupported(
-                        default_span,
-                        "default export expressions are not in the initial BlueTS matrix",
-                    );
-                    self.skip_statement();
-                }
+                self.parse_default_declaration(start);
                 continue;
             }
             if exported && self.peek("=") {
@@ -200,11 +170,7 @@ impl Parser {
                 continue;
             }
             if exported && self.peek("*") {
-                self.unsupported(
-                    self.current().span(&self.id),
-                    "value re-exports from another module are not in the initial BlueTS matrix",
-                );
-                self.skip_statement();
+                self.parse_value_export(start);
                 continue;
             }
             if exported && self.peek("{") {
@@ -437,6 +403,8 @@ impl Parser {
 mod class;
 #[path = "declarations/class_expressions.rs"]
 mod class_expressions;
+#[path = "declarations/default_exports.rs"]
+mod default_exports;
 #[path = "declarations/enums.rs"]
 mod enums;
 #[path = "declarations/erasure_audit.rs"]

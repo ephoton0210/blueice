@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.6.1 (default and re-exports).** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.6.R.1 (module/declaration source split before K.6.2).** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -430,16 +430,21 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
 
 ### K.6 Module syntax — M8 — gap G-T10
 
-- [ ] **K.6.1 Default and re-exports (M).** `export default <expression>`, anonymous default function and
+- [x] **K.6.1 Default and re-exports (M).** `export default <expression>`, anonymous default function and
   class, `export { x } from`, `export * from`, `export * as ns from`; ESM and CommonJS emit (including
   live bindings through re-export and the `__exportStar`-style semantics written from the spec).
   - *Failing baseline (2026-10-09):* 74 pinned programs (56 accept, 18 reject), 41 Node and 47 declaration witnesses cover default expressions and anonymous/named declarations, alias/snapshot behavior, named/star/namespace re-exports, transitive surfaces, diamonds, conflicts, cycles, evaluation and imported identities under ESM/CommonJS. On verified K.5.3 source `13079a4f3`, the public CLI replay records 74 verdict/primary differences and 47 emission failures; completeness and the live recorder pass. All 41 pinned Node programs run successfully before BlueTS failures are collected. Three direct export regressions fail; the declaration-only runtime-authority control passes. Format and both-crate all-target Clippy pass; all 217 frozen backend hashes match. Shared corpus: 2,378 programs, 198 templates, 1,148 accept, 1,230 reject; every prior 2,304 observation is unchanged. Two embedded fixture roots are normalized exactly as in the existing shared replay, with all codes, positions, related information and verdicts retained. Evidence: `/private/tmp/blueice-k14-linux/blueice-k61-baseline/` (`report.json`, `rust-baseline-status.json`, `comparison.json`, `normalization-comparison.json` and source hashes). The baseline contains no production change and stays unpushed until the implementation passes K.0. Twelve isolated probes retain a pinned limitation: ES2020 anonymous default classes with private fields are accepted but fail under Node in both module and field modes; named private and anonymous public-field controls run normally. The runtime matrix uses valid public-field witnesses without weakening comparisons. K.6.1 remains open; K.5.3 final-source CI [37859872555](https://github.com/ephoton0210/blueice/actions/runs/37859872555) is still running on its exact pushed SHA.
+  - *Verified (2026-10-09):* All 74 pinned programs (56 accept, 18 reject), exact primary/related diagnostics, 41 Node and 47 exact declaration witnesses, the live recorder and five direct tests pass. Incremental re-exports refresh reused and changed dependency types; anonymous default function/class names and identifier snapshot versus live alias semantics are verified. The existing direct arrow refusal and the measured ES2020 anonymous-private default-class refusal remain, with positive controls. Five further pinned Node controls confirm emitted default names and snapshots. The frozen-source Linux K.0 gate passes format, both-crate all-target Clippy with warnings denied, all 1,019 ordinary tests, and the complete 1,169-test run in 83 groups, including all 150 ignored oracles in 44 suite files. All 255 backend hashes match. Shared corpus: 2,378 programs, 198 templates; generated inventory: 160 refusal sites in ten areas. No diagnostic allowance or runtime grant is added. Evidence: `/private/tmp/blueice-k14-linux/blueice-k61-full-fifth-{status,report}.json`, frozen hashes/logs, committed private/cache/name failing regressions and `blueice-k61-default-names-reference/report.json`. Parser/emitter reach 1,207/1,208 lines; the queued split must be separately tested, committed and pushed before K.6.2. Hosted full-workspace/platform/coverage verification remains open.
 - [ ] **K.6.2 Type-only and attributes (S).** All `import type`/`export type` forms, inline `type`
   modifiers, import attributes (`with { type: "json" }`), `export as namespace`.
 - [ ] **K.6.3 Ambient and augmentation (L).** `declare module "x" { … }` (ambient and augmentation),
   `declare global`, global augmentation from a module, triple-slash `reference path/types/lib`,
   shorthand ambient modules; all under the J.4 authority rules (a declaration never creates a runtime
   binding).
+
+#### K.6 source refactoring queue
+
+- [ ] **K.6.R.1 Split module-declaration AST records and declaration emission.** After the verified K.6.1 implementation commit/push, move those responsibilities out of `parser.rs` (1,207 lines) and `emitter.rs` (1,208 lines), preserving the public API, emission and source provenance. Run K.0's complete two-crate gate, then make a separate English refactor commit and push before K.6.2.
 
 ### K.7 Emit breadth — M9 — gaps G-E1 to G-E4
 

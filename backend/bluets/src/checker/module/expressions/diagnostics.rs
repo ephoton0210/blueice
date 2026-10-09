@@ -339,7 +339,7 @@ impl ModuleChecker<'_> {
             bts_code,
             2322,
             vec![
-                crate::diagnostic::type_text::render_in(actual, self.project),
+                crate::diagnostic::type_text::assignment_in(actual, &display, self.project),
                 crate::diagnostic::type_text::render_in(&display, self.project),
             ],
         );

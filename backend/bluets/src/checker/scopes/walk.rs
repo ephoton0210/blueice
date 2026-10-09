@@ -86,6 +86,17 @@ impl ScopeModel<'_> {
                             .and_then(|id| self.project.modules.get(id));
                         let pure_type = source.is_some_and(|source| {
                             exported_value(&source.declarations, &binding.imported) == Some(false)
+                                || crate::checker::reexports::origins(self.project)
+                                    .get(&source.id)
+                                    .and_then(|names| names.get(&binding.imported))
+                                    .filter(|origins| origins.len() == 1)
+                                    .and_then(|origins| origins.first())
+                                    .and_then(|(id, name)| {
+                                        self.project.modules.get(id).map(|source| {
+                                            exported_value(&source.declarations, name)
+                                        })
+                                    })
+                                    == Some(Some(false))
                         });
                         if binding.type_only || import.type_only || pure_type {
                             self.value(scope, &binding.local, 0, false, true, Type::Unknown);

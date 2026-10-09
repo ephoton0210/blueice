@@ -195,9 +195,38 @@ pub(super) fn lower_commonjs(
             }
             Declaration::ValueExport(export) => {
                 es_syntax = true;
+                if let Some(specifier) = &export.specifier {
+                    let spec = javascript_specifier(
+                        specifier,
+                        options.jsx == Some(crate::compiler::JsxMode::Preserve),
+                    );
+                    let name = require_name(&spec, &mut used_names);
+                    let text = super::reexports::commonjs(export, &spec, &name);
+                    if let Some(namespace) = &export.namespace {
+                        chain.push(namespace.clone());
+                    }
+                    chain.extend(
+                        export
+                            .bindings
+                            .iter()
+                            .map(|binding| binding.exported.clone()),
+                    );
+                    push(edits, export.span.start, export.span.end, text);
+                    continue;
+                }
                 let mut text = String::new();
                 for binding in &export.bindings {
                     chain.push(binding.exported.clone());
+                    let live = module.declarations.iter().any(|declaration| matches!(declaration,
+                        Declaration::Variable(variable) if variable.name == binding.local && variable.kind != crate::parser::VariableKind::Const));
+                    if live {
+                        let local = if module.declarations.iter().any(|declaration| matches!(declaration,
+                            Declaration::Variable(variable) if variable.name == binding.local && variable.exported)) {
+                            format!("exports.{}", binding.local)
+                        } else { binding.local.clone() };
+                        text.push_str(&format!("Object.defineProperty(exports, {:?}, {{ enumerable: true, get: function() {{ return {local}; }} }}); ", binding.exported));
+                        continue;
+                    }
                     text.push_str(&format!(
                         "exports.{} = {}; ",
                         binding.exported, binding.local
@@ -213,6 +242,30 @@ pub(super) fn lower_commonjs(
             Declaration::DefaultExport(export) => {
                 es_syntax = true;
                 chain.push("default".to_string());
+                if export.expression {
+                    let initializer = module
+                        .declarations
+                        .iter()
+                        .find_map(|declaration| match declaration {
+                            Declaration::Variable(variable) if variable.name == export.name => {
+                                variable.initializer.first()
+                            }
+                            _ => None,
+                        })
+                        .ok_or_else(|| {
+                            unsupported(
+                                export.span.clone(),
+                                "default export expression has no initializer",
+                            )
+                        })?;
+                    push(
+                        edits,
+                        export.span.start,
+                        initializer.start,
+                        "exports.default = ".to_string(),
+                    );
+                    continue;
+                }
                 push(
                     edits,
                     export.span.start,
@@ -224,6 +277,17 @@ pub(super) fn lower_commonjs(
             Declaration::Variable(variable) if variable.exported && !variable.declared => {
                 es_syntax = true;
                 chain.push(variable.name.clone());
+                if variable.kind == crate::parser::VariableKind::Const
+                    && super::reexports::class_parameter_shadows(module, &variable.name)
+                {
+                    strip_export(&tokens, token_at(variable.span.start), edits);
+                    edits.push(TextEdit {
+                        start: variable.span.end,
+                        end: variable.span.end,
+                        replacement: format!(" exports.{0} = {0};", variable.name),
+                    });
+                    continue;
+                }
                 exported_variables.insert(variable.name.clone());
                 if variable.initializer.is_empty() {
                     edits.push(TextEdit {
@@ -272,6 +336,18 @@ pub(super) fn lower_commonjs(
             {
                 es_syntax = true;
                 strip_export(&tokens, token_at(function.span.start), edits);
+                if function.anonymous {
+                    let position = tokens[token_at(function.span.start)..]
+                        .iter()
+                        .find(|token| token.is("function"))
+                        .unwrap()
+                        .end;
+                    edits.push(TextEdit {
+                        start: position,
+                        end: position,
+                        replacement: format!(" {}", function.name),
+                    });
+                }
                 hoisted.push(if function.default_export {
                     format!("exports.default = {};", function.name)
                 } else {
@@ -288,12 +364,19 @@ pub(super) fn lower_commonjs(
             }
             Declaration::Class(class) if class.exported => {
                 es_syntax = true;
-                chain.push(class.name.clone());
+                chain.push(class.export_name().to_string());
                 strip_export(&tokens, token_at(class.span.start), edits);
+                if class.anonymous {
+                    edits.push(TextEdit {
+                        start: class.name_span.start,
+                        end: class.name_span.start,
+                        replacement: format!("{} ", class.name),
+                    });
+                }
                 edits.push(TextEdit {
                     start: class.span.end,
                     end: class.span.end,
-                    replacement: format!(" exports.{0} = {0};", class.name),
+                    replacement: format!(" exports.{} = {};", class.export_name(), class.name),
                 });
             }
             Declaration::Enum(item) if item.exported && !item.declared => {

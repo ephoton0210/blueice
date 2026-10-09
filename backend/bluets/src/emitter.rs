@@ -31,6 +31,7 @@ mod jsx;
 mod legacy_decorators;
 mod namespaces;
 mod private_lowering;
+mod reexports;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildOutput {
@@ -270,14 +271,20 @@ fn emit_javascript(
 ) -> Result<(EmittedJavaScript, Option<EmittedStrictModule>), Diagnostic> {
     let mut edits = module.edits.clone();
     for declaration in &module.declarations {
-        let Declaration::Import(import) = declaration else {
-            continue;
+        let (specifier, span) = match declaration {
+            Declaration::Import(import) if !import.type_only => {
+                (&import.specifier, &import.specifier_span)
+            }
+            Declaration::ValueExport(export) if export.specifier.is_some() => (
+                export.specifier.as_ref().unwrap(),
+                export.specifier_span.as_ref().unwrap(),
+            ),
+            _ => continue,
         };
-        // A CommonJS import is rewritten whole, with its specifier.
-        if import.type_only || options.module_kind == crate::compiler::ModuleKind::CommonJs {
+        if options.module_kind == crate::compiler::ModuleKind::CommonJs {
             continue;
         }
-        let raw = &module.source[import.specifier_span.start..import.specifier_span.end];
+        let raw = &module.source[span.start..span.end];
         let Some(quote) = raw.chars().next() else {
             continue;
         };
@@ -288,12 +295,12 @@ fn emit_javascript(
             continue;
         }
         let emitted_specifier = javascript_specifier(
-            &import.specifier,
+            specifier,
             options.jsx == Some(crate::compiler::JsxMode::Preserve),
         );
         edits.push(TextEdit {
-            start: import.specifier_span.start,
-            end: import.specifier_span.end,
+            start: span.start,
+            end: span.end,
             replacement: format!("{quote}{emitted_specifier}{quote}"),
         });
     }
@@ -632,7 +639,9 @@ fn emit_declaration(
                 } else {
                     output.push_str("declare function ");
                 }
-                output.push_str(&function.name);
+                if !function.anonymous {
+                    output.push_str(&function.name);
+                }
                 emit_type_parameters(&mut output, &function.type_parameters);
                 output.push('(');
                 for (index, parameter) in function.parameters.iter().enumerate() {
@@ -702,7 +711,9 @@ fn emit_declaration(
                 private_alias |= !class.exported
                     && (computed_key_dependencies.contains(&class.name)
                         || inferred.is_some_and(|context| context.retained(&class.name)));
-                let prefix = if class.exported {
+                let prefix = if class.default_export {
+                    "export default "
+                } else if class.exported {
                     "export declare "
                 } else {
                     "declare "
@@ -733,7 +744,18 @@ fn emit_declaration(
                 output.push_str(&format!("export = {};\n", export.bindings[0].local));
             }
             Declaration::ValueExport(export) => {
-                if export.bindings.is_empty() {
+                if export.star {
+                    output.push_str("export *");
+                    if let Some(name) = &export.namespace {
+                        output.push_str(&format!(" as {name}"));
+                    }
+                    output.push_str(&format!(
+                        " from \"{}\";\n",
+                        export.specifier.as_ref().unwrap()
+                    ));
+                    continue;
+                }
+                if export.bindings.is_empty() && export.specifier.is_none() {
                     output.push_str("export {};\n");
                     continue;
                 }
@@ -748,7 +770,11 @@ fn emit_declaration(
                         output.push_str(&binding.exported);
                     }
                 }
-                output.push_str(" };\n");
+                output.push_str(" }");
+                if let Some(specifier) = &export.specifier {
+                    output.push_str(&format!(" from \"{specifier}\""));
+                }
+                output.push_str(";\n");
             }
             _ => {}
         }

@@ -228,8 +228,11 @@ pub(super) fn emit_class_declaration(
     if class.abstract_modifier.is_some() {
         output.push_str("abstract ");
     }
-    output.push_str("class ");
-    output.push_str(&class.name);
+    output.push_str("class");
+    if !class.anonymous {
+        output.push(' ');
+        output.push_str(&class.name);
+    }
     super::emit_type_parameters(output, &class.type_parameters);
     if let Some(base) = &class.extends_name {
         output.push_str(" extends ");
