@@ -11,7 +11,9 @@ python3 "$frontend_dir/TestSupport/test-signed-runner.py"
 core_target=${CARGO_TARGET_DIR:-$frontend_dir/.build/core-target}
 case "$core_target" in /*) ;; *) core_target="$repo_root/$core_target" ;; esac
 result="$frontend_dir/.build/results-$(date +%Y%m%d-%H%M%S).xcresult"
-python3 "$frontend_dir/TestSupport/run-sftp-ui-tests.py" xcodebuild -project "$frontend_dir/BlueIce.xcodeproj" -scheme BlueIce \
+python3 "$frontend_dir/TestSupport/run-sftp-ui-tests.py" \
+    python3 "$frontend_dir/TestSupport/run-update-ui-tests.py" "$frontend_dir/.build/Build/Products/Debug/BlueIce.app" \
+    xcodebuild -project "$frontend_dir/BlueIce.xcodeproj" -scheme BlueIce \
     -configuration Debug -derivedDataPath "$frontend_dir/.build" \
     -destination "platform=macOS,arch=$(uname -m)" -parallel-testing-enabled NO \
     -resultBundlePath "$result" BLUEICE_BACKEND_DIR="$core_target/debug" test "$@"

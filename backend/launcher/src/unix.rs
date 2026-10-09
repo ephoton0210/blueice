@@ -504,6 +504,12 @@ pub(crate) struct Broker {
     done: Sender<()>,
 }
 
+impl Broker {
+    pub(crate) fn wait_for_shutdown(&self, timeout: Duration) -> bool {
+        self.cutover_gate.wait_closed(timeout)
+    }
+}
+
 /// Runs the broker for as long as the currently-active `core` isn't
 /// deliberately superseded: accepts external client connections from
 /// `rendezvous_listener` (registering each via [`register_client`]),
@@ -680,18 +686,17 @@ pub fn run_broker_with_options(
         }
     });
 
-    let update_stop = Arc::new(AtomicBool::new(false));
-    if let Some(interval) = auto_update_interval {
+    let update_watcher = if let Some(interval) = auto_update_interval {
         match core_binary_path() {
-            Ok(binary) => update_watch::spawn_update_watcher(
-                Arc::clone(&broker),
-                binary,
-                interval,
-                Arc::clone(&update_stop),
-            ),
-            Err(error) => eprintln!("blueice-launcher: automatic updates are off: {error}"),
+            Ok(binary) => update_watch::spawn_update_watcher(Arc::clone(&broker), binary, interval),
+            Err(error) => {
+                eprintln!("blueice-launcher: automatic updates are off: {error}");
+                None
+            }
         }
-    }
+    } else {
+        None
+    };
 
     let control_broker = Arc::clone(&broker);
     thread::spawn(move || {
@@ -706,6 +711,7 @@ pub fn run_broker_with_options(
 
     if let Some(ready) = trusted_ready {
         if ready.recv_timeout(Duration::from_secs(10)).is_err() {
+            stop_broker_cutovers(&broker, update_watcher);
             if let Ok(mut active) = broker.active_core.lock() {
                 active.take();
             }
@@ -718,7 +724,7 @@ pub fn run_broker_with_options(
     }
 
     let _ = done_rx.recv();
-    update_stop.store(true, Ordering::Relaxed);
+    stop_broker_cutovers(&broker, update_watcher);
 
     if let Ok(mut active) = broker.active_core.lock() {
         active.take();
@@ -733,6 +739,29 @@ pub fn run_broker_with_options(
     drop(trusted_window);
 
     Ok(())
+}
+
+fn stop_broker_cutovers(broker: &Broker, watcher: Option<JoinHandle<()>>) {
+    broker.cutover_gate.close();
+    // Disconnect synthetic capture waiters and any serving-core I/O before
+    // waiting for the cutover owner to reap its staged generation.
+    broker
+        .clients
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clear();
+    if let Some(core) = broker
+        .active_core
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+    {
+        let _ = core.stream.shutdown(Shutdown::Both);
+    }
+    broker.cutover_gate.wait_idle();
+    if let Some(watcher) = watcher {
+        let _ = watcher.join();
+    }
 }
 
 /// Removes only a Unix-domain socket.  A caller-selected endpoint must

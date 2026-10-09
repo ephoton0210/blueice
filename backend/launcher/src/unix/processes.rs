@@ -206,8 +206,20 @@ pub(super) fn unique_internal_gatekeeper_socket_path() -> PathBuf {
 /// that died on startup will never create its socket, and waiting out the full
 /// timeout only delays reporting (and retrying) the failure.
 pub(super) fn wait_for_socket_or_exit(path: &Path, child: &mut Child, timeout: Duration) -> bool {
+    wait_for_socket_or_exit_while(path, child, timeout, || true)
+}
+
+pub(super) fn wait_for_socket_or_exit_while(
+    path: &Path,
+    child: &mut Child,
+    timeout: Duration,
+    keep_waiting: impl Fn() -> bool,
+) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
+        if !keep_waiting() {
+            return false;
+        }
         if path.exists() {
             return true;
         }
@@ -260,8 +272,22 @@ pub(super) fn unique_internal_debugger_socket_path() -> PathBuf {
 /// `wait_for_socket` seeing the path does not mean the child is ready: on a
 /// loaded machine a connect in between is refused. Retry that briefly.
 pub(super) fn connect_when_listening(path: &Path, timeout: Duration) -> io::Result<UnixStream> {
+    connect_when_listening_while(path, timeout, || true)
+}
+
+pub(super) fn connect_when_listening_while(
+    path: &Path,
+    timeout: Duration,
+    keep_waiting: impl Fn() -> bool,
+) -> io::Result<UnixStream> {
     let deadline = Instant::now() + timeout;
     loop {
+        if !keep_waiting() {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "browser broker is shutting down",
+            ));
+        }
         match UnixStream::connect(path) {
             Err(error)
                 if matches!(
@@ -277,8 +303,19 @@ pub(super) fn connect_when_listening(path: &Path, timeout: Duration) -> io::Resu
 }
 
 pub(super) fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
+    wait_for_socket_while(path, timeout, || true)
+}
+
+pub(super) fn wait_for_socket_while(
+    path: &Path,
+    timeout: Duration,
+    keep_waiting: impl Fn() -> bool,
+) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
+        if !keep_waiting() {
+            return false;
+        }
         if path.exists() {
             return true;
         }

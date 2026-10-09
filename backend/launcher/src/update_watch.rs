@@ -24,9 +24,8 @@
 
 use crate::Broker;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
 
 /// What identifies one build of a binary for change detection.
@@ -110,27 +109,22 @@ impl UpdateWatch {
     }
 }
 
-/// Starts the watcher thread. It ends once `stop` is set.
+/// Starts the watcher thread. Broker shutdown wakes and joins it.
 pub(crate) fn spawn_update_watcher(
     broker: Arc<Broker>,
     binary: PathBuf,
     interval: Duration,
-    stop: Arc<AtomicBool>,
-) {
+) -> Option<JoinHandle<()>> {
     let Some(baseline) = identity(&binary) else {
         eprintln!(
             "blueice-launcher: cannot watch {} for updates: it cannot be read",
             binary.display()
         );
-        return;
+        return None;
     };
-    thread::spawn(move || {
+    Some(thread::spawn(move || {
         let mut watch = UpdateWatch::new(baseline);
-        while !stop.load(Ordering::Relaxed) {
-            thread::sleep(interval);
-            if stop.load(Ordering::Relaxed) {
-                break;
-            }
+        while !broker.wait_for_shutdown(interval) {
             let Decision::Cutover(new) = watch.observe(identity(&binary)) else {
                 continue;
             };
@@ -152,7 +146,7 @@ pub(crate) fn spawn_update_watcher(
                 _ => {}
             }
         }
-    });
+    }))
 }
 
 #[cfg(test)]

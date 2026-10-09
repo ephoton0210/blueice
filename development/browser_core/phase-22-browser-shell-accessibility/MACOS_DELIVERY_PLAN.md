@@ -811,3 +811,21 @@ all 272 methods: 271 passed and the same physical Zhuyin method skipped. All fin
 gates share 1,834 unchanged inputs. See the
 [non-rendered label contract](MACOS_NONRENDERED_LABEL_CONTRACT.md) and
 [dated results](MACOS_NONRENDERED_LABEL_RESULTS.md).
+
+## Owned automatic update and shutdown increment
+
+An isolated public regression reproduced a launcher exiting while a staged
+replacement process survived. The unchanged-core control passed; the same two
+methods passed after the correction. Core-switch admission now closes before
+shutdown drains pending attempts. Startup waits and staged I/O can be interrupted,
+core publication serializes with shutdown, and the update watcher wakes and joins.
+
+Seven public process regressions and existing launcher/update/retry suites cover
+the lifecycle boundary. A new native UI method closes the actual browser window
+while a private copy of the real service bundle holds an automatic replacement
+at startup. Complete Rust workspace acceptance passed 7,395 cases with 69 ignored;
+formatting, strict Clippy and the all-target build passed. The unfiltered native
+suite executed all 273 methods: 272 passed and the same physical Zhuyin method
+skipped. All final gates share 1,837 unchanged inputs. See the
+[owned update/shutdown contract](MACOS_UPDATE_SHUTDOWN_CONTRACT.md) and
+[dated results](MACOS_UPDATE_SHUTDOWN_RESULTS.md).

@@ -135,6 +135,7 @@ impl SpawnedCore {
                 compiler_mcp_relay,
                 debugger_relay,
             },
+            None,
         )?;
         core.activate_relays();
         Ok(core)
@@ -150,9 +151,19 @@ impl SpawnedCore {
         frame_dir: &Path,
         options: CoreLaunchOptions,
         relays: RelaySet,
+        lifetime: &CutoverGate,
     ) -> io::Result<Self> {
+        lifetime.check_open()?;
         let private_page_host = PrivatePageHostLaunch::spawn(&options)?;
-        Self::spawn_with_private_host(width, height, frame_dir, options, private_page_host, relays)
+        Self::spawn_with_private_host(
+            width,
+            height,
+            frame_dir,
+            options,
+            private_page_host,
+            relays,
+            Some(lifetime),
+        )
     }
 
     fn spawn_with_private_host(
@@ -162,7 +173,11 @@ impl SpawnedCore {
         options: CoreLaunchOptions,
         private_page_host: Option<PrivatePageHostLaunch>,
         relays: RelaySet,
+        lifetime: Option<&CutoverGate>,
     ) -> io::Result<Self> {
+        if let Some(lifetime) = lifetime {
+            lifetime.check_open()?;
+        }
         let (bluejs_host, page_host_config, script_private_socket_path) = match private_page_host {
             Some(private_page_host) => (
                 Some(private_page_host.host),
@@ -335,6 +350,9 @@ impl SpawnedCore {
                 command.arg("--debugger-static-scope-relation");
             }
         }
+        if let Some(lifetime) = lifetime {
+            lifetime.check_open()?;
+        }
         let mut child = command.spawn()?;
         if options.page_http_policy.is_some() || options.compiler_catalog.is_some() {
             let send_result = child
@@ -389,7 +407,16 @@ impl SpawnedCore {
         } else {
             Duration::from_secs(5)
         };
-        if !wait_for_socket_or_exit(&internal_socket_path, &mut child, startup_timeout) {
+        let ready = match lifetime {
+            Some(gate) => wait_for_socket_or_exit_while(
+                &internal_socket_path,
+                &mut child,
+                startup_timeout,
+                || !gate.is_closed(),
+            ),
+            None => wait_for_socket_or_exit(&internal_socket_path, &mut child, startup_timeout),
+        };
+        if !ready {
             let _ = child.kill();
             let _ = child.wait();
             let _ = std::fs::remove_file(&internal_socket_path);
@@ -411,7 +438,15 @@ impl SpawnedCore {
             )));
         }
         if let Some(debugger_socket) = &debugger_private_socket_path {
-            if !wait_for_socket(debugger_socket, Duration::from_secs(5)) {
+            let ready = match lifetime {
+                Some(gate) => {
+                    wait_for_socket_while(debugger_socket, Duration::from_secs(5), || {
+                        !gate.is_closed()
+                    })
+                }
+                None => wait_for_socket(debugger_socket, Duration::from_secs(5)),
+            };
+            if !ready {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
@@ -431,8 +466,15 @@ impl SpawnedCore {
                 )));
             }
         }
-        let mut stream = match connect_when_listening(&internal_socket_path, Duration::from_secs(5))
-        {
+        let connect = match lifetime {
+            Some(gate) => {
+                connect_when_listening_while(&internal_socket_path, Duration::from_secs(5), || {
+                    !gate.is_closed()
+                })
+            }
+            None => connect_when_listening(&internal_socket_path, Duration::from_secs(5)),
+        };
+        let mut stream = match connect {
             Ok(stream) => stream,
             Err(error) => {
                 let _ = child.kill();
@@ -462,7 +504,17 @@ impl SpawnedCore {
         // this already-past-its-handshake connection, `core` just
         // answers it again rather than re-gating (see `blueice_engine::
         // session::run_session`'s own docs).
-        if let Err(error) = blueice_ipc::client_handshake(&mut stream) {
+        let handshake = (|| {
+            stream.set_read_timeout(Some(startup_timeout))?;
+            stream.set_write_timeout(Some(startup_timeout))?;
+            if let Some(lifetime) = lifetime {
+                lifetime.watch_stream(&stream)?;
+            }
+            blueice_ipc::client_handshake(&mut stream)?;
+            stream.set_read_timeout(None)?;
+            stream.set_write_timeout(None)
+        })();
+        if let Err(error) = handshake {
             let _ = child.kill();
             let _ = child.wait();
             let _ = std::fs::remove_file(&internal_socket_path);

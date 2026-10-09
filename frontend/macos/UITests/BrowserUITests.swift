@@ -2041,6 +2041,7 @@ final class BrowserUITests: XCTestCase {
 
     private var credentialFixtureAccounts: [String] = []
     private var app: XCUIApplication!
+    private var automaticUpdateFixture: AutomaticUpdateFixture?
     private var originalInputSource: TISInputSource?
     private var preferenceDomain = ""
     private var assistantSettingsFile: URL!
@@ -2345,6 +2346,12 @@ final class BrowserUITests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        if let fixture = automaticUpdateFixture {
+            print("AUTOMATIC_UPDATE_FIXTURE_DIAGNOSTICS=" + fixture.startupDiagnostics())
+            app.terminate()
+            fixture.stop()
+            automaticUpdateFixture = nil
+        }
         defer {
             for username in credentialFixtureAccounts {
                 guard username.hasPrefix("bi-ui-"), UUID(uuidString: String(username.dropFirst(6))) != nil else { XCTFail("Invalid fixture account"); continue }
@@ -4024,6 +4031,51 @@ final class BrowserUITests: XCTestCase {
         XCTAssertFalse(app.buttons["restart-browser"].exists)
         XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce").first?.processIdentifier, originalPID)
         XCTAssertEqual(app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'browser-window'")).count, 1)
+    }
+
+    func testWindowCloseDuringAutomaticUpdateReapsServingAndStartingCore() throws {
+        launch()
+        let fixture = try AutomaticUpdateFixture()
+        automaticUpdateFixture = fixture
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
+        app.launchArguments += ["--launcher-exe", fixture.launcher.path]
+        app.launch()
+        XCTAssertTrue(app.textFields["address"].waitForExistence(timeout: 15))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 'about:credits'"), object: app.textFields["address"])
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed,
+                       "Status: \(String(describing: app.staticTexts["status"].value))\n" + fixture.startupDiagnostics())
+        XCTAssertTrue(app.groups["page"].waitForExistence(timeout: 15), app.debugDescription)
+        let launcher = try XCTUnwrap(fixture.processID("launcher"))
+        let serving = try XCTUnwrap(fixture.processID("serving"))
+        let owner = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce").first)
+        var information = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.stride)
+        XCTAssertEqual(proc_pidinfo(launcher, PROC_PIDTBSDINFO, 0, &information, size), size)
+        XCTAssertEqual(information.pbi_ppid, UInt32(owner.processIdentifier))
+        XCTAssertEqual(getpgid(launcher), launcher)
+        XCTAssertEqual(getpgid(serving), launcher)
+        try fixture.triggerUpdate()
+        let staged = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in fixture.processID("pending") != nil }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [staged], timeout: 15), .completed, app.debugDescription)
+        let pending = try XCTUnwrap(fixture.processID("pending"))
+        XCTAssertNotEqual(pending, serving)
+        XCTAssertEqual(getpgid(pending), launcher)
+        for pid in [launcher, serving, pending] { XCTAssertEqual(kill(pid, 0), 0) }
+        let evidence: [String: Any] = ["root": fixture.root.path, "launcher": launcher,
+                                      "serving": serving, "pending": pending]
+        let encoded = try JSONSerialization.data(withJSONObject: evidence, options: [.sortedKeys])
+        print("AUTOMATIC_UPDATE_FIXTURE_STARTED=" + String(decoding: encoded, as: UTF8.self))
+        waitValue(app.textFields["address"], "about:credits")
+        XCTAssertTrue(app.groups["page"].exists)
+        app.windows["browser-window"].buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
+        let stopped = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            func gone(_ pid: pid_t) -> Bool { kill(pid, 0) == -1 && errno == ESRCH }
+            return [launcher, serving, pending, -launcher].allSatisfy(gone)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [stopped], timeout: 10), .completed,
+                       "Closing the native browser must reap the serving and staged service generations")
     }
 
     func testWindowCloseTerminatesApplication() {

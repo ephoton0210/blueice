@@ -8,21 +8,87 @@ use super::*;
 /// serialized within a broker: a v1 → v2 cutover. Releasing it in
 /// [`Drop`] covers all fail-closed early returns in [`cutover`].
 pub(super) struct CutoverGate {
-    pub(super) in_progress: AtomicBool,
+    in_progress: Mutex<bool>,
+    closed: AtomicBool,
+    changed: std::sync::Condvar,
+    staged_stream: Mutex<Option<UnixStream>>,
 }
 
 impl CutoverGate {
     pub(super) fn new() -> Self {
         Self {
-            in_progress: AtomicBool::new(false),
+            in_progress: Mutex::new(false),
+            closed: AtomicBool::new(false),
+            changed: std::sync::Condvar::new(),
+            staged_stream: Mutex::new(None),
         }
     }
 
     pub(super) fn try_acquire(&self) -> Option<CutoverGuard<'_>> {
-        self.in_progress
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .ok()
-            .map(|_| CutoverGuard { gate: self })
+        let mut busy = self.in_progress.lock().unwrap_or_else(|p| p.into_inner());
+        if *busy || self.is_closed() {
+            return None;
+        }
+        *busy = true;
+        Some(CutoverGuard { gate: self })
+    }
+
+    pub(super) fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
+
+    pub(super) fn check_open(&self) -> io::Result<()> {
+        if self.is_closed() {
+            Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "browser broker is shutting down",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Interrupts blocking handshake/replay I/O on the single staged core.
+    pub(super) fn watch_stream(&self, stream: &UnixStream) -> io::Result<()> {
+        let mut watched = self.staged_stream.lock().unwrap_or_else(|p| p.into_inner());
+        self.check_open()?;
+        *watched = Some(stream.try_clone()?);
+        Ok(())
+    }
+
+    pub(super) fn close(&self) {
+        let _busy = self.in_progress.lock().unwrap_or_else(|p| p.into_inner());
+        self.closed.store(true, Ordering::Release);
+        if let Some(stream) = self
+            .staged_stream
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take()
+        {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        self.changed.notify_all();
+    }
+
+    /// A cutover releases its guard only after every staged child is reaped.
+    pub(super) fn wait_idle(&self) {
+        let busy = self.in_progress.lock().unwrap_or_else(|p| p.into_inner());
+        drop(
+            self.changed
+                .wait_while(busy, |busy| *busy)
+                .unwrap_or_else(|p| p.into_inner()),
+        );
+    }
+
+    /// Allows a long polling interval without delaying owned shutdown.
+    pub(super) fn wait_closed(&self, timeout: Duration) -> bool {
+        let busy = self.in_progress.lock().unwrap_or_else(|p| p.into_inner());
+        drop(
+            self.changed
+                .wait_timeout_while(busy, timeout, |_| !self.is_closed())
+                .unwrap_or_else(|p| p.into_inner()),
+        );
+        self.is_closed()
     }
 }
 
@@ -32,7 +98,18 @@ pub(super) struct CutoverGuard<'a> {
 
 impl Drop for CutoverGuard<'_> {
     fn drop(&mut self) {
-        self.gate.in_progress.store(false, Ordering::Release);
+        let mut busy = self
+            .gate
+            .in_progress
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        self.gate
+            .staged_stream
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
+        *busy = false;
+        self.gate.changed.notify_all();
     }
 }
 
@@ -446,7 +523,17 @@ pub(super) fn perform_swap(
     v2: SpawnedCore,
     target_generation: u64,
     replay_frames: Vec<TaggedServerMessage>,
-) {
+) -> Result<(), String> {
+    // Serialize publication with closing admission, not just other cutovers.
+    let _lifetime = broker
+        .cutover_gate
+        .in_progress
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    broker
+        .cutover_gate
+        .check_open()
+        .map_err(|error| error.to_string())?;
     // Every relay accept snapshots its target while holding this gate.
     // Hold it across the browser-writer swap and both relay activations,
     // so no newly accepted compiler or debugger connection can observe a
@@ -511,6 +598,7 @@ pub(super) fn perform_swap(
         broker.done.clone(),
     );
     drop(v1); // reap v1 after clients have already received v2's frames
+    Ok(())
 }
 
 /// Performs one cutover attempt: captures v1's tab list, spawns v2,
@@ -630,6 +718,7 @@ pub(super) fn attempt_cutover(
             compiler_mcp_relay: broker.compiler_mcp_relay.clone(),
             debugger_relay: broker.debugger_relay.clone(),
         },
+        &broker.cutover_gate,
     )
     .map_err(|e| AttemptFailure::Retry(format!("failed to spawn v2: {e}")))?;
 
@@ -648,6 +737,11 @@ pub(super) fn attempt_cutover(
 
 pub(crate) fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
     let Some(_guard) = broker.cutover_gate.try_acquire() else {
+        if broker.cutover_gate.is_closed() {
+            return control::ControlReply::CutoverFailed {
+                reason: "browser broker is shutting down".into(),
+            };
+        }
         crate::trace::event("cutover.busy", "another cutover is in flight");
         return control::ControlReply::CutoverBusy;
     };
@@ -671,6 +765,10 @@ pub(crate) fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
     let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
     match run_with_retries(
         |attempt| {
+            broker
+                .cutover_gate
+                .check_open()
+                .map_err(|error| AttemptFailure::Final(error.to_string()))?;
             attempt_cutover(
                 broker,
                 &captured_tabs,
@@ -683,7 +781,9 @@ pub(crate) fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
     ) {
         Ok((v2, replay_frames)) => {
             let tabs_migrated = captured_tabs.len();
-            perform_swap(broker, v2, target_generation, replay_frames);
+            if let Err(reason) = perform_swap(broker, v2, target_generation, replay_frames) {
+                return control::ControlReply::CutoverFailed { reason };
+            }
             crate::trace::event(
                 "cutover.done",
                 &format!("generation {target_generation}, {tabs_migrated} tab(s)"),

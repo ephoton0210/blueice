@@ -18,6 +18,7 @@ use blueice_launcher::control::{
 };
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -56,6 +57,7 @@ pub struct Rig {
     pub child: Child,
     pub rendezvous: PathBuf,
     pub control: PathBuf,
+    isolated_group: Option<libc::pid_t>,
 }
 
 impl Rig {
@@ -67,6 +69,20 @@ impl Rig {
 
     /// [`Self::start`] with extra launcher arguments.
     pub fn start_with(label: &str, core_script: &str, extra_args: &[&str]) -> Rig {
+        Self::start_with_group(label, core_script, extra_args, false)
+    }
+
+    /// Isolates descendants for fallback cleanup after lifecycle assertions.
+    pub fn start_isolated(label: &str, core_script: &str, extra_args: &[&str]) -> Rig {
+        Self::start_with_group(label, core_script, extra_args, true)
+    }
+
+    fn start_with_group(
+        label: &str,
+        core_script: &str,
+        extra_args: &[&str],
+        isolated: bool,
+    ) -> Rig {
         let dir = unique_dir(label);
         let built = PathBuf::from(env!("CARGO_BIN_EXE_blueice-launcher"));
         let built_dir = built.parent().unwrap();
@@ -89,25 +105,31 @@ impl Rig {
 
         let rendezvous = dir.join("rv.sock");
         let control = dir.join("ctl.sock");
-        let child = Command::new(dir.join("blueice-launcher"))
+        let mut command = Command::new(dir.join("blueice-launcher"));
+        command
             .args(["--socket", rendezvous.to_str().unwrap()])
             .args(["--control-socket", control.to_str().unwrap()])
             .args(["--width", "320", "--height", "200"])
             .args(["--frame-dir", dir.join("frames").to_str().unwrap()])
-            .args(extra_args)
-            .spawn()
-            .expect("failed to start the launcher");
-        assert!(wait_for(&rendezvous), "the launcher never listened");
-        assert!(
-            wait_for(&control),
-            "the launcher never opened its control socket"
-        );
-        Rig {
+            .args(extra_args);
+        if isolated {
+            command.process_group(0);
+        }
+        let child = command.spawn().expect("failed to start the launcher");
+        let isolated_group = isolated.then_some(child.id() as libc::pid_t);
+        let rig = Rig {
             dir,
             child,
             rendezvous,
             control,
-        }
+            isolated_group,
+        };
+        assert!(wait_for(&rig.rendezvous), "the launcher never listened");
+        assert!(
+            wait_for(&rig.control),
+            "the launcher never opened its control socket"
+        );
+        rig
     }
 
     pub fn invocations(&self) -> u32 {
@@ -144,6 +166,13 @@ impl Drop for Rig {
         if self.child.try_wait().ok().flatten().is_none() {
             let _ = self.child.kill();
             let _ = self.child.wait();
+        }
+        if let Some(group) = self.isolated_group {
+            // The group was created atomically for this fixture's child alone.
+            // Tests assert natural cleanup before this last-resort containment.
+            unsafe {
+                libc::kill(-group, libc::SIGKILL);
+            }
         }
         let _ = std::fs::remove_dir_all(&self.dir);
     }

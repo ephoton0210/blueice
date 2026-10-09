@@ -7,5 +7,7 @@
 <dict>
     <key>BlueIceSFTPFixtureMetadata</key>
     <string>$(BLUEICE_SFTP_FIXTURE_METADATA)</string>
+    <key>BlueIceUpdateFixtureMetadata</key>
+    <string>$(BLUEICE_UPDATE_FIXTURE_METADATA)</string>
 </dict>
 </plist>

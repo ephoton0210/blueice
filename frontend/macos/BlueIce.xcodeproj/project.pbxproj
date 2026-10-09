@@ -7,6 +7,8 @@
 	classes = {};
 	objectVersion = 56;
 	objects = {
+		AB1100000000000000000001 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticUpdateFixture.swift; sourceTree = "<group>"; };
+		AB1100000000000000000002 = { isa = PBXBuildFile; fileRef = AB1100000000000000000001; };
 		A8BD3E509A4BDF0235B232FA = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserDownloadDestination.swift; sourceTree = "<group>"; };
 		C355C50261F6CF4AA9EE34CB = { isa = PBXBuildFile; fileRef = A8BD3E509A4BDF0235B232FA; };
 		72A5A86A9AF35A40AEFEB12D = { isa = PBXBuildFile; fileRef = A8BD3E509A4BDF0235B232FA; };
@@ -155,7 +157,7 @@
 		203AD6DA7C90CCDB8D67F1BC = { isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Network.entitlements; sourceTree = "<group>"; };
 		BCE4B1BC4B9B2A77C4912CB2 = { isa = PBXBuildFile; fileRef = 01B16BED87932ABE54B85B20; };
 		752B5EC884EDC2858F69BFED = { isa = PBXBuildFile; fileRef = 01B16BED87932ABE54B85B20; };
-		B033E77E9249D776F945218D = { isa = PBXGroup; children = (DDC3BDE1881775E46CC9942D, 4839651E92E2D11DB27D75E2, AB0500000000000000000010, 03850E6E7DF618AB426218EF, 01B16BED87932ABE54B85B20,); path = TestSupport; sourceTree = "<group>"; };
+		B033E77E9249D776F945218D = { isa = PBXGroup; children = (AB1100000000000000000001, DDC3BDE1881775E46CC9942D, 4839651E92E2D11DB27D75E2, AB0500000000000000000010, 03850E6E7DF618AB426218EF, 01B16BED87932ABE54B85B20,); path = TestSupport; sourceTree = "<group>"; };
 		01B16BED87932ABE54B85B20 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPFixture.swift; sourceTree = "<group>"; };
 		767B59314E194AD2673B4977 = { isa = PBXBuildFile; fileRef = E376A07DF408B1626567AB4A; };
 		880A2448508AB71D73113E9C = { isa = PBXBuildFile; fileRef = E376A07DF408B1626567AB4A; };
@@ -203,7 +205,7 @@
 		2F87F02AA7C8048BEB1B196F = { isa = XCConfigurationList; buildConfigurations = (1DE0C849D0AB2402B23E8053, DA6CF745013074DE1E22D90D,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		5F126C59B5CCB56AB83CC15D = { isa = PBXNativeTarget; buildConfigurationList = 2F87F02AA7C8048BEB1B196F; buildPhases = (79A52F6A91A4288F21F1C46F, AB0800000000000000000014, 17A0EC79021C7FC743967967,); buildRules = (); dependencies = (70566A8CA1A7EA5932E8AEF6,); name = ProtocolTests; productName = ProtocolTests; productReference = BEBEA91E455AF1A656C3298A; productType = "com.apple.product-type.bundle.unit-test"; };
 		03884EDB78D5EC7E6ADA9A8B = { isa = PBXBuildFile; fileRef = 183A2DF14E1C2EFD5D6C3FC2; };
-		C10756E0B9CD9A2678CD9DC3 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (F032016BEB37EDD453948D45,AB0500000000000000000011,7370EB163150B1249ECFEEDB, BCE4B1BC4B9B2A77C4912CB2, 03884EDB78D5EC7E6ADA9A8B,); runOnlyForDeploymentPostprocessing = 0; };
+		C10756E0B9CD9A2678CD9DC3 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (AB1100000000000000000002, F032016BEB37EDD453948D45,AB0500000000000000000011,7370EB163150B1249ECFEEDB, BCE4B1BC4B9B2A77C4912CB2, 03884EDB78D5EC7E6ADA9A8B,); runOnlyForDeploymentPostprocessing = 0; };
 		6FE689DF012768FB2829EE85 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		14EA1E9E9DDF0CE202D7BF9F = { isa = PBXContainerItemProxy; containerPortal = 244210E48437B6556980A702; proxyType = 1; remoteGlobalIDString = 45B0AAE9A752DDC89B849E6A; remoteInfo = BlueIce; };
 		105B694F6FF7106FEFF3EA62 = { isa = PBXTargetDependency; target = 45B0AAE9A752DDC89B849E6A; targetProxy = 14EA1E9E9DDF0CE202D7BF9F; };
