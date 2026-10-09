@@ -142,8 +142,10 @@ fn serve_html_once(body: &'static str) -> (std::net::SocketAddr, thread::JoinHan
     let address = listener.local_addr().unwrap();
     let server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
+        eprintln!("core HTTP fixture {address}: accepted connection");
         let mut request = [0u8; 1024];
-        let _ = stream.read(&mut request);
+        let read = stream.read(&mut request);
+        eprintln!("core HTTP fixture {address}: request read {read:?}");
         stream
             .write_all(
                 format!(
@@ -153,6 +155,7 @@ fn serve_html_once(body: &'static str) -> (std::net::SocketAddr, thread::JoinHan
                 .as_bytes(),
             )
             .unwrap();
+        eprintln!("core HTTP fixture {address}: response sent");
     });
     (address, server)
 }
@@ -214,18 +217,28 @@ fn script_exchange(
     }
 }
 
-fn navigate_default_tab(frontend: &mut UnixStream, url: String) {
+fn navigate_default_tab(frontend: &mut UnixStream, url: String, stage: &str) {
+    let started = Instant::now();
     blueice_ipc::write_client_message(
         frontend,
         &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
     )
     .unwrap();
+    eprintln!("core navigation {stage}: request sent to {url}");
     loop {
-        let reply = blueice_ipc::read_server_message(frontend)
-            .unwrap_or_else(|error| panic!("navigation to {url} failed: {error}"));
+        let reply = blueice_ipc::read_server_message(frontend).unwrap_or_else(|error| {
+            panic!(
+                "navigation {stage} to {url} failed after {:?}: {error}",
+                started.elapsed()
+            )
+        });
         match reply {
             blueice_ipc::ServerMessage::Navigated { url: navigated } => {
                 assert_eq!(navigated, url);
+                eprintln!(
+                    "core navigation {stage}: Navigated after {:?}",
+                    started.elapsed()
+                );
                 break;
             }
             blueice_ipc::ServerMessage::FrameReady { .. } => {}
