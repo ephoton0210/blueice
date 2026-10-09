@@ -6729,3 +6729,40 @@ the complete workspace and original 29-job CI. This reduces measured unused
 font work; the unresolved full macOS workload still needs final hosted evidence.
 Assertions, navigation timeouts, coverage floors/exclusions and original CI
 workflows have not changed. K.7.1 remains the next implementation leaf after M8.
+
+### M8 final-source workspace and hosted CI verification (2026-10-10)
+
+Final source `1f76ff28c8aa14da7c9e990bb5305c9e29278b62` passes the complete
+frozen Linux workspace gate: all-target build, 6,861 tests in 504 groups,
+zero failures, three explicit Intl Node matrices, all-target workspace Clippy
+with warnings denied and format. All 5,493 backend/build hashes match.
+The ordinary workspace run retains 162 ignored tests; K.6.3's separately
+completed K.0 gate executes all 158 BlueTS/bridge oracles with 1,212 passes.
+
+Original CI [37949582570](https://github.com/ephoton0210/blueice/actions/runs/37949582570)
+passes all 29 jobs on that exact source. The committed workflow's 25 platform
+names match the actual jobs; every required Build, Test, Clippy, three Intl
+Node matrices and corresponding Rustfmt step succeeds on every platform.
+Both hosted TypeScript 5.9.3 oracle jobs execute all 158 tests in 97 groups,
+with zero failures and zero ignored. Coverage and the final CI gate succeed.
+Workspace line coverage is 94.77% (201,590 lines, 10,552 missed); independent
+BlueJS is 99.53% (81,248 lines, 384 missed). The original four process-wiring
+workspace exclusions remain unchanged, and BlueJS has no filename exclusions.
+
+The earlier K.6.3 run `37944994980` also passes all 29 jobs on `e75d62128`;
+its line coverage is 94.77%/99.53%. Full-workload eager-font diagnostic
+`37946351718` succeeds as well. Neither diagnostic success nor final-source
+success establishes the earlier timeout's inner cause or proves the per-face
+change necessary. The candidate demonstrably removes unused cold font work;
+font selection, metrics, assertions, deadlines and production CI remain intact.
+Diagnostic workflows stay isolated.
+
+Evidence: `blueice-font-cold-workspace-{status,report,source-hashes}.json`,
+`blueice-font-cold-final-source-ci-final-report.json`,
+`blueice-font-cold-completed-platform-steps-proof.json`,
+`blueice-font-cold-platform-matrix-proof.json`,
+`blueice-font-cold-original-{macos,ubuntu}-oracles-report.json`,
+`blueice-font-cold-original-coverage-report.json` and
+`blueice-k63-final-source-ci-final-report.json`, raw logs and frozen inputs.
+M8 is verified. Continue K.7.1's committed test-first baseline through
+implementation and the full K.0 gate; K.7 through K.10 remain open.
