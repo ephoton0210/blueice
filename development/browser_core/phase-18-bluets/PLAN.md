@@ -7392,3 +7392,27 @@ completion cache collision at source offset zero. Its correction clears an
 opaque function's colliding completion entry. Catch assignments also reset
 unknown refinements. The broad ordinary replay is still running. K.7.1 and
 its lowering/declaration/K.0 gates remain open and production is unpushed.
+
+### K.7.1 Direct variable pattern failing baseline (2026-10-10)
+
+The 7,022-file third pattern replay passes all eight exact native diagnostic
+sources, both context recorders, 241 units, format and three-crate all-target
+Clippy. All 638 canonical target verdicts and primary diagnostics now match.
+Two ordinary target declaration tests still fail only on constant templates.
+The parser record helper is moved into the existing pattern module after a
+1,200-line review; the root returns to 1,180 lines without changing AST fields.
+
+The new bridge witness observes getter/default calls, array/object rest,
+[42,2,false] runtime values and exact declaration output. Its frozen 7,024-file
+replay passes the native Node/declaration oracle and all six precise pattern
+boundaries. The direct bridge test fails with `ReferenceError("first")`: its
+variable lowerer still puts the printed pattern in one identifier. Commit
+this actual failing runtime baseline before converting retained patterns to
+the original BlueJS AST. Exported/ambient, re-exported and nested variable
+patterns remain precise refusals pending their declaration/module support.
+
+The preceding complete ordinary catch-flow gate passes 1,082 tests in 113
+groups, with four failures confined to diagnostic/target matrices and 178
+ignored tests. Its original shared primary differences were 44 binding-
+pattern entries; the focused pattern correction resolves those verdicts.
+K.7.1 lowering and the final ordinary/every-ignored K.0 gates remain open.
