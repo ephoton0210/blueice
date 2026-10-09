@@ -6277,3 +6277,23 @@ as independently observed. Its navigation fixture passed on that run.
 The repaired `debugger_support.rs` is 1,266 lines. Commit/push this repair
 first, then execute queued K.6.CI.R in a separate verified commit/push. Full
 normal final-source hosted CI remains mandatory and open.
+
+
+### Verified native debugger execution-control split (2026-10-09)
+
+After the tested refusal repair `bc5e48bf` was committed and pushed,
+K.6.CI.R moves entry/root arming, execution-state inspection, pause/resume
+and stepping methods into `debugger_support/execution_control.rs`. The
+parent retains opaque records, registration, exact validation and lifecycle
+helpers. Mechanical comparison preserves every moved method byte and string
+literal after formatting; the parent's other code is unchanged apart from
+the child declaration. The parent is 959 lines and the child is 317 lines.
+
+The independent frozen five-file Linux gate passes format, engine all-target
+Clippy with warnings denied, launcher binary build, the public completed
+module/classic regression and all 508 engine tests. All source hashes match.
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k6-root-refactor-final-{status,report}.json`,
+frozen hashes and logs, and `blueice-k6-root-refactor-mechanical-report.json`.
+Commit/push this refactor independently. Normal complete final-source hosted
+workspace/platform/coverage CI remains open; a diagnostic-only workflow does
+not replace that gate.
