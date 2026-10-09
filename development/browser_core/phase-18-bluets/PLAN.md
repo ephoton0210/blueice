@@ -6470,3 +6470,27 @@ the reference invalidation repair; keep the baseline unpushed until complete
 K.0 passes. The production draft remains uncommitted. K.6.3 and original
 29-job hosted CI remain open; no source-size exception or runtime grant is
 added. Library references currently measure the owned ES2020/ES2022 profiles.
+
+
+### K.6.3 reference invalidation and library-refusal baseline (2026-10-09)
+
+Following test baseline `4193f6d01`, referenced global scripts invalidate all
+consumers when their old/new dependency closure is affected. Changed reference
+edges and library selection are also compared. The frozen 5,374-input draft
+passes format, both-crate all-target Clippy, all seven new static controls, all
+three global-cache regressions and all 1,048 ordinary tests in 96 groups, with
+158 ignored oracles. All source hashes match. Evidence:
+`blueice-k63-static-green-{status,report}.json`, logs/hashes.
+
+A further pinned probe records all 100 TypeScript 5.9.3 library selector labels
+and verifies accepted `dom`/`es5` controls plus rejected `absent` (TS2726).
+BlueTS currently mislabels the known but unavailable `dom` surface as absent.
+A public regression requires a precise UnsupportedSyntax refusal without an
+invented TypeScript counterpart for these unprovided surfaces. The frozen
+baseline passes format and both-crate Clippy; the first known-selector control
+fails, four other boundary controls and three global-cache controls pass.
+Evidence: `blueice-k63-library-red-{status,report}.json`, hashes/logs and
+`blueice-k63-library-catalog-probe/report.json`. Commit the failing test before
+repair. Full library content/selection remains the recorded K.10/catalog gap;
+K.6.3 measures the existing owned profiles. Production remains uncommitted,
+this baseline stays unpushed until complete K.0, and hosted CI remains open.

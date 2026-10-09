@@ -127,3 +127,26 @@ fn ambient_values_cannot_authorize_executable_imports_or_reexports() {
         }
     }
 }
+
+#[test]
+fn known_unavailable_library_selectors_keep_a_precise_frontend_refusal() {
+    for name in ["dom", "es5"] {
+        let source = format!("/// <reference lib=\"{name}\" />\nexport const answer: number = 42;");
+        let result = compile(
+            MAIN,
+            &MapLoader::from([ModuleSource::new(MAIN, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert!(result.output.is_none());
+        assert!(
+            result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::UnsupportedSyntax
+                    && diagnostic.typescript.is_none()
+                    && diagnostic.message.contains(name)
+            }),
+            "a known pinned library is unavailable, rather than absent: {:?}",
+            result.diagnostics
+        );
+    }
+}
