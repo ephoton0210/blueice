@@ -386,7 +386,7 @@ pub(crate) fn read_frame_bytes_with_limit<R: Read>(
     max_bytes: usize,
 ) -> io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
-    read_exact_no_progress_loss(r, &mut len_bytes)?;
+    read_exact_no_progress_loss(r, &mut len_bytes, false)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
     if len > max_bytes {
         return Err(io::Error::new(
@@ -395,7 +395,7 @@ pub(crate) fn read_frame_bytes_with_limit<R: Read>(
         ));
     }
     let mut buf = vec![0u8; len];
-    read_exact_no_progress_loss(r, &mut buf)?;
+    read_exact_no_progress_loss(r, &mut buf, true)?;
     Ok(buf)
 }
 
@@ -406,7 +406,7 @@ fn read_frame_bytes_bounded<R: Read>(r: &mut R, maximum_bytes: usize) -> io::Res
 }
 
 /// Like [`Read::read_exact`], but a read *timeout* that occurs after
-/// some bytes have already been consumed into `buf` is retried rather
+/// some bytes of the frame have already been consumed is retried rather
 /// than propagated as an error. Plain `read_exact` would propagate it
 /// immediately -- silently discarding those already-read bytes forever
 /// (the stream's position has already advanced past them), which
@@ -418,11 +418,15 @@ fn read_frame_bytes_bounded<R: Read>(r: &mut R, maximum_bytes: usize) -> io::Res
 /// abandoned mid-read just because the timeout window closed while
 /// only *part* of it had arrived.
 ///
-/// A timeout with *zero* bytes read so far for this call is still
+/// A timeout with *zero* bytes read so far for the frame is still
 /// propagated immediately (nothing has been consumed, so there's
 /// nothing to lose) -- this is what lets a caller polling for other
 /// work between whole messages actually get control back promptly.
-fn read_exact_no_progress_loss<R: Read>(r: &mut R, buf: &mut [u8]) -> io::Result<()> {
+fn read_exact_no_progress_loss<R: Read>(
+    r: &mut R,
+    buf: &mut [u8],
+    frame_started: bool,
+) -> io::Result<()> {
     let mut filled = 0;
     while filled < buf.len() {
         match r.read(&mut buf[filled..]) {
@@ -435,7 +439,7 @@ fn read_exact_no_progress_loss<R: Read>(r: &mut R, buf: &mut [u8]) -> io::Result
             Ok(n) => filled += n,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e)
-                if filled > 0
+                if (frame_started || filled > 0)
                     && matches!(
                         e.kind(),
                         io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut

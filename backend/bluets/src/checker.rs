@@ -30,7 +30,7 @@ mod properties;
 mod scopes;
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
-pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v2";
+pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v2.1";
 mod type_operators;
 mod type_relations;
 use properties::{
