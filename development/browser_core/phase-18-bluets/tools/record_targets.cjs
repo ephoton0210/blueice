@@ -46,13 +46,17 @@ for (const item of settings.cases) {
   const entry = path.join(directory,'main.ts');
   const parsed = ts.parseCommandLine(item.flags);
   if (parsed.errors.length) throw new Error(JSON.stringify(parsed.errors.map(diagnostic)));
+  if (![ts.ModuleKind.CommonJS, ts.ModuleKind.ES2022].includes(parsed.options.module)) {
+    throw new Error(`Unsupported reference module: ${parsed.options.module}`);
+  }
+  const sourceType = parsed.options.module === ts.ModuleKind.CommonJS ? 'script' : 'module';
   const options = {...parsed.options,noEmit:true};
   const program = ts.createProgram([entry],options,host(options));
   const errors = ts.getPreEmitDiagnostics(program).filter(d=>d.category===ts.DiagnosticCategory.Error);
   const result = {entry:item.entry,target:item.target,form:item.form,accepts:errors.length===0,flags:item.flags,sources:['main.ts'],files:['main.ts'],runtime:errors.length===0,declaration:errors.length===0,first:errors.length?diagnostic(errors[0]):null,stdout:null,declaration_text:null,reference_helpers:[]};
   if (!errors.length) {
     const outDir = path.join(directory,'out');
-    fs.writeFileSync(path.join(directory,'package.json'),JSON.stringify({type:'commonjs'})+'\n');
+    fs.writeFileSync(path.join(directory,'package.json'),JSON.stringify({type:sourceType === 'script' ? 'commonjs' : 'module'})+'\n');
     const emitOptions = {...parsed.options,noEmit:false,declaration:true,noEmitOnError:true,newLine:ts.NewLineKind.LineFeed,outDir};
     const emitProgram = ts.createProgram([entry],emitOptions,host(emitOptions));
     const emitErrors = ts.getPreEmitDiagnostics(emitProgram).filter(d=>d.category===ts.DiagnosticCategory.Error);
@@ -63,7 +67,7 @@ for (const item of settings.cases) {
     const js = fs.readFileSync(path.join(outDir,'main.js'),'utf8');
     const declaration = fs.readFileSync(path.join(outDir,'main.d.ts'),'utf8');
     const edition = item.target==='ESNext'?'latest':item.target==='ES5'?5:Number(item.target.slice(2));
-    acorn.parse(js,{ecmaVersion:edition,sourceType:'script'});
+    acorn.parse(js,{ecmaVersion:edition,sourceType});
     const run = spawnSync(process.execPath,[path.join(outDir,'main.js')],{encoding:'utf8',timeout:30000});
     if (run.error || run.status!==0) throw new Error(JSON.stringify({entry:item.entry,status:run.status,error:String(run.error),stderr:run.stderr}));
     result.declaration_text = declaration;
@@ -73,7 +77,7 @@ for (const item of settings.cases) {
   cases.push(result);
 
 }
-const record = {version:ts.version,targets:settings.targets,forms:settings.forms,cases};
+const record = {version:ts.version,targets:settings.targets,forms:settings.forms,modules:settings.modules,cases};
 for (const item of record.cases) { delete item.emit_diagnostics; delete item.emit_skipped; }
 const text = JSON.stringify(record,null,2)+'\n';
 const destination = path.join(corpus,'targets-reference.json');

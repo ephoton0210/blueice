@@ -27,6 +27,16 @@ fn cases() -> Vec<Value> {
     reference()["cases"].as_array().unwrap().clone()
 }
 
+fn module_kind(case: &Value) -> &'static str {
+    let flags = case["flags"].as_array().unwrap();
+    let flag = flags.windows(2).find(|pair| pair[0] == "--module").unwrap();
+    match flag[1].as_str().unwrap() {
+        "commonjs" => "commonjs",
+        "ES2022" => "es2022",
+        other => panic!("unsupported reference module: {other}"),
+    }
+}
+
 fn report(output: &Output) -> String {
     format!(
         "{}{}",
@@ -51,7 +61,12 @@ fn prepare(case: &Value, directory: &Path, emit: bool) -> PathBuf {
         directory.join("main.ts"),
     )
     .unwrap();
-    fs::write(directory.join("package.json"), "{\"type\":\"commonjs\"}\n").unwrap();
+    fs::write(
+        directory.join("package.json"),
+        json!({"type":if module_kind(case) == "commonjs" { "commonjs" } else { "module" }})
+            .to_string(),
+    )
+    .unwrap();
     let mut options = json!({});
     let flags = case["flags"].as_array().unwrap();
     let mut index = 0;
@@ -92,32 +107,37 @@ fn matrix_covers_every_target_and_form() {
     let cases = cases();
     assert_eq!(reference["targets"].as_array().unwrap().len(), 11);
     assert_eq!(reference["forms"].as_array().unwrap().len(), 17);
-    assert_eq!(cases.len(), 187);
+    assert_eq!(reference["modules"].as_array().unwrap().len(), 2);
+    assert_eq!(cases.len(), 374);
     assert_eq!(
         cases.iter().filter(|case| case["accepts"] == true).count(),
-        180
+        360
     );
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
-        180
+        360
     );
     assert_eq!(
         cases
             .iter()
             .filter(|case| case["declaration"] == true)
             .count(),
-        180
+        360
     );
     for target in reference["targets"].as_array().unwrap() {
         for form in reference["forms"].as_array().unwrap() {
-            assert_eq!(
-                cases
-                    .iter()
-                    .filter(|case| case["target"] == *target && case["form"] == *form)
-                    .count(),
-                1,
-                "{target}/{form}"
-            );
+            for module in reference["modules"].as_array().unwrap() {
+                assert_eq!(
+                    cases
+                        .iter()
+                        .filter(|case| case["target"] == *target
+                            && case["form"] == *form
+                            && module_kind(case) == module.as_str().unwrap().to_ascii_lowercase())
+                        .count(),
+                    1,
+                    "{target}/{form}/{module}"
+                );
+            }
         }
     }
     let recorded: BTreeSet<_> = cases
@@ -243,36 +263,38 @@ fn target_manifests_record_helper_version_and_distinct_identity() {
     let mut versions = BTreeSet::new();
     for target in reference()["targets"].as_array().unwrap() {
         let target = target.as_str().unwrap().to_ascii_lowercase();
-        let output = root.join(&target);
-        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
-            .arg("build")
-            .arg(&source)
-            .arg("--project-root")
-            .arg(&root)
-            .args(["--target", &target, "--module", "commonjs"])
-            .arg("--out-dir")
-            .arg(&output)
-            .output()
-            .unwrap();
-        if !built.status.success() {
-            failures.push(format!("{target}: {}", report(&built)));
-            continue;
-        }
-        let manifest: Value = serde_json::from_str(
-            &fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap(),
-        )
-        .unwrap();
-        if manifest["target"] != target {
-            failures.push(format!("{target}: manifest target differs: {manifest}"));
-        }
-        match manifest["target_helper_version"].as_str() {
-            Some(version) if !version.is_empty() => {
-                versions.insert(version.to_string());
+        for module in ["commonjs", "es2022"] {
+            let output = root.join(format!("{target}-{module}"));
+            let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+                .arg("build")
+                .arg(&source)
+                .arg("--project-root")
+                .arg(&root)
+                .args(["--target", &target, "--module", module])
+                .arg("--out-dir")
+                .arg(&output)
+                .output()
+                .unwrap();
+            if !built.status.success() {
+                failures.push(format!("{target}: {}", report(&built)));
+                continue;
             }
-            _ => failures.push(format!("{target}: missing target helper version")),
-        }
-        if !fingerprints.insert(manifest["fingerprint"].as_str().unwrap().to_string()) {
-            failures.push(format!("{target}: reused another target's fingerprint"));
+            let manifest: Value = serde_json::from_str(
+                &fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap(),
+            )
+            .unwrap();
+            if manifest["target"] != target {
+                failures.push(format!("{target}: manifest target differs: {manifest}"));
+            }
+            match manifest["target_helper_version"].as_str() {
+                Some(version) if !version.is_empty() => {
+                    versions.insert(version.to_string());
+                }
+                _ => failures.push(format!("{target}: missing target helper version")),
+            }
+            if !fingerprints.insert(manifest["fingerprint"].as_str().unwrap().to_string()) {
+                failures.push(format!("{target}: reused another target's fingerprint"));
+            }
         }
     }
     fs::remove_dir_all(root).unwrap();
@@ -281,7 +303,7 @@ fn target_manifests_record_helper_version_and_distinct_identity() {
         1,
         "all targets use one versioned helper family: {failures:?}"
     );
-    assert_eq!(fingerprints.len(), 11, "{failures:?}");
+    assert_eq!(fingerprints.len(), 22, "{failures:?}");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
@@ -294,13 +316,13 @@ fn recorded_targets_match_pinned_typescript() {
     assert!(output.status.success(), "{}", report(&output));
 }
 
-fn syntax(file: &Path, target: &str) -> Output {
+fn syntax(file: &Path, target: &str, module: &str) -> Output {
     let wrapper = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/oracle_support/assert_target_syntax.cjs");
     Command::new("node")
         .arg(wrapper)
         .arg(file)
-        .args([target, "commonjs"])
+        .args([target, module])
         .output()
         .unwrap()
 }
@@ -330,7 +352,7 @@ fn target_outputs_preserve_execution_declarations_and_syntax_edition() {
             continue;
         }
         let file = directory.join("blue/main.js");
-        let parsed = syntax(&file, case["target"].as_str().unwrap());
+        let parsed = syntax(&file, case["target"].as_str().unwrap(), module_kind(&case));
         if !parsed.status.success() {
             failures.push(format!(
                 "{entry}: target syntax differs: {}",
@@ -360,7 +382,11 @@ fn target_outputs_preserve_execution_declarations_and_syntax_edition() {
 fn existing_es2020_logical_assignment_obeys_the_syntax_floor() {
     let case = cases()
         .into_iter()
-        .find(|case| case["target"] == "ES2020" && case["form"] == "logical-assign")
+        .find(|case| {
+            case["target"] == "ES2020"
+                && case["form"] == "logical-assign"
+                && module_kind(case) == "commonjs"
+        })
         .unwrap();
     let root = temporary_root("logical-assignment");
     prepare(&case, &root, false);
@@ -383,7 +409,7 @@ fn existing_es2020_logical_assignment_obeys_the_syntax_floor() {
         String::from_utf8_lossy(&node.stdout).replace("\r\n", "\n"),
         case["stdout"].as_str().unwrap()
     );
-    let parsed = syntax(&file, "ES2020");
+    let parsed = syntax(&file, "ES2020", "commonjs");
     fs::remove_dir_all(root).unwrap();
     assert!(parsed.status.success(), "{}", report(&parsed));
 }

@@ -1,0 +1,1 @@
+--target ES5 --module ES2022 --lib ES2020 --strict --skipLibCheck --downlevelIteration

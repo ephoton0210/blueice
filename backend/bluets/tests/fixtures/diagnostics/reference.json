@@ -86645,6 +86645,5761 @@
       "diagnostics": []
     },
     {
+      "id": "targets:emittarget-esm-es2015-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-bigint/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2737,
+        "category": "error",
+        "message": "BigInt literals are not available when targeting lower than ES2020.",
+        "file": "typescript_oracle/emittarget-esm-es2015-bigint/main.ts",
+        "start": 316,
+        "length": 3,
+        "line": 6,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2737,
+          "category": "error",
+          "message": "BigInt literals are not available when targeting lower than ES2020.",
+          "file": "typescript_oracle/emittarget-esm-es2015-bigint/main.ts",
+          "start": 316,
+          "length": 3,
+          "line": 6,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2015-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2015-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2015-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-bigint/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2737,
+        "category": "error",
+        "message": "BigInt literals are not available when targeting lower than ES2020.",
+        "file": "typescript_oracle/emittarget-esm-es2016-bigint/main.ts",
+        "start": 316,
+        "length": 3,
+        "line": 6,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2737,
+          "category": "error",
+          "message": "BigInt literals are not available when targeting lower than ES2020.",
+          "file": "typescript_oracle/emittarget-esm-es2016-bigint/main.ts",
+          "start": 316,
+          "length": 3,
+          "line": 6,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2016-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2016-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2016-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-bigint/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2737,
+        "category": "error",
+        "message": "BigInt literals are not available when targeting lower than ES2020.",
+        "file": "typescript_oracle/emittarget-esm-es2017-bigint/main.ts",
+        "start": 316,
+        "length": 3,
+        "line": 6,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2737,
+          "category": "error",
+          "message": "BigInt literals are not available when targeting lower than ES2020.",
+          "file": "typescript_oracle/emittarget-esm-es2017-bigint/main.ts",
+          "start": 316,
+          "length": 3,
+          "line": 6,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2017-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2017-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2017-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-bigint/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2737,
+        "category": "error",
+        "message": "BigInt literals are not available when targeting lower than ES2020.",
+        "file": "typescript_oracle/emittarget-esm-es2018-bigint/main.ts",
+        "start": 316,
+        "length": 3,
+        "line": 6,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2737,
+          "category": "error",
+          "message": "BigInt literals are not available when targeting lower than ES2020.",
+          "file": "typescript_oracle/emittarget-esm-es2018-bigint/main.ts",
+          "start": 316,
+          "length": 3,
+          "line": 6,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2018-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2018-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2018-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-bigint/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2737,
+        "category": "error",
+        "message": "BigInt literals are not available when targeting lower than ES2020.",
+        "file": "typescript_oracle/emittarget-esm-es2019-bigint/main.ts",
+        "start": 316,
+        "length": 3,
+        "line": 6,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2737,
+          "category": "error",
+          "message": "BigInt literals are not available when targeting lower than ES2020.",
+          "file": "typescript_oracle/emittarget-esm-es2019-bigint/main.ts",
+          "start": 316,
+          "length": 3,
+          "line": 6,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2019-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2019-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2019-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-bigint/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2020-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2020-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2020-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-bigint/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2021-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2021-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2021-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-bigint/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2022-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2022-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2022-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-bigint/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es2023-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es2023-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es2023-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-bigint/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2737,
+        "category": "error",
+        "message": "BigInt literals are not available when targeting lower than ES2020.",
+        "file": "typescript_oracle/emittarget-esm-es5-bigint/main.ts",
+        "start": 316,
+        "length": 3,
+        "line": 6,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2737,
+          "category": "error",
+          "message": "BigInt literals are not available when targeting lower than ES2020.",
+          "file": "typescript_oracle/emittarget-esm-es5-bigint/main.ts",
+          "start": 316,
+          "length": 3,
+          "line": 6,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "targets:emittarget-esm-es5-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-private-state/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 18028,
+        "category": "error",
+        "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+        "file": "typescript_oracle/emittarget-esm-es5-private-state/main.ts",
+        "start": 309,
+        "length": 6,
+        "line": 6,
+        "column": 16
+      },
+      "diagnostics": [
+        {
+          "code": 18028,
+          "category": "error",
+          "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+          "file": "typescript_oracle/emittarget-esm-es5-private-state/main.ts",
+          "start": 309,
+          "length": 6,
+          "line": 6,
+          "column": 16
+        }
+      ]
+    },
+    {
+      "id": "targets:emittarget-esm-es5-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-es5-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-es5-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-es5-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-arrow-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-arrow-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-arrow-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-async-iteration/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-async-iteration/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-async-iteration/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-async-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-async-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-async-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-bigint/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-bigint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-bigint/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-bind-patterns/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-bind-patterns/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-bind-patterns/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-generator-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-generator-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-generator-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-iteration-close/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-iteration-close/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-iteration-close/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-logical-assign/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-logical-assign/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-logical-assign/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-loop-capture/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-loop-capture/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-loop-capture/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-object-inherit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-object-inherit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-object-inherit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-object-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-object-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-object-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-power/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-power/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-power/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-private-state/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-private-state/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-private-state/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-rest-call/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-rest-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-rest-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-short-circuit/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-short-circuit/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-short-circuit/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-sparse-spread/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-sparse-spread/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-sparse-spread/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "targets:emittarget-esm-esnext-template/main.ts",
+      "matrix": "targets",
+      "entry": "emittarget-esm-esnext-template/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/emittarget-esm-esnext-template/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
       "id": "targets:emittarget-esnext-arrow-capture/main.ts",
       "matrix": "targets",
       "entry": "emittarget-esnext-arrow-capture/main.ts",

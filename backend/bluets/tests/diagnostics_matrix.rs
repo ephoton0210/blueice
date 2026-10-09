@@ -95,7 +95,9 @@ fn replay(case: &Value) -> std::process::Output {
                 let value = flags.next().unwrap().as_str().unwrap();
                 if name == "lib" {
                     serde_json::json!(value.split(',').collect::<Vec<_>>())
-                } else if name == "useDefineForClassFields" && matches!(value, "true" | "false") {
+                } else if matches!(name, "useDefineForClassFields" | "downlevelIteration")
+                    && matches!(value, "true" | "false")
+                {
                     Value::Bool(value == "true")
                 } else {
                     Value::String(value.to_string())
@@ -277,10 +279,16 @@ fn primary_codes_templates_and_positions_match_the_pinned_corpus() {
         }
     }
     let count = failures.len();
+    let mut families = std::collections::BTreeMap::new();
+    for failure in &failures {
+        *families
+            .entry(failure.split(':').next().unwrap().to_string())
+            .or_insert(0usize) += 1;
+    }
     failures.truncate(20);
     assert!(
         failures.is_empty(),
-        "{count} diagnostic mismatches:\n{}",
+        "{count} diagnostic mismatches ({families:?}):\n{}",
         failures.join("\n")
     );
 }
@@ -380,10 +388,23 @@ fn primary_messages_and_related_information_match_pinned_typescript() {
         }
     }
     let count = failures.len();
+    let mut families = std::collections::BTreeMap::new();
+    for failure in &failures {
+        *families
+            .entry(
+                failure
+                    .split(':')
+                    .next()
+                    .unwrap()
+                    .trim_matches('"')
+                    .to_string(),
+            )
+            .or_insert(0usize) += 1;
+    }
     failures.truncate(12);
     assert!(
         failures.is_empty(),
-        "{count} presentation mismatches:\n{}",
+        "{count} presentation mismatches ({families:?}):\n{}",
         failures.join("\n")
     );
 }

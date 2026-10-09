@@ -6798,3 +6798,40 @@ This establishes the syntax witnesses and current latest-parser boundary.
 Older-edition rejection through a BlueJS API remains unimplemented; it must
 be tested against the same matrix when the edition-selecting API is added.
 This test-only preparation remains on the isolated unpushed K.7.1 branch.
+
+### K.7.1 ESM and CommonJS target baseline (2026-10-10)
+
+Extend each target/form witness to both existing module kinds. The corpus
+now has 374 programs: 360 accepted and fourteen rejected by TypeScript 5.9.3.
+Every accepted reference passes Node, exact declarations and the requested
+Acorn syntax edition with the corresponding script/module goal. Each ESM
+case matches its CommonJS partner's verdict, primary diagnostic, runtime
+output, declaration text and helper names. Every prior CommonJS observation
+is unchanged. The recorder independently selects the Node package type and
+parser goal from the actual compiler module option. ES5 ESM is checked with
+the explicitly selected module goal; Acorn permits module headers separately
+from the payload syntax edition. This is not an ES5 Script grammar claim.
+
+The shared diagnostic corpus grows from 2,731 to 2,918 cases, still with
+219 templates. Every old observation remains unchanged. The public replay
+retains exact project flags, both module runtime/declaration/syntax checks
+and 22 target/module manifest identities. The strict diagnostic harness
+preserves explicit `downlevelIteration` boolean values instead of encoding
+them as strings. Both diagnostic replay failures are counted by matrix before
+the existing twenty/twelve-line display limits are applied.
+
+The frozen Linux gate passes format and both-crate all-target Clippy with
+warnings denied. The expanded target replay has two passing/four failing
+tests, with no ignored tests, including the passing live 374-case recorder.
+Shared completeness passes; its two public diagnostic replays remain red.
+All 402 primary differences and fourteen presentation differences belong
+to the target matrix; the old corpus has no reported mismatch. The existing
+ignored shared recorder is independently executed during the full pinned
+regeneration, which proves all prior 2,731 observations unchanged.
+All 381 frozen changed inputs match, along with the sixty prior syntax files
+and every unaffected production/build input. Evidence:
+`blueice-k71-esm-{reference-proof,shared-reference-proof,public-replay-proof}.json`,
+`blueice-k71-esm-targets-{status,source-hashes}.json` and
+`blueice-k71-esm-baseline-final-third-{status,source-hashes}.json` / logs.
+Commit the expanded failing baseline before implementation. The branch stays
+unpushed until K.0 passes; main remains at `1f76ff28c` for M8 hosted CI.
