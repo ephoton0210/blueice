@@ -7044,3 +7044,23 @@ hashes and compiler output are `blueice-k71-edition-api-red-{report.json,log}`.
 Commit this API replay before adding parser support. The 55 authored sources
 and all reference verdicts remain unchanged; the latest/default parsing
 control remains independent. K.7.1 and its full K.0 gate remain open.
+
+The first authored edition guard compiles as the actual BlueJS library with
+exact dependency fingerprints from the existing Cargo cache, writing only
+to a bounded `/logs` probe. It matches all 605 independent edition decisions
+and preserves the original library's full Debug AST for all 55 latest
+witnesses. The native probe uses the unchanged actual RegExp worker through
+its existing environment option; the first standalone invocation lacked
+that worker path and is retained as a setup failure, not syntax evidence.
+Evidence: `blueice-k71-edition-probe-first-{build-report,replay-with-worker-
+report}.json`, exact source/dependency hashes and logs. This is actual
+compiled code evidence, not completion of the required Cargo gate.
+
+Thirty-one additional authored grammar controls record 341 pinned Acorn
+8.15.0 decisions (264 accept, 77 reject). They include nested template await/
+separators/optional access, raw versus escaped Unicode, reserved property
+names, RegExp character classes/escaped group text/property identity escapes,
+trailing commas, top-level async iteration and private-looking public names.
+A malformed Unicode-brace expression is retained as an explicit rejection
+control. The ordinary public API replay and live independent oracle are
+committed before further fixes; the original 605 observations are unchanged.
