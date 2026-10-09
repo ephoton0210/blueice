@@ -6991,3 +6991,11 @@ This baseline is committed before implementation and stays unpushed until
 K.7.1's full K.0 gate succeeds. The existing 638 verdicts, 600 emit witnesses,
 605 grammar observations and normative iterator/generator protocols remain
 required; configuration selection alone does not close target emission.
+
+The initial configuration harness used `build --project` for tsconfig, which
+is not the native build invocation. Corrected to `build --config`; a second
+frozen replay restores every changed production input to `1f76ff28c` and
+again fails all four tests, this time on genuine unsupported target/default
+messages only. `blueice-k71-config-red-corrected-{status,source-hashes}.json`
+and its log supersede the initial default-target failure. No production
+change is committed by this baseline correction.

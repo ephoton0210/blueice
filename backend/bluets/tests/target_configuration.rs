@@ -118,7 +118,7 @@ fn native_and_typescript_configs_select_each_target_and_class_field_default() {
                 "target":target.to_ascii_uppercase(),"module":"es2022", "declaration":true,"outDir":"out"
             }}),
         );
-        let typescript = project.build(&["build", "--project", "tsconfig.json"], target);
+        let typescript = project.build(&["build", "--config", "tsconfig.json"], target);
         assert_eq!(native["standardLibrary"], typescript["standardLibrary"]);
     }
 }
@@ -149,7 +149,7 @@ fn es6_alias_selects_es2015_at_every_configuration_boundary() {
             "target":"ES6","module":"es2022","declaration":true,"outDir":"out"
         }}),
     );
-    project.build(&["build", "--project", "tsconfig.json"], "es2015");
+    project.build(&["build", "--config", "tsconfig.json"], "es2015");
 }
 
 #[test]
@@ -161,7 +161,7 @@ fn omitted_typescript_target_uses_es5_without_changing_the_native_default() {
             "module":"es2022","declaration":true,"outDir":"out"
         }}),
     );
-    project.build(&["build", "--project", "tsconfig.json"], "es5");
+    project.build(&["build", "--config", "tsconfig.json"], "es5");
     project.write(
         "bluetsc.json",
         json!({"entries":["main.ts"],"declaration":true,"outDir":"out"}),
