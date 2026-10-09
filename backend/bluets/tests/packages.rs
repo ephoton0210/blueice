@@ -346,6 +346,7 @@ fn configuration_and_resolved_files_change_the_fingerprint() {
         second["packageResolution"]["fingerprint"],
         third["packageResolution"]["fingerprint"]
     );
+    assert_ne!(second["fingerprint"], third["fingerprint"]);
 }
 
 #[test]

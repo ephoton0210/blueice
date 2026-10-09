@@ -6089,3 +6089,30 @@ Commit this supplemental baseline before attribute/resolution implementation;
 hold it unpushed until the complete K.6.2 gate passes. Each edge must retain its
 resolution mode with canonical owner bounds, observation records and compiler
 fingerprints. K.6.2 and its measured JSON prerequisites remain open.
+
+### K.6.2 Relative resolution and artifact identity baseline — 2026-10-09
+
+The pinned TypeScript 5.9.3 trace for the committed type-only `./dep.ts`
+witness probes `.ts`, `.tsx`, then `.d.ts`; the last candidate is selected when
+the first two are absent. Additional public package-resolver regressions require
+that priority, invalidation when an earlier candidate appears, and refusal of
+a fallback declaration symlink outside the canonical owner roots. The existing
+public CLI manifest test is strengthened: changing an observed package manifest
+without changing the selected file must change both resolver and artifact
+fingerprints. On committed production `10e688937`, the resolver identity changes
+but the artifact fingerprint incorrectly remains `bts-project-0fc2bd8f3e81c084`.
+
+A test-only Linux snapshot restores all 27 production draft files from that
+commit and omits the uncommitted emitter helper; host draft bytes are untouched.
+Format and both-crate all-target Clippy pass. The complete two-suite replay has
+14 passing controls and three failures (relative priority, canonical escape
+fallback and artifact identity). All 5,176 backend snapshot hashes match the
+committed production or the current test bytes. Evidence under
+`/private/tmp/blueice-k14-linux/`: `blueice-k62-relative-red3-{status,report}.json`,
+logs, `blueice-k62-relative-red2-{snapshot,frozen-source-hashes}.json` and
+`blueice-k62-relative-resolution-trace.log`. The initial replay stopped at the
+first suite; the final replay uses `--no-fail-fast` to execute both suites.
+
+Commit these test-only regressions before implementing the fallback and
+resolution-observation fingerprint propagation. They remain unpushed until the
+complete K.0 gate passes; K.6.2 and full hosted CI remain open.

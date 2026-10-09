@@ -209,3 +209,61 @@ fn a_cached_resolution_is_discarded_when_what_it_depended_on_changes() {
     link(&tree.at("app/.store/two"), &tree.at("app/node_modules/b"));
     assert!(!linked.revalidate());
 }
+
+#[test]
+fn relative_source_extensions_probe_in_pinned_order_and_invalidate_missing_candidates() {
+    let tree = Tree::new("relative-source-priority");
+    tree.write(
+        "app/src/dep.d.ts",
+        "export interface Item { value: number; }",
+    );
+    let from = tree.at("app/src");
+    let declaration = tree.resolver(&["app"]);
+    let found = declaration.resolve_relative(&from, "./dep.ts").unwrap();
+    assert_eq!(found.path, tree.at("app/src/dep.d.ts"));
+    assert!(found.declaration);
+    let declaration_identity = declaration.fingerprint();
+    assert!(declaration.revalidate());
+
+    tree.write(
+        "app/src/dep.tsx",
+        "export interface Item { value: number; }",
+    );
+    assert!(!declaration.revalidate());
+    let tsx = tree.resolver(&["app"]);
+    assert_eq!(
+        tsx.resolve_relative(&from, "./dep.ts").unwrap().path,
+        tree.at("app/src/dep.tsx")
+    );
+    assert_ne!(declaration_identity, tsx.fingerprint());
+    assert!(tsx.revalidate());
+
+    tree.write("app/src/dep.ts", "export interface Item { value: number; }");
+    assert!(!tsx.revalidate());
+    let source = tree.resolver(&["app"]);
+    let found = source.resolve_relative(&from, "./dep.ts").unwrap();
+    assert_eq!(found.path, tree.at("app/src/dep.ts"));
+    assert!(!found.declaration);
+    assert_ne!(tsx.fingerprint(), source.fingerprint());
+    assert!(source.revalidate());
+}
+
+#[cfg(unix)]
+#[test]
+fn relative_declaration_fallback_refuses_a_symlink_outside_owner_roots() {
+    let tree = Tree::new("relative-declaration-escape");
+    tree.write(
+        "outside/dep.d.ts",
+        "export interface Item { value: number; }",
+    );
+    tree.write("app/src/main.ts", "");
+    link(&tree.at("outside/dep.d.ts"), &tree.at("app/src/dep.d.ts"));
+    let error = tree
+        .resolver(&["app"])
+        .resolve_relative(&tree.at("app/src"), "./dep.ts")
+        .unwrap_err();
+    assert!(
+        matches!(error, ResolveError::OutsideRoots { .. }),
+        "{error}"
+    );
+}
