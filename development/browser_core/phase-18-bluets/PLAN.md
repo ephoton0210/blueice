@@ -7064,3 +7064,55 @@ trailing commas, top-level async iteration and private-looking public names.
 A malformed Unicode-brace expression is retained as an explicit rejection
 control. The ordinary public API replay and live independent oracle are
 committed before further fixes; the original 605 observations are unchanged.
+
+### K.7.1 Cargo edition verification and CI oracle routing (2026-10-10)
+
+The frozen 6,449-file snapshot passes Cargo format, all-target Clippy for
+BlueJS/BlueTS/bridge with warnings denied, and all four bridge syntax tests,
+including the actual pinned independent recorder. Full BlueJS ordinary
+regressions are still running (`blueice-k71-edition-cargo-first-status.json`).
+The target-selection slice's preceding complete ordinary/ignored replay is
+1,059/161 passing tests, with seven/four known K.7.1 failures; every old
+TypeScript/Node/declaration oracle passes. The final report's alias-name
+assertion is corrected against actual Rust test names without rerunning tests
+(`blueice-k71-target-config-third-ignored-verified-report.json`).
+
+The added 341-decision live context oracle moves from BlueJS to the bridge,
+which the committed TypeScript CI command already selects. Its Node script
+and golden JSON are byte-identical, proven by
+`blueice-k71-context-oracle-ci-routing-proof.json`; revalidate this final
+test location after the ongoing snapshot finishes. The BlueJS ordinary
+context replay remains in its public-boundary test. No production change
+is made by this routing adjustment.
+
+Edition validation is separated into 242/243/283-line modules; the parser
+is 951 lines, module goal 205 and module-item parsing 436. Existing long
+expression/token sources gain no responsibilities. Original MPL headers
+and all frozen input hashes are verified. Selection checks syntax, never
+runtime API availability. Default ESNext skips the extra tree walk; the
+module goal separately admits ordinary import/export headers for an ES5
+payload, as recorded by the independent parser. K.7.1 is still open and
+all production remains uncommitted/unpushed pending complete target output
+and the full K.0 gate.
+
+### K.7.1 library/iteration configuration failing baseline (2026-10-10)
+
+Pinned TypeScript 5.9.3 records 29 library/target cases (19 accept, ten reject),
+including every owned edition, explicit older/newer library selection, Promise,
+`finally`, `trimStart`, BigInt syntax independent of `lib`, an empty library list
+and both iteration-policy values. Four new public CLI tests fail before library
+and iteration option implementation: verdict replay, independent library artifact
+identity, iteration manifest/fingerprint and normalized showConfig. The failing
+source and reference are committed on the isolated unpushed branch before
+production work on these options. No reference verdict is relaxed.
+
+The completed edition gate passes 4,109 ordinary BlueJS tests across 335 groups
+with zero failures. Its five ignored tests are the four existing Node comparisons
+and the then-local context oracle; all are explicitly executed by the original
+context step and final routing follow-up. The final bridge suite passes all five
+tests, including both live Acorn recorders, and the native context test passes.
+Format and three-crate all-target Clippy pass on the frozen 6,451-file follow-up.
+Evidence: `blueice-k71-edition-cargo-first-bluejs-report.json`,
+`blueice-k71-edition-routing-final-status.json` and their source hashes/logs.
+The library configuration baseline has zero passes/four expected failures;
+K.7.1 as a whole remains open and production is uncommitted/unpushed.
