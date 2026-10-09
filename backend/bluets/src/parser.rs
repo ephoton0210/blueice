@@ -117,6 +117,7 @@ pub enum NestedFunctionBody {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Declaration {
+    Ambient(AmbientDeclaration),
     Import(ImportDeclaration),
     TypeExport(TypeExportDeclaration),
     UmdExport(UmdExportDeclaration),
@@ -135,6 +136,7 @@ pub enum Declaration {
 impl Declaration {
     pub fn span(&self) -> &SourceSpan {
         match self {
+            Self::Ambient(declaration) => &declaration.span,
             Self::Import(declaration) => &declaration.span,
             Self::TypeExport(declaration) => &declaration.span,
             Self::UmdExport(declaration) => &declaration.span,
@@ -154,9 +156,11 @@ impl Declaration {
 
 mod module_declarations;
 
+pub(crate) use module_declarations::has_module_syntax;
 pub use module_declarations::{
-    DefaultExportDeclaration, ImportAttribute, ImportAttributes, ImportBinding, ImportDeclaration,
-    TypeExportDeclaration, UmdExportDeclaration, ValueExportBinding, ValueExportDeclaration,
+    AmbientDeclaration, DefaultExportDeclaration, ImportAttribute, ImportAttributes, ImportBinding,
+    ImportDeclaration, TypeExportDeclaration, UmdExportDeclaration, ValueExportBinding,
+    ValueExportDeclaration,
 };
 
 /// A JavaScript runtime statement that the bounded TypeScript parser does not
@@ -949,6 +953,9 @@ pub(crate) fn require_tuple_positions_before_suffix(elements: &mut [TupleTypeEle
 /// two queries with the same spelling can resolve different shadowed values.
 /// Diagnostics and declaration output retain the source spelling.
 pub(crate) fn source_type_name(name: &str) -> &str {
+    if name.starts_with("\0ambient:") {
+        return name.rsplit_once('\0').map_or(name, |(_, source)| source);
+    }
     if let Some(source) = class_expressions::parameter_source_name(name) {
         return source;
     }

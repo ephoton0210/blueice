@@ -6623,3 +6623,55 @@ TranspileOnly's explicit unchecked policy remains, without an ambient physical
 source or runtime resolution. Commit this test-only supplement before repair;
 keep every K.6.3 baseline unpushed until the expanded full K.0 gate passes.
 K.6.3 and original complete hosted CI remain open.
+
+
+### K.6.3 ambient/reference and exported-type completion (2026-10-09)
+
+Following committed failing baseline `f86740e44`, type-only forwarding retains
+its actual export span, including alias/star and nearest transitive owners.
+Lexical lookup blocks Checked value uses with TS1362 and related TS1377 while
+retaining legal queries. TranspileOnly remains explicitly unchecked. The
+JavaScript emitter elides ordinary imports used solely by retained value-query
+nodes; declarations keep their original import/export spelling and quotes.
+`module-exports-v4` enters artifact/cache identity. Static namespace keys remain
+private and never become physical module sources or runtime resolutions.
+
+The frozen 5,492-input focused gate passes format, both-crate all-target Clippy,
+all three public re-export controls, all 80 pinned ambient programs, all 44
+Node/declaration witnesses and shared diagnostic replay. See
+`blueice-k63-runtime-first-{status,report}.json`. A subsequent ordinary replay
+has 1,053 pass and one old unit expectation failure: single-quoted source had
+an expected double-quoted declaration. Independent pinned TypeScript emits
+the original single quotes; only that unit expectation is corrected. Evidence:
+`blueice-k63-declaration-quote-probe/report.json` and the retained
+`blueice-k63-runtime-final-{status,report}.json`.
+
+The final second frozen gate passes format, both-crate all-target Clippy,
+all 16 static/owner/cache controls and all 1,054 ordinary tests in 97 groups.
+The complete K.0 gate passes all 1,212 tests in 97 groups, with zero failures
+and zero ignored tests, including every 158 ignored oracle.
+All backend/build hashes match. Evidence:
+`blueice-k63-runtime-final-second-{status,report}.json`, logs/hashes and the
+final size/header audit. Nine new production files have MPL headers, and the
+largest production source remains the CLI at 1,182 lines. The generator still
+reports 162 refusal sites in 11 areas. Inventory rows reflect the measured
+80-program/2,544-diagnostic scope and retain broader unmeasured compositions.
+The actual 2,544-case/217-template shared diagnostic record is byte-identical
+(SHA-256 `b46af88142e308612e0c4548182e7f1c7cdd3bdeb890855764f09cc31d55fca3`).
+K.6.3 is complete in this measured scope. Its implementation and test baselines
+can now be committed/pushed; M8 workspace and complete hosted CI remain open.
+
+On the successful c1-based macOS 26 full-workload diagnostic, all 81 trace
+pairs per stage are unambiguous: fetch is at most 84 ms, completion wait at
+most 50 ms, document application at most 17,829 ms and synchronization at
+most 1,883 ms. These are monotonic in-process measurements, not GitHub log
+flush timestamps. The macOS 15 full-workload diagnostic
+`37923851331` reproduces the first-navigation failure (19/20 core-binary tests
+pass): three cold document applications take 40,216/42,809/43,086 ms, while
+fetch takes at most 11 ms and completion wait at most 24 ms. Later applications
+take 0–2 ms. This localizes the delay to first document application, without
+establishing its inner cause or a repair. Isolated original-profile macOS 15
+font-parse tracing is running in `37944681469`; diagnostic workflows are not
+merged into production. See `blueice-k6-stage-workspace-diagnostic-macos26-
+durations.json`. Original normal final-source CI remains 27/29, with the
+macOS 15 navigation failure and final CI gate unresolved.

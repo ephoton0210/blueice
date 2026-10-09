@@ -38,7 +38,8 @@ pub(super) fn lower_script(
         let declaration =
             &rewrite_declaration(original, &BTreeMap::new()).map_err(from_diagnostic)?;
         match declaration {
-            Declaration::TypeAlias(_)
+            Declaration::Ambient(_)
+            | Declaration::TypeAlias(_)
             | Declaration::Interface(_)
             | Declaration::TypeExport(_)
             | Declaration::UmdExport(_) => {}
@@ -171,7 +172,8 @@ pub(super) fn lower_module(
         let declaration =
             &rewrite_declaration(original, &BTreeMap::new()).map_err(from_diagnostic)?;
         match declaration {
-            Declaration::TypeAlias(_)
+            Declaration::Ambient(_)
+            | Declaration::TypeAlias(_)
             | Declaration::Interface(_)
             | Declaration::TypeExport(_)
             | Declaration::UmdExport(_) => {}

@@ -290,6 +290,21 @@ impl<'a> ModuleChecker<'a> {
         let Some(resolved) = self.project.resolved_import(&self.module.id, import) else {
             return;
         };
+        let bodies = self.project.ambient_module_bodies(resolved);
+        if !bodies.is_empty() && bodies.iter().any(|body| body.shorthand) {
+            for binding in &import.bindings {
+                self.values.insert(binding.local.clone(), Type::Any);
+                self.types.insert(
+                    binding.local.clone(),
+                    TypeDefinition {
+                        kind: TypeDefinitionKind::Alias,
+                        parameters: Vec::new(),
+                        value: Type::Any,
+                    },
+                );
+            }
+            return;
+        }
         let exported = self.exports.types.get(resolved);
         let exported_classes = self.exports.classes.get(resolved);
         let mut merged_namespaces: Vec<(String, NamespaceExport, bool)> = Vec::new();

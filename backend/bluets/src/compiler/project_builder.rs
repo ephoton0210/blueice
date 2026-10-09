@@ -5,6 +5,8 @@
 //! Owner-authorized graph loading and existing work bounds.
 
 use super::*;
+mod augmentations;
+mod references;
 use std::collections::HashMap;
 
 pub(super) struct ProjectBuilder<'a> {
@@ -18,6 +20,12 @@ pub(super) struct ProjectBuilder<'a> {
     total_source_bytes: usize,
     pub(super) parsed_modules: BTreeSet<String>,
     pub(super) reused_parsed_modules: BTreeSet<String>,
+    unresolved_imports: Vec<(
+        usize,
+        String,
+        String,
+        Option<crate::package_resolution::ImportMode>,
+    )>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +51,7 @@ impl<'a> ProjectBuilder<'a> {
             total_source_bytes: 0,
             parsed_modules: BTreeSet::new(),
             reused_parsed_modules: BTreeSet::new(),
+            unresolved_imports: Vec::new(),
         }
     }
 
@@ -113,6 +122,20 @@ impl<'a> ProjectBuilder<'a> {
             return;
         }
         if self.state.contains_key(module_id) {
+            if self
+                .project
+                .referenced_declaration_modules
+                .contains(module_id)
+                && self.project.modules.get(module_id).is_some_and(|module| {
+                    module.source == source.text
+                        && !crate::parser::has_module_syntax(&module.declarations)
+                })
+            {
+                self.project
+                    .ambient_declaration_modules
+                    .insert(module_id.to_string());
+                return;
+            }
             self.diagnostics.push(Diagnostic::error(
                 DiagnosticCode::InvalidDeclarationFile,
                 SourceSpan::new(module_id, 0, 0),
@@ -220,6 +243,8 @@ impl<'a> ProjectBuilder<'a> {
                 }
             }
         };
+        self.visit_augmentations(&module, depth);
+        self.visit_references(&module, depth);
         for declaration in &module.declarations {
             let (specifier, span, mode) = match declaration {
                 crate::parser::Declaration::Import(import) => (
@@ -274,7 +299,10 @@ impl<'a> ProjectBuilder<'a> {
                         .project
                         .resolved_module_with_mode(module_id, specifier, mode)
                         .is_none()
-                        && self.project.resolutions.len() + self.project.mode_resolutions.len()
+                        && self.project.resolutions.len()
+                            + self.project.mode_resolutions.len()
+                            + self.project.augmentation_resolutions.len()
+                            + self.project.reference_resolutions.len()
                             >= self.limits.max_module_edges
                     {
                         self.diagnostics.push(Diagnostic::error(
@@ -299,11 +327,19 @@ impl<'a> ProjectBuilder<'a> {
                     }
                     self.visit(&resolved, depth.saturating_add(1));
                 }
-                Err(message) => self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::ModuleNotFound,
-                    span.clone(),
-                    message,
-                )),
+                Err(message) => {
+                    self.unresolved_imports.push((
+                        self.diagnostics.len(),
+                        module_id.to_string(),
+                        specifier.clone(),
+                        mode,
+                    ));
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::ModuleNotFound,
+                        span.clone(),
+                        message,
+                    ));
+                }
             }
         }
         // A module that imports a namespace is parsed again with what the
@@ -344,5 +380,47 @@ impl<'a> ProjectBuilder<'a> {
         };
         self.project.modules.insert(module_id.to_string(), module);
         self.state.insert(module_id.to_string(), VisitState::Done);
+    }
+
+    pub(super) fn resolve_ambient_imports(&mut self) {
+        let modules = self
+            .project
+            .ambient_modules()
+            .into_keys()
+            .collect::<BTreeSet<_>>();
+        let mut removed = BTreeSet::new();
+        for (index, from, specifier, mode) in &self.unresolved_imports {
+            let target = format!("\0ambient-module:{specifier}");
+            if !modules.contains(&target) {
+                continue;
+            }
+            let key = (from.clone(), specifier.clone(), *mode);
+            if !self.project.ambient_resolutions.contains_key(&key)
+                && self.project.resolutions.len()
+                    + self.project.mode_resolutions.len()
+                    + self.project.ambient_resolutions.len()
+                    + self.project.augmentation_resolutions.len()
+                    + self.project.reference_resolutions.len()
+                    >= self.limits.max_module_edges
+            {
+                self.diagnostics[*index] = Diagnostic::error(
+                    DiagnosticCode::ResourceLimit,
+                    self.diagnostics[*index].span.clone(),
+                    format!(
+                        "module graph exceeds the {} import-edge limit",
+                        self.limits.max_module_edges
+                    ),
+                );
+                continue;
+            }
+            self.project.ambient_resolutions.insert(key, target);
+            removed.insert(*index);
+        }
+        let mut index = 0;
+        self.diagnostics.retain(|_| {
+            let keep = !removed.contains(&index);
+            index += 1;
+            keep
+        });
     }
 }

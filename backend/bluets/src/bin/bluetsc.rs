@@ -859,6 +859,23 @@ impl ModuleLoader for FileLoader {
         self.module_id(&resolved)
     }
 
+    fn resolve_reference_types(&self, from_module: &str, name: &str) -> Result<String, String> {
+        if from_module.starts_with("@remote/") {
+            return Err("remote declarations cannot resolve type references".to_string());
+        }
+        let directory = self
+            .source_path(from_module)?
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| format!("module `{from_module}` has no directory"))?;
+        let resolver = self.packages.as_ref().unwrap_or(&self.relative);
+        let package = blueice_bluets::package_resolution::types_package_name(name);
+        let found = resolver
+            .resolve(&directory, &package, self.import_mode)
+            .map_err(|error| error.to_string())?;
+        self.package_module_id(&found.path)
+    }
+
     fn resolution_fingerprint(&self) -> String {
         self.packages
             .as_ref()

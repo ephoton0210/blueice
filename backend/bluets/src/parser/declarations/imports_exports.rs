@@ -51,7 +51,7 @@ impl Parser {
                 Declaration::Class(class) => class.exported,
                 Declaration::Enum(item) => item.exported,
                 Declaration::Namespace(namespace) => namespace.exported,
-                Declaration::UmdExport(_) | Declaration::Raw(_) => false,
+                Declaration::Ambient(_) | Declaration::UmdExport(_) | Declaration::Raw(_) => false,
             });
         if !external {
             for declaration in &self.declarations {

@@ -7,6 +7,9 @@
 use super::runtime_syntax::*;
 use super::*;
 
+#[path = "declarations/ambient.rs"]
+mod ambient;
+
 impl Parser {
     pub(crate) fn new(
         id: String,
@@ -223,7 +226,15 @@ impl Parser {
                 }
                 let declared = explicit_declare || self.ambient_depth > 0;
                 let async_start = self.consume("async");
-                if self.consume("function") {
+                if (declared && self.peek("global"))
+                    || (self.peek("module")
+                        && self
+                            .tokens
+                            .get(self.index + 1)
+                            .is_some_and(|token| token.kind == TokenKind::String))
+                {
+                    self.parse_ambient_declaration(start);
+                } else if self.consume("function") {
                     self.parse_function(start, exported, false, declared, async_start);
                 } else if self.consume("class") {
                     if declared || async_start {

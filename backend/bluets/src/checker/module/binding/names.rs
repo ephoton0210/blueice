@@ -11,7 +11,7 @@ mod operators;
 
 impl ModuleChecker<'_> {
     pub(crate) fn check_names(&mut self) {
-        let scopes = scopes::ScopeModel::new(
+        let mut scopes = scopes::ScopeModel::new(
             self.project,
             self.module,
             &self.values,
@@ -20,6 +20,25 @@ impl ModuleChecker<'_> {
             self.target,
             self.max_type_expansions,
         );
+        for declaration in &self.module.declarations {
+            let Declaration::Import(import) = declaration else {
+                continue;
+            };
+            let source = self
+                .project
+                .resolved_import(&self.module.id, import)
+                .and_then(|target| self.exports.values.get(target));
+            for binding in &import.bindings {
+                if !import.type_only && !binding.type_only {
+                    if let Some(span) = source
+                        .and_then(|values| values.get(&binding.imported))
+                        .and_then(|value| value.type_only_export())
+                    {
+                        scopes.bind_type_only_export(&binding.local, span);
+                    }
+                }
+            }
+        }
         self.diagnostics.extend(scopes.diagnostics());
         if self.explicit_checking {
             self.diagnostics

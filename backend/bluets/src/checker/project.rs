@@ -14,6 +14,21 @@ pub(super) fn declaration_module_diagnostics(
     for (module_id, module) in &project.modules {
         for declaration in &module.declarations {
             if let Declaration::ValueExport(export) = declaration {
+                if export.specifier.as_ref().is_some_and(|specifier| {
+                    project.ambient_resolutions.contains_key(&(
+                        module_id.clone(),
+                        specifier.clone(),
+                        None,
+                    ))
+                }) && (export.bindings.is_empty()
+                    || export.bindings.iter().any(|binding| !binding.type_only))
+                {
+                    diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::InvalidDeclarationFile,
+                        export.span.clone(),
+                        "ambient module declarations do not authorize executable value re-exports",
+                    ));
+                }
                 if let Some(resolved) = export.specifier.as_ref().and_then(|specifier| {
                     project
                         .resolutions
@@ -31,6 +46,17 @@ pub(super) fn declaration_module_diagnostics(
                 }
             }
             if let Declaration::Import(import) = declaration {
+                if !import.is_type_only()
+                    && project
+                        .resolved_import(module_id, import)
+                        .is_some_and(|target| !project.ambient_module_bodies(target).is_empty())
+                {
+                    diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::InvalidDeclarationFile,
+                        import.span.clone(),
+                        "ambient module declarations do not authorize executable value imports",
+                    ));
+                }
                 if !import.type_only && import.specifier.ends_with(".d.ts") {
                     let stem = import.specifier.strip_suffix(".d.ts").unwrap();
                     let implementation = match module_kind {
@@ -83,7 +109,8 @@ pub(super) fn declaration_module_diagnostics(
                 Declaration::Enum(_) => true,
                 Declaration::Namespace(namespace) => !namespace.declared,
                 Declaration::Raw(_) => true,
-                Declaration::DefaultExport(_)
+                Declaration::Ambient(_)
+                | Declaration::DefaultExport(_)
                 | Declaration::ValueExport(_)
                 | Declaration::TypeExport(_)
                 | Declaration::UmdExport(_)
@@ -169,6 +196,14 @@ pub(super) fn exported_types(
         }
         modules.insert(id.clone(), values);
     }
+    forward_type_exports(project, &mut modules);
+    modules
+}
+
+pub(super) fn forward_type_exports(
+    project: &Project,
+    modules: &mut BTreeMap<String, BTreeMap<String, TypeDefinition>>,
+) {
     // Type-only re-exports are static edges, but they still contribute to the
     // public type surface consumed by another module.  Resolve this small
     // fixed point without executing module code; the graph is already closed
@@ -237,7 +272,6 @@ pub(super) fn exported_types(
             break;
         }
     }
-    modules
 }
 
 pub(super) fn exported_classes(

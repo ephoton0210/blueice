@@ -60,6 +60,7 @@ impl<'a> Index<'a> {
     fn declarations(&mut self, declarations: &'a [Declaration]) {
         for declaration in declarations {
             match declaration {
+                Declaration::Ambient(item) => self.declarations(&item.body),
                 Declaration::Namespace(ns) => self.declarations(&ns.body),
                 Declaration::Class(class) => {
                     self.classes.push(class);

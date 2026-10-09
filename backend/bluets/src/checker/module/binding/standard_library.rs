@@ -10,7 +10,12 @@ impl ModuleChecker<'_> {
     pub(super) fn bind_standard_library(&mut self) {
         let protected_types: BTreeSet<_> = self.types.keys().cloned().collect();
         let protected_values: BTreeSet<_> = self.values.keys().cloned().collect();
-        for module in crate::standard_library::modules(self.target) {
+        let target = if self.project.referenced_libraries.contains("es2022") {
+            crate::EcmaTarget::Es2022
+        } else {
+            self.target
+        };
+        for module in crate::standard_library::modules(target) {
             for declaration in &module.declarations {
                 match declaration {
                     Declaration::Interface(interface)

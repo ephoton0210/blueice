@@ -569,7 +569,7 @@ fn preserves_a_type_only_reexport_in_declarations_but_not_javascript() {
     assert!(artifact.javascript.trim().is_empty());
     assert_eq!(
         artifact.declaration.as_deref(),
-        Some("export type { User } from \"./model.ts\";\n")
+        Some("export type { User } from './model.ts';\n")
     );
 }
 

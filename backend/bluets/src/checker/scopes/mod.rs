@@ -35,6 +35,7 @@ struct Binding {
     class: bool,
     /// A type-only import blocks value lookup rather than exposing an outer value.
     type_only: bool,
+    type_only_export: Option<SourceSpan>,
     declared_type: Type,
     kind: BindingKind,
     namespace: Option<String>,
@@ -114,6 +115,15 @@ pub(super) struct ScopeModel<'a> {
 }
 
 impl<'a> ScopeModel<'a> {
+    /// Imports belong to the module scope; uses in nested scopes resolve the
+    /// same binding, while local shadows retain their own value meaning.
+    pub(super) fn bind_type_only_export(&mut self, name: &str, span: &SourceSpan) {
+        if let Some(binding) = self.scopes[0].values.get_mut(name) {
+            binding.type_only = true;
+            binding.type_only_export = Some(span.clone());
+        }
+    }
+
     pub(super) fn new(
         project: &'a Project,
         module: &'a Module,
@@ -285,6 +295,7 @@ impl<'a> ScopeModel<'a> {
                 ready,
                 class,
                 type_only,
+                type_only_export: None,
                 declared_type,
                 kind: BindingKind::Mutable,
                 namespace: None,

@@ -28,6 +28,10 @@ impl ScopeModel<'_> {
                 }
             }
             match declaration {
+                Declaration::Ambient(ambient) => {
+                    let inner = self.child(Some(scope), ambient.span.clone(), false, false);
+                    self.declarations(&ambient.body, inner);
+                }
                 Declaration::Variable(variable) => self.variable(variable, scope),
                 Declaration::Function(function) => {
                     self.value(

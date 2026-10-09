@@ -12,9 +12,42 @@ pub(crate) struct ExportedValue {
     /// An inferred variable in a module that has not completed checking.
     pending: bool,
     readonly: bool,
+    type_only_export: Option<SourceSpan>,
 }
 
 impl ExportedValue {
+    pub(in crate::checker) fn type_only(&self, span: &SourceSpan) -> Self {
+        let mut value = self.clone();
+        value.surface.has_values = false;
+        value.readonly = true;
+        value.type_only_export = Some(span.clone());
+        value
+    }
+
+    pub(in crate::checker) fn type_only_export(&self) -> Option<&SourceSpan> {
+        self.type_only_export.as_ref()
+    }
+
+    pub(in crate::checker) fn static_declaration(
+        name: &str,
+        value: Type,
+        types: BTreeMap<String, TypeDefinition>,
+    ) -> Self {
+        Self {
+            surface: NamespaceExport {
+                source_name: name.to_string(),
+                values: BTreeMap::from([(name.to_string(), value)]),
+                functions: BTreeMap::new(),
+                class_constructors: BTreeMap::new(),
+                types,
+                members: BTreeMap::new(),
+                has_values: false,
+            },
+            pending: false,
+            readonly: true,
+            type_only_export: None,
+        }
+    }
     pub(in crate::checker) fn value_type(&self) -> Type {
         let name = &self.surface.source_name;
         if let Some(signatures) = self.surface.functions.get(name) {
@@ -66,6 +99,7 @@ impl ModuleChecker<'_> {
                             surface,
                             pending: false,
                             readonly: false,
+                            type_only_export: None,
                         },
                     )
                 })
@@ -122,6 +156,7 @@ impl ModuleChecker<'_> {
                     ExportedValue {
                         surface: self.namespace_export_of(&source),
                         pending,
+                        type_only_export: None,
                         readonly: self.module.declarations.iter().any(|declaration| {
                             matches!(declaration, Declaration::Variable(variable)
                                 if variable.name == source

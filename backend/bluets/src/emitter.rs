@@ -287,6 +287,8 @@ fn emit_javascript(
     exported_enums: &BTreeMap<String, BTreeMap<String, crate::checker::ExportedEnum>>,
     options: &CompilerOptions,
 ) -> Result<(EmittedJavaScript, Option<EmittedStrictModule>), Diagnostic> {
+    let emitting_module = type_elision::queries(module);
+    let module = emitting_module.as_ref();
     let mut edits = module.edits.clone();
     type_elision::lower(module, options.module_kind, &mut edits);
     for declaration in &module.declarations {

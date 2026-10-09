@@ -30,7 +30,7 @@ mod properties;
 mod scopes;
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
-pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v3";
+pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v4";
 mod type_operators;
 mod type_relations;
 use properties::{
@@ -197,71 +197,70 @@ struct ProjectExports {
 /// metadata look like a source-local debugger symbol.
 #[derive(Default)]
 struct AmbientDeclarations {
+    enforce_types: bool,
+    private_types: BTreeMap<String, TypeDefinition>,
+    module_types: BTreeMap<String, BTreeMap<String, TypeDefinition>>,
+    contexts: BTreeMap<String, BTreeMap<String, Type>>,
     types: BTreeMap<String, TypeDefinition>,
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
     binding_kinds: BTreeMap<String, scopes::BindingKind>,
 }
 
-fn ambient_declarations(project: &Project) -> (AmbientDeclarations, Vec<Diagnostic>) {
-    let mut ambient = AmbientDeclarations::default();
+fn ambient_declarations(
+    project: &Project,
+    exports: &ProjectExports,
+    enforce_types: bool,
+    max_type_expansions: usize,
+) -> (AmbientDeclarations, Vec<Diagnostic>) {
+    let mut ambient = AmbientDeclarations {
+        enforce_types,
+        ..AmbientDeclarations::default()
+    };
     let mut diagnostics = Vec::new();
-    for module_id in &project.ambient_declaration_modules {
+    ambient::collect_contexts(
+        project,
+        exports,
+        &mut ambient,
+        &mut diagnostics,
+        max_type_expansions,
+    );
+    for target in project.augmentation_resolutions.values() {
+        if let Some(types) = exports.types.get(target) {
+            ambient.module_types.insert(target.clone(), types.clone());
+        }
+    }
+    for module_id in project
+        .ambient_declaration_modules
+        .union(&project.referenced_declaration_modules)
+    {
         let Some(module) = project.modules.get(module_id) else {
             continue;
         };
-        for declaration in &module.declarations {
-            match declaration {
-                Declaration::TypeAlias(alias) => insert_ambient_type(
-                    &mut ambient,
-                    &mut diagnostics,
-                    &alias.name,
-                    TypeDefinition {
-                        kind: TypeDefinitionKind::Alias,
-                        parameters: alias.type_parameters.clone(),
-                        value: alias.value.clone(),
-                    },
-                    &alias.span,
-                ),
-                Declaration::Interface(interface) => insert_ambient_type(
-                    &mut ambient,
-                    &mut diagnostics,
-                    &interface.name,
-                    TypeDefinition {
-                        kind: TypeDefinitionKind::Interface,
-                        parameters: interface.type_parameters.clone(),
-                        value: interface_value(interface),
-                    },
-                    &interface.span,
-                ),
-                Declaration::Variable(variable) if variable.declared => {
-                    insert_ambient_value(
-                        &mut ambient,
-                        &mut diagnostics,
-                        &variable.name,
-                        variable.annotation.clone().unwrap_or(Type::Unknown),
-                        &variable.span,
-                    );
-                    if variable.kind == crate::parser::VariableKind::Const {
-                        ambient
-                            .binding_kinds
-                            .insert(variable.name.clone(), scopes::BindingKind::Const);
-                    }
-                }
-                Declaration::Function(function) if function.declared || function.overload => {
-                    insert_ambient_function(&mut ambient, &mut diagnostics, function);
-                    ambient
-                        .binding_kinds
-                        .insert(function.name.clone(), scopes::BindingKind::Function);
-                }
-                _ => {}
-            }
+        if ambient::has_module_syntax(&module.declarations) {
+            continue;
         }
+        ambient::insert_body(
+            project,
+            &module.declarations,
+            &mut ambient,
+            &mut diagnostics,
+        );
+    }
+    for module in project.modules.values() {
+        ambient::collect_augmentations(
+            project,
+            &module.declarations,
+            ambient::has_module_syntax(&module.declarations),
+            &mut ambient,
+            &mut diagnostics,
+        );
     }
     (ambient, diagnostics)
 }
 
 fn insert_ambient_type(
+    project: &Project,
     ambient: &mut AmbientDeclarations,
     diagnostics: &mut Vec<Diagnostic>,
     name: &str,
@@ -274,6 +273,14 @@ fn insert_ambient_type(
             .get_mut(name)
             .filter(|existing| existing.kind == TypeDefinitionKind::Interface)
         {
+            if ambient.enforce_types {
+                ambient::check_merged_members(
+                    project,
+                    diagnostics,
+                    &existing.value,
+                    &definition.value,
+                );
+            }
             existing.value = merge_interface_values(&existing.value, &definition.value);
             return;
         }
@@ -340,6 +347,7 @@ pub(crate) use module::NamespaceExport;
 
 /// What each module exports as a namespace, by module and exported name.
 type NamespaceExports = BTreeMap<String, BTreeMap<String, NamespaceExport>>;
+mod ambient;
 mod project;
 
 fn interface_value(interface: &InterfaceDeclaration) -> Type {

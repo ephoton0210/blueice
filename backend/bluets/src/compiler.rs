@@ -309,6 +309,24 @@ pub trait ModuleLoader {
         self.resolve(from_module, specifier)
     }
 
+    /// Resolves a static path directive under the owner's ordinary root policy.
+    fn resolve_reference_path(&self, from_module: &str, path: &str) -> Result<String, String> {
+        let relative = if path.starts_with('.') || path.starts_with('/') || path.contains("://") {
+            path.to_string()
+        } else {
+            format!("./{path}")
+        };
+        self.resolve(from_module, &relative)
+    }
+
+    /// An owner must explicitly supply its authorized type-package resolver.
+    /// The compiler never searches a host filesystem for a types directive.
+    fn resolve_reference_types(&self, _from_module: &str, name: &str) -> Result<String, String> {
+        Err(format!(
+            "type definition `{name}` is not exposed by this owner"
+        ))
+    }
+
     /// Identity of owner-authorized resolution observations after the graph
     /// has been loaded. File hosts include absent candidates, canonical paths
     /// and manifest content here; the compiler does not acquire any I/O grant.
@@ -372,7 +390,20 @@ pub struct Project {
     pub modules: BTreeMap<String, Module>,
     pub(crate) resolutions: BTreeMap<(String, String), String>,
     mode_resolutions: BTreeMap<(String, String, crate::package_resolution::ImportMode), String>,
+    // Static namespace keys never appear as runtime/physical source targets.
+    pub(crate) ambient_resolutions: BTreeMap<
+        (
+            String,
+            String,
+            Option<crate::package_resolution::ImportMode>,
+        ),
+        String,
+    >,
     pub(crate) json_modules: BTreeMap<String, crate::Type>,
+    pub(crate) augmentation_resolutions: BTreeMap<(String, String), String>,
+    pub(crate) reference_resolutions: BTreeMap<(String, String, String), String>,
+    pub(crate) referenced_declaration_modules: BTreeSet<String>,
+    pub(crate) referenced_libraries: BTreeSet<String>,
     resolution_fingerprint: String,
     pub(crate) ambient_declaration_modules: BTreeSet<String>,
     failed_sources: BTreeMap<String, String>,
@@ -482,9 +513,14 @@ impl Project {
             modules: BTreeMap::new(),
             resolutions: BTreeMap::new(),
             mode_resolutions: BTreeMap::new(),
+            ambient_resolutions: BTreeMap::new(),
             json_modules: BTreeMap::new(),
             resolution_fingerprint: String::new(),
             ambient_declaration_modules: BTreeSet::new(),
+            augmentation_resolutions: BTreeMap::new(),
+            reference_resolutions: BTreeMap::new(),
+            referenced_declaration_modules: BTreeSet::new(),
+            referenced_libraries: BTreeSet::new(),
             failed_sources: BTreeMap::new(),
         }
     }
@@ -512,6 +548,7 @@ fn compile_with_cache(
     for declaration in &options.ambient_declaration_modules {
         builder.visit_ambient_declaration(declaration);
     }
+    builder.resolve_ambient_imports();
     builder.project.resolution_fingerprint = loader.resolution_fingerprint();
     let ProjectBuilder {
         project,
@@ -674,6 +711,34 @@ fn changed_modules(previous: &Project, current: &Project) -> BTreeSet<String> {
             changed.insert(module_id.clone());
         }
     }
+    for (module, specifier, mode) in previous
+        .ambient_resolutions
+        .keys()
+        .chain(current.ambient_resolutions.keys())
+    {
+        let key = (module.clone(), specifier.clone(), *mode);
+        if previous.ambient_resolutions.get(&key) != current.ambient_resolutions.get(&key) {
+            changed.insert(module.clone());
+        }
+    }
+    for key in previous
+        .augmentation_resolutions
+        .keys()
+        .chain(current.augmentation_resolutions.keys())
+    {
+        if previous.augmentation_resolutions.get(key) != current.augmentation_resolutions.get(key) {
+            changed.insert(key.0.clone());
+        }
+    }
+    for key in previous
+        .reference_resolutions
+        .keys()
+        .chain(current.reference_resolutions.keys())
+    {
+        if previous.reference_resolutions.get(key) != current.reference_resolutions.get(key) {
+            changed.insert(key.0.clone());
+        }
+    }
     changed
 }
 
@@ -682,6 +747,18 @@ fn affected_modules(
     current: &Project,
     changed: &BTreeSet<String>,
 ) -> BTreeSet<String> {
+    if previous.referenced_libraries != current.referenced_libraries {
+        return current.modules.keys().cloned().collect();
+    }
+    fn augments_global(declarations: &[crate::parser::Declaration]) -> bool {
+        declarations.iter().any(|declaration| match declaration {
+            crate::parser::Declaration::Ambient(item) => {
+                item.specifier.is_none() || augments_global(&item.body)
+            }
+            crate::parser::Declaration::Namespace(item) => augments_global(&item.body),
+            _ => false,
+        })
+    }
     let mut reverse_dependencies = BTreeMap::<String, BTreeSet<String>>::new();
     for (module_id, dependency) in previous
         .resolution_edges()
@@ -701,6 +778,21 @@ fn affected_modules(
                 pending.push_back(dependent.clone());
             }
         }
+    }
+    // An augmentation's consumers need not import the module supplying it.
+    // Include its transitive imports above, then invalidate every consumer if
+    // either graph contains an affected global augmentation or a referenced
+    // script declaration that supplies names to otherwise unconnected modules.
+    if affected.iter().any(|id| {
+        [previous, current].iter().any(|project| {
+            project.modules.get(id).is_some_and(|module| {
+                augments_global(&module.declarations)
+                    || (project.referenced_declaration_modules.contains(id)
+                        && !crate::parser::has_module_syntax(&module.declarations))
+            })
+        })
+    }) {
+        return current.modules.keys().cloned().collect();
     }
     affected
         .into_iter()

@@ -18,8 +18,6 @@ pub(crate) fn check_incremental(
     max_type_expansions: usize,
 ) -> (CheckedProject, Vec<Diagnostic>) {
     let mut diagnostics = project::declaration_module_diagnostics(project, policy.module_kind);
-    let (ambient, mut ambient_diagnostics) = ambient_declarations(project);
-    diagnostics.append(&mut ambient_diagnostics);
     let mut exports = ProjectExports {
         values: BTreeMap::new(),
         types: project::exported_types(project),
@@ -31,6 +29,25 @@ pub(crate) fn check_incremental(
     exports.types = reexports::forward(&origins, &exports.types);
     exports.classes = reexports::forward(&origins, &exports.classes);
     exports.enums = reexports::forward(&origins, &exports.enums);
+    let static_values = ambient::seed_module_types(
+        project,
+        &mut exports,
+        &mut diagnostics,
+        policy.enforce_types,
+        max_type_expansions,
+    );
+    ambient::merge_module_types(
+        project,
+        &mut exports,
+        &mut diagnostics,
+        policy.enforce_types,
+        max_type_expansions,
+    );
+    project::forward_type_exports(project, &mut exports.types);
+    exports.types = reexports::forward(&origins, &exports.types);
+    let (ambient, mut ambient_diagnostics) =
+        ambient_declarations(project, &exports, policy.enforce_types, max_type_expansions);
+    diagnostics.append(&mut ambient_diagnostics);
     let empty_namespaces = BTreeMap::new();
     exports.values = project
         .modules
@@ -52,7 +69,9 @@ pub(crate) fn check_incremental(
             (id.clone(), checker.exported_values(true))
         })
         .collect();
+    ambient::seed_module_values(&mut exports, &ambient, static_values);
     exports.values = reexports::forward(&origins, &exports.values);
+    reexports::forward_type_values(project, &mut exports.values);
     let mut checked_modules: BTreeMap<String, CheckedModule> = BTreeMap::new();
     // What each checked module exports as a namespace, for the modules that
     // import it; modules are checked after the modules they import.
@@ -68,6 +87,7 @@ pub(crate) fn check_incremental(
                     .values
                     .insert(module_id.clone(), previous.value_exports.clone());
                 exports.values = reexports::forward(&origins, &exports.values);
+                reexports::forward_type_values(project, &mut exports.values);
                 checked_modules.insert(module_id.clone(), previous.clone());
                 continue;
             }
@@ -102,6 +122,7 @@ pub(crate) fn check_incremental(
             .values
             .insert(module_id.clone(), value_exports.clone());
         exports.values = reexports::forward(&origins, &exports.values);
+        reexports::forward_type_values(project, &mut exports.values);
         checked_modules.insert(
             module_id.clone(),
             CheckedModule {

@@ -255,7 +255,15 @@ pub(super) fn emit_declaration(
                 }
                 if let Some(specifier) = &export.specifier {
                     output.push_str(" from ");
-                    output.push_str(&format!("\"{specifier}\""));
+                    if let Some(raw) = export
+                        .specifier_span
+                        .as_ref()
+                        .and_then(|span| module.source.get(span.start..span.end))
+                    {
+                        output.push_str(raw);
+                    } else {
+                        output.push_str(&serde_json::to_string(specifier).expect("module string"));
+                    }
                 }
                 emit_import_attributes(module, export.attributes.as_ref(), &mut output);
                 output.push_str(";\n");

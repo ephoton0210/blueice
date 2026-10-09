@@ -9,6 +9,7 @@ mod compatibility;
 mod constructors;
 mod more_types;
 mod operators;
+mod records;
 
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn call_argument_error(
@@ -209,6 +210,11 @@ impl ModuleChecker<'_> {
                         .is_some_and(|(_, value)| value.trim_start().starts_with('{'))
                 });
         let (expected_fields, expected_exhausted) = self.expanded_record_fields(expected.clone());
+        if literal_initializer
+            && self.nested_record_assignment_error(span, &message, bts_code, actual, expected)
+        {
+            return;
+        }
         if !actual_exhausted && !expected_exhausted {
             if let (Some(actual_fields), Some(expected_fields)) = (actual_fields, expected_fields) {
                 let missing = expected_fields

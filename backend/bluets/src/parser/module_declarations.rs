@@ -4,8 +4,39 @@
 
 //! Structured module imports and exports retain closed graph identities.
 
-use super::SourceSpan;
+use super::{Declaration, SourceSpan};
 use crate::syntax::Token;
+
+pub(crate) fn has_module_syntax(declarations: &[Declaration]) -> bool {
+    declarations.iter().any(|declaration| match declaration {
+        Declaration::Import(_)
+        | Declaration::TypeExport(_)
+        | Declaration::DefaultExport(_)
+        | Declaration::ValueExport(_) => true,
+        Declaration::Variable(item) => item.exported,
+        Declaration::Function(item) => item.exported,
+        Declaration::Class(item) => item.exported,
+        Declaration::Enum(item) => item.exported,
+        Declaration::Interface(item) => item.exported,
+        Declaration::TypeAlias(item) => item.exported,
+        Declaration::Namespace(item) => item.exported,
+        Declaration::Ambient(_) | Declaration::Raw(_) | Declaration::UmdExport(_) => false,
+    })
+}
+
+/// An erased external module declaration or global augmentation. The body
+/// retains each declaration's original source identity; it supplies no
+/// executable binding or loading authority.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmbientDeclaration {
+    /// `None` denotes `declare global`; a name denotes `declare module`.
+    pub specifier: Option<String>,
+    pub specifier_span: SourceSpan,
+    pub body: Vec<Declaration>,
+    /// A bodyless external module supplies an untyped static surface.
+    pub shorthand: bool,
+    pub span: SourceSpan,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportAttributes {

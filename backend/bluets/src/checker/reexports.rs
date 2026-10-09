@@ -167,3 +167,49 @@ pub(super) fn exported_names(project: &Project) -> BTreeMap<String, (BTreeSet<St
         })
         .collect()
 }
+
+/// Type-only forwarding retains the declaration's private type identities and
+/// permits type queries without publishing a runtime value.
+pub(super) fn forward_type_values(
+    project: &Project,
+    values: &mut BTreeMap<String, BTreeMap<String, module::ExportedValue>>,
+) {
+    for _ in 0..project.modules.len() {
+        let mut forwarded = false;
+        for (id, module) in &project.modules {
+            let mut additions = BTreeMap::new();
+            for declaration in &module.declarations {
+                let Declaration::TypeExport(export) = declaration else {
+                    continue;
+                };
+                let Some(source) = project
+                    .resolved_type_export(id, export)
+                    .and_then(|target| values.get(target))
+                else {
+                    continue;
+                };
+                if export.star && export.namespace.is_none() {
+                    additions.extend(
+                        source
+                            .iter()
+                            .filter(|(name, _)| name.as_str() != "default")
+                            .map(|(name, value)| (name.clone(), value.type_only(&export.span))),
+                    );
+                }
+                for binding in &export.bindings {
+                    if let Some(value) = source.get(&binding.local) {
+                        additions.insert(binding.exported.clone(), value.type_only(&binding.span));
+                    }
+                }
+            }
+            forwarded |= !additions.is_empty();
+            let target = values.entry(id.clone()).or_default();
+            for (name, value) in additions {
+                target.insert(name, value);
+            }
+        }
+        if !forwarded {
+            break;
+        }
+    }
+}

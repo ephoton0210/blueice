@@ -260,7 +260,7 @@ impl<'a> ModuleChecker<'a> {
                     }
                 }
                 Declaration::Namespace(namespace) => self.bind_namespace(namespace),
-                Declaration::Raw(_) | Declaration::UmdExport(_) => {}
+                Declaration::Ambient(_) | Declaration::Raw(_) | Declaration::UmdExport(_) => {}
             }
         }
     }
@@ -272,6 +272,10 @@ impl<'a> ModuleChecker<'a> {
         let local_types = self.types.keys().cloned().collect::<BTreeSet<_>>();
         let local_values = self.values.keys().cloned().collect::<BTreeSet<_>>();
         let local_functions = self.functions.keys().cloned().collect::<BTreeSet<_>>();
+        self.types.extend(ambient.private_types.clone());
+        if let Some(types) = ambient.module_types.get(&self.module.id) {
+            self.types.extend(types.clone());
+        }
         for (name, definition) in &ambient.types {
             if !local_types.contains(name) {
                 self.types.insert(name.clone(), definition.clone());
@@ -546,7 +550,8 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Variable(variable) => self.check_variable(variable),
                 Declaration::Function(function) => self.check_function(function),
                 Declaration::Class(original) => self.check_class_structure(original),
-                Declaration::Import(_)
+                Declaration::Ambient(_)
+                | Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::UmdExport(_)
                 | Declaration::DefaultExport(_)

@@ -136,5 +136,28 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         });
         add(target);
     }
+    for ((from, specifier, mode), target) in &project.ambient_resolutions {
+        add(from);
+        add(specifier);
+        add(&format!("ambient:{mode:?}"));
+        add(target);
+    }
+    for ((from, specifier), target) in &project.augmentation_resolutions {
+        add("augmentation");
+        add(from);
+        add(specifier);
+        add(target);
+    }
+    for ((from, kind, name), target) in &project.reference_resolutions {
+        add("reference");
+        add(from);
+        add(kind);
+        add(name);
+        add(target);
+    }
+    for name in &project.referenced_libraries {
+        add("reference-lib");
+        add(name);
+    }
     format!("bts-{hash:016x}")
 }

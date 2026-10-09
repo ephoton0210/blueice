@@ -164,7 +164,7 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
                     }
                 }
             }
-            2322 => {
+            2322 if !related.iter().any(|item| item.code == 6500) => {
                 let source = project.source(&span.module).unwrap_or("");
                 let selected = source.get(span.start..span.end).unwrap_or("");
                 let child_type = diagnostic

@@ -85,6 +85,21 @@ impl ScopeModel<'_> {
         {
             return diagnostic.with_typescript(2708, vec![root.into()]);
         }
+        if let Some(span) = binding.and_then(|binding| binding.type_only_export.as_ref()) {
+            let mut diagnostic = diagnostic.with_typescript(1362, vec![root.into()]);
+            diagnostic
+                .typescript
+                .as_mut()
+                .expect("explicit counterpart")
+                .related_information
+                .push(crate::TypeScriptRelatedInformation {
+                    code: 1377,
+                    message: format!("'{root}' was exported here."),
+                    span: span.clone(),
+                    position: None,
+                });
+            return diagnostic;
+        }
         if binding.is_some_and(|binding| {
             binding.type_only
                 && matches!(
