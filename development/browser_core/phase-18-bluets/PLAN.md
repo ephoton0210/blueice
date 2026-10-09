@@ -6037,6 +6037,38 @@ source snapshot with the complete BlueTS gate above. Evidence:
 `blueice-k53-ci-macos15-x86-failure.log` under `/private/tmp/blueice-k14-linux/`.
 Complete hosted platform/workspace/coverage CI must verify the pushed correction.
 
+### K.6 Complete CI: distinct HTTP fixture origins — 2026-10-09
+
+Full CI [37879746425](https://github.com/ephoton0210/blueice/actions/runs/37879746425)
+on `5e5bcb241` reports an SLE BCI 15.7 x86_64 engine-test failure: the
+fixed-profile origin-limit test receives a fetch refusal instead of the
+origin-limit refusal. The fixture binds and drops one ephemeral-port listener
+per request, assuming the next port is different. A Linux socket probe observes
+17 allocations with only 16 unique ports; duplicate origins leave the budget
+unfilled. The hosted log does not retain its allocated ports, so it cannot
+identify the exact reused origin.
+
+The fixture now reserves all 17 listeners together, asserts distinct ports,
+then closes them before invoking the real authorizer. The first 16 requests
+retain their fetch-refusal assertions and the seventeenth must retain the
+origin-limit refusal. Production policy, limits and request handling are
+unchanged. Frozen-source Linux verification passes format, engine all-target
+Clippy with warnings denied, launcher binary prerequisites and all 507 engine
+tests in five groups. The corrected test also passes 20 independent repetitions;
+the changed source hash matches the tested snapshot. The first local full run
+lacked the launcher child executable; its three `NotFound` failures are retained
+and the complete prerequisite-corrected run is authoritative.
+
+Evidence under `/private/tmp/blueice-k14-linux/`:
+`blueice-k6-ci-origin-final-{status,report}.json`, frozen hashes/logs,
+`blueice-k6-ci-origin-port-reuse-probe.json`, `blueice-k6-ci-origin-repeat.json`
+and `blueice-k6-generator-ci-sle15-x86-failure.log`.
+Earlier refactor CI `37871489756` passes coverage (workspace 94.80% lines,
+BlueJS 99.53%) but still has pending platform tests; these figures do not
+substitute for the required final-source complete CI. Commit/push this fixture
+correction and dispatch the whole workflow on its exact SHA. Hosted complete
+CI and K.6.2/K.6.3 remain open.
+
 ### K.6.2 Type-only and attribute failing baseline — 2026-10-09
 
 The test-first corpus records 86 TypeScript 5.9.3 programs: 63 accept and 23
