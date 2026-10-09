@@ -7416,3 +7416,19 @@ groups, with four failures confined to diagnostic/target matrices and 178
 ignored tests. Its original shared primary differences were 44 binding-
 pattern entries; the focused pattern correction resolves those verdicts.
 K.7.1 lowering and the final ordinary/every-ignored K.0 gates remain open.
+
+### K.7.1 Constant template failing baseline (2026-10-10)
+
+Ten original TypeScript 5.9.3 sources cover constant arithmetic, inline
+expressions, prefixes/suffixes, string concatenation, plain and escaped
+templates, mutable/annotated/call operands and an incompatible literal use.
+Native TypeScript accepts six and rejects four. The negative observations
+retain exact TS2322 codes, starts, lengths and complete messages.
+
+`blueice-k71-template-constant-red-report.json` links the real frozen public
+compiler and fails seven of ten sources before constant inference. Mutable,
+annotated and call operands already stay broad strings; preserve those
+controls while computing literal types for actual constant substitutions.
+Commit this failing replay before the production inference correction.
+The shared target corpus already records all 22 constant-template declaration
+failures. K.7.1 remains open and all production changes remain unpushed.
