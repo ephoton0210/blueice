@@ -71,6 +71,13 @@ pub(crate) enum NavOutcome {
     FetchFailed { message: String },
 }
 
+fn trace_navigation(stage: &str, tab_id: TabId) {
+    #[cfg(unix)]
+    crate::session::trace_navigation(stage, tab_id);
+    #[cfg(not(unix))]
+    let _ = (stage, tab_id);
+}
+
 enum StageOutcome {
     #[cfg_attr(not(unix), allow(dead_code))]
     Cleared,
@@ -136,6 +143,7 @@ pub(crate) fn check_and_fetch(tab_id: TabId, url: String, gatekeeper_socket: &Pa
         };
     }
 
+    trace_navigation("url-cleared-fetch-start", tab_id);
     let fetched = match blueice_net::fetch(&url) {
         Ok(fetched) => fetched,
         Err(e) => {
@@ -145,6 +153,7 @@ pub(crate) fn check_and_fetch(tab_id: TabId, url: String, gatekeeper_socket: &Pa
         }
     };
 
+    trace_navigation("fetch-end-content-check-start", tab_id);
     if let StageOutcome::Rejected { reason, category } = check_stage(
         gatekeeper_socket,
         &GatekeeperRequest::CheckContent {
@@ -159,6 +168,7 @@ pub(crate) fn check_and_fetch(tab_id: TabId, url: String, gatekeeper_socket: &Pa
         };
     }
 
+    trace_navigation("content-cleared", tab_id);
     NavOutcome::Cleared {
         clearance: GatekeeperClearance {
             tab_id,

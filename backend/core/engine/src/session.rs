@@ -136,6 +136,20 @@ impl ReadTimeout for std::os::unix::net::UnixStream {
     }
 }
 
+pub(crate) fn trace_navigation(stage: &str, tab_id: TabId) {
+    if std::env::var_os("BLUEICE_NAV_DIAGNOSTICS").is_none() {
+        return;
+    }
+    static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let origin = ORIGIN.get_or_init(std::time::Instant::now);
+    eprintln!(
+        "core-stage pid={} tab={} elapsed_ms={} stage={stage}",
+        std::process::id(),
+        tab_id.as_u64(),
+        origin.elapsed().as_millis()
+    );
+}
+
 fn is_timeout(err: &io::Error) -> bool {
     matches!(
         err.kind(),
@@ -481,7 +495,11 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     // the loop falls back to plain blocking reads (no completion-
     // draining poll tick between messages) rather than ending the
     // session outright.
-    let _ = stream.set_read_timeout(Some(POLL_INTERVAL));
+    let timeout_result = stream.set_read_timeout(Some(POLL_INTERVAL));
+    trace_navigation(
+        &format!("poll-option:{timeout_result:?}"),
+        tabs.default_tab(),
+    );
     if !perform_handshake(stream)? {
         return Ok(());
     }
@@ -491,6 +509,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
 
     let mut requests = requests;
+    let mut diagnostic_poll = std::time::Instant::now();
     loop {
         match blueice_ipc::read_client_message_with_ids(stream) {
             Ok((tab_id, request_id, msg)) => {
@@ -827,8 +846,15 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                     ClientMessage::Unknown => {}
                 }
             }
-            Err(e) if is_timeout(&e) => {} // no message yet -- fall through to drain completions
-            Err(_) => return Ok(()),       // client disconnected without an explicit Shutdown
+            Err(e) if is_timeout(&e) => {
+                if std::env::var_os("BLUEICE_NAV_DIAGNOSTICS").is_some()
+                    && diagnostic_poll.elapsed() >= Duration::from_secs(1)
+                {
+                    trace_navigation("frontend-poll-timeout", tabs.default_tab());
+                    diagnostic_poll = std::time::Instant::now();
+                }
+            } // no message yet -- fall through to drain completions
+            Err(_) => return Ok(()), // client disconnected without an explicit Shutdown
         }
 
         let mut synchronized_after_completion = false;
@@ -957,7 +983,9 @@ fn begin_gated_navigation<S: Write>(
     let tx = completion_tx.clone();
     let socket = gatekeeper_socket.to_path_buf();
     thread::spawn(move || {
+        trace_navigation("background-start", tab_id);
         let outcome = gatekeeper_client::check_and_fetch(tab_id, url, &socket);
+        trace_navigation("background-outcome", tab_id);
         let _ = tx.send(Completion {
             tab_id,
             seq: this_seq,
@@ -965,6 +993,7 @@ fn begin_gated_navigation<S: Write>(
             kind,
             outcome,
         });
+        trace_navigation("completion-sent", tab_id);
     });
     Ok(())
 }
@@ -986,6 +1015,7 @@ fn reply_success<S: Write>(
     kind: &PendingKind,
     tab_id: u64,
 ) -> io::Result<()> {
+    trace_navigation("reply-start", TabId::from_u64(tab_id));
     match kind {
         PendingKind::Navigate => reply_navigated(page, stream, reply_tab, request_id)?,
         PendingKind::OpenTab => blueice_ipc::write_server_message_with_ids(
@@ -998,7 +1028,10 @@ fn reply_success<S: Write>(
             },
         )?,
     }
-    send_frame(page, stream, frame_dir, generation, reply_tab, request_id)
+    trace_navigation("navigation-reply-written", TabId::from_u64(tab_id));
+    let result = send_frame(page, stream, frame_dir, generation, reply_tab, request_id);
+    trace_navigation("frame-written", TabId::from_u64(tab_id));
+    result
 }
 
 /// Applies one background gated-navigation's [`Completion`], if it's
@@ -1029,6 +1062,7 @@ fn apply_completion<S: Write>(
         kind,
         outcome,
     } = completion;
+    trace_navigation("completion-received", tab_id);
     if pending_nav_seq.get(&tab_id) != Some(&seq) {
         return Ok(false); // superseded by a later navigation to this tab
     }
@@ -1042,13 +1076,17 @@ fn apply_completion<S: Write>(
             final_url,
             html,
         } => {
+            trace_navigation("apply-document-start", tab_id);
             tabs.get_mut(tab_id)
                 .expect("the checked live tab must remain available on this session thread")
                 .apply_fetched(clearance, &final_url, &html);
+            trace_navigation("apply-document-end", tab_id);
             // A configured runner observes the loaded document before its
             // first success reply/frame. This preserves future DOM script
             // semantics while the default session has no runner at all.
+            trace_navigation("synchronize-start", tab_id);
             synchronize_page_script_runtime(page_script_runtime, tabs, script_requests)?;
+            trace_navigation("synchronize-end", tab_id);
             let page = tabs
                 .get(tab_id)
                 .expect("the session thread exclusively owns the checked tab");

@@ -336,6 +336,14 @@ impl DebuggerRequestReceiver {
             return None;
         };
         if now >= hold.expires_at || hold.owner_stream.upgrade().is_none() {
+            crate::session::trace_navigation(
+                if now >= hold.expires_at {
+                    "debugger-admission-expired"
+                } else {
+                    "debugger-admission-disconnected"
+                },
+                hold.tab_id,
+            );
             *slot = None;
             return None;
         }
@@ -347,6 +355,7 @@ impl DebuggerRequestReceiver {
                 None
             }
             None if generation != hold.previous_generation => {
+                crate::session::trace_navigation("debugger-admission-attached", hold.tab_id);
                 hold.held_generation = Some(generation);
                 hold.expires_at = now + NEXT_DOCUMENT_ADMISSION_WINDOW;
                 Some(hold.tab_id)
@@ -380,6 +389,7 @@ impl DebuggerRequestReceiver {
             expires_at: Instant::now() + NEXT_DOCUMENT_RESERVATION_WINDOW,
             owner_stream: metadata_session.admission_stream(),
         });
+        crate::session::trace_navigation("debugger-admission-reserved", tab);
         DebuggerReply::NextDocumentHoldAcquired { tab_id }
     }
 
