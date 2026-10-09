@@ -7344,3 +7344,27 @@ pass. The new array runtime oracle matches native TypeScript/Node observations
 declaration emission omits the rest parameter's ellipsis. Commit this runtime/
 declaration failing replay before correcting that emission path. Keep all
 production changes uncommitted and unpushed until the complete K.0 leaf gate.
+
+### K.7.1 Catch flow failing baseline (2026-10-10)
+
+Twelve original pinned TypeScript 5.9.3 sources cover literal/typeof guards,
+early throws, branch joins, unknown and string rejections, reassignment,
+shadowed/nested catches and local try/finally guards for generator operands.
+Six sources are accepted and six rejected; all diagnostics retain their exact
+codes, positions, lengths and complete messages. The native recorder passes.
+
+The frozen 7,019-file Linux replay in
+`blueice-k71-catch-flow-baseline-status.json` passes format and the live native
+recorder, but the public compiler regression fails ten of twelve sources.
+The current graph treats try/catch/finally as one opaque node, so guarded
+operand reads have no branch facts. The shadowed-block witness also exposes
+a retained body-boundary/diagnostic issue. Commit this failing replay before
+production changes.
+
+The preceding rest declaration correction passes all four bridge runtime/
+declaration tests, both rest context replays, 241 unit tests, format and
+three-crate all-target Clippy on the frozen 7,017-file third replay. All 22
+protocol declarations pass. The canonical target primary differences are
+66: 22 each for bind-patterns, pattern-evaluation and generator-throw. The
+three ordinary target tests still fail; K.7.1 and the complete K.0 gate remain
+open, and production remains isolated, uncommitted and unpushed.
