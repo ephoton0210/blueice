@@ -7368,3 +7368,27 @@ protocol declarations pass. The canonical target primary differences are
 66: 22 each for bind-patterns, pattern-evaluation and generator-throw. The
 three ordinary target tests still fail; K.7.1 and the complete K.0 gate remain
 open, and production remains isolated, uncommitted and unpushed.
+
+### K.7.1 Variable pattern failing baseline (2026-10-10)
+
+Eight original TypeScript 5.9.3 controls cover object shorthand/renaming,
+defaults, object and array rest, annotated tuples, missing properties and
+incompatible binding use. Native TypeScript accepts six and rejects two;
+the missing-property witness retains both the property and excess-property
+diagnostics, with complete messages and exact positions.
+
+The public Linux replay `blueice-k71-variable-pattern-red-report.json` fails
+all eight against the real frozen compiler library before pattern support.
+No Cargo artifacts or production sources are changed by that probe. Commit
+this regression before implementing variable binding patterns.
+
+The preceding 7,019-file catch-flow implementation third replay passes all
+twelve exact diagnostic observations and the live recorder, format, three-
+crate all-target Clippy and 241 unit tests. Target primary differences fall
+to 44 (22 bind-patterns and 22 pattern-evaluation); the generator-throw form
+is resolved. The public AST confirms that shadowed blocks were already
+retained correctly: the false return diagnostic came from a module/function
+completion cache collision at source offset zero. Its correction clears an
+opaque function's colliding completion entry. Catch assignments also reset
+unknown refinements. The broad ordinary replay is still running. K.7.1 and
+its lowering/declaration/K.0 gates remain open and production is unpushed.
