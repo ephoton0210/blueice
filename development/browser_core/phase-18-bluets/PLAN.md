@@ -6182,13 +6182,13 @@ bytes supply static types, source identity and separately published assets.
 Data does not become executable JavaScript; strict-runtime and direct BlueJS
 entries/imports retain explicit runtime-profile refusals. Atomic publication
 preserves source files and rejects output collisions. Public resource-limit
-controls are being added before closing the new input path.
+controls verify the existing source-byte, lexer-token and schema-depth bounds.
 
 The production audit measures `compiler.rs` at 1,224 lines. K.6.R.2 queues
 closed-project loading and fingerprint construction for a separate verified
 refactor after the K.6.2 implementation commit/push and before K.6.3. The full
-K.0 oracle gate and final-source hosted CI are still pending; this design note
-does not close either gate.
+K.0 oracle gate is verified below. Final-source hosted workspace/platform/coverage
+CI remains open.
 
 
 ### K.6.2 JSON parser budget baseline (2026-10-09)
@@ -6199,3 +6199,15 @@ does not close either gate.
 ### K.6.2 JSON default-property baseline (2026-10-09)
 
 *JSON default-property failing regression (2026-10-09):* Two additional pinned 5.9.3 programs distinguish a JSON module's default object from the object's own `default` property. The accepted reference prints `42` and emits an inferred `number` declaration; the rejected string assignment reports exact TS2322 text/location and emits nothing. BlueTS instead reports TS2339 on both property accesses. Format and both-crate all-target Clippy pass; all 327 frozen backend hashes match. The prior complete frozen gate passes all 1,191 tests in 91 groups, including every 155 ignored oracle, and all 1,036 ordinary tests; the actual 2,464-case/211-template live diagnostics record is byte-identical after ordering correction. Evidence: `/private/tmp/blueice-k14-linux/blueice-k62-json-default-red-{status,report}.json`, `blueice-k62-final-first-{status,report}.json` and independent `blueice-k62-json-default-probe/` records, logs/hashes. Commit this failing public baseline before protecting the module default binding from field-name collisions. K.6.2 and final-source hosted CI remain open.
+
+### K.6.2 verified implementation (2026-10-09)
+
+All 86 pinned matrix programs (63 accept, 23 reject), 54 Node and 60 exact declaration witnesses pass, together with eight supplemental pinned resolution-mode/contextual-name/JSON-default programs, five direct controls and public JSON asset, resource-limit, canonical-root and observation/cache controls. Type-only syntax is erased only from JavaScript; declarations preserve its static surfaces. JSON uses the existing lexer token budget, retains original asset bytes and protects the module default binding from an object field named `default`. Runtime-profile refusals remain. Two fixture renames are reflected in deterministic shared record ordering without changing any recorded observation.
+
+The frozen-source Linux K.0 gate passes format, both-crate all-target Clippy with warnings denied, 1,036 ordinary tests and all 1,192 tests in 92 target/doctest groups, including every one of the 156 ignored oracles in 49 suite files. All 327 frozen backend hashes match. The actual shared diagnostics record is byte-identical to the committed 2,464-program/211-template record. Evidence: `/private/tmp/blueice-k14-linux/blueice-k62-final-second-{status,report}.json`, frozen hashes and logs.
+
+The generated inventory contains 161 refusal sites in 11 areas. Production
+`compiler.rs` has 1,224 lines; K.6.R.2 must split graph loading and fingerprint
+construction in a separately verified commit/push before K.6.3. Hosted complete
+CI remains open; the preceding source still has a macOS real-core navigation
+timeout, which is being diagnosed separately.

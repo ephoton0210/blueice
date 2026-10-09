@@ -4136,10 +4136,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "TypeScript assertions outside a supported declaration",
         ),
         (
-            "import { type A, b } from './a.ts';",
-            "mixed value/type imports are not in the initial BlueTS matrix",
-        ),
-        (
             "type A = number; interface B extends A { x: string }",
             "interface heritage A must name an interface declaration",
         ),
@@ -4171,10 +4167,6 @@ fn syntax_errors_carry_a_precise_expectation() {
         (
             "async foo;",
             "`async` must precede a function declaration in the initial matrix",
-        ),
-        (
-            "import { type } from './a.ts';",
-            "expected an imported binding",
         ),
         (
             "import { , } from './a.ts';",
@@ -4433,6 +4425,7 @@ fn supported_programs_are_accepted() {
         "import type * as N from './a.ts'; const s: N.Shape = { x: 1 };",
         "import type * as N from './a.ts'; const box: N.Box<N.Box<number>> = { value: { value: 1 } };",
         "import './a.ts';",
+        "import { type Shape, b } from './a.ts';",
         "import { a, b as c } from './a.ts'; export const total: number = a;",
         "import * as ns from './a.ts';",
         "export type { Shape } from './a.ts';",

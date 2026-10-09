@@ -31,7 +31,7 @@ use ring::digest::{digest, SHA256};
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 
 /// The TypeScript release whose resolution this follows.
-pub const RESOLUTION_VERSION: &str = "typescript-5.9.3-resolution-v1";
+pub const RESOLUTION_VERSION: &str = "typescript-5.9.3-resolution-v2";
 
 /// TypeScript's `moduleResolution` for a bare specifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +65,7 @@ impl ModuleResolution {
 }
 
 /// Whether the importing file asks for the `import` or the `require` condition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ImportMode {
     Import,
     Require,
@@ -753,7 +753,7 @@ impl<F: PackageFs> PackageResolver<F> {
     }
 
     /// Resolves a relative specifier (`./x`, `../x/y`) the way a package's own
-    /// files import each other: without an extension, or with a JavaScript one.
+    /// files import each other, including TypeScript extension substitution.
     pub fn resolve_relative(
         &self,
         from_dir: &Path,
@@ -776,6 +776,46 @@ impl<F: PackageFs> PackageResolver<F> {
         Ok(ResolvedPackageFile {
             declaration: path.to_string_lossy().ends_with(".d.ts"),
             path,
+            package: None,
+        })
+    }
+
+    /// Resolves an explicitly enabled JSON asset under the canonical owner roots.
+    pub fn resolve_relative_json(
+        &self,
+        from_dir: &Path,
+        specifier: &str,
+    ) -> Result<ResolvedPackageFile, ResolveError> {
+        if !self.within_roots(from_dir) {
+            return Err(ResolveError::OutsideRoots {
+                specifier: specifier.to_string(),
+                path: from_dir.to_path_buf(),
+            });
+        }
+        if !specifier.ends_with(".json")
+            || !(specifier.starts_with("./") || specifier.starts_with("../"))
+        {
+            return Err(ResolveError::InvalidSpecifier(specifier.to_string()));
+        }
+        let joined = normalize(&from_dir.join(specifier));
+        if !self.probe_file(&joined) {
+            return Err(ResolveError::NotFound {
+                specifier: specifier.to_string(),
+                searched: vec![joined],
+            });
+        }
+        let path = self.confine(specifier, &joined)?;
+        let contents =
+            self.fs
+                .read_to_string(&path)
+                .map_err(|error| ResolveError::InvalidPackageJson {
+                    path: path.clone(),
+                    message: error.to_string(),
+                })?;
+        self.observe(&path, Observation::Content(sha256_hex(contents.as_bytes())));
+        Ok(ResolvedPackageFile {
+            path,
+            declaration: false,
             package: None,
         })
     }
@@ -883,6 +923,15 @@ pub fn types_package_name(name: &str) -> String {
 /// The files a package file name may stand for, in TypeScript's order.
 fn file_candidates(path: &Path) -> Vec<PathBuf> {
     let text = path.to_string_lossy().into_owned();
+    if text.ends_with(".d.ts") {
+        return vec![path.to_path_buf()];
+    }
+    if let Some(stem) = text.strip_suffix(".ts") {
+        return TYPESCRIPT_EXTENSIONS
+            .iter()
+            .map(|extension| PathBuf::from(format!("{stem}{extension}")))
+            .collect();
+    }
     let mut candidates = Vec::new();
     for extension in TYPESCRIPT_EXTENSIONS {
         if text.ends_with(extension) && !(extension == ".ts" && text.ends_with(".d.ts")) {

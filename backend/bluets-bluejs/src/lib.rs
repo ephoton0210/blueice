@@ -723,6 +723,12 @@ fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>
                 "the requested module-graph entry was not retained in the checked source graph",
             )
         })?;
+        if module.id.ends_with(".json") {
+            return Err(unsupported(
+                SourceSpan::new(&module.id, 0, 0),
+                "JSON data cannot be a direct executable module-graph entry",
+            ));
+        }
         if module.id.ends_with(".d.ts") {
             return Err(unsupported(
                 SourceSpan::new(&module.id, 0, 0),
@@ -731,13 +737,17 @@ fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>
         }
         for declaration in &module.declarations {
             let (specifier, span) = match declaration {
-                Declaration::Import(import) if !import.type_only => {
+                Declaration::Import(import) if !import.is_type_only() => {
                     (&import.specifier, &import.specifier_span)
                 }
-                Declaration::ValueExport(export) if export.specifier.is_some() => (
-                    export.specifier.as_ref().unwrap(),
-                    export.specifier_span.as_ref().unwrap(),
-                ),
+                Declaration::ValueExport(export)
+                    if export.specifier.is_some() && !export.is_type_only() =>
+                {
+                    (
+                        export.specifier.as_ref().unwrap(),
+                        export.specifier_span.as_ref().unwrap(),
+                    )
+                }
                 _ => continue,
             };
             let target = project
@@ -753,6 +763,12 @@ fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>
                     span.clone(),
                     "the direct bridge links no installed packages: a runtime import of a package \
                      needs the host-provided module loader of the `bluetsc build` route",
+                ));
+            }
+            if target.ends_with(".json") {
+                return Err(unsupported(
+                    span.clone(),
+                    "the direct bridge has no JSON data module runtime profile",
                 ));
             }
             if !target.ends_with(".d.ts") {

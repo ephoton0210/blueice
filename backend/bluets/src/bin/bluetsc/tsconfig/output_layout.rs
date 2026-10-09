@@ -16,6 +16,7 @@ pub(super) fn prepare(
     let mut sources = summary
         .artifacts
         .keys()
+        .chain(summary.assets.keys())
         .map(|module| invocation.root.join(module))
         .collect::<Vec<_>>();
     if project

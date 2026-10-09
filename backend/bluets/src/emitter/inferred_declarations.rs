@@ -100,6 +100,19 @@ impl<'a> Context<'a> {
         // Value imports also appear in annotations, class heritage and signatures.
         for declaration in &module.declarations {
             match declaration {
+                Declaration::TypeAlias(alias) if alias.exported => {
+                    context.references(&alias.value);
+                }
+                Declaration::TypeExport(export) if export.specifier.is_none() => {
+                    for binding in &export.bindings {
+                        context.retain(&binding.local);
+                    }
+                }
+                Declaration::ValueExport(export) if export.specifier.is_none() => {
+                    for binding in &export.bindings {
+                        context.retain(&binding.local);
+                    }
+                }
                 Declaration::Function(function)
                     if function.exported
                         || is_default_export_name(module, &function.name)
@@ -264,7 +277,10 @@ impl<'a> Context<'a> {
     }
 
     fn retain(&mut self, name: &str) {
-        let bare = name.strip_prefix("typeof ").unwrap_or(name);
+        let bare = name
+            .strip_prefix("typeof ")
+            .map(|query| query.split('@').next().unwrap_or(query))
+            .unwrap_or(name);
         if !bare.contains('@') {
             self.used_imports
                 .insert(bare.split('.').next().unwrap_or(bare).to_string());
@@ -374,10 +390,7 @@ impl<'a> Context<'a> {
                     .map(|binding| (import, binding)),
                 _ => None,
             })?;
-        let resolved = self
-            .project
-            .resolutions
-            .get(&(self.module.id.clone(), import.0.specifier.clone()))?;
+        let resolved = self.project.resolved_import(&self.module.id, import.0)?;
         let source = self.project.modules.get(resolved)?;
         let exported = if import.1.imported == "*" {
             name.split_once('.')?.1
@@ -524,8 +537,7 @@ impl<'a> Context<'a> {
                                 Declaration::Import(import)
                                     if self
                                         .project
-                                        .resolutions
-                                        .get(&(self.module.id.clone(), import.specifier.clone()))
+                                        .resolved_import(&self.module.id, import)
                                         .is_some_and(|source| source == id) =>
                                 {
                                     Some(import.specifier.clone())
@@ -644,7 +656,8 @@ impl<'a> Context<'a> {
         let specifier = &self.module.source[import.specifier_span.start..import.specifier_span.end];
         if import.equals_require {
             return Some(format!(
-                "import {} = require({specifier});\n",
+                "import {}{} = require({specifier});\n",
+                if import.type_only { "type " } else { "" },
                 bindings[0].local
             ));
         }
@@ -662,17 +675,38 @@ impl<'a> Context<'a> {
             .iter()
             .filter(|binding| !matches!(binding.imported.as_str(), "default" | "*"))
             .map(|binding| {
-                if binding.local == binding.imported {
-                    binding.local.clone()
+                let name =
+                    declarations::declaration_name(self.module, &binding.span, &binding.imported);
+                let text = if binding.local == binding.imported {
+                    name
                 } else {
-                    format!("{} as {}", binding.imported, binding.local)
+                    format!("{name} as {}", binding.local)
+                };
+                if binding.type_only && !import.type_only {
+                    format!("type {text}")
+                } else {
+                    text
                 }
             })
             .collect();
         if !named.is_empty() {
             clauses.push(format!("{{ {} }}", named.join(", ")));
         }
-        Some(format!("import {} from {specifier};\n", clauses.join(", ")))
+        let attributes = import
+            .attributes
+            .as_ref()
+            .filter(|_| import.type_only)
+            .map_or(String::new(), |attributes| {
+                format!(
+                    " {}",
+                    &self.module.source[attributes.span.start..attributes.span.end]
+                )
+            });
+        Some(format!(
+            "import {}{} from {specifier}{attributes};\n",
+            if import.type_only { "type " } else { "" },
+            clauses.join(", ")
+        ))
     }
 }
 
@@ -691,9 +725,8 @@ fn public_type_name(module: &Module, name: &str) -> Option<String> {
         if let Declaration::TypeExport(export) = declaration {
             if export.specifier.is_none() {
                 for binding in &export.bindings {
-                    let (local, public) = binding.split_once(" as ").unwrap_or((binding, binding));
-                    if local == name {
-                        return Some(public.to_string());
+                    if binding.local == name {
+                        return Some(binding.exported.clone());
                     }
                 }
             }
@@ -753,8 +786,7 @@ fn declared_function(
                 if let Some(binding) = import.bindings.iter().find(|binding| binding.local == name)
                 {
                     if let Some(source) = project
-                        .resolutions
-                        .get(&(module.id.clone(), import.specifier.clone()))
+                        .resolved_import(&module.id, import)
                         .and_then(|id| project.modules.get(id))
                     {
                         return declared_function(
@@ -811,8 +843,7 @@ fn fresh_variable(
                 .find(|binding| binding.local == value.text)
             {
                 let source = project
-                    .resolutions
-                    .get(&(module.id.clone(), import.specifier.clone()))
+                    .resolved_import(&module.id, import)
                     .and_then(|id| project.modules.get(id));
                 if let Some(source) = source {
                     let local = exported_local(source, &binding.imported);

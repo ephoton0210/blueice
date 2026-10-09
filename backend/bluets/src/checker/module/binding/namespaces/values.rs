@@ -15,7 +15,7 @@ pub(crate) struct ExportedValue {
 }
 
 impl ExportedValue {
-    fn value_type(&self) -> Type {
+    pub(in crate::checker) fn value_type(&self) -> Type {
         let name = &self.surface.source_name;
         if let Some(signatures) = self.surface.functions.get(name) {
             let mut types: Vec<_> = signatures
@@ -44,6 +44,33 @@ impl ModuleChecker<'_> {
         &self,
         seed: bool,
     ) -> BTreeMap<String, ExportedValue> {
+        if let Some(schema) = self.project.json_modules.get(&self.module.id) {
+            let mut values = BTreeMap::new();
+            if let Type::Record(fields) = schema {
+                values.extend(
+                    fields
+                        .iter()
+                        .map(|field| (field.name.clone(), field.value.clone())),
+                );
+            }
+            values.insert("default".to_string(), schema.clone());
+            return values
+                .into_iter()
+                .map(|(name, value)| {
+                    let mut surface = self.namespace_export_of(&name);
+                    surface.values.insert(name.clone(), value);
+                    surface.has_values = true;
+                    (
+                        name,
+                        ExportedValue {
+                            surface,
+                            pending: false,
+                            readonly: false,
+                        },
+                    )
+                })
+                .collect();
+        }
         let mut names = BTreeMap::new();
         for declaration in &self.module.declarations {
             match declaration {

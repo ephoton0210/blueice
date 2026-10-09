@@ -37,7 +37,7 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
                     return false;
                 };
                 project
-                    .resolved_module(id, &import.specifier)
+                    .resolved_import(id, import)
                     .is_some_and(|target| forward.contains(target) && reverse.contains(target))
                     && import.bindings.iter().any(|binding| {
                         !binding.type_only
@@ -80,10 +80,10 @@ fn reachable(project: &Project, origin: &str, reverse: bool) -> BTreeSet<String>
         if !result.insert(id.clone()) {
             continue;
         }
-        for ((from, _), to) in &project.resolutions {
+        for (from, to) in project.resolution_edges() {
             let (source, target) = if reverse { (to, from) } else { (from, to) };
-            if source == &id {
-                pending.push(target.clone());
+            if source == id {
+                pending.push(target.to_string());
             }
         }
     }

@@ -61799,54 +61799,6 @@
       ]
     },
     {
-      "id": "module-types:modtypes-runtime-class-commonjs/main.ts",
-      "matrix": "module-types",
-      "entry": "modtypes-runtime-class-commonjs/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit",
-        "--module",
-        "commonjs"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/modtypes-runtime-class-commonjs/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
-      "id": "module-types:modtypes-runtime-class-es2022/main.ts",
-      "matrix": "module-types",
-      "entry": "modtypes-runtime-class-es2022/main.ts",
-      "flags": [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--strict",
-        "--allowImportingTsExtensions",
-        "--noEmit",
-        "--module",
-        "es2022"
-      ],
-      "verdict": "accept",
-      "replayChecking": "strict",
-      "inputs": [
-        "typescript_oracle/modtypes-runtime-class-es2022/main.ts"
-      ],
-      "accepts": true,
-      "first": null,
-      "diagnostics": []
-    },
-    {
       "id": "module-types:modtypes-runtime-contextual-default-commonjs/main.ts",
       "matrix": "module-types",
       "entry": "modtypes-runtime-contextual-default-commonjs/main.ts",
@@ -62465,6 +62417,54 @@
       "replayChecking": "strict",
       "inputs": [
         "typescript_oracle/modtypes-runtime-inline-mixed-es2022/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-types:modtypes-runtime-instance-commonjs/main.ts",
+      "matrix": "module-types",
+      "entry": "modtypes-runtime-instance-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modtypes-runtime-instance-commonjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-types:modtypes-runtime-instance-es2022/main.ts",
+      "matrix": "module-types",
+      "entry": "modtypes-runtime-instance-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "es2022"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modtypes-runtime-instance-es2022/main.ts"
       ],
       "accepts": true,
       "first": null,

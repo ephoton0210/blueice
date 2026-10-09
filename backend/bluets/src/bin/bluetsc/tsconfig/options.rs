@@ -280,6 +280,7 @@ pub(super) fn owner_options(
     for name in [
         "target",
         "module",
+        "resolveJsonModule",
         "sourceMap",
         "declaration",
         "useDefineForClassFields",
@@ -307,12 +308,6 @@ pub(super) fn owner_options(
         if matches!(value, "node16" | "bundler") {
             owner.insert("moduleResolution".to_string(), json!(value));
         }
-    }
-    if matches!(
-        owner.get("module").and_then(Value::as_str),
-        Some("es2015" | "es6" | "es2020" | "es2022")
-    ) {
-        owner.insert("module".to_string(), json!("esnext"));
     }
     Ok(owner)
 }

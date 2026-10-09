@@ -598,9 +598,10 @@ impl Parser {
     }
 
     pub(super) fn consume_identifier(&mut self) -> Option<String> {
-        // `of` is syntax only at the separator of a for-of head; it is a
-        // valid binding name everywhere an identifier is required.
-        if self.current().kind == TokenKind::Identifier || self.current().is("of") {
+        // Contextual TypeScript words can still name a binding or a type.
+        if self.current().kind == TokenKind::Identifier
+            || matches!(self.current().text.as_str(), "of" | "type")
+        {
             let value = self.current().text.clone();
             self.bump();
             Some(value)

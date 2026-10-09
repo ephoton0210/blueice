@@ -412,9 +412,16 @@ impl<'a> ScopeModel<'a> {
                 {
                     Some(format!("cannot find type `{}`", reference.name))
                 }
-                Some((_, Some(binding))) if binding.type_only => Some(format!(
-                    "`{root}` has no value binding (type-only declaration or import)"
-                )),
+                Some((_, Some(binding)))
+                    if binding.type_only
+                        && (reference.meaning == Meaning::Value
+                            || reference.meaning == Meaning::Query
+                                && binding.kind == BindingKind::Namespace) =>
+                {
+                    Some(format!(
+                        "`{root}` has no value binding (type-only declaration or import)"
+                    ))
+                }
                 Some((scope, Some(binding)))
                     if reference.meaning == Meaning::Value
                         && reference.span.start < binding.ready
@@ -482,15 +489,12 @@ impl<'a> ScopeModel<'a> {
     pub(super) fn query_type(&self, name: &str, offset: usize) -> Option<Type> {
         let scope = self.scope_at(offset);
         if let Some((_, Some(binding))) = self.resolve(scope, name, Meaning::Query) {
-            return (!binding.type_only).then(|| binding.declared_type.clone());
+            return Some(binding.declared_type.clone());
         }
         let mut parts = name.split('.');
         let root = parts.next()?;
         let (_, binding) = self.resolve(scope, root, Meaning::Query)?;
         let binding = binding?;
-        if binding.type_only {
-            return None;
-        }
         let mut value = binding.declared_type.clone();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         for part in parts {

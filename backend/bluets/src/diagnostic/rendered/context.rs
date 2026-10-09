@@ -32,10 +32,7 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
                 let Declaration::Import(import) = declaration else {
                     continue;
                 };
-                let Some(resolved) = project
-                    .resolutions
-                    .get(&(module.id.clone(), import.specifier.clone()))
-                else {
+                let Some(resolved) = project.resolved_import(&module.id, import) else {
                     continue;
                 };
                 let Some(dependency) = project.modules.get(resolved) else {

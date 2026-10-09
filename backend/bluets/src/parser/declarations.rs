@@ -59,6 +59,7 @@ impl Parser {
         self.diagnose_unparenthesized_nullish_logical_mixing();
         self.diagnose_unparenthesized_unary_exponentiation();
         self.parse_items();
+        self.validate_umd_exports();
 
         if self.diagnostics.is_empty() {
             self.audit_erased_function_annotations();
@@ -130,6 +131,10 @@ impl Parser {
                         "decorators are not valid here; they decorate a class or a class member",
                     );
                 }
+            }
+            if exported && self.peek("as") {
+                self.parse_umd_export(start);
+                continue;
             }
             // `export {};` in a namespace body only says that exports are explicit.
             if self.namespace_depth > 0

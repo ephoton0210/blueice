@@ -12,6 +12,7 @@ mod diagnostics;
 mod enums;
 mod functions;
 mod generators;
+mod import_attributes;
 pub(in crate::checker::module) use generators::GeneratorContext;
 mod modules;
 mod names;
@@ -69,6 +70,7 @@ impl<'a> ModuleChecker<'a> {
             define_class_fields: policy.define_class_fields,
             isolated_modules: policy.isolated_modules,
             module_kind: policy.module_kind,
+            import_attributes: policy.import_attributes,
             es_module_interop: policy.es_module_interop,
             jsx_mode: policy.jsx,
             experimental_decorators: policy.experimental_decorators,
@@ -121,6 +123,7 @@ impl<'a> ModuleChecker<'a> {
         self.validate_default_exports();
         self.validate_value_exports();
         self.validate_module_system();
+        self.validate_import_attributes();
     }
 
     /// Binds what the module's (or a namespace body's) own declarations declare.
@@ -257,7 +260,7 @@ impl<'a> ModuleChecker<'a> {
                     }
                 }
                 Declaration::Namespace(namespace) => self.bind_namespace(namespace),
-                Declaration::Raw(_) => {}
+                Declaration::Raw(_) | Declaration::UmdExport(_) => {}
             }
         }
     }
@@ -545,6 +548,7 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Class(original) => self.check_class_structure(original),
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
+                | Declaration::UmdExport(_)
                 | Declaration::DefaultExport(_)
                 | Declaration::ValueExport(_) => {}
                 Declaration::Namespace(namespace) => self.check_namespace(namespace),

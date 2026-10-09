@@ -37,6 +37,7 @@ fn build(root: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_bluetsc"))
         .args(["build", "--config"])
         .arg(root.join("tsconfig.json"))
+        .arg("--diagnostics-json")
         .output()
         .unwrap()
 }
@@ -79,7 +80,14 @@ fn json_assets_keep_actual_bytes_types_and_content_fingerprints() {
     fs::write(root.join("src/data.json"), "{\"nested\":{\"value\":true}}").unwrap();
     let output = build(&root);
     assert!(!output.status.success());
-    assert!(report(&output).contains("TS2322"), "{}", report(&output));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .any(|diagnostic| diagnostic["typescript"]["code"] == 2322),
+        "{}",
+        report(&output)
+    );
     assert!(!root.join("out").exists());
     fs::write(root.join("src/data.json"), "{invalid json}").unwrap();
     assert!(!build(&root).status.success());

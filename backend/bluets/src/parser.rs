@@ -119,6 +119,7 @@ pub enum NestedFunctionBody {
 pub enum Declaration {
     Import(ImportDeclaration),
     TypeExport(TypeExportDeclaration),
+    UmdExport(UmdExportDeclaration),
     DefaultExport(DefaultExportDeclaration),
     ValueExport(ValueExportDeclaration),
     TypeAlias(TypeAliasDeclaration),
@@ -136,6 +137,7 @@ impl Declaration {
         match self {
             Self::Import(declaration) => &declaration.span,
             Self::TypeExport(declaration) => &declaration.span,
+            Self::UmdExport(declaration) => &declaration.span,
             Self::DefaultExport(declaration) => &declaration.span,
             Self::ValueExport(declaration) => &declaration.span,
             Self::TypeAlias(declaration) => &declaration.span,
@@ -153,8 +155,8 @@ impl Declaration {
 mod module_declarations;
 
 pub use module_declarations::{
-    DefaultExportDeclaration, ImportBinding, ImportDeclaration, TypeExportDeclaration,
-    ValueExportBinding, ValueExportDeclaration,
+    DefaultExportDeclaration, ImportAttribute, ImportAttributes, ImportBinding, ImportDeclaration,
+    TypeExportDeclaration, UmdExportDeclaration, ValueExportBinding, ValueExportDeclaration,
 };
 
 /// A JavaScript runtime statement that the bounded TypeScript parser does not
@@ -608,10 +610,19 @@ pub struct InterfaceDeclaration {
     pub signatures: Vec<TypeSignature>,
     pub indices: Vec<IndexSignature>,
     pub exported: bool,
+    pub default_export: bool,
     pub span: SourceSpan,
 }
 
 impl InterfaceDeclaration {
+    pub(crate) fn export_name(&self) -> &str {
+        if self.default_export {
+            "default"
+        } else {
+            &self.name
+        }
+    }
+
     pub(crate) fn body_type(&self) -> Type {
         let object = if self.signatures.is_empty() {
             Type::Record(self.fields.clone())

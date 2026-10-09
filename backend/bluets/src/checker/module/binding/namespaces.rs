@@ -177,6 +177,7 @@ impl ModuleChecker<'_> {
             define_class_fields: self.define_class_fields,
             isolated_modules: self.isolated_modules,
             module_kind: self.module_kind,
+            import_attributes: self.import_attributes,
             es_module_interop: self.es_module_interop,
             jsx: self.jsx_mode,
             experimental_decorators: self.experimental_decorators,

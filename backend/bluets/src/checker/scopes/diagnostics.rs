@@ -85,6 +85,17 @@ impl ScopeModel<'_> {
         {
             return diagnostic.with_typescript(2708, vec![root.into()]);
         }
+        if binding.is_some_and(|binding| {
+            binding.type_only
+                && matches!(
+                    binding.kind,
+                    BindingKind::Import | BindingKind::NamespaceImport
+                )
+                && (binding.kind == BindingKind::NamespaceImport
+                    || binding.declared_type != Type::Unknown)
+        }) {
+            return diagnostic.with_typescript(1361, vec![root.into()]);
+        }
         if binding.is_none() {
             if root == "document" {
                 return diagnostic.with_typescript(2584, vec![root.into()]);

@@ -40,7 +40,7 @@ pub(super) fn commonjs(export: &ValueExportDeclaration, specifier: &str, name: &
             "for (const key in {name}) {{ if (key !== \"default\" && !Object.prototype.hasOwnProperty.call(exports, key)) Object.defineProperty(exports, key, {{ enumerable: true, get: function() {{ return {name}[key]; }} }}); }}"
         ));
     } else {
-        for binding in &export.bindings {
+        for binding in export.bindings.iter().filter(|binding| !binding.type_only) {
             output.push_str(&format!(
                 "Object.defineProperty(exports, {:?}, {{ enumerable: true, get: function() {{ return {name}[{:?}]; }} }}); ",
                 binding.exported, binding.local,

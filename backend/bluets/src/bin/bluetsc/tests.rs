@@ -204,6 +204,7 @@ fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
         &CompileSummary {
             artifacts: BTreeMap::new(),
             declaration_modules: BTreeMap::new(),
+            assets: BTreeMap::new(),
             fingerprint: "test".to_string(),
             module_count: 1,
             has_errors: false,
@@ -338,6 +339,7 @@ fn publishing_replaces_a_complete_output_directory_only_after_staging() {
         &output,
         &artifacts,
         &BTreeMap::new(),
+        &BTreeMap::new(),
         &test_metadata(),
     )
     .unwrap();
@@ -364,7 +366,15 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     let output = temporary.join("output");
     fs::create_dir_all(&root).unwrap();
     let (artifacts, mut metadata) = strict_fixture(&root);
-    publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).unwrap();
+    publish_build(
+        &root,
+        &output,
+        &artifacts,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &metadata,
+    )
+    .unwrap();
     assert_eq!(
         fs::read_to_string(output.join(RUNTIME_HELPER_V1_FILE)).unwrap(),
         RUNTIME_HELPER_V1_SOURCE
@@ -385,19 +395,36 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     );
 
     metadata.runtime_helper.as_mut().unwrap().sha256 = "sha256:wrong".into();
-    assert!(publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).is_err());
+    assert!(publish_build(
+        &root,
+        &output,
+        &artifacts,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &metadata
+    )
+    .is_err());
     assert_eq!(
         fs::read_to_string(output.join(RUNTIME_HELPER_V1_FILE)).unwrap(),
         RUNTIME_HELPER_V1_SOURCE
     );
     metadata.runtime_helper = None;
-    assert!(publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).is_err());
+    assert!(publish_build(
+        &root,
+        &output,
+        &artifacts,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &metadata
+    )
+    .is_err());
 
     metadata.runtime_policy = RuntimePolicy::Checked.as_str();
     metadata.runtime_helper = Some(runtime_helper_v1_identity());
     assert!(publish_build(
         &root,
         &output,
+        &BTreeMap::new(),
         &BTreeMap::new(),
         &BTreeMap::new(),
         &metadata
@@ -407,6 +434,7 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     assert!(publish_build(
         &root,
         &output,
+        &BTreeMap::new(),
         &BTreeMap::new(),
         &BTreeMap::new(),
         &metadata
@@ -417,6 +445,7 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     publish_build(
         &root,
         &output,
+        &BTreeMap::new(),
         &BTreeMap::new(),
         &BTreeMap::new(),
         &metadata,
@@ -433,7 +462,15 @@ fn strict_publisher_rejects_manifest_and_call_tampering_before_replacement() {
     let output = temporary.join("output");
     fs::create_dir_all(&root).unwrap();
     let (artifacts, metadata) = strict_fixture(&root);
-    publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).unwrap();
+    publish_build(
+        &root,
+        &output,
+        &artifacts,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &metadata,
+    )
+    .unwrap();
     let original_js = fs::read(output.join("main.js")).unwrap();
     let original_manifest = fs::read(output.join("bluetsc.manifest.json")).unwrap();
     let assert_refused =
@@ -443,6 +480,7 @@ fn strict_publisher_rejects_manifest_and_call_tampering_before_replacement() {
                 &root,
                 &output,
                 candidate_artifacts,
+                &BTreeMap::new(),
                 &BTreeMap::new(),
                 candidate_metadata,
             )
@@ -567,6 +605,7 @@ fn staging_failure_does_not_replace_an_existing_output_directory() {
         &root,
         &output,
         &artifacts,
+        &BTreeMap::new(),
         &BTreeMap::new(),
         &test_metadata(),
     )

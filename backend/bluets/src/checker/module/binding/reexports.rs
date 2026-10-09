@@ -7,6 +7,46 @@
 use super::*;
 
 impl ModuleChecker<'_> {
+    pub(super) fn missing_type_import(
+        &self,
+        import: &crate::parser::ImportDeclaration,
+        binding: &crate::parser::ImportBinding,
+        target: &str,
+        diagnostic: Diagnostic,
+    ) -> Diagnostic {
+        if binding.imported == "default" {
+            return self.refine_missing_default(
+                import,
+                binding,
+                target,
+                diagnostic.with_typescript(1192, vec![import.specifier.clone()]),
+            );
+        }
+        let declared = self.project.modules.get(target).is_some_and(|module| {
+            module
+                .declarations
+                .iter()
+                .any(|declaration| match declaration {
+                    Declaration::TypeAlias(alias) => alias.name == binding.imported,
+                    Declaration::Interface(interface) => interface.name == binding.imported,
+                    Declaration::Class(class) => class.name == binding.imported,
+                    Declaration::Function(function) => function.name == binding.imported,
+                    Declaration::Variable(variable) => variable.name == binding.imported,
+                    Declaration::Enum(item) => item.name == binding.imported,
+                    Declaration::Namespace(namespace) => namespace.name == binding.imported,
+                    Declaration::Import(import) => import
+                        .bindings
+                        .iter()
+                        .any(|local| local.local == binding.imported),
+                    _ => false,
+                })
+        });
+        diagnostic.with_typescript(
+            if declared { 2459 } else { 2305 },
+            vec![import.specifier.clone(), binding.imported.clone()],
+        )
+    }
+
     pub(super) fn refine_missing_default(
         &self,
         import: &crate::parser::ImportDeclaration,
@@ -27,16 +67,15 @@ impl ModuleChecker<'_> {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        if stars.is_empty() {
+        if stars.is_empty() && !binding.type_only {
             return diagnostic;
         }
-        let mut diagnostic = diagnostic.with_typescript(
-            1192,
-            vec![format!(
-                "{:?}",
-                target.strip_suffix(".ts").unwrap_or(target)
-            )],
-        );
+        let module_name = target
+            .strip_suffix(".d.ts")
+            .or_else(|| target.strip_suffix(".tsx"))
+            .or_else(|| target.strip_suffix(".ts"))
+            .unwrap_or(target);
+        let mut diagnostic = diagnostic.with_typescript(1192, vec![format!("{module_name:?}")]);
         let counterpart = diagnostic.typescript.as_mut().unwrap();
         if let Some(token) = crate::syntax::lex(&self.module.id, &self.module.source)
             .unwrap_or_default()
@@ -71,6 +110,26 @@ impl ModuleChecker<'_> {
         let Some(target) = self.project.resolved_module(&self.module.id, specifier) else {
             return;
         };
+        if export.star && self.project.json_modules.contains_key(target) {
+            let name = target
+                .rsplit('/')
+                .next()
+                .unwrap_or(target)
+                .trim_end_matches(".json");
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::TypeMismatch,
+                    export
+                        .specifier_span
+                        .as_ref()
+                        .unwrap_or(&export.span)
+                        .clone(),
+                    "JSON export assignment cannot be used with a star re-export",
+                )
+                .with_typescript(2498, vec![format!("{name:?}")]),
+            );
+            return;
+        }
         let origins = crate::checker::reexports::origins(self.project);
         let source = &origins[target];
         for binding in &export.bindings {

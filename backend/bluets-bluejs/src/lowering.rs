@@ -38,7 +38,10 @@ pub(super) fn lower_script(
         let declaration =
             &rewrite_declaration(original, &BTreeMap::new()).map_err(from_diagnostic)?;
         match declaration {
-            Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
+            Declaration::TypeAlias(_)
+            | Declaration::Interface(_)
+            | Declaration::TypeExport(_)
+            | Declaration::UmdExport(_) => {}
             Declaration::Variable(variable) if !variable.declared && !variable.exported => {
                 body.push(lower_variable(module, variable)?);
                 provenance.push((variable.span.clone(), LoweringProvenanceKind::LoweredSyntax));
@@ -49,13 +52,14 @@ pub(super) fn lower_script(
                 ));
                 provenance.push((raw.span.clone(), LoweringProvenanceKind::Copied));
             }
-            Declaration::Import(import) if import.type_only => {}
+            Declaration::Import(import) if import.is_type_only() => {}
             Declaration::DefaultExport(export) => {
                 return Err(unsupported(
                     export.span.clone(),
                     "ESM default exports require the module bridge",
                 ));
             }
+            Declaration::ValueExport(export) if export.is_type_only() => {}
             Declaration::ValueExport(export) => {
                 return Err(unsupported(
                     export.span.clone(),
@@ -167,7 +171,10 @@ pub(super) fn lower_module(
         let declaration =
             &rewrite_declaration(original, &BTreeMap::new()).map_err(from_diagnostic)?;
         match declaration {
-            Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
+            Declaration::TypeAlias(_)
+            | Declaration::Interface(_)
+            | Declaration::TypeExport(_)
+            | Declaration::UmdExport(_) => {}
             Declaration::Variable(variable) if !variable.declared => {
                 body.push(module_exports::variable(module, variable)?);
                 provenance.push((variable.span.clone(), LoweringProvenanceKind::LoweredSyntax));
@@ -224,6 +231,7 @@ pub(super) fn lower_module(
                     local_name,
                 });
             }
+            Declaration::ValueExport(export) if export.is_type_only() => {}
             Declaration::ValueExport(export) => {
                 if let Some(specifier) = &export.specifier {
                     let request = project
@@ -250,14 +258,18 @@ pub(super) fn lower_module(
                             module_type: bluejs::ModuleType::JavaScript,
                         });
                     } else {
-                        exports.extend(export.bindings.iter().map(|binding| {
-                            bluejs::ExportEntry::Indirect {
-                                export_name: binding.exported.clone(),
-                                module_request: request.clone(),
-                                import_name: binding.local.clone(),
-                                module_type: bluejs::ModuleType::JavaScript,
-                            }
-                        }));
+                        exports.extend(
+                            export
+                                .bindings
+                                .iter()
+                                .filter(|binding| !binding.type_only)
+                                .map(|binding| bluejs::ExportEntry::Indirect {
+                                    export_name: binding.exported.clone(),
+                                    module_request: request.clone(),
+                                    import_name: binding.local.clone(),
+                                    module_type: bluejs::ModuleType::JavaScript,
+                                }),
+                        );
                     }
                     continue;
                 }
@@ -265,13 +277,14 @@ pub(super) fn lower_module(
                     export
                         .bindings
                         .iter()
+                        .filter(|binding| !binding.type_only)
                         .map(|binding| bluejs::ExportEntry::Local {
                             export_name: binding.exported.clone(),
                             local_name: binding.local.clone(),
                         }),
                 );
             }
-            Declaration::Import(import) if import.type_only => {}
+            Declaration::Import(import) if import.is_type_only() => {}
             Declaration::Import(import) => {
                 let Some(project) = project else {
                     return Err(unsupported(
@@ -299,16 +312,22 @@ pub(super) fn lower_module(
                         module_type: bluejs::ModuleType::JavaScript,
                     });
                 } else {
-                    imports.extend(import.bindings.iter().map(|binding| bluejs::ImportEntry {
-                        module_request: request.clone(),
-                        import_name: if binding.imported == "*" {
-                            bluejs::ImportName::Namespace
-                        } else {
-                            bluejs::ImportName::Named(binding.imported.clone())
-                        },
-                        local_name: Some(binding.local.clone()),
-                        module_type: bluejs::ModuleType::JavaScript,
-                    }));
+                    imports.extend(
+                        import
+                            .bindings
+                            .iter()
+                            .filter(|binding| !binding.type_only)
+                            .map(|binding| bluejs::ImportEntry {
+                                module_request: request.clone(),
+                                import_name: if binding.imported == "*" {
+                                    bluejs::ImportName::Namespace
+                                } else {
+                                    bluejs::ImportName::Named(binding.imported.clone())
+                                },
+                                local_name: Some(binding.local.clone()),
+                                module_type: bluejs::ModuleType::JavaScript,
+                            }),
+                    );
                 }
             }
             Declaration::Variable(variable) => {

@@ -6,7 +6,10 @@
 
 use super::*;
 
-pub(super) fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnostic> {
+pub(super) fn declaration_module_diagnostics(
+    project: &Project,
+    module_kind: crate::ModuleKind,
+) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for (module_id, module) in &project.modules {
         for declaration in &module.declarations {
@@ -28,10 +31,25 @@ pub(super) fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnosti
                 }
             }
             if let Declaration::Import(import) = declaration {
-                if !import.type_only
+                if !import.type_only && import.specifier.ends_with(".d.ts") {
+                    let stem = import.specifier.strip_suffix(".d.ts").unwrap();
+                    let implementation = match module_kind {
+                        crate::ModuleKind::CommonJs => stem.to_string(),
+                        crate::ModuleKind::Esm => format!("{stem}.ts"),
+                    };
+                    diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::InvalidDeclarationFile,
+                            import.specifier_span.clone(),
+                            "explicit declaration imports require a whole type-only import",
+                        )
+                        .with_typescript(2846, vec![implementation]),
+                    );
+                    continue;
+                }
+                if !import.is_type_only()
                     && project
-                        .resolutions
-                        .get(&(module_id.clone(), import.specifier.clone()))
+                        .resolved_import(module_id, import)
                         // An installed package's declarations describe code the
                         // package provides at run time, which the host that runs
                         // the output resolves by the package's own specifier. A
@@ -68,6 +86,7 @@ pub(super) fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnosti
                 Declaration::DefaultExport(_)
                 | Declaration::ValueExport(_)
                 | Declaration::TypeExport(_)
+                | Declaration::UmdExport(_)
                 | Declaration::TypeAlias(_)
                 | Declaration::Interface(_) => false,
             };
@@ -107,7 +126,7 @@ pub(super) fn exported_types(
                 }
                 Declaration::Interface(interface) if interface.exported => {
                     values.insert(
-                        interface.name.clone(),
+                        interface.export_name().to_string(),
                         TypeDefinition {
                             kind: TypeDefinitionKind::Interface,
                             parameters: interface.type_parameters.clone(),
@@ -127,9 +146,12 @@ pub(super) fn exported_types(
                 }
                 Declaration::ValueExport(export) if export.specifier.is_none() => {
                     for binding in &export.bindings {
-                        if let Some(definition) = declared
-                            .get(&binding.local)
-                            .filter(|definition| definition.kind == TypeDefinitionKind::Class)
+                        if let Some(definition) =
+                            declared.get(&binding.local).filter(|definition| {
+                                binding.type_only
+                                    || export.export_assignment && is_declaration_module(id)
+                                    || definition.kind == TypeDefinitionKind::Class
+                            })
                         {
                             values.insert(binding.exported.clone(), definition.clone());
                         }
@@ -137,13 +159,8 @@ pub(super) fn exported_types(
                 }
                 Declaration::TypeExport(export) if export.specifier.is_none() => {
                     for binding in &export.bindings {
-                        let (local, exported) = binding
-                            .split_once(" as ")
-                            .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
-                                (local, exported)
-                            });
-                        if let Some(definition) = declared.get(local) {
-                            values.insert(exported.to_string(), definition.clone());
+                        if let Some(definition) = declared.get(&binding.local) {
+                            values.insert(binding.exported.clone(), definition.clone());
                         }
                     }
                 }
@@ -164,31 +181,48 @@ pub(super) fn exported_types(
                 let Declaration::TypeExport(export) = declaration else {
                     continue;
                 };
-                let Some(specifier) = &export.specifier else {
-                    continue;
-                };
-                let Some(source_id) = project
-                    .resolutions
-                    .get(&(module_id.clone(), specifier.clone()))
-                else {
+                let Some(source_id) = project.resolved_type_export(module_id, export) else {
                     continue;
                 };
                 let Some(source_types) = modules.get(source_id) else {
                     continue;
                 };
+                if export.star && export.namespace.is_none() {
+                    additions.extend(
+                        source_types
+                            .iter()
+                            .filter(|(name, _)| name.as_str() != "default")
+                            .map(|(name, value)| (name.clone(), value.clone())),
+                    );
+                }
+                if let Some(namespace) = &export.namespace {
+                    let substitutions = source_types
+                        .keys()
+                        .map(|name| {
+                            (
+                                name.clone(),
+                                Type::Named {
+                                    name: format!("{namespace}.{name}"),
+                                    arguments: Vec::new(),
+                                },
+                            )
+                        })
+                        .collect();
+                    for (name, definition) in source_types {
+                        let mut definition = definition.clone();
+                        definition.value = substitute_type(&definition.value, &substitutions);
+                        additions.insert(format!("{namespace}.{name}"), definition);
+                    }
+                }
                 for binding in &export.bindings {
-                    if binding == "*" {
-                        additions.extend(source_types.clone());
-                        continue;
+                    if let Some(value) = source_types.get(&binding.local) {
+                        additions.insert(binding.exported.clone(), value.clone());
                     }
-                    let (local, exported) = binding
-                        .split_once(" as ")
-                        .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
-                            (local, exported)
-                        });
-                    if let Some(value) = source_types.get(local) {
-                        additions.insert(exported.to_string(), value.clone());
-                    }
+                    let prefix = format!("{}.", binding.local);
+                    additions.extend(source_types.iter().filter_map(|(name, value)| {
+                        name.strip_prefix(&prefix)
+                            .map(|member| (format!("{}.{member}", binding.exported), value.clone()))
+                    }));
                 }
             }
             let target = modules.entry(module_id.clone()).or_default();
@@ -231,10 +265,7 @@ pub(super) fn exported_classes(
                 if import.type_only {
                     continue;
                 }
-                let Some(source_id) = project
-                    .resolutions
-                    .get(&(module_id.clone(), import.specifier.clone()))
-                else {
+                let Some(source_id) = project.resolved_import(module_id, import) else {
                     continue;
                 };
                 let Some(source_classes) = snapshot.get(source_id) else {
@@ -273,36 +304,29 @@ pub(super) fn exported_classes(
                 let Declaration::TypeExport(export) = declaration else {
                     continue;
                 };
-                let Some(specifier) = &export.specifier else {
-                    continue;
-                };
-                let Some(source_id) = project
-                    .resolutions
-                    .get(&(module_id.clone(), specifier.clone()))
-                else {
+                let Some(source_id) = project.resolved_type_export(module_id, export) else {
                     continue;
                 };
                 let Some(source_classes) = modules.get(source_id) else {
                     continue;
                 };
+                if export.star && export.namespace.is_none() {
+                    additions.extend(
+                        source_classes
+                            .iter()
+                            .filter(|(name, _)| name.as_str() != "default")
+                            .map(|(name, value)| {
+                                let mut value = value.clone();
+                                value.value_exported = false;
+                                (name.clone(), value)
+                            }),
+                    );
+                }
                 for binding in &export.bindings {
-                    if binding == "*" {
-                        additions.extend(source_classes.iter().map(|(name, value)| {
-                            let mut value = value.clone();
-                            value.value_exported = false;
-                            (name.clone(), value)
-                        }));
-                        continue;
-                    }
-                    let (local, exported) = binding
-                        .split_once(" as ")
-                        .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
-                            (local, exported)
-                        });
-                    if let Some(value) = source_classes.get(local) {
+                    if let Some(value) = source_classes.get(&binding.local) {
                         let mut value = value.clone();
                         value.value_exported = false;
-                        additions.insert(exported.to_string(), value);
+                        additions.insert(binding.exported.clone(), value);
                     }
                 }
             }
@@ -367,22 +391,17 @@ fn local_exported_class_surfaces(
                 for binding in &export.bindings {
                     if let Some(value) = declared.get(&binding.local) {
                         let mut value = value.clone();
-                        value.value_exported = true;
+                        value.value_exported = !binding.type_only;
                         exports.insert(binding.exported.clone(), value);
                     }
                 }
             }
             Declaration::TypeExport(export) if export.specifier.is_none() => {
                 for binding in &export.bindings {
-                    let (local, exported) = binding
-                        .split_once(" as ")
-                        .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
-                            (local, exported)
-                        });
-                    if let Some(value) = declared.get(local) {
+                    if let Some(value) = declared.get(&binding.local) {
                         let mut value = value.clone();
                         value.value_exported = false;
-                        exports.insert(exported.to_string(), value);
+                        exports.insert(binding.exported.clone(), value);
                     }
                 }
             }
@@ -637,6 +656,12 @@ pub(super) fn local_exported_names(
     let mut modules = BTreeMap::new();
     for (id, module) in &project.modules {
         let mut names = static_types[id].keys().cloned().collect::<BTreeSet<_>>();
+        if let Some(schema) = project.json_modules.get(id) {
+            names.insert("default".to_string());
+            if let Type::Record(fields) = schema {
+                names.extend(fields.iter().map(|field| field.name.clone()));
+            }
+        }
         let mut open = false;
         for declaration in &module.declarations {
             match declaration {
@@ -661,7 +686,7 @@ pub(super) fn local_exported_names(
                     names.insert(alias.name.clone());
                 }
                 Declaration::Interface(interface) if interface.exported => {
-                    names.insert(interface.name.clone());
+                    names.insert(interface.export_name().to_string());
                 }
                 Declaration::ValueExport(export) => {
                     if let Some(name) = &export.namespace {
@@ -678,11 +703,11 @@ pub(super) fn local_exported_names(
                     if export.specifier.is_some() {
                         open = true;
                     }
+                    if let Some(name) = &export.namespace {
+                        names.insert(name.clone());
+                    }
                     for binding in &export.bindings {
-                        let exported = binding
-                            .split_once(" as ")
-                            .map_or(binding.as_str(), |(_, exported)| exported);
-                        names.insert(exported.to_string());
+                        names.insert(binding.exported.clone());
                     }
                 }
                 Declaration::DefaultExport(_) => {

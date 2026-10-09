@@ -89,6 +89,7 @@ impl Parser {
                 signatures,
                 indices,
                 exported,
+                default_export: false,
                 span: SourceSpan::new(&self.id, start, end),
             }));
     }

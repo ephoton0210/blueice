@@ -81,8 +81,7 @@ impl ScopeModel<'_> {
                         }
                         let source = self
                             .project
-                            .resolutions
-                            .get(&(self.module.id.clone(), import.specifier.clone()))
+                            .resolved_import(&self.module.id, import)
                             .and_then(|id| self.project.modules.get(id));
                         let pure_type = source.is_some_and(|source| {
                             exported_value(&source.declarations, &binding.imported) == Some(false)
@@ -99,7 +98,12 @@ impl ScopeModel<'_> {
                                     == Some(Some(false))
                         });
                         if binding.type_only || import.type_only || pure_type {
-                            self.value(scope, &binding.local, 0, false, true, Type::Unknown);
+                            let value = self.scopes[scope]
+                                .values
+                                .get(&binding.local)
+                                .map(|binding| binding.declared_type.clone())
+                                .unwrap_or(Type::Unknown);
+                            self.value(scope, &binding.local, 0, false, true, value);
                         }
                         self.binding_kind(
                             scope,
@@ -265,7 +269,8 @@ impl ScopeModel<'_> {
                 Declaration::Raw(raw) => self.statements(&raw.tokens, scope),
                 Declaration::DefaultExport(_)
                 | Declaration::ValueExport(_)
-                | Declaration::TypeExport(_) => {}
+                | Declaration::TypeExport(_)
+                | Declaration::UmdExport(_) => {}
             }
         }
     }

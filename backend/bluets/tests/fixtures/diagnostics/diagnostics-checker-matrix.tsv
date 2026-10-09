@@ -1812,8 +1812,6 @@ module-types:modtypes-reject-type-import-json-attribute/main.ts	reject
 module-types:modtypes-reject-umd-nested/main.d.ts	reject
 module-types:modtypes-reject-umd-script/main.d.ts	reject
 module-types:modtypes-reject-umd-source/main.ts	reject
-module-types:modtypes-runtime-class-commonjs/main.ts	accept
-module-types:modtypes-runtime-class-es2022/main.ts	accept
 module-types:modtypes-runtime-contextual-default-commonjs/main.ts	accept
 module-types:modtypes-runtime-contextual-default-es2022/main.ts	accept
 module-types:modtypes-runtime-contextual-type-commonjs/main.ts	accept
@@ -1840,6 +1838,8 @@ module-types:modtypes-runtime-inline-export-commonjs/main.ts	accept
 module-types:modtypes-runtime-inline-export-es2022/main.ts	accept
 module-types:modtypes-runtime-inline-mixed-commonjs/main.ts	accept
 module-types:modtypes-runtime-inline-mixed-es2022/main.ts	accept
+module-types:modtypes-runtime-instance-commonjs/main.ts	accept
+module-types:modtypes-runtime-instance-es2022/main.ts	accept
 module-types:modtypes-runtime-json-default/main.ts	accept
 module-types:modtypes-runtime-json-named-reexport/main.ts	accept
 module-types:modtypes-runtime-local-inline-export-commonjs/main.ts	accept

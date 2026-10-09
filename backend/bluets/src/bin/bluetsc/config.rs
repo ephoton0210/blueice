@@ -95,6 +95,8 @@ pub(super) struct BlueTscConfig {
     #[serde(default)]
     pub(super) es_module_interop: bool,
     #[serde(default)]
+    pub(super) resolve_json_module: bool,
+    #[serde(default)]
     pub(super) module: Option<String>,
     #[serde(default)]
     pub(super) experimental_decorators: bool,
@@ -222,8 +224,10 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--jsx-fragment-factory" => options.jsx_fragment_factory = Some(value()?),
             "--jsx-import-source" => options.jsx_import_source = Some(value()?),
             "--module" => {
-                options.module_kind = match value()?.as_str() {
-                    "esnext" | "es2022" | "es2020" => ModuleKind::Esm,
+                let module = value()?;
+                options.import_attributes = module == "esnext";
+                options.module_kind = match module.as_str() {
+                    "esnext" | "es2022" | "es2020" | "es2015" | "es6" => ModuleKind::Esm,
                     "commonjs" => ModuleKind::CommonJs,
                     other => {
                         return Err(format!(
@@ -556,6 +560,8 @@ pub(super) fn resolve_config_document(
         jsx_fragment_factory: config.jsx_fragment_factory,
         jsx_import_source: config.jsx_import_source,
         module_kind: options_module_kind,
+        import_attributes: config.module.as_deref() == Some("esnext"),
+        resolve_json_module: config.resolve_json_module,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map,
         declaration: config.declaration,
@@ -702,7 +708,7 @@ pub(super) fn configured_strict_boundary(
 
 pub(super) fn parse_module_kind(value: Option<&str>) -> Result<ModuleKind, String> {
     match value {
-        None | Some("esnext" | "es2022" | "es2020") => Ok(ModuleKind::Esm),
+        None | Some("esnext" | "es2022" | "es2020" | "es2015" | "es6") => Ok(ModuleKind::Esm),
         Some("commonjs") => Ok(ModuleKind::CommonJs),
         Some(other) => Err(format!(
             "unsupported module `{other}`; expected esnext or commonjs"

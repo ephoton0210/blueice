@@ -45,6 +45,11 @@ impl Parser {
                 class.default_export = true;
                 class.anonymous = anonymous;
             }
+        } else if self.consume("interface") {
+            self.parse_interface(start, true);
+            if let Some(Declaration::Interface(interface)) = self.declarations.last_mut() {
+                interface.default_export = true;
+            }
         } else if self.current().kind == TokenKind::Identifier
             && self
                 .tokens

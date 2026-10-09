@@ -74,12 +74,12 @@ pub use parser::{
     ClassMemberKind, ClassMemberShell, ClassMethod, ClassMethodGroup, ConditionalType, Declaration,
     Decorator, EnumDeclaration, EnumMember, FunctionBodyItem, FunctionCatchClause,
     FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, FunctionTryStatement,
-    FunctionWhileStatement, ImportDeclaration, IndexSignature, InterfaceDeclaration,
-    MappedModifier, MappedType, Module, NamespaceDeclaration, Parameter, ParameterProperty,
-    ParameterPropertyInsertion, ParserLimits, RawDeclaration, TemplateLiteralType,
-    TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, TypePredicate,
-    TypeSignature, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
-    Variance, Visibility,
+    FunctionWhileStatement, ImportAttribute, ImportAttributes, ImportDeclaration, IndexSignature,
+    InterfaceDeclaration, MappedModifier, MappedType, Module, NamespaceDeclaration, Parameter,
+    ParameterProperty, ParameterPropertyInsertion, ParserLimits, RawDeclaration,
+    TemplateLiteralType, TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration,
+    TypeParameter, TypePredicate, TypeSignature, UmdExportDeclaration, ValueExportBinding,
+    ValueExportDeclaration, VariableDeclaration, VariableKind, Variance, Visibility,
 };
 pub use performance::CompilerPerformance;
 pub use syntax::parse_jsx;

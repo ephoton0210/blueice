@@ -7,11 +7,82 @@
 use super::*;
 
 impl Parser {
+    pub(in crate::parser::implementation) fn parse_umd_export(&mut self, start: usize) {
+        self.expect("as");
+        self.expect("namespace");
+        let name = self.require_identifier("expected global module namespace name");
+        self.consume(";");
+        let span = SourceSpan::new(&self.id, start, self.previous().end);
+        let code = if self.namespace_depth > 0 {
+            Some(1316)
+        } else if !self.id.ends_with(".d.ts") {
+            Some(1315)
+        } else {
+            None
+        };
+        if let Some(code) = code {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::ParseError,
+                    span,
+                    "global module exports require a top-level declaration module",
+                )
+                .with_typescript(code, Vec::new()),
+            );
+            return;
+        }
+        self.declarations
+            .push(Declaration::UmdExport(UmdExportDeclaration { name, span }));
+    }
+
+    pub(in crate::parser::implementation) fn validate_umd_exports(&mut self) {
+        let external = self
+            .declarations
+            .iter()
+            .any(|declaration| match declaration {
+                Declaration::Import(_)
+                | Declaration::TypeExport(_)
+                | Declaration::ValueExport(_)
+                | Declaration::DefaultExport(_) => true,
+                Declaration::TypeAlias(alias) => alias.exported,
+                Declaration::Interface(interface) => interface.exported,
+                Declaration::Variable(variable) => variable.exported,
+                Declaration::Function(function) => function.exported,
+                Declaration::Class(class) => class.exported,
+                Declaration::Enum(item) => item.exported,
+                Declaration::Namespace(namespace) => namespace.exported,
+                Declaration::UmdExport(_) | Declaration::Raw(_) => false,
+            });
+        if !external {
+            for declaration in &self.declarations {
+                if let Declaration::UmdExport(export) = declaration {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::ParseError,
+                            export.span.clone(),
+                            "global module exports require an external module",
+                        )
+                        .with_typescript(1314, Vec::new()),
+                    );
+                }
+            }
+        }
+    }
+
     pub(in crate::parser::implementation) fn parse_import(&mut self, start: usize) {
         self.expect("import");
-        let type_only = self.consume("type");
-        if !type_only
-            && self.current().kind == TokenKind::Identifier
+        let type_only = self.peek("type")
+            && self
+                .tokens
+                .get(self.index + 1)
+                .is_some_and(|token| !matches!(token.text.as_str(), "from" | "," | "="))
+            && self.consume("type");
+        let clause_start = if type_only {
+            self.previous().start
+        } else {
+            self.current().start
+        };
+        if (self.current().kind == TokenKind::Identifier || self.peek("type") || self.peek("of"))
             && self
                 .tokens
                 .get(self.index + 1)
@@ -43,10 +114,12 @@ impl Parser {
                     type_only,
                     specifier,
                     specifier_span,
+                    attributes: None,
                     bindings: vec![ImportBinding {
                         imported: "export=".to_string(),
                         local,
                         type_only,
+                        span: SourceSpan::new(&self.id, start, end),
                     }],
                     span: SourceSpan::new(&self.id, start, end),
                 }));
@@ -60,6 +133,7 @@ impl Parser {
             return;
         }
         let mut bindings = Vec::new();
+        let mut default_clause = false;
         let mut specifier = None;
         let mut specifier_span = None;
         if self.current().kind == TokenKind::String {
@@ -70,10 +144,12 @@ impl Parser {
             if self.consume("{") {
                 self.parse_named_import_bindings(&mut bindings, type_only);
             } else if let Some(local) = self.consume_identifier() {
+                default_clause = true;
                 bindings.push(ImportBinding {
                     imported: "default".to_string(),
                     local,
                     type_only,
+                    span: self.previous().span(&self.id),
                 });
                 if self.consume(",") && self.consume("{") {
                     self.parse_named_import_bindings(&mut bindings, type_only);
@@ -84,6 +160,7 @@ impl Parser {
                         imported: "*".to_string(),
                         local,
                         type_only,
+                        span: self.previous().span(&self.id),
                     });
                 }
             } else if self.consume("*") {
@@ -93,11 +170,22 @@ impl Parser {
                     imported: "*".to_string(),
                     local,
                     type_only,
+                    span: self.previous().span(&self.id),
                 });
             } else {
                 self.error_here(
                     DiagnosticCode::ParseError,
                     "expected an import clause or module specifier",
+                );
+            }
+            if type_only && default_clause && bindings.len() > 1 {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::ParseError,
+                        SourceSpan::new(&self.id, clause_start, self.previous().end),
+                        "a type-only import cannot combine a default import with named bindings",
+                    )
+                    .with_typescript(1363, Vec::new()),
                 );
             }
             self.expect("from");
@@ -116,18 +204,13 @@ impl Parser {
                 }
             }
         }
+        let attributes = self.parse_import_attributes(type_only);
         self.consume(";");
         let end = self.previous().end;
         let span = SourceSpan::new(&self.id, start, end);
         let (Some(specifier), Some(specifier_span)) = (specifier, specifier_span) else {
             return;
         };
-        if !type_only && bindings.iter().any(|binding| binding.type_only) {
-            self.unsupported(
-                span.clone(),
-                "mixed value/type imports are not in the initial BlueTS matrix; use a separate `import type` declaration",
-            );
-        }
         if type_only || bindings.iter().all(|binding| binding.type_only) && !bindings.is_empty() {
             self.edits.push(TextEdit {
                 start,
@@ -141,6 +224,7 @@ impl Parser {
                 type_only,
                 specifier,
                 specifier_span,
+                attributes,
                 bindings,
                 span,
             }));
@@ -148,10 +232,28 @@ impl Parser {
 
     fn parse_named_import_bindings(&mut self, bindings: &mut Vec<ImportBinding>, type_only: bool) {
         while !self.at_eof() && !self.consume("}") {
-            let binding_type_only = self.consume("type");
-            let imported = if self.consume("default") {
-                "default".to_string()
-            } else if let Some(name) = self.consume_identifier() {
+            let binding_start = self.current().start;
+            let modifier = self.peek("type")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| !matches!(token.text.as_str(), "as" | "," | "}"));
+            let binding_type_only = modifier && self.consume("type");
+            if type_only && binding_type_only {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::ParseError,
+                        self.previous().span(&self.id),
+                        "a type-only import cannot repeat the type modifier",
+                    )
+                    .with_typescript(2206, Vec::new()),
+                );
+            }
+            let imported = if self.current().kind == TokenKind::String {
+                let value = string_contents(self.current()).unwrap_or_default();
+                self.bump();
+                value
+            } else if let Some(name) = self.consume_identifier_or_keyword() {
                 name
             } else {
                 self.error_here(DiagnosticCode::ParseError, "expected an imported binding");
@@ -168,6 +270,7 @@ impl Parser {
                 imported,
                 local,
                 type_only: type_only || binding_type_only,
+                span: SourceSpan::new(&self.id, binding_start, self.previous().end),
             });
             if !self.consume(",") {
                 self.expect("}");
@@ -203,11 +306,13 @@ impl Parser {
                 export_assignment: true,
                 specifier: None,
                 specifier_span: None,
+                attributes: None,
                 star: false,
                 namespace: None,
                 bindings: vec![ValueExportBinding {
                     local: name,
                     exported: "export=".to_string(),
+                    type_only: false,
                     span: name_span,
                 }],
                 span: SourceSpan::new(&self.id, start, end),
@@ -216,18 +321,23 @@ impl Parser {
 
     pub(in crate::parser::implementation) fn parse_type_export(&mut self, start: usize) {
         let mut bindings = Vec::new();
-        if self.consume("{") {
+        let mut namespace = None;
+        let star = self.consume("*");
+        if !star {
+            self.expect("{");
             while !self.at_eof() && !self.consume("}") {
-                let local = self.require_identifier("expected a type export name");
+                let binding_start = self.current().start;
+                let local = self.require_export_name("expected an exported type name");
                 let exported = if self.consume("as") {
-                    self.require_identifier("expected an exported type name")
+                    self.require_export_name("expected an exported type name")
                 } else {
                     local.clone()
                 };
-                bindings.push(if local == exported {
-                    local
-                } else {
-                    format!("{local} as {exported}")
+                bindings.push(ValueExportBinding {
+                    local,
+                    exported,
+                    type_only: true,
+                    span: SourceSpan::new(&self.id, binding_start, self.previous().end),
                 });
                 if !self.consume(",") {
                     self.expect("}");
@@ -235,11 +345,14 @@ impl Parser {
                 }
             }
         } else {
-            self.expect("*");
-            bindings.push("*".to_string());
+            if self.consume("as") {
+                namespace = Some(self.require_export_name("expected an exported type name"));
+            }
         }
+        let mut specifier_span = None;
         let specifier = if self.consume("from") {
             if self.current().kind == TokenKind::String {
+                specifier_span = Some(self.current().span(&self.id));
                 let value = string_contents(self.current());
                 self.bump();
                 value
@@ -257,6 +370,7 @@ impl Parser {
         } else {
             None
         };
+        let attributes = self.parse_import_attributes(true);
         self.consume(";");
         let end = self.previous().end;
         self.edits.push(TextEdit {
@@ -267,7 +381,11 @@ impl Parser {
         self.declarations
             .push(Declaration::TypeExport(TypeExportDeclaration {
                 bindings,
+                star,
                 specifier,
+                specifier_span,
+                attributes,
+                namespace,
                 span: SourceSpan::new(&self.id, start, end),
             }));
     }
@@ -296,24 +414,23 @@ impl Parser {
         }
         let mut bindings = Vec::new();
         while !star && !self.at_eof() && !self.consume("}") {
-            if self.peek("type") {
-                self.unsupported(
-                    self.current().span(&self.id),
-                    "type-only bindings in a value export are not in the initial BlueTS matrix; use `export type`",
-                );
-                self.skip_statement();
-                return;
-            }
             let binding_start = self.current().start;
-            let local = self.require_export_name();
+            let type_only = self.peek("type")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| !matches!(token.text.as_str(), "as" | "," | "}"))
+                && self.consume("type");
+            let local = self.require_export_name("expected an export binding name");
             let exported = if self.consume("as") {
-                self.require_export_name()
+                self.require_export_name("expected an export binding name")
             } else {
                 local.clone()
             };
             bindings.push(ValueExportBinding {
                 local,
                 exported,
+                type_only,
                 span: SourceSpan::new(&self.id, binding_start, self.previous().end),
             });
             if !self.consume(",") {
@@ -342,6 +459,7 @@ impl Parser {
             }
             (None, None)
         };
+        let attributes = self.parse_import_attributes(false);
         self.consume(";");
         let end = self.previous().end;
         self.declarations
@@ -350,17 +468,23 @@ impl Parser {
                 bindings,
                 specifier,
                 specifier_span,
+                attributes,
                 star,
                 namespace,
                 span: SourceSpan::new(&self.id, start, end),
             }));
     }
 
-    fn require_export_name(&mut self) -> String {
-        if self.consume("default") {
-            "default".to_string()
+    fn require_export_name(&mut self, expected: &str) -> String {
+        if self.current().kind == TokenKind::String {
+            let value = string_contents(self.current()).unwrap_or_default();
+            self.bump();
+            value
         } else {
-            self.require_identifier("expected an export binding name")
+            self.consume_identifier_or_keyword().unwrap_or_else(|| {
+                self.error_here(DiagnosticCode::ParseError, expected);
+                "<error>".to_string()
+            })
         }
     }
 }

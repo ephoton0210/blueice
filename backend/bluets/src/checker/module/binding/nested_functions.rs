@@ -123,7 +123,7 @@ impl ModuleChecker<'_> {
                 Declaration::Interface(item) => item.exported,
                 Declaration::TypeAlias(item) => item.exported,
                 Declaration::Namespace(item) => item.exported,
-                Declaration::Raw(_) => false,
+                Declaration::Raw(_) | Declaration::UmdExport(_) => false,
             })
     }
 

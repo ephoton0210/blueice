@@ -108,6 +108,8 @@ fn main() -> ExitCode {
             .packages
             .as_ref()
             .map(|settings| package_resolver(&invocation.root, settings)),
+        relative: relative_resolver(&invocation.root),
+        resolve_json_module: invocation.options.resolve_json_module,
         remote: match invocation.remote.as_ref() {
             Some(settings) => {
                 let cache = DeclarationCache::new(
@@ -169,6 +171,7 @@ fn main() -> ExitCode {
         out_dir,
         &summary.artifacts,
         &summary.declaration_modules,
+        &summary.assets,
         &metadata,
     ) {
         Ok(()) => {
@@ -191,6 +194,7 @@ fn main() -> ExitCode {
 struct CompileSummary {
     artifacts: BTreeMap<String, BuildArtifact>,
     declaration_modules: BTreeMap<String, String>,
+    assets: BTreeMap<String, String>,
     fingerprint: String,
     module_count: usize,
     has_errors: bool,
@@ -373,6 +377,7 @@ fn compile_entries(
 ) -> CompileSummary {
     let mut artifacts = BTreeMap::new();
     let mut declaration_modules = BTreeMap::new();
+    let mut assets = BTreeMap::new();
     let mut modules = BTreeSet::new();
     let mut fingerprints = Vec::new();
     let mut has_errors = false;
@@ -407,6 +412,7 @@ fn compile_entries(
         has_errors |= result.has_errors();
         modules.extend(result.project.modules.keys().cloned());
         if let Some(output) = result.output {
+            assets.extend(output.assets);
             if !has_runtime_entries || !is_declaration_path(entry) {
                 fingerprints.push(output.fingerprint);
             }
@@ -429,6 +435,7 @@ fn compile_entries(
     CompileSummary {
         artifacts,
         declaration_modules,
+        assets,
         fingerprint: fingerprint_entries(&fingerprints),
         module_count: modules.len(),
         has_errors,
@@ -635,6 +642,17 @@ fn package_resolver(root: &Path, settings: &PackageSettings) -> PackageResolver<
     )
 }
 
+fn relative_resolver(root: &Path) -> PackageResolver<OsPackageFs> {
+    PackageResolver::new(
+        OsPackageFs,
+        PackageResolverConfig {
+            roots: vec![root.to_path_buf()],
+            resolution: ModuleResolution::Node10,
+            custom_conditions: Vec::new(),
+        },
+    )
+}
+
 fn fingerprint_entries(fingerprints: &[String]) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for fingerprint in fingerprints {
@@ -700,6 +718,10 @@ struct FileLoader {
     extra_roots: Vec<PathBuf>,
     /// Present only when the owner configured a `moduleResolution`.
     packages: Option<PackageResolver<OsPackageFs>>,
+    /// Relative file probing stays root-confined even when bare package
+    /// resolution was not configured by the owner.
+    relative: PackageResolver<OsPackageFs>,
+    resolve_json_module: bool,
     /// The verified cache and the pinned sources whose specifiers resolve to it.
     remote: Option<(DeclarationCache, Vec<RemoteDeclarationSource>)>,
     import_mode: ImportMode,
@@ -729,10 +751,19 @@ impl ModuleLoader for FileLoader {
         let path = self.source_path(module_id)?;
         if !matches!(
             path.extension().and_then(|extension| extension.to_str()),
-            Some("ts" | "tsx")
+            Some("ts" | "tsx" | "json")
         ) {
             return Err(format!(
                 "module `{module_id}` is not a supported .ts, .tsx, or .d.ts source file"
+            ));
+        }
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "json")
+            && !self.resolve_json_module
+        {
+            return Err(format!(
+                "JSON source `{module_id}` requires resolveJsonModule"
             ));
         }
         let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
@@ -740,6 +771,15 @@ impl ModuleLoader for FileLoader {
     }
 
     fn resolve(&self, from_module: &str, specifier: &str) -> Result<String, String> {
+        self.resolve_with_mode(from_module, specifier, None)
+    }
+
+    fn resolve_with_mode(
+        &self,
+        from_module: &str,
+        specifier: &str,
+        mode: Option<ImportMode>,
+    ) -> Result<String, String> {
         let is_relative = matches!(specifier, "." | "..")
             || specifier.starts_with("./")
             || specifier.starts_with("../");
@@ -754,33 +794,48 @@ impl ModuleLoader for FileLoader {
                 return Ok(format!("@remote/{}.d.ts", source.sha256));
             }
         }
+        if is_relative {
+            if specifier.ends_with(".json") && !self.resolve_json_module {
+                return Err(format!("module `{specifier}` is not a supported .ts, .tsx, or .d.ts source file; enable resolveJsonModule for JSON data"));
+            }
+            let from_directory = self
+                .source_path(from_module)?
+                .parent()
+                .map(Path::to_path_buf)
+                .ok_or_else(|| format!("module `{from_module}` has no directory"))?;
+            let resolver = self.packages.as_ref().unwrap_or(&self.relative);
+            let found = if self.resolve_json_module && specifier.ends_with(".json") {
+                resolver.resolve_relative_json(&from_directory, specifier)
+            } else {
+                resolver.resolve_relative(&from_directory, specifier)
+            }
+            .map_err(|error| match error {
+                error @ (ResolveError::NotFound { .. } | ResolveError::JavaScriptOnly { .. }) => {
+                    format!("cannot resolve `{specifier}` from `{from_module}`: {error}")
+                }
+                error @ ResolveError::OutsideRoots { .. } => format!(
+                    "specifier `{specifier}` resolves outside the declared project root: {error}"
+                ),
+                error => format!("`{specifier}` from `{from_module}`: {error}"),
+            })?;
+            return if blueice_bluets::is_external_library_module(from_module) {
+                self.package_module_id(&found.path)
+            } else {
+                self.module_id(&found.path)
+            };
+        }
         if let Some(packages) = &self.packages {
             let from_directory = self
                 .source_path(from_module)?
                 .parent()
                 .map(Path::to_path_buf)
                 .ok_or_else(|| format!("module `{from_module}` has no directory"))?;
-            let has_source_extension = specifier.ends_with(".ts") || specifier.ends_with(".tsx");
-            // A relative import without a TypeScript extension is probed the way
-            // TypeScript does (`./x` -> `./x.ts`, `./x.d.ts`, `./x/index.ts`).
-            if is_relative && !has_source_extension {
-                let found = packages
-                    .resolve_relative(&from_directory, specifier)
-                    .map_err(|error| {
-                        format!("cannot resolve `{specifier}` from `{from_module}`: {error}")
-                    })?;
-                // A package's own files stay marked as package files.
-                return if blueice_bluets::is_external_library_module(from_module) {
-                    self.package_module_id(&found.path)
-                } else {
-                    self.module_id(&found.path)
-                };
-            }
-            if !is_relative
-                && !self.imports.contains_key(specifier)
-                && !self.matches_import_prefix(specifier)
-            {
-                return match packages.resolve(&from_directory, specifier, self.import_mode) {
+            if !self.imports.contains_key(specifier) && !self.matches_import_prefix(specifier) {
+                return match packages.resolve(
+                    &from_directory,
+                    specifier,
+                    mode.unwrap_or(self.import_mode),
+                ) {
                     Ok(found) => self.package_module_id(&found.path),
                     Err(
                         error @ (ResolveError::NotFound { .. }
@@ -792,16 +847,7 @@ impl ModuleLoader for FileLoader {
                 };
             }
         }
-        let candidate = if is_relative {
-            self.root.join(
-                Path::new(from_module)
-                    .parent()
-                    .unwrap_or_else(|| Path::new("."))
-                    .join(specifier),
-            )
-        } else {
-            self.resolve_import_map(specifier)?
-        };
+        let candidate = self.resolve_import_map(specifier)?;
         let resolved = fs::canonicalize(&candidate).map_err(|error| {
             format!("cannot resolve `{specifier}` from `{from_module}`: {error}")
         })?;
@@ -811,6 +857,13 @@ impl ModuleLoader for FileLoader {
             ));
         }
         self.module_id(&resolved)
+    }
+
+    fn resolution_fingerprint(&self) -> String {
+        self.packages
+            .as_ref()
+            .unwrap_or(&self.relative)
+            .fingerprint()
     }
 }
 
@@ -911,6 +964,7 @@ fn publish_build(
     out_dir: &Path,
     artifacts: &std::collections::BTreeMap<String, blueice_bluets::BuildArtifact>,
     declaration_modules: &std::collections::BTreeMap<String, String>,
+    assets: &BTreeMap<String, String>,
     metadata: &BuildMetadata,
 ) -> io::Result<()> {
     let expected_helper = (metadata.runtime_policy == RuntimePolicy::StrictRuntime.as_str())
@@ -930,6 +984,7 @@ fn publish_build(
         ));
     }
     ensure_output_does_not_contain_sources(&output, root, artifacts, declaration_modules)?;
+    assets_publish::validate_sources(&output, root, assets)?;
     let parent = output
         .parent()
         .ok_or_else(|| io::Error::other("output directory has no parent"))?;
@@ -997,6 +1052,7 @@ fn publish_build(
             fs::create_dir_all(declaration_parent)?;
             fs::write(declaration_path, source)?;
         }
+        assets_publish::stage(root, &stage, assets, metadata)?;
         let manifest = serde_json::to_vec_pretty(metadata).map_err(io::Error::other)?;
         fs::write(stage.join("bluetsc.manifest.json"), manifest)?;
         if metadata.has_configured_imports {
@@ -1104,3 +1160,6 @@ mod tests;
 
 #[path = "bluetsc/strict_publish.rs"]
 mod strict_publish;
+
+#[path = "bluetsc/assets_publish.rs"]
+mod assets_publish;

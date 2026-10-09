@@ -52,6 +52,35 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
                         _ => "binding",
                     };
                     if let Some(found) = index.named(name, span, kind, code == 2717) {
+                        let found = if code == 1361 {
+                            project
+                                .modules
+                                .get(&span.module)
+                                .and_then(|module| {
+                                    module.declarations.iter().find_map(|declaration| {
+                                        let crate::parser::Declaration::Import(import) =
+                                            declaration
+                                        else {
+                                            return None;
+                                        };
+                                        if import.equals_require {
+                                            return None;
+                                        }
+                                        import
+                                            .bindings
+                                            .iter()
+                                            .find(|binding| {
+                                                binding.local == name
+                                                    && binding.span.start <= found.start
+                                                    && found.end <= binding.span.end
+                                            })
+                                            .map(|binding| binding.span.clone())
+                                    })
+                                })
+                                .unwrap_or(found)
+                        } else {
+                            found
+                        };
                         let code = match code {
                             1361 => 1376,
                             2717 => 6203,

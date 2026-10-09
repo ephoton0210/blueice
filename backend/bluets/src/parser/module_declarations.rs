@@ -5,6 +5,36 @@
 //! Structured module imports and exports retain closed graph identities.
 
 use super::SourceSpan;
+use crate::syntax::Token;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportAttributes {
+    pub assertion: bool,
+    pub entries: Vec<ImportAttribute>,
+    pub span: SourceSpan,
+}
+
+impl ImportAttributes {
+    /// The retained type-only edge's package condition; parsing validates it.
+    pub fn resolution_mode(&self) -> Option<crate::package_resolution::ImportMode> {
+        self.entries.iter().find_map(|entry| {
+            if entry.key != "resolution-mode" {
+                return None;
+            }
+            match super::string_contents(&entry.value)?.as_str() {
+                "import" => Some(crate::package_resolution::ImportMode::Import),
+                "require" => Some(crate::package_resolution::ImportMode::Require),
+                _ => None,
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportAttribute {
+    pub key: String,
+    pub value: Token,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportDeclaration {
@@ -13,6 +43,7 @@ pub struct ImportDeclaration {
     pub type_only: bool,
     pub specifier: String,
     pub specifier_span: SourceSpan,
+    pub attributes: Option<ImportAttributes>,
     pub bindings: Vec<ImportBinding>,
     pub span: SourceSpan,
 }
@@ -22,14 +53,27 @@ pub struct ImportBinding {
     pub imported: String,
     pub local: String,
     pub type_only: bool,
+    pub span: SourceSpan,
 }
 
 /// A static-only `export type` declaration.  It has no JavaScript runtime
 /// representation but can still extend the closed type-module graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeExportDeclaration {
-    pub bindings: Vec<String>,
+    pub bindings: Vec<ValueExportBinding>,
+    pub star: bool,
     pub specifier: Option<String>,
+    pub specifier_span: Option<SourceSpan>,
+    pub attributes: Option<ImportAttributes>,
+    pub namespace: Option<String>,
+    pub span: SourceSpan,
+}
+
+/// A declaration module's static global name (`export as namespace Name`).
+/// It does not create an executable namespace or a module-loading grant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UmdExportDeclaration {
+    pub name: String,
     pub span: SourceSpan,
 }
 
@@ -54,6 +98,7 @@ pub struct ValueExportDeclaration {
     /// A retained, closed graph edge for `export ... from "module"`.
     pub specifier: Option<String>,
     pub specifier_span: Option<SourceSpan>,
+    pub attributes: Option<ImportAttributes>,
     /// `export *`, excluding `default`; an optional name denotes `* as name`.
     pub star: bool,
     pub namespace: Option<String>,
@@ -64,5 +109,24 @@ pub struct ValueExportDeclaration {
 pub struct ValueExportBinding {
     pub local: String,
     pub exported: String,
+    pub type_only: bool,
     pub span: SourceSpan,
+}
+
+impl ImportDeclaration {
+    /// Inline type bindings also disappear from the runtime graph.
+    pub fn is_type_only(&self) -> bool {
+        self.type_only
+            || !self.bindings.is_empty() && self.bindings.iter().all(|binding| binding.type_only)
+    }
+}
+
+impl ValueExportDeclaration {
+    /// A list consisting only of inline type exports has no runtime edge.
+    pub fn is_type_only(&self) -> bool {
+        !self.export_assignment
+            && !self.star
+            && !self.bindings.is_empty()
+            && self.bindings.iter().all(|binding| binding.type_only)
+    }
 }

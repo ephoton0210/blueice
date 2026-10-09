@@ -219,6 +219,8 @@ fn loader(invocation: &Invocation) -> Result<FileLoader, String> {
             .packages
             .as_ref()
             .map(|settings| package_resolver(&invocation.root, settings)),
+        relative: relative_resolver(&invocation.root),
+        resolve_json_module: invocation.options.resolve_json_module,
         remote: match invocation.remote.as_ref() {
             Some(settings) => {
                 let cache = DeclarationCache::new(
@@ -254,6 +256,7 @@ fn compile_project(
 ) -> CompiledProject {
     let mut artifacts = BTreeMap::new();
     let mut declaration_modules = BTreeMap::new();
+    let mut assets = BTreeMap::new();
     let mut seen = BTreeSet::new();
     let mut source_ids = Vec::new();
     let mut fingerprints = Vec::new();
@@ -313,6 +316,7 @@ fn compile_project(
             &mut source_ids,
         );
         if let Some(output) = result.output {
+            assets.extend(output.assets);
             if !has_runtime_entries || !is_declaration_path(entry) {
                 fingerprints.push(output.fingerprint);
             }
@@ -340,6 +344,7 @@ fn compile_project(
         summary: CompileSummary {
             artifacts,
             declaration_modules,
+            assets,
             fingerprint: fingerprint_entries(&fingerprints),
             module_count: seen.len(),
             has_errors,
@@ -364,14 +369,39 @@ fn ordered_sources(
         return;
     };
     for declaration in &module.declarations {
-        let specifier = match declaration {
-            blueice_bluets::Declaration::Import(import) => Some(import.specifier.as_str()),
-            blueice_bluets::Declaration::TypeExport(export) => export.specifier.as_deref(),
+        let edge = match declaration {
+            blueice_bluets::Declaration::Import(import) => Some((
+                import.specifier.as_str(),
+                import
+                    .type_only
+                    .then(|| {
+                        import
+                            .attributes
+                            .as_ref()
+                            .and_then(blueice_bluets::ImportAttributes::resolution_mode)
+                    })
+                    .flatten(),
+            )),
+            blueice_bluets::Declaration::TypeExport(export) => {
+                export.specifier.as_deref().map(|specifier| {
+                    (
+                        specifier,
+                        export
+                            .attributes
+                            .as_ref()
+                            .and_then(blueice_bluets::ImportAttributes::resolution_mode),
+                    )
+                })
+            }
+            blueice_bluets::Declaration::ValueExport(export) => export
+                .specifier
+                .as_deref()
+                .map(|specifier| (specifier, None)),
             _ => None,
         };
-        if let Some(target) =
-            specifier.and_then(|specifier| project.resolved_module(module_id, specifier))
-        {
+        if let Some(target) = edge.and_then(|(specifier, mode)| {
+            project.resolved_module_with_mode(module_id, specifier, mode)
+        }) {
             ordered_sources(target, project, seen, ordered);
         }
     }

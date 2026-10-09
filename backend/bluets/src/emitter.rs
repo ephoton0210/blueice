@@ -33,6 +33,7 @@ mod legacy_decorators;
 mod namespaces;
 mod private_lowering;
 mod reexports;
+mod type_elision;
 
 use declarations::{
     emit_declaration, emit_type_parameters, is_default_export_name, is_value_export_name,
@@ -45,6 +46,8 @@ pub struct BuildOutput {
     /// Root-relative declaration modules preserved for declaration-consuming
     /// builds. They are never JavaScript artifacts.
     pub declaration_modules: BTreeMap<String, String>,
+    /// Original owner-authorized data, copied without JavaScript lowering.
+    pub assets: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,7 +127,11 @@ pub(crate) fn emit(
     let artifacts = checked
         .modules
         .iter()
-        .filter(|(id, _)| !is_declaration_module(id) && !is_external_library_module(id))
+        .filter(|(id, _)| {
+            !is_declaration_module(id)
+                && !is_external_library_module(id)
+                && !project.json_modules.contains_key(*id)
+        })
         .map(|(id, checked_module)| {
             let (emitted, strict_runtime) =
                 emit_javascript(&checked_module.module, project, &exported_enums, options)?;
@@ -184,6 +191,12 @@ pub(crate) fn emit(
         fingerprint: build_fingerprint,
         artifacts,
         declaration_modules,
+        assets: project
+            .json_modules
+            .keys()
+            .filter(|id| !is_external_library_module(id))
+            .map(|id| (id.clone(), project.modules[id].source.clone()))
+            .collect(),
     })
 }
 
@@ -211,7 +224,7 @@ pub(crate) fn validate_source_map_limits(
                 .declarations
                 .iter()
                 .filter(|declaration| {
-                    matches!(declaration, Declaration::Import(import) if !import.type_only)
+                    matches!(declaration, Declaration::Import(import) if !import.is_type_only())
                 })
                 .count();
             let strict_functions = module
@@ -275,15 +288,20 @@ fn emit_javascript(
     options: &CompilerOptions,
 ) -> Result<(EmittedJavaScript, Option<EmittedStrictModule>), Diagnostic> {
     let mut edits = module.edits.clone();
+    type_elision::lower(module, options.module_kind, &mut edits);
     for declaration in &module.declarations {
         let (specifier, span) = match declaration {
-            Declaration::Import(import) if !import.type_only => {
+            Declaration::Import(import) if !import.is_type_only() => {
                 (&import.specifier, &import.specifier_span)
             }
-            Declaration::ValueExport(export) if export.specifier.is_some() => (
-                export.specifier.as_ref().unwrap(),
-                export.specifier_span.as_ref().unwrap(),
-            ),
+            Declaration::ValueExport(export)
+                if export.specifier.is_some() && !export.is_type_only() =>
+            {
+                (
+                    export.specifier.as_ref().unwrap(),
+                    export.specifier_span.as_ref().unwrap(),
+                )
+            }
             _ => continue,
         };
         if options.module_kind == crate::compiler::ModuleKind::CommonJs {

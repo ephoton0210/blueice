@@ -136,7 +136,7 @@ impl ScopeModel<'_> {
                 Declaration::ValueExport(d) => d.bindings.iter().any(|b| b.local == name),
                 Declaration::DefaultExport(d) => d.name == name,
                 Declaration::TypeExport(d) => {
-                    d.specifier.is_none() && d.bindings.iter().any(|b| b == name)
+                    d.specifier.is_none() && d.bindings.iter().any(|b| b.local == name)
                 }
                 _ => false,
             })

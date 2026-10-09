@@ -29,8 +29,6 @@ modtypes-reject-type-import-json-attribute/main.ts	reject
 modtypes-reject-umd-nested/main.d.ts	reject
 modtypes-reject-umd-script/main.d.ts	reject
 modtypes-reject-umd-source/main.ts	reject
-modtypes-runtime-class-commonjs/main.ts	accept
-modtypes-runtime-class-es2022/main.ts	accept
 modtypes-runtime-contextual-default-commonjs/main.ts	accept
 modtypes-runtime-contextual-default-es2022/main.ts	accept
 modtypes-runtime-contextual-type-commonjs/main.ts	accept
@@ -57,6 +55,8 @@ modtypes-runtime-inline-export-commonjs/main.ts	accept
 modtypes-runtime-inline-export-es2022/main.ts	accept
 modtypes-runtime-inline-mixed-commonjs/main.ts	accept
 modtypes-runtime-inline-mixed-es2022/main.ts	accept
+modtypes-runtime-instance-commonjs/main.ts	accept
+modtypes-runtime-instance-es2022/main.ts	accept
 modtypes-runtime-json-default/main.ts	accept
 modtypes-runtime-json-named-reexport/main.ts	accept
 modtypes-runtime-local-inline-export-commonjs/main.ts	accept

@@ -497,7 +497,7 @@ pub(super) fn scan(
         }
         let Some(target) = references
             .get(&token.text)
-            .filter(|_| token.kind == TokenKind::Identifier)
+            .filter(|_| token.kind == TokenKind::Identifier || token.is("type"))
         else {
             continue;
         };

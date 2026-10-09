@@ -36,8 +36,7 @@ pub(super) fn display(name: &str, project: Option<&Project>) -> String {
             };
             if let Some(binding) = import.bindings.iter().find(|binding| binding.local == name) {
                 if let Some(resolved) = project
-                    .resolutions
-                    .get(&(module.id.clone(), import.specifier.clone()))
+                    .resolved_import(&module.id, import)
                     .and_then(|id| project.modules.get(id))
                 {
                     if resolved.declarations.iter().any(|item|matches!(item,Declaration::Class(class) if class.name==binding.imported)) {return binding.imported.clone();}

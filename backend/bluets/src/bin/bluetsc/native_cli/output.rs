@@ -34,6 +34,7 @@ pub(super) fn publish(
             out,
             &summary.artifacts,
             &summary.declaration_modules,
+            &summary.assets,
             &metadata,
         )?;
         let mut emitted = Vec::new();
@@ -92,6 +93,14 @@ pub(super) fn publish(
             )?;
         }
         insert(&mut writes, javascript_path, javascript.into_bytes())?;
+    }
+    for (module, source) in &summary.assets {
+        let relative = tsconfig::emitted_path(module, &metadata)?;
+        let path = invocation
+            .out_dir
+            .as_ref()
+            .map_or_else(|| invocation.root.join(module), |out| out.join(relative));
+        insert(&mut writes, path, source.as_bytes().to_vec())?;
     }
     // Validate the complete destination set before creating any output.
     for path in writes.keys() {

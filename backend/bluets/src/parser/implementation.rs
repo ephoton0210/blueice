@@ -39,6 +39,8 @@ pub(super) struct Parser {
 
 #[path = "declarations.rs"]
 mod declarations;
+#[path = "import_attributes.rs"]
+mod import_attributes;
 #[path = "runtime_syntax.rs"]
 mod runtime_syntax;
 #[path = "type_syntax.rs"]

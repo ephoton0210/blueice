@@ -108,7 +108,7 @@ pub(super) fn lower_commonjs(
 
     for declaration in &module.declarations {
         match declaration {
-            Declaration::Import(import) if import.type_only => {}
+            Declaration::Import(import) if import.is_type_only() => {}
             Declaration::Import(import) if import.equals_require => {
                 let spec = javascript_specifier(
                     &import.specifier,
@@ -135,7 +135,11 @@ pub(super) fn lower_commonjs(
                 let named: Vec<_> = import
                     .bindings
                     .iter()
-                    .filter(|binding| binding.imported != "default" && binding.imported != "*")
+                    .filter(|binding| {
+                        !binding.type_only
+                            && binding.imported != "default"
+                            && binding.imported != "*"
+                    })
                     .collect();
                 if !named.is_empty() {
                     let variable = require_name(&import.specifier, &mut used_names);
@@ -150,7 +154,7 @@ pub(super) fn lower_commonjs(
                         );
                     }
                 }
-                for binding in &import.bindings {
+                for binding in import.bindings.iter().filter(|binding| !binding.type_only) {
                     if binding.imported == "default" {
                         let variable = require_name(&import.specifier, &mut used_names);
                         let required = if interop {
@@ -193,6 +197,7 @@ pub(super) fn lower_commonjs(
                     format!("module.exports = {local};"),
                 );
             }
+            Declaration::ValueExport(export) if export.is_type_only() => {}
             Declaration::ValueExport(export) => {
                 es_syntax = true;
                 if let Some(specifier) = &export.specifier {
@@ -209,13 +214,14 @@ pub(super) fn lower_commonjs(
                         export
                             .bindings
                             .iter()
+                            .filter(|binding| !binding.type_only)
                             .map(|binding| binding.exported.clone()),
                     );
                     push(edits, export.span.start, export.span.end, text);
                     continue;
                 }
                 let mut text = String::new();
-                for binding in &export.bindings {
+                for binding in export.bindings.iter().filter(|binding| !binding.type_only) {
                     chain.push(binding.exported.clone());
                     let live = module.declarations.iter().any(|declaration| matches!(declaration,
                         Declaration::Variable(variable) if variable.name == binding.local && variable.kind != crate::parser::VariableKind::Const));
@@ -316,7 +322,9 @@ pub(super) fn lower_commonjs(
                     .iter()
                     .take_while(|token| token.start < variable.span.end)
                     .find(|token| {
-                        token.kind == TokenKind::Identifier && token.text == variable.name
+                        (token.kind == TokenKind::Identifier
+                            || matches!(token.text.as_str(), "type" | "of"))
+                            && token.text == variable.name
                     })
                     .map(|token| token.end);
                 let Some(name_end) = name_end else {

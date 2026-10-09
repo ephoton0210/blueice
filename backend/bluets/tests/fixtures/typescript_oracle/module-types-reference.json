@@ -561,28 +561,6 @@
       }
     },
     {
-      "entry": "modtypes-runtime-class-commonjs/main.ts",
-      "accepts": true,
-      "flags": [
-        "--module",
-        "commonjs"
-      ],
-      "runtime": true,
-      "declaration": true,
-      "first": null
-    },
-    {
-      "entry": "modtypes-runtime-class-es2022/main.ts",
-      "accepts": true,
-      "flags": [
-        "--module",
-        "es2022"
-      ],
-      "runtime": true,
-      "declaration": true,
-      "first": null
-    },
-    {
       "entry": "modtypes-runtime-contextual-default-commonjs/main.ts",
       "accepts": true,
       "flags": [
@@ -859,6 +837,28 @@
     },
     {
       "entry": "modtypes-runtime-inline-mixed-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-instance-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-instance-es2022/main.ts",
       "accepts": true,
       "flags": [
         "--module",

@@ -272,8 +272,7 @@ fn imported_function(scopes: &ScopeModel<'_>, name: &Token) -> bool {
             .any(|binding| {
                 scopes
                     .project
-                    .resolutions
-                    .get(&(scopes.module.id.clone(), import.specifier.clone()))
+                    .resolved_import(&scopes.module.id, import)
                     .and_then(|id| scopes.project.modules.get(id))
                     .is_some_and(|module| {
                         module

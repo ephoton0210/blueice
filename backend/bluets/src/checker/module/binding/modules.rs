@@ -170,7 +170,12 @@ impl<'a> ModuleChecker<'a> {
                 continue;
             }
             for binding in &export.bindings {
-                let has_local_runtime_binding =
+                let has_local_runtime_binding = if binding.type_only
+                    || export.export_assignment && is_declaration_module(&self.module.id)
+                {
+                    self.types.contains_key(&binding.local)
+                        || self.values.contains_key(&binding.local)
+                } else {
                     self.module
                         .declarations
                         .iter()
@@ -194,7 +199,8 @@ impl<'a> ModuleChecker<'a> {
                                             && namespaces::body_has_values(&namespace.body)))
                             }
                             _ => false,
-                        });
+                        })
+                };
                 if !has_local_runtime_binding {
                     self.diagnostics.push(Diagnostic::error(
                         DiagnosticCode::UnknownName,
@@ -224,7 +230,9 @@ impl<'a> ModuleChecker<'a> {
         for declaration in &self.module.declarations {
             match declaration {
                 Declaration::Import(import)
-                    if import.equals_require && self.module_kind == ModuleKind::Esm =>
+                    if import.equals_require
+                        && !import.type_only
+                        && self.module_kind == ModuleKind::Esm =>
                 {
                     self.diagnostics.push(Diagnostic::error(
                         DiagnosticCode::UnsupportedSyntax,
@@ -233,12 +241,14 @@ impl<'a> ModuleChecker<'a> {
                     ));
                 }
                 Declaration::ValueExport(export) if export.export_assignment => {
-                    if self.module_kind == ModuleKind::Esm {
+                    if self.module_kind == ModuleKind::Esm
+                        && !is_declaration_module(&self.module.id)
+                    {
                         self.diagnostics.push(Diagnostic::error(
                             DiagnosticCode::UnsupportedSyntax,
                             export.span.clone(),
                             "`export =` cannot be used when the module system is ECMAScript; use `--module commonjs`",
-                        ));
+                        ).with_typescript(1203, Vec::new()));
                     }
                     assignment = Some(export);
                 }
@@ -277,11 +287,7 @@ impl<'a> ModuleChecker<'a> {
         &mut self,
         import: &crate::parser::ImportDeclaration,
     ) {
-        let Some(resolved) = self
-            .project
-            .resolutions
-            .get(&(self.module.id.clone(), import.specifier.clone()))
-        else {
+        let Some(resolved) = self.project.resolved_import(&self.module.id, import) else {
             return;
         };
         let exported = self.exports.types.get(resolved);
@@ -416,6 +422,35 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
             if binding.type_only {
+                let prefix = format!("{}.", binding.imported);
+                let namespace_types = exported
+                    .into_iter()
+                    .flat_map(|types| types.iter())
+                    .filter_map(|(name, definition)| {
+                        name.strip_prefix(&prefix).map(|member| {
+                            (format!("{}.{member}", binding.local), definition.clone())
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                if !namespace_types.is_empty() {
+                    for (name, definition) in namespace_types {
+                        self.insert_type(
+                            &name,
+                            definition,
+                            import.span.clone(),
+                            SymbolKind::Import,
+                            false,
+                        );
+                    }
+                    self.type_only_namespaces.insert(binding.local.clone());
+                    continue;
+                }
+                let query_value = self
+                    .exports
+                    .values
+                    .get(resolved)
+                    .and_then(|values| values.get(&binding.imported))
+                    .cloned();
                 if let Some(enum_) = self
                     .exports
                     .enums
@@ -428,14 +463,20 @@ impl<'a> ModuleChecker<'a> {
                 }
                 let Some(source_type) = exported.and_then(|types| types.get(&binding.imported))
                 else {
-                    self.diagnostics.push(Diagnostic::error(
+                    if let Some(value) = query_value {
+                        self.bind_imported_value(&binding.local, &value, &import.span);
+                        continue;
+                    }
+                    let diagnostic = Diagnostic::error(
                         DiagnosticCode::UnknownType,
                         import.span.clone(),
                         format!(
                             "module `{}` has no exported type `{}`",
                             import.specifier, binding.imported
                         ),
-                    ));
+                    );
+                    self.diagnostics
+                        .push(self.missing_type_import(import, binding, resolved, diagnostic));
                     continue;
                 };
                 let mut source_type = source_type.clone();
@@ -456,6 +497,10 @@ impl<'a> ModuleChecker<'a> {
                     SymbolKind::Import,
                     false,
                 );
+                if let Some(value) = query_value {
+                    self.values
+                        .insert(binding.local.clone(), value.value_type());
+                }
             } else {
                 // An export assignment's public object properties are named exports.
                 let requires_namespace = import.equals_require
@@ -617,19 +662,19 @@ impl<'a> ModuleChecker<'a> {
         &mut self,
         export: &crate::parser::TypeExportDeclaration,
     ) {
-        let source_types = export.specifier.as_ref().and_then(|specifier| {
-            self.project
-                .resolutions
-                .get(&(self.module.id.clone(), specifier.clone()))
-                .and_then(|resolved| self.exports.types.get(resolved))
-        });
+        let resolved = self.project.resolved_type_export(&self.module.id, export);
+        let source_types = resolved.and_then(|id| self.exports.types.get(id));
+        let source_values = resolved.and_then(|id| self.exports.values.get(id));
         for binding in &export.bindings {
-            if binding == "*" {
-                continue;
-            }
-            let local = binding.split(" as ").next().unwrap_or(binding);
-            let exists = source_types.is_some_and(|types| types.contains_key(local))
-                || export.specifier.is_none() && self.types.contains_key(local);
+            let local = &binding.local;
+            let exists = source_types.is_some_and(|types| {
+                types.contains_key(local)
+                    || types
+                        .keys()
+                        .any(|name| name.starts_with(&format!("{local}.")))
+            }) || source_values.is_some_and(|values| values.contains_key(local))
+                || export.specifier.is_none()
+                    && (self.types.contains_key(local) || self.values.contains_key(local));
             if !exists {
                 self.diagnostics.push(Diagnostic::error(
                     DiagnosticCode::UnknownType,

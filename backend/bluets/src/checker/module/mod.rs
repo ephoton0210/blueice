@@ -29,6 +29,7 @@ pub(crate) struct CheckerPolicy {
     /// The module system of the emitted JavaScript, and whether a default import
     /// of an `export =` module is allowed (`esModuleInterop`).
     pub(crate) module_kind: crate::compiler::ModuleKind,
+    pub(crate) import_attributes: bool,
     pub(crate) es_module_interop: bool,
     pub(crate) jsx: Option<crate::compiler::JsxMode>,
     pub(crate) experimental_decorators: bool,
@@ -55,6 +56,7 @@ pub(super) struct ModuleChecker<'a> {
     define_class_fields: bool,
     isolated_modules: bool,
     module_kind: crate::compiler::ModuleKind,
+    import_attributes: bool,
     es_module_interop: bool,
     jsx_mode: Option<crate::compiler::JsxMode>,
     experimental_decorators: bool,

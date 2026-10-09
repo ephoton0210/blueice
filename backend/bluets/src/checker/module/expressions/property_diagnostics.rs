@@ -65,10 +65,7 @@ impl ModuleChecker<'_> {
                             .bindings
                             .iter()
                             .find(|binding| binding.local == class_name)?;
-                        let resolved = self
-                            .project
-                            .resolutions
-                            .get(&(self.module.id.clone(), import.specifier.clone()))?;
+                        let resolved = self.project.resolved_import(&self.module.id, import)?;
                         self.exports
                             .classes
                             .get(resolved)?

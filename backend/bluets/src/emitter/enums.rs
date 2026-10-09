@@ -100,13 +100,10 @@ pub(super) fn lower_enums(
             let Declaration::Import(import) = declaration else {
                 continue;
             };
-            if import.type_only {
+            if import.is_type_only() {
                 continue;
             }
-            let Some(resolved) = project
-                .resolutions
-                .get(&(module.id.clone(), import.specifier.clone()))
-            else {
+            let Some(resolved) = project.resolved_import(&module.id, import) else {
                 continue;
             };
             for binding in &import.bindings {

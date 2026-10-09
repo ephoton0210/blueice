@@ -12,7 +12,9 @@ use crate::parser::{parse_module, parse_module_with_limits, Module, ParserLimits
 use crate::strict_boundaries;
 use crate::{Compilation, LANGUAGE_VERSION};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+mod json;
 mod native_emit;
+mod resolutions;
 
 /// Closed-project work limits. They are part of [`CompilerOptions`] so a
 /// cached result or artifact cannot be reused under a looser resource policy.
@@ -172,6 +174,10 @@ pub struct CompilerOptions {
     pub isolated_modules: bool,
     /// The module system of the emitted JavaScript.
     pub module_kind: ModuleKind,
+    /// The selected module grammar permits runtime import attributes (ESNext).
+    pub import_attributes: bool,
+    /// Owner-enabled JSON sources become typed data assets, never script code.
+    pub resolve_json_module: bool,
     /// TypeScript's `esModuleInterop`: a default or namespace import of a
     /// CommonJS `export =` module is allowed and goes through a helper that gives
     /// it a `default` member. Only meaningful with `ModuleKind::CommonJs`.
@@ -240,6 +246,8 @@ impl Default for CompilerOptions {
             preserve_const_enums: false,
             isolated_modules: false,
             module_kind: ModuleKind::Esm,
+            import_attributes: false,
+            resolve_json_module: false,
             es_module_interop: false,
             experimental_decorators: false,
             emit_decorator_metadata: false,
@@ -283,6 +291,24 @@ pub trait ModuleLoader {
 
     fn resolve(&self, from_module: &str, specifier: &str) -> Result<String, String> {
         resolve_relative_module(from_module, specifier)
+    }
+
+    /// Resolves one static edge under its explicit package condition. The
+    /// default retains the host's existing closed-world resolution policy.
+    fn resolve_with_mode(
+        &self,
+        from_module: &str,
+        specifier: &str,
+        _mode: Option<crate::package_resolution::ImportMode>,
+    ) -> Result<String, String> {
+        self.resolve(from_module, specifier)
+    }
+
+    /// Identity of owner-authorized resolution observations after the graph
+    /// has been loaded. File hosts include absent candidates, canonical paths
+    /// and manifest content here; the compiler does not acquire any I/O grant.
+    fn resolution_fingerprint(&self) -> String {
+        String::new()
     }
 }
 
@@ -340,6 +366,9 @@ pub struct Project {
     pub entry: String,
     pub modules: BTreeMap<String, Module>,
     pub(crate) resolutions: BTreeMap<(String, String), String>,
+    mode_resolutions: BTreeMap<(String, String, crate::package_resolution::ImportMode), String>,
+    pub(crate) json_modules: BTreeMap<String, crate::Type>,
+    resolution_fingerprint: String,
     pub(crate) ambient_declaration_modules: BTreeSet<String>,
     failed_sources: BTreeMap<String, String>,
 }
@@ -447,6 +476,9 @@ impl Project {
             entry: entry.into(),
             modules: BTreeMap::new(),
             resolutions: BTreeMap::new(),
+            mode_resolutions: BTreeMap::new(),
+            json_modules: BTreeMap::new(),
+            resolution_fingerprint: String::new(),
             ambient_declaration_modules: BTreeSet::new(),
             failed_sources: BTreeMap::new(),
         }
@@ -470,10 +502,12 @@ fn compile_with_cache(
     let graph_started = std::time::Instant::now();
     let previous_project = cached.map(|cached| &cached.compilation.project);
     let mut builder = ProjectBuilder::new(loader, previous_project, options.limits.clone());
+    builder.resolve_json_module = options.resolve_json_module;
     builder.visit(entry, 0);
     for declaration in &options.ambient_declaration_modules {
         builder.visit_ambient_declaration(declaration);
     }
+    builder.project.resolution_fingerprint = loader.resolution_fingerprint();
     let ProjectBuilder {
         project,
         mut diagnostics,
@@ -489,7 +523,9 @@ fn compile_with_cache(
         .unwrap_or_else(|| project.modules.keys().cloned().collect());
     let all_modules = project.modules.keys().cloned().collect::<BTreeSet<_>>();
 
-    if let Some(cached) = cached.filter(|_| changed_modules.is_empty()) {
+    if let Some(cached) = cached.filter(|cached| {
+        changed_modules.is_empty() && cached.compilation.project_fingerprint == project_fingerprint
+    }) {
         let mut compilation = cached.compilation.clone();
         compilation.performance = performance.finish(
             &project,
@@ -514,6 +550,13 @@ fn compile_with_cache(
     let previous_checked = cached.and_then(|cached| cached.compilation.checked.as_ref());
 
     let check_started = std::time::Instant::now();
+    if options.runtime_policy == RuntimePolicy::StrictRuntime && !project.json_modules.is_empty() {
+        diagnostics.push(Diagnostic::error(
+            DiagnosticCode::UnsupportedSyntax,
+            SourceSpan::new(entry, 0, 0),
+            "strict-runtime JSON assets require a supported runtime profile",
+        ));
+    }
     let (checked, checker_diagnostics) = checker::check_incremental(
         &project,
         checker::CheckerPolicy {
@@ -524,6 +567,7 @@ fn compile_with_cache(
             define_class_fields: options.defines_class_fields(),
             isolated_modules: options.isolated_modules,
             module_kind: options.module_kind,
+            import_attributes: options.import_attributes,
             es_module_interop: options.es_module_interop,
             jsx: options.jsx,
             experimental_decorators: options.experimental_decorators,
@@ -615,6 +659,16 @@ fn changed_modules(previous: &Project, current: &Project) -> BTreeSet<String> {
             changed.insert(module_id.clone());
         }
     }
+    for (module_id, specifier, mode) in previous
+        .mode_resolutions
+        .keys()
+        .chain(current.mode_resolutions.keys())
+    {
+        let key = (module_id.clone(), specifier.clone(), *mode);
+        if previous.mode_resolutions.get(&key) != current.mode_resolutions.get(&key) {
+            changed.insert(module_id.clone());
+        }
+    }
     changed
 }
 
@@ -624,15 +678,14 @@ fn affected_modules(
     changed: &BTreeSet<String>,
 ) -> BTreeSet<String> {
     let mut reverse_dependencies = BTreeMap::<String, BTreeSet<String>>::new();
-    for ((module_id, _), dependency) in previous
-        .resolutions
-        .iter()
-        .chain(current.resolutions.iter())
+    for (module_id, dependency) in previous
+        .resolution_edges()
+        .chain(current.resolution_edges())
     {
         reverse_dependencies
-            .entry(dependency.clone())
+            .entry(dependency.to_string())
             .or_default()
-            .insert(module_id.clone());
+            .insert(module_id.to_string());
     }
 
     let mut affected = changed.clone();
@@ -657,6 +710,7 @@ struct ProjectBuilder<'a> {
     diagnostics: Vec<Diagnostic>,
     state: HashMap<String, VisitState>,
     limits: CompilerLimits,
+    resolve_json_module: bool,
     total_source_bytes: usize,
     parsed_modules: BTreeSet<String>,
     reused_parsed_modules: BTreeSet<String>,
@@ -681,6 +735,7 @@ impl<'a> ProjectBuilder<'a> {
             diagnostics: Vec::new(),
             state: HashMap::new(),
             limits,
+            resolve_json_module: false,
             total_source_bytes: 0,
             parsed_modules: BTreeSet::new(),
             reused_parsed_modules: BTreeSet::new(),
@@ -816,7 +871,25 @@ impl<'a> ProjectBuilder<'a> {
             return;
         }
         self.total_source_bytes = total_source_bytes;
-        let module = if let Some(module) = self
+        let module = if module_id.ends_with(".json") && self.resolve_json_module {
+            match json::parse(&source, &self.limits) {
+                Ok((module, schema)) => {
+                    self.project
+                        .json_modules
+                        .insert(module_id.to_string(), schema);
+                    self.parsed_modules.insert(module_id.to_string());
+                    module
+                }
+                Err(diagnostic) => {
+                    self.project
+                        .failed_sources
+                        .insert(module_id.to_string(), source.text);
+                    self.diagnostics.push(diagnostic);
+                    self.state.insert(module_id.to_string(), VisitState::Done);
+                    return;
+                }
+            }
+        } else if let Some(module) = self
             .previous
             .and_then(|previous| previous.modules.get(module_id))
             .filter(|module| module.source == source.text)
@@ -844,13 +917,32 @@ impl<'a> ProjectBuilder<'a> {
             }
         };
         for declaration in &module.declarations {
-            let (specifier, span) = match declaration {
-                crate::parser::Declaration::Import(import) => (&import.specifier, &import.span),
+            let (specifier, span, mode) = match declaration {
+                crate::parser::Declaration::Import(import) => (
+                    &import.specifier,
+                    &import.span,
+                    import
+                        .type_only
+                        .then(|| {
+                            import
+                                .attributes
+                                .as_ref()
+                                .and_then(crate::ImportAttributes::resolution_mode)
+                        })
+                        .flatten(),
+                ),
                 crate::parser::Declaration::TypeExport(export) => {
                     let Some(specifier) = &export.specifier else {
                         continue;
                     };
-                    (specifier, &export.span)
+                    (
+                        specifier,
+                        &export.span,
+                        export
+                            .attributes
+                            .as_ref()
+                            .and_then(crate::ImportAttributes::resolution_mode),
+                    )
                 }
                 crate::parser::Declaration::ValueExport(export) => {
                     let Some(specifier) = &export.specifier else {
@@ -859,6 +951,7 @@ impl<'a> ProjectBuilder<'a> {
                     (
                         specifier,
                         export.specifier_span.as_ref().unwrap_or(&export.span),
+                        None,
                     )
                 }
                 _ => continue,
@@ -871,11 +964,14 @@ impl<'a> ProjectBuilder<'a> {
                 ));
                 continue;
             }
-            match self.loader.resolve(module_id, specifier) {
+            match self.loader.resolve_with_mode(module_id, specifier, mode) {
                 Ok(resolved) => {
-                    let resolution_key = (module_id.to_string(), specifier.clone());
-                    if !self.project.resolutions.contains_key(&resolution_key)
-                        && self.project.resolutions.len() >= self.limits.max_module_edges
+                    if self
+                        .project
+                        .resolved_module_with_mode(module_id, specifier, mode)
+                        .is_none()
+                        && self.project.resolutions.len() + self.project.mode_resolutions.len()
+                            >= self.limits.max_module_edges
                     {
                         self.diagnostics.push(Diagnostic::error(
                             DiagnosticCode::ResourceLimit,
@@ -887,9 +983,16 @@ impl<'a> ProjectBuilder<'a> {
                         ));
                         continue;
                     }
-                    self.project
-                        .resolutions
-                        .insert(resolution_key, resolved.clone());
+                    if let Some(mode) = mode {
+                        self.project.mode_resolutions.insert(
+                            (module_id.to_string(), specifier.clone(), mode),
+                            resolved.clone(),
+                        );
+                    } else {
+                        self.project
+                            .resolutions
+                            .insert((module_id.to_string(), specifier.clone()), resolved.clone());
+                    }
                     self.visit(&resolved, depth.saturating_add(1));
                 }
                 Err(message) => self.diagnostics.push(Diagnostic::error(
@@ -906,11 +1009,7 @@ impl<'a> ProjectBuilder<'a> {
             let crate::parser::Declaration::Import(import) = declaration else {
                 continue;
             };
-            let Some(resolved) = self
-                .project
-                .resolutions
-                .get(&(module_id.to_string(), import.specifier.clone()))
-            else {
+            let Some(resolved) = self.project.resolved_import(module_id, import) else {
                 continue;
             };
             let Some(dependency) = self.project.modules.get(resolved) else {
@@ -1024,6 +1123,8 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "object-const-enums"
     });
     add(options.module_kind.as_str());
+    add(&options.import_attributes.to_string());
+    add(&options.resolve_json_module.to_string());
     add(if options.experimental_decorators {
         "legacy-decorators"
     } else {
@@ -1058,6 +1159,9 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         add(&format!("checking-v1:{checking:?}"));
     }
     add(&options.resolver_fingerprint);
+    if !project.resolution_fingerprint.is_empty() {
+        add(&project.resolution_fingerprint);
+    }
     add(&options.require_declared_global_calls.to_string());
     for boundary in &options.strict_runtime_boundaries {
         add(&boundary.contract_id);
@@ -1098,6 +1202,20 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     for (id, source) in &project.failed_sources {
         add(id);
         add(source);
+    }
+    for ((from, specifier), target) in &project.resolutions {
+        add(from);
+        add(specifier);
+        add(target);
+    }
+    for ((from, specifier, mode), target) in &project.mode_resolutions {
+        add(from);
+        add(specifier);
+        add(match mode {
+            crate::package_resolution::ImportMode::Import => "import",
+            crate::package_resolution::ImportMode::Require => "require",
+        });
+        add(target);
     }
     format!("bts-{hash:016x}")
 }

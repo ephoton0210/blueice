@@ -113,11 +113,19 @@ impl ModuleChecker<'_> {
                 );
                 return;
             }
-            self.type_error(
-                &SourceSpan::new(&span.module, token.start, token.end),
-                format!("type-only class {} cannot be used as a value", token.text),
-                DiagnosticCode::UnknownName,
-            );
+            let imported_type = self.module.declarations.iter().any(|declaration| {
+                matches!(declaration, Declaration::Import(import) if import.bindings.iter().any(|binding| binding.local == token.text && (import.type_only || binding.type_only)))
+            });
+            let location = SourceSpan::new(&span.module, token.start, token.end);
+            let message = format!("type-only class {} cannot be used as a value", token.text);
+            if imported_type {
+                self.diagnostics.push(
+                    Diagnostic::error(DiagnosticCode::UnknownName, location, message)
+                        .with_typescript(1361, vec![token.text.clone()]),
+                );
+            } else {
+                self.type_error(&location, message, DiagnosticCode::UnknownName);
+            }
         }
     }
 

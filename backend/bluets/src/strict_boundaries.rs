@@ -127,7 +127,7 @@ fn validate_profile(project: &Project, options: &CompilerOptions) -> Vec<Diagnos
         let mut selected_count = 0usize;
         for declaration in &module.declarations {
             match declaration {
-                Declaration::Import(import) if import.type_only => {}
+                Declaration::Import(import) if import.is_type_only() => {}
                 Declaration::TypeExport(_)
                 | Declaration::TypeAlias(_)
                 | Declaration::Interface(_) => {}

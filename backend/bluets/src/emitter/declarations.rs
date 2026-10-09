@@ -22,12 +22,6 @@ pub(super) fn emit_declaration(
             enum_position += 1;
         }
         match declaration {
-            Declaration::Import(import) if import.type_only => {
-                output.push_str(&module.source[import.span.start..import.span.end]);
-                if !output.ends_with('\n') {
-                    output.push('\n');
-                }
-            }
             Declaration::Import(import) => {
                 if let Some(text) = inferred.and_then(|context| context.import(import)) {
                     output.push_str(&text);
@@ -39,7 +33,7 @@ pub(super) fn emit_declaration(
                         .and_then(|context| context.private_alias(&alias.name))
                         .is_some() =>
             {
-                private_alias |= !alias.exported;
+                private_alias |= !alias.exported && !explicit_export_name(module, &alias.name);
                 output.push_str(if alias.exported {
                     "export type "
                 } else {
@@ -60,8 +54,11 @@ pub(super) fn emit_declaration(
                 if interface.exported
                     || inferred.is_some_and(|context| context.retained(&interface.name)) =>
             {
-                private_alias |= !interface.exported;
-                output.push_str(if interface.exported {
+                private_alias |=
+                    !interface.exported && !explicit_export_name(module, &interface.name);
+                output.push_str(if interface.default_export {
+                    "export default interface "
+                } else if interface.exported {
                     "export interface "
                 } else {
                     "interface "
@@ -228,6 +225,7 @@ pub(super) fn emit_declaration(
                     || inferred.is_some_and(|context| context.retained(&class.name)) =>
             {
                 private_alias |= !class.exported
+                    && !explicit_export_name(module, &class.name)
                     && (computed_key_dependencies.contains(&class.name)
                         || inferred.is_some_and(|context| context.retained(&class.name)));
                 let prefix = if class.default_export {
@@ -239,19 +237,27 @@ pub(super) fn emit_declaration(
                 };
                 classes::emit_class_declaration(class, prefix, &mut output, inferred)?;
             }
+            Declaration::UmdExport(export) => {
+                output.push_str(&format!("export as namespace {};\n", export.name));
+            }
             Declaration::TypeExport(export) => {
                 output.push_str("export type ");
-                if export.bindings.len() == 1 && export.bindings[0] == "*" {
+                if export.star {
                     output.push('*');
+                    if let Some(name) = &export.namespace {
+                        output.push_str(" as ");
+                        output.push_str(&declaration_name(module, &export.span, name));
+                    }
                 } else {
                     output.push_str("{ ");
-                    output.push_str(&export.bindings.join(", "));
+                    emit_export_bindings(module, &export.bindings, false, &mut output);
                     output.push_str(" }");
                 }
                 if let Some(specifier) = &export.specifier {
                     output.push_str(" from ");
                     output.push_str(&format!("\"{specifier}\""));
                 }
+                emit_import_attributes(module, export.attributes.as_ref(), &mut output);
                 output.push_str(";\n");
             }
             Declaration::DefaultExport(export) => {
@@ -268,10 +274,8 @@ pub(super) fn emit_declaration(
                     if let Some(name) = &export.namespace {
                         output.push_str(&format!(" as {name}"));
                     }
-                    output.push_str(&format!(
-                        " from \"{}\";\n",
-                        export.specifier.as_ref().unwrap()
-                    ));
+                    output.push_str(&format!(" from \"{}\"", export.specifier.as_ref().unwrap()));
+                    output.push_str(";\n");
                     continue;
                 }
                 if export.bindings.is_empty() && export.specifier.is_none() {
@@ -279,16 +283,7 @@ pub(super) fn emit_declaration(
                     continue;
                 }
                 output.push_str("export { ");
-                for (index, binding) in export.bindings.iter().enumerate() {
-                    if index > 0 {
-                        output.push_str(", ");
-                    }
-                    output.push_str(&binding.local);
-                    if binding.local != binding.exported {
-                        output.push_str(" as ");
-                        output.push_str(&binding.exported);
-                    }
-                }
+                emit_export_bindings(module, &export.bindings, true, &mut output);
                 output.push_str(" }");
                 if let Some(specifier) = &export.specifier {
                     output.push_str(&format!(" from \"{specifier}\""));
@@ -315,10 +310,60 @@ pub(super) fn emit_declaration(
     Ok(output)
 }
 
+fn emit_import_attributes(
+    module: &Module,
+    attributes: Option<&crate::ImportAttributes>,
+    output: &mut String,
+) {
+    if let Some(attributes) = attributes {
+        output.push(' ');
+        output.push_str(&module.source[attributes.span.start..attributes.span.end]);
+    }
+}
+
+fn emit_export_bindings(
+    module: &Module,
+    bindings: &[crate::parser::ValueExportBinding],
+    inline: bool,
+    output: &mut String,
+) {
+    for (index, binding) in bindings.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        if inline && binding.type_only {
+            output.push_str("type ");
+        }
+        output.push_str(&declaration_name(module, &binding.span, &binding.local));
+        if binding.local != binding.exported {
+            output.push_str(" as ");
+            output.push_str(&declaration_name(module, &binding.span, &binding.exported));
+        }
+    }
+}
+
+pub(super) fn declaration_name(module: &Module, span: &SourceSpan, name: &str) -> String {
+    crate::lex(&module.id, &module.source[span.start..span.end])
+        .ok()
+        .and_then(|tokens| {
+            tokens
+                .into_iter()
+                .find(|token| crate::syntax::string_contents(token).as_deref() == Some(name))
+        })
+        .map_or_else(|| name.to_string(), |token| token.text)
+}
+
 pub(super) fn is_default_export_name(module: &Module, name: &str) -> bool {
     module.declarations.iter().any(|declaration| {
         matches!(declaration, Declaration::DefaultExport(export) if export.name == name)
     })
+}
+
+fn explicit_export_name(module: &Module, name: &str) -> bool {
+    is_default_export_name(module, name) || is_value_export_name(module, name)
+        || module.declarations.iter().any(|declaration| {
+            matches!(declaration, Declaration::TypeExport(export) if export.specifier.is_none() && export.bindings.iter().any(|binding| binding.local == name))
+        })
 }
 
 pub(super) fn is_value_export_name(module: &Module, name: &str) -> bool {

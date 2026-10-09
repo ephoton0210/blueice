@@ -17,7 +17,7 @@ pub(crate) fn check_incremental(
     rechecked: &BTreeSet<String>,
     max_type_expansions: usize,
 ) -> (CheckedProject, Vec<Diagnostic>) {
-    let mut diagnostics = project::declaration_module_diagnostics(project);
+    let mut diagnostics = project::declaration_module_diagnostics(project, policy.module_kind);
     let (ambient, mut ambient_diagnostics) = ambient_declarations(project);
     diagnostics.append(&mut ambient_diagnostics);
     let mut exports = ProjectExports {
@@ -130,7 +130,7 @@ fn dependency_order(project: &Project) -> Vec<String> {
         if !project.modules.contains_key(id) || !seen.insert(id.to_string()) {
             return;
         }
-        for ((from, _), resolved) in &project.resolutions {
+        for (from, resolved) in project.resolution_edges() {
             if from == id {
                 visit(project, resolved, seen, order);
             }
