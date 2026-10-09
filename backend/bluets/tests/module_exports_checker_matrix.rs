@@ -192,6 +192,74 @@ fn anonymous_private_default_es2020_keeps_the_pinned_failure_boundary() {
 }
 
 #[test]
+fn incremental_reexports_retain_and_refresh_dependency_types() {
+    use blueice_bluets::{
+        CheckingOptions, CompilerOptions, IncrementalCompiler, MapLoader, ModuleSource,
+    };
+    let mut compiler = IncrementalCompiler::new();
+    let options = CompilerOptions {
+        checking: Some(CheckingOptions::default()),
+        ..CompilerOptions::default()
+    };
+    for (index, (expected, dependency, errors)) in [
+        ("number", "3", false),
+        ("string", "3", true),
+        ("number", "'changed'", true),
+        ("string", "'changed'", false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let loader = MapLoader::from([
+            ModuleSource::new(
+                "graph/main.ts",
+                format!("import {{value}} from './barrel.ts'; const result: {expected} = value;"),
+            ),
+            ModuleSource::new("graph/barrel.ts", "export * from './middle.ts';"),
+            ModuleSource::new(
+                "graph/middle.ts",
+                "export {source as value} from './base.ts';",
+            ),
+            ModuleSource::new(
+                "graph/base.ts",
+                format!("export let source = {dependency};"),
+            ),
+        ]);
+        let result = compiler.compile("graph/main.ts", &loader, options.clone());
+        assert_eq!(
+            result.compilation.has_errors(),
+            errors,
+            "step {index}: {:?}",
+            result.compilation.diagnostics
+        );
+        assert_eq!(result.compilation.output.is_none(), errors);
+        if index == 1 || index == 3 {
+            for module in ["graph/base.ts", "graph/middle.ts", "graph/barrel.ts"] {
+                assert!(
+                    result.reused_checked_modules.contains(module),
+                    "step {index}: {:?}",
+                    result.reused_checked_modules
+                );
+            }
+        }
+        if index == 2 {
+            for module in [
+                "graph/base.ts",
+                "graph/middle.ts",
+                "graph/barrel.ts",
+                "graph/main.ts",
+            ] {
+                assert!(
+                    result.rechecked_modules.contains(module),
+                    "{:?}",
+                    result.rechecked_modules
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn module_exports_match_pinned_verdicts_and_primary_diagnostics() {
     let root = env::temp_dir().join(format!("bluets-modexport-check-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
