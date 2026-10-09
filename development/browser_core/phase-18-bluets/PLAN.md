@@ -6160,3 +6160,32 @@ complete K.0 gate passes; K.6.2 and full hosted CI remain open.
 ### K.6.2 contextual import baseline (2026-10-09)
 
 *Contextual import failing regression (2026-10-09):* Four additional pinned 5.9.3 programs accept `type` as an ESM/CommonJS default binding and a CommonJS value/type-only `import =` binding. All four independent Node programs print `42` and emit declarations before BlueTS reports parser failures. The eighteen-round frozen gate passes format/all-target Clippy and restores class discovery, all 18 CLI controls, all 123 frontend controls and the pure-type namespace `typeof` refusal. One inline `type Missing` primary span still needs refinement. Evidence: `/private/tmp/blueice-k14-linux/blueice-k62-eighteenth-{status,report}.json` and logs/hashes. Commit this public contextual baseline before changing its parser; K.6.2 and the full gates remain open.
+
+
+### K.6.2 implementation design and size review (2026-10-09)
+
+Retain whole and inline type-only module bindings with their original spans,
+then erase only their static syntax from JavaScript. Declaration output keeps
+qualified type surfaces, arbitrary export names and type-only resolution-mode
+attributes. Runtime import attributes remain in ESM JavaScript and are omitted
+from declarations according to the pinned witnesses. UMD namespace markers are
+static declarations; they do not create runtime bindings.
+
+Host resolution can select an import or require condition for each static
+edge. Both targets and source-content identities enter graph traversal,
+invalidation and artifact fingerprints; owner resolution observations are
+collected after graph loading. Explicit relative TypeScript fallback candidates
+retain canonical-root confinement and observation invalidation.
+
+An effective owner `resolveJsonModule` enables relative JSON data. Its raw
+bytes supply static types, source identity and separately published assets.
+Data does not become executable JavaScript; strict-runtime and direct BlueJS
+entries/imports retain explicit runtime-profile refusals. Atomic publication
+preserves source files and rejects output collisions. Public resource-limit
+controls are being added before closing the new input path.
+
+The production audit measures `compiler.rs` at 1,224 lines. K.6.R.2 queues
+closed-project loading and fingerprint construction for a separate verified
+refactor after the K.6.2 implementation commit/push and before K.6.3. The full
+K.0 oracle gate and final-source hosted CI are still pending; this design note
+does not close either gate.
