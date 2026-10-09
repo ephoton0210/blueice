@@ -6901,3 +6901,42 @@ the 3,182-case shared record remain unchanged. Evidence:
 `blueice-k71-owned-profile-public-replay-proof.json`. Commit this test-only
 baseline before production changes and retain it unpushed until the complete
 K.0 gate passes. K.7.1 implementation and final-source M8 hosted CI remain open.
+
+### K.7.1 iterator/generator protocol baseline (2026-10-10)
+
+The existing target record exposes twelve upstream helper families. Before
+authoring them, retain native protocol boundaries from original source:
+fifteen synchronous close outcomes, four generator state controls and eighteen
+async close outcomes. The 37 observations cover getter/call/rejection failure,
+primitive close results, completion priority, settlement before resumption,
+return/throw before first execution, reentrancy and completed generators.
+The fixed [ECMA-262 2024 close operations](https://tc39.es/ecma262/2024/multipage/abstract-operations.html#sec-iteratorclose)
+and [generator operations](https://tc39.es/ecma262/2024/multipage/control-abstraction-objects.html#sec-generatorresumeabrupt)
+provide the semantic basis. The recorder checks these native outcomes directly.
+
+All 22 strict TypeScript 5.9.3 target/module combinations accept, emit and run;
+their output meets the requested Acorn 8.15.0 syntax edition. The live recorder
+retains exact declarations and every actual upstream observation. It measures
+20 upstream differences in eight programs: ES5 ignores primitive synchronous
+close results after break/return, and ES5/ES2015/ES2016/ES2017 ignore primitive
+async close results. These measured differences are documented alongside the
+native controls. Authored BlueTS helper output must satisfy native closing
+semantics; none of the existing 638 target expectations is weakened.
+Dynamic iterator receivers are explicitly `any`; the controls intentionally
+exercise invalid runtime protocol results without inventing static authority.
+
+The portable recorder preserves every prior scratch semantic observation and
+keeps upstream helper implementations out of repository source. The frozen
+Linux baseline passes format and both-crate all-target Clippy with warnings
+denied. Its three public/recording tests have one pass and two failures, zero
+ignored: the live pinned recorder passes, while both BlueTS build replays
+refuse all 22 projects at the unsupported `downlevelIteration` option. No
+authored helper output has passed yet. All 538 frozen inputs, sixty prior
+syntax inputs and every unaffected production/build input match; all prior
+533 inputs, 638 target observations and the 3,182-case shared record remain
+unchanged. Evidence: `blueice-k71-helper-spec-clause-proof.json`,
+`blueice-k71-protocol-first-proof/`, `blueice-k71-protocol-semantics-proof.json`,
+`blueice-k71-protocol-recorder-proof.json` and
+`blueice-k71-protocol-baseline-{status,source-hashes}.json` / logs.
+Commit this supplemental failing baseline before production changes and keep
+it unpushed until full K.0 passes. K.7.1 and final-source M8 CI remain open.
