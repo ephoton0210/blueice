@@ -6774,3 +6774,27 @@ independent probe artifacts. Commit this failing baseline on the isolated
 branch before production changes. It remains unpushed until the verified
 leaf's complete K.0 gate passes. K.7.1 remains open, and implementation waits
 for M8's complete original hosted CI.
+
+### K.7.1 independent syntax-edition witnesses (2026-10-10)
+
+The isolated baseline now includes 55 authored JavaScript grammar witnesses.
+Pinned Acorn 8.15.0 records 605 decisions across the eleven targets: 403
+accept and 202 reject. The examples distinguish lexical declarations,
+arrows, patterns, generators/async iteration, spread, operators, literals,
+RegExp grammar, private/class elements, module expressions and hashbangs.
+ES5 controls retain future-looking text inside strings/comments and keywords
+used as property names. Feature boundaries follow the
+[ECMA-262 edition history](https://tc39.es/ecma262/2024/multipage/#sec-intro)
+and are independently checked by the pinned parser, rather than accepted
+because the current Node runtime understands them. Each source has the MPL
+header, including the hashbang source's header after its first line.
+
+The bridge's public BlueJS parser accepts every latest witness. All three
+new tests pass, including the live pinned edition recorder, along with format
+and both-crate all-target Clippy with warnings denied. All sixty new frozen
+files and the prior 384 baseline inputs match; production is unchanged.
+Evidence: `blueice-k71-syntax-profiles-{status,source-hashes}.json` and logs.
+This establishes the syntax witnesses and current latest-parser boundary.
+Older-edition rejection through a BlueJS API remains unimplemented; it must
+be tested against the same matrix when the edition-selecting API is added.
+This test-only preparation remains on the isolated unpushed K.7.1 branch.
