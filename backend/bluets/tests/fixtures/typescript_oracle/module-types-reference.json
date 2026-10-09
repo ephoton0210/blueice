@@ -1,0 +1,1172 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "modtypes-accept-attributes-duplicate/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "esnext"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modtypes-accept-legacy-assert/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "esnext"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modtypes-declarations-attributes/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "esnext"
+      ],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-declarations-export-typeof/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-declarations-inline-export-all/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-declarations-inline-import/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-declarations-typeof-function/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-declarations-value-type-queries/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-reject-attributes-commonjs/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2823,
+        "message": "Import attributes are only supported when the '--module' option is set to 'esnext', 'node18', 'node20', 'nodenext', or 'preserve'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 33,
+          "length": 18
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-attributes-es2022/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2823,
+        "message": "Import attributes are only supported when the '--module' option is set to 'esnext', 'node18', 'node20', 'nodenext', or 'preserve'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 33,
+          "length": 18
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-attributes-nonstring/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "esnext"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type '{ type: 42; }' is not assignable to type 'ImportAttributes'.\n  Property 'type' is incompatible with index signature.\n    Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 33,
+          "length": 14
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-default-plus-named/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1363,
+        "message": "A type-only import can specify a default import or named bindings, but not both.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 8,
+          "length": 18
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-default-plus-namespace/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1363,
+        "message": "A type-only import can specify a default import or named bindings, but not both.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 8,
+          "length": 22
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-duplicate-type-modifier/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2206,
+        "message": "The 'type' modifier cannot be used on a named import when 'import type' is used on its import statement.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-import-equals-es2022-source/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1203,
+        "message": "Export assignment cannot be used when targeting ECMAScript modules. Consider using 'export default' or another module format instead.",
+        "module": "dep.ts",
+        "position": {
+          "line": 6,
+          "column": 1,
+          "length": 15
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-inline-declaration-commonjs/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2846,
+        "message": "A declaration file cannot be imported without 'import type'. Did you mean to import an implementation file './types' instead?",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 25,
+          "length": 14
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-inline-declaration-es2022/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2846,
+        "message": "A declaration file cannot be imported without 'import type'. Did you mean to import an implementation file './types.ts' instead?",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 25,
+          "length": 14
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-inline-type-value/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1361,
+        "message": "'Box' cannot be used as a value because it was imported using 'import type'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 40,
+          "length": 3
+        },
+        "related": [
+          {
+            "code": 1376,
+            "message": "'Box' was imported here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 9,
+              "length": 8
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modtypes-reject-json-namespace-reexport/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "esnext",
+        "--moduleResolution",
+        "bundler",
+        "--resolveJsonModule"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2498,
+        "message": "Module '\"data\"' uses 'export =' and cannot be used with 'export *'.",
+        "module": "barrel.ts",
+        "position": {
+          "line": 5,
+          "column": 24,
+          "length": 13
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-missing-default-type/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1192,
+        "message": "Module '\"dep\"' has no default export.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 13,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-missing-inline-member/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2305,
+        "message": "Module '\"./dep.ts\"' has no exported member 'Missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-missing-type-member/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2305,
+        "message": "Module '\"./dep.ts\"' has no exported member 'Missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-named-type-value/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1361,
+        "message": "'Box' cannot be used as a value because it was imported using 'import type'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 40,
+          "length": 3
+        },
+        "related": [
+          {
+            "code": 1376,
+            "message": "'Box' was imported here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 14,
+              "length": 3
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modtypes-reject-namespace-type-value/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1361,
+        "message": "'Types' cannot be used as a value because it was imported using 'import type'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 53,
+          "length": 5
+        },
+        "related": [
+          {
+            "code": 1376,
+            "message": "'Types' was imported here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 18,
+              "length": 5
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modtypes-reject-type-export-attributes/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "esnext"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2857,
+        "message": "Import attributes cannot be used with type-only imports or exports.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 36,
+          "length": 18
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-type-import-bad-resolution/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "esnext"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2857,
+        "message": "Import attributes cannot be used with type-only imports or exports.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 36,
+          "length": 32
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-type-import-extra-key/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "esnext"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1464,
+        "message": "Type import attributes should have exactly one key - 'resolution-mode' - with value 'import' or 'require'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 36,
+          "length": 44
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-type-import-json-attribute/main.ts",
+      "accepts": false,
+      "flags": [
+        "--module",
+        "esnext"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2857,
+        "message": "Import attributes cannot be used with type-only imports or exports.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 36,
+          "length": 18
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-umd-nested/main.d.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1316,
+        "message": "Global module exports may only appear at top level.",
+        "module": "main.d.ts",
+        "position": {
+          "line": 5,
+          "column": 27,
+          "length": 28
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-umd-script/main.d.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1314,
+        "message": "Global module exports may only appear in module files.",
+        "module": "main.d.ts",
+        "position": {
+          "line": 5,
+          "column": 1,
+          "length": 28
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-reject-umd-source/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1315,
+        "message": "Global module exports may only appear in declaration files.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 1,
+          "length": 28
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modtypes-runtime-class-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-class-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-contextual-default-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-contextual-default-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-contextual-type-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-contextual-type-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-declaration-namespace-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-declaration-namespace-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-default-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-default-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-default-named-default-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-default-named-default-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-default-type-inline-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-default-type-inline-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-default-type-named-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-default-type-named-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-import-equals-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-import-equals-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-all-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-all-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-contextual-type-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-contextual-type-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-declaration-erased-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-declaration-erased-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-export-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-export-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-mixed-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-inline-mixed-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-json-default/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "esnext",
+        "--moduleResolution",
+        "bundler",
+        "--resolveJsonModule"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-json-named-reexport/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "esnext",
+        "--moduleResolution",
+        "bundler",
+        "--resolveJsonModule"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-local-inline-export-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-local-inline-export-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-named-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-named-declaration-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-named-declaration-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-named-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-named-type-reexport-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-named-type-reexport-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-namespace-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-namespace-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-no-type-dependency-evaluation-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-no-type-dependency-evaluation-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-resolution-import-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-resolution-import-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-resolution-require-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-resolution-require-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-string-type-name-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-string-type-name-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-string-type-namespace-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-string-type-namespace-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-type-star-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-type-star-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-type-star-namespace-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-runtime-type-star-namespace-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "es2022"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modtypes-umd-declaration/main.d.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    }
+  ]
+}

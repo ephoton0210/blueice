@@ -75,7 +75,7 @@ fn replay(case: &Value) -> std::process::Output {
             if input
                 .path()
                 .extension()
-                .is_some_and(|suffix| suffix == "ts")
+                .is_some_and(|suffix| suffix == "ts" || suffix == "json")
             {
                 fs::copy(input.path(), directory.join(input.file_name())).unwrap();
             }

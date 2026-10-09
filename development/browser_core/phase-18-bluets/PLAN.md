@@ -5972,3 +5972,34 @@ Evidence: `/private/tmp/blueice-k14-linux/blueice-k6-refactor-final-status.json`
 to 160 sites in ten areas. Commit/push this behavior-preserving refactor
 separately before K.6.2. Hosted complete workspace/platform/coverage CI follows
 on its exact pushed SHA; K.6.2/K.6.3 and the remaining milestones stay open.
+
+### K.6.2 Type-only and attribute failing baseline — 2026-10-09
+
+The test-first corpus records 86 TypeScript 5.9.3 programs: 63 accept and 23
+reject. The complete reference phase executes all 54 Node programs and emits
+60 declaration witnesses successfully before collecting BlueTSC differences.
+On production source `d8b9e6a68`, the public CLI has 68 verdict/primary
+differences and 63 emission differences across 59 witnesses. The direct bridge
+has two failing graph tests; a whole type-only declaration import and the
+declaration-runtime refusal controls already pass. There is no production edit.
+
+The cases retain default, named, namespace and require type imports; inline
+modifiers and contextual/arbitrary names; default type aliases, named/star/
+namespace type re-exports; value type queries; type-import resolution attributes;
+valid JSON import/re-export; string, duplicate and legacy attribute controls;
+and top-level/module/declaration constraints on `export as namespace`. Pinned
+TS2846 explicitly rejects an inline import of a `.d.ts` path even when all
+bindings are types. Extensionless elision controls are separately accepted.
+JSON positives require canonical owner-bounded JSON reads, observation records,
+fingerprints and actual JSON asset emission; a declaration cannot grant them.
+
+The shared recorder now reads this matrix's flags and the replay copies its
+JSON fixture siblings. It records 2,464 programs, 211 templates, 1,211 accepted
+and 1,253 rejected. Comparison retains every complete prior observation from
+all 2,378 programs exactly. Format, both-crate all-target Clippy with warnings
+denied, the live pinned recorder and shared completeness pass. All 257 frozen
+backend hashes match. Evidence is `blueice-k62-baseline-final-{status,report}.json`,
+its logs/hashes and `blueice-k62-shared-comparison.json` under
+`/private/tmp/blueice-k14-linux/`. The baseline is committed before production
+and stays unpushed until the complete implementation passes K.0. The separately
+measured K.6.1 generator output defect is repaired first; K.6.2 remains open.
