@@ -7478,3 +7478,62 @@ target declarations/verdicts and shared diagnostics pass. The every-ignored
 gate is running. The new optional-target baseline is separate from those
 frozen sources. Keep the leaf open and all production uncommitted/unpushed
 until actual target lowering and every K.0 oracle pass.
+
+### K.7.1 Original downlevel transforms checkpoint (2026-10-10)
+
+The corrected 7,028-file complete ordinary gate passes 1,090 tests in 116
+groups. Every ignored oracle finishes with 179 passes and two failures, both
+confined to target/protocol syntax floors. There are no target build, runtime
+or declaration differences; the target replay records 101 older-edition syntax
+differences before the following transforms. All frozen input hashes match.
+
+The frozen 7,032-file optional/nullish gate passes format, three-crate all-target
+Clippy, its independent Node/effect/exact-declaration/ES2019 oracle and all five
+ordinary target tests. Terminal named optional properties preserve single
+receiver/getter reads; nullish conditionals retain right-side suspension and
+effects in the original function. The [20,42,42,[3,2,1]] witness agrees with
+pinned TypeScript. Other optional call/property-chain contexts retain their
+existing boundaries.
+
+Original object spread then copies enumerable own values using descriptors,
+including symbols and prototype-named data properties. Ordinary property runs
+retain descriptors and getter/setter pairs. Prototype setters and super-bearing
+ordinary properties stay precise refusals in this transform. The frozen
+7,034-file replay passes format, Clippy and nine target tests; its remaining
+failure reports 85 syntax differences, with zero build, runtime or declaration
+differences. Independent native helper controls cover getter ordering, deletion
+of later keys, symbols, hidden keys, prototype data and accessor pairs.
+
+The frozen 7,035-file object-rest replay also passes 241 unit tests, format,
+Clippy and the optional oracle. A temporary initializer preserves one source
+evaluation; the retained ordinary pattern performs defaults before the rest
+copy, which excludes original property keys. All runtime/declaration witnesses
+match and target syntax differences fall to 73. Native helper controls retain
+getter/default order and symbol/exclusion behavior. Every authored helper source
+now contributes to the versioned family fingerprint. ES5 and async/generator
+lowering still require implementation.
+
+Evidence is in `blueice-k71-{optional-implementation,object-spread,object-rest}-first-status.json`,
+their exact logs/hashes, `blueice-k71-object-rest-first-differences.json` and the
+native helper control scripts under `/private/tmp/blueice-k14-linux/`. Production
+remains uncommitted/unpushed, K.7.1 stays open, and no inventory row is closed.
+
+### K.7.1 Async defaults failing regression (2026-10-10)
+
+The frozen 7,037-file named async transform passes format, all-target Clippy,
+241 unit tests and nine target tests. Awaited results, rejected awaits and
+finally-return witnesses agree with native execution and exact declarations;
+target syntax differences fall from 73 to 61. The protocol replay preserves
+all 37 native observations and declarations, with only unlowered edition syntax
+remaining. Original generator/promise helpers contribute to the fingerprint.
+
+An additional independent ES2015 source covers default evaluation, function
+arity, a trailing parameter comma, immediate entry, await suspension, caught
+rejection and finally ordering. The real 7,039-file replay passes format and
+three-crate Clippy; pinned TypeScript/Node and emitted BlueTS agree on values
+[42,1,0] and effect order [default,start,returned,resume,string,finally], and
+the declarations match exactly. Its Acorn check fails at the retained trailing
+comma in the generated generator parameters. Commit this failing test and
+fixture before removing that comma for the older edition. Evidence:
+`blueice-k71-async-default-baseline-{status,source-hashes}.json` and its actual
+runtime log. Production and the full K.7.1 leaf remain uncommitted/unpushed.
