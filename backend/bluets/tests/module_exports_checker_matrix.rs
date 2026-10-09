@@ -129,6 +129,69 @@ fn matrix_covers_every_module_exports_fixture() {
 }
 
 #[test]
+fn anonymous_private_default_es2020_keeps_the_pinned_failure_boundary() {
+    use blueice_bluets::{
+        compile, CheckingOptions, CompilerOptions, DiagnosticCode, EcmaTarget, MapLoader,
+        ModuleKind, ModuleSource,
+    };
+    let private =
+        "export default class { #value: number = 3; read(): number { return this.#value; } }";
+    let public =
+        "export default class { value: number = 3; read(): number { return this.value; } }";
+    let named =
+        "export default class Box { #value: number = 3; read(): number { return this.#value; } }";
+    for module_kind in [ModuleKind::Esm, ModuleKind::CommonJs] {
+        for define in [false, true] {
+            let options = CompilerOptions {
+                target: EcmaTarget::Es2020,
+                module_kind,
+                use_define_for_class_fields: Some(define),
+                checking: Some(CheckingOptions::default()),
+                ..CompilerOptions::default()
+            };
+            for source in [public, named] {
+                let result = compile(
+                    "main.ts",
+                    &MapLoader::from([ModuleSource::new("main.ts", source)]),
+                    options.clone(),
+                );
+                assert!(
+                    result.diagnostics.is_empty(),
+                    "{source}: {:?}",
+                    result.diagnostics
+                );
+                assert!(result.output.is_some());
+            }
+            let loader = MapLoader::from([ModuleSource::new("main.ts", private)]);
+            let result = compile("main.ts", &loader, options.clone());
+            assert!(
+                result.output.is_none(),
+                "the pinned ES2020 private default failure must stay deferred"
+            );
+            assert!(
+                result.diagnostics.iter().any(|diagnostic| diagnostic.code
+                    == DiagnosticCode::UnsupportedSyntax
+                    && diagnostic
+                        .message
+                        .contains("anonymous default class with private names on ES2020")),
+                "{:?}",
+                result.diagnostics
+            );
+            let modern = compile(
+                "main.ts",
+                &loader,
+                CompilerOptions {
+                    target: EcmaTarget::Es2022,
+                    ..options
+                },
+            );
+            assert!(modern.diagnostics.is_empty(), "{:?}", modern.diagnostics);
+            assert!(modern.output.is_some());
+        }
+    }
+}
+
+#[test]
 fn module_exports_match_pinned_verdicts_and_primary_diagnostics() {
     let root = env::temp_dir().join(format!("bluets-modexport-check-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
