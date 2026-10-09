@@ -276,8 +276,23 @@ fn fixed_core_profile_lazily_builds_and_reuses_one_authorizer_per_document_origi
 #[test]
 fn fixed_core_profile_denies_once_its_origin_limit_is_reached() {
     let authorizer = CoreHttpPageScriptFixtureAuthorizer::new();
-    for _ in 0..MAX_CORE_HTTP_PAGE_SCRIPT_FIXTURE_ORIGINS {
-        let port = unused_local_port();
+    // Reserve every port together: binding and dropping one listener at a
+    // time can reuse an ephemeral port and leave the origin budget unfilled.
+    let listeners = (0..=MAX_CORE_HTTP_PAGE_SCRIPT_FIXTURE_ORIGINS)
+        .map(|_| std::net::TcpListener::bind("127.0.0.1:0").unwrap())
+        .collect::<Vec<_>>();
+    let ports = listeners
+        .iter()
+        .map(|listener| listener.local_addr().unwrap().port())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ports.iter().copied().collect::<BTreeSet<_>>().len(),
+        ports.len()
+    );
+    // Close the listeners before fetching so every admitted request fails
+    // promptly instead of waiting for a fixture server response.
+    drop(listeners);
+    for &port in &ports[..MAX_CORE_HTTP_PAGE_SCRIPT_FIXTURE_ORIGINS] {
         let request = OutOfProcessPageScriptSourceRequest {
             tab_id: crate::TabId::from_u64(1),
             document_generation: 1,
@@ -295,7 +310,7 @@ fn fixed_core_profile_denies_once_its_origin_limit_is_reached() {
         );
     }
 
-    let port = unused_local_port();
+    let port = ports[MAX_CORE_HTTP_PAGE_SCRIPT_FIXTURE_ORIGINS];
     let over_limit = OutOfProcessPageScriptSourceRequest {
         tab_id: crate::TabId::from_u64(1),
         document_generation: 1,
