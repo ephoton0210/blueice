@@ -7312,3 +7312,18 @@ public BlueTS compiler rlib. All six fail: four invalid sources are admitted,
 and getters/setters have the wrong diagnostics. The probe does not modify the
 Cargo target or source and runs while the complete ignored replay continues.
 This failing baseline is committed before implementing boundary validation.
+
+### K.7.1 Array rest and reduce callback failing baseline (2026-10-10)
+
+Eight original TypeScript 5.9.3 controls cover array spreads into rest
+parameters, fixed prefixes, rejected fixed-parameter spreads, incompatible
+elements, member rest calls and numeric/string reduce callback contexts.
+A typed callback-return rejection preserves its exact operand position.
+The native record has five accepted and three rejected sources.
+
+The public Linux compiler probe in `blueice-k71-rest-array-red-report.json`
+fails all eight before production changes. It links the existing frozen
+compiler rlib outside the Cargo target while the old ignored replay runs.
+The ordinary integration regression compares all codes, starts, lengths and
+complete messages, with a live TypeScript recorder check. Commit this baseline
+before changing call spread expansion or the original owned Array declarations.
