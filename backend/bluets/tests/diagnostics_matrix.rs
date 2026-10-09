@@ -62,7 +62,11 @@ fn replay(case: &Value) -> std::process::Output {
         fs::create_dir_all(&directory).unwrap();
         let entry = Path::new("typescript_oracle").join(case["entry"].as_str().unwrap());
         let source_root = entry.parent().unwrap();
-        for input in case["inputs"].as_array().unwrap() {
+        let inputs = case["fixtureInputs"]
+            .as_array()
+            .or_else(|| case["inputs"].as_array())
+            .unwrap();
+        for input in inputs {
             let input = Path::new(input.as_str().unwrap());
             let destination = directory.join(input.strip_prefix(source_root).unwrap());
             fs::create_dir_all(destination.parent().unwrap()).unwrap();
@@ -105,7 +109,10 @@ fn replay(case: &Value) -> std::process::Output {
         fs::write(
             &config,
             serde_json::json!({"compilerOptions": options,
-            "files": [entry.file_name().unwrap().to_str().unwrap()]})
+            "files": case["inputs"].as_array().unwrap().iter().map(|input| {
+                Path::new(input.as_str().unwrap()).strip_prefix(source_root).unwrap()
+                    .to_string_lossy().replace('\\', "/")
+            }).collect::<Vec<_>>()})
             .to_string(),
         )
         .unwrap();
@@ -323,7 +330,11 @@ fn primary_messages_and_related_information_match_pinned_typescript() {
             .lines()
             .map(|line| serde_json::from_str::<Value>(line).unwrap())
             .collect::<Vec<_>>();
-        let actual = &diagnostics[0]["typescript"];
+        let Some(primary) = diagnostics.first() else {
+            failures.push(format!("{}: missing primary diagnostic", case["id"]));
+            continue;
+        };
+        let actual = &primary["typescript"];
         let related = expected["related"]
             .as_array()
             .into_iter()

@@ -1,0 +1,583 @@
+{
+  "replayChecking": "strict",
+  "cases": {
+    "modambient-ambient-named-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-named-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-implicit-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-implicit-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-bad-assignment-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-bad-assignment-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-merged-es2022": {
+      "files": [
+        "main.ts",
+        "left.d.ts",
+        "right.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "left.d.ts",
+        "right.d.ts"
+      ]
+    },
+    "modambient-ambient-merged-commonjs": {
+      "files": [
+        "main.ts",
+        "left.d.ts",
+        "right.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "left.d.ts",
+        "right.d.ts"
+      ]
+    },
+    "modambient-ambient-merged-missing-es2022": {
+      "files": [
+        "main.ts",
+        "left.d.ts",
+        "right.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "left.d.ts",
+        "right.d.ts"
+      ]
+    },
+    "modambient-ambient-merged-missing-commonjs": {
+      "files": [
+        "main.ts",
+        "left.d.ts",
+        "right.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "left.d.ts",
+        "right.d.ts"
+      ]
+    },
+    "modambient-ambient-private-export-marker-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-private-export-marker-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-shorthand-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-shorthand-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-relative-script-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-relative-script-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-initializer-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-initializer-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-constant-query-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-ambient-constant-query-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "ambient.d.ts"
+      ]
+    },
+    "modambient-global-module-es2022": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-global-module-commonjs": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-global-script-invalid-es2022": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-global-script-invalid-commonjs": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-global-merged-es2022": {
+      "files": [
+        "main.ts",
+        "globals.d.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "globals.d.ts",
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-global-merged-commonjs": {
+      "files": [
+        "main.ts",
+        "globals.d.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "globals.d.ts",
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-global-conflicting-es2022": {
+      "files": [
+        "main.ts",
+        "globals.d.ts",
+        "augment.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "globals.d.ts",
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-global-conflicting-commonjs": {
+      "files": [
+        "main.ts",
+        "globals.d.ts",
+        "augment.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "globals.d.ts",
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-augment-interface-es2022": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ]
+    },
+    "modambient-augment-interface-commonjs": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ]
+    },
+    "modambient-augment-conflicting-es2022": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ]
+    },
+    "modambient-augment-conflicting-commonjs": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ]
+    },
+    "modambient-augment-new-export-es2022": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ]
+    },
+    "modambient-augment-new-export-commonjs": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ]
+    },
+    "modambient-augment-missing-module-es2022": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-augment-missing-module-commonjs": {
+      "files": [
+        "main.ts",
+        "augment.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "augment.d.ts"
+      ]
+    },
+    "modambient-reference-path-es2022": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "globals.d.ts",
+        "main.ts"
+      ]
+    },
+    "modambient-reference-path-commonjs": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "globals.d.ts",
+        "main.ts"
+      ]
+    },
+    "modambient-reference-path-missing-es2022": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts"
+      ]
+    },
+    "modambient-reference-path-missing-commonjs": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts"
+      ]
+    },
+    "modambient-reference-types-es2022": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "node_modules/@types/owned/index.d.ts"
+      ]
+    },
+    "modambient-reference-types-commonjs": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts",
+        "node_modules/@types/owned/index.d.ts"
+      ]
+    },
+    "modambient-reference-types-missing-es2022": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts"
+      ]
+    },
+    "modambient-reference-types-missing-commonjs": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts"
+      ]
+    },
+    "modambient-reference-lib-es2022": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts"
+      ]
+    },
+    "modambient-reference-lib-commonjs": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "sources": [
+        "main.ts"
+      ]
+    },
+    "modambient-reference-lib-missing-es2022": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts"
+      ]
+    },
+    "modambient-reference-lib-missing-commonjs": {
+      "files": [
+        "main.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "sources": [
+        "main.ts"
+      ]
+    }
+  }
+}

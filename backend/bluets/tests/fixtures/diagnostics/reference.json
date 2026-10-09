@@ -407,6 +407,10 @@
       "message": "A namespace declaration cannot be located prior to a class or function with which it is merged."
     },
     {
+      "code": 2436,
+      "message": "Ambient module declaration cannot specify relative module name."
+    },
+    {
       "code": 2445,
       "message": "Property '{0}' is protected and only accessible within class '{1}' and its subclasses."
     },
@@ -595,6 +599,10 @@
       "message": "Cannot find name '{0}'. Did you mean the instance member 'this.{0}'?"
     },
     {
+      "code": 2669,
+      "message": "Augmentations for the global scope can only be directly nested in external modules or ambient module declarations."
+    },
+    {
       "code": 2673,
       "message": "Constructor of class '{0}' is private and only accessible within the class declaration."
     },
@@ -617,6 +625,10 @@
     {
       "code": 2683,
       "message": "'this' implicitly has type 'any' because it does not have a type annotation."
+    },
+    {
+      "code": 2688,
+      "message": "Cannot find type definition file for '{0}'."
     },
     {
       "code": 2693,
@@ -649,6 +661,10 @@
     {
       "code": 2724,
       "message": "'{0}' has no exported member named '{1}'. Did you mean '{2}'?"
+    },
+    {
+      "code": 2726,
+      "message": "Cannot find lib definition for '{0}'."
     },
     {
       "code": 2729,
@@ -737,6 +753,10 @@
     {
       "code": 4115,
       "message": "This parameter property must have an 'override' modifier because it overrides a member in base class '{0}'."
+    },
+    {
+      "code": 6053,
+      "message": "File '{0}' not found."
     },
     {
       "code": 6133,
@@ -848,6 +868,2232 @@
     }
   ],
   "cases": [
+    {
+      "id": "ambient:modambient-ambient-bad-assignment-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-bad-assignment-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-bad-assignment-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-bad-assignment-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-bad-assignment-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-bad-assignment-commonjs/ambient.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/modambient-ambient-bad-assignment-commonjs/main.ts",
+        "start": 67,
+        "length": 5,
+        "line": 1,
+        "column": 68,
+        "related": [
+          {
+            "code": 6500,
+            "category": "message",
+            "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+            "file": "typescript_oracle/modambient-ambient-bad-assignment-commonjs/ambient.d.ts",
+            "start": 51,
+            "length": 5,
+            "line": 1,
+            "column": 52
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/modambient-ambient-bad-assignment-commonjs/main.ts",
+          "start": 67,
+          "length": 5,
+          "line": 1,
+          "column": 68,
+          "related": [
+            {
+              "code": 6500,
+              "category": "message",
+              "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+              "file": "typescript_oracle/modambient-ambient-bad-assignment-commonjs/ambient.d.ts",
+              "start": 51,
+              "length": 5,
+              "line": 1,
+              "column": 52
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-ambient-bad-assignment-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-bad-assignment-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-bad-assignment-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-bad-assignment-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-bad-assignment-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-bad-assignment-es2022/ambient.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "file": "typescript_oracle/modambient-ambient-bad-assignment-es2022/main.ts",
+        "start": 67,
+        "length": 5,
+        "line": 1,
+        "column": 68,
+        "related": [
+          {
+            "code": 6500,
+            "category": "message",
+            "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+            "file": "typescript_oracle/modambient-ambient-bad-assignment-es2022/ambient.d.ts",
+            "start": 51,
+            "length": 5,
+            "line": 1,
+            "column": 52
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "typescript_oracle/modambient-ambient-bad-assignment-es2022/main.ts",
+          "start": 67,
+          "length": 5,
+          "line": 1,
+          "column": 68,
+          "related": [
+            {
+              "code": 6500,
+              "category": "message",
+              "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+              "file": "typescript_oracle/modambient-ambient-bad-assignment-es2022/ambient.d.ts",
+              "start": 51,
+              "length": 5,
+              "line": 1,
+              "column": 52
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-ambient-constant-query-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-constant-query-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-constant-query-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-constant-query-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-constant-query-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-constant-query-commonjs/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-constant-query-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-constant-query-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-constant-query-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-constant-query-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-constant-query-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-constant-query-es2022/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-implicit-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-implicit-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-implicit-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-implicit-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-implicit-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-implicit-commonjs/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-implicit-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-implicit-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-implicit-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-implicit-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-implicit-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-implicit-es2022/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-initializer-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-initializer-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-initializer-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-initializer-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-initializer-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-initializer-commonjs/ambient.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1039,
+        "category": "error",
+        "message": "Initializers are not allowed in ambient contexts.",
+        "file": "typescript_oracle/modambient-ambient-initializer-commonjs/ambient.d.ts",
+        "start": 40,
+        "length": 2,
+        "line": 1,
+        "column": 41
+      },
+      "diagnostics": [
+        {
+          "code": 1039,
+          "category": "error",
+          "message": "Initializers are not allowed in ambient contexts.",
+          "file": "typescript_oracle/modambient-ambient-initializer-commonjs/ambient.d.ts",
+          "start": 40,
+          "length": 2,
+          "line": 1,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-ambient-initializer-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-initializer-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-initializer-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-initializer-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-initializer-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-initializer-es2022/ambient.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1039,
+        "category": "error",
+        "message": "Initializers are not allowed in ambient contexts.",
+        "file": "typescript_oracle/modambient-ambient-initializer-es2022/ambient.d.ts",
+        "start": 40,
+        "length": 2,
+        "line": 1,
+        "column": 41
+      },
+      "diagnostics": [
+        {
+          "code": 1039,
+          "category": "error",
+          "message": "Initializers are not allowed in ambient contexts.",
+          "file": "typescript_oracle/modambient-ambient-initializer-es2022/ambient.d.ts",
+          "start": 40,
+          "length": 2,
+          "line": 1,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-ambient-merged-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-merged-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-merged-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-merged-commonjs/left.d.ts",
+        "typescript_oracle/modambient-ambient-merged-commonjs/right.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-merged-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-merged-commonjs/left.d.ts",
+        "typescript_oracle/modambient-ambient-merged-commonjs/right.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-merged-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-merged-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-merged-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-merged-es2022/left.d.ts",
+        "typescript_oracle/modambient-ambient-merged-es2022/right.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-merged-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-merged-es2022/left.d.ts",
+        "typescript_oracle/modambient-ambient-merged-es2022/right.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-merged-missing-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-merged-missing-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-merged-missing-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-merged-missing-commonjs/left.d.ts",
+        "typescript_oracle/modambient-ambient-merged-missing-commonjs/right.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-merged-missing-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-merged-missing-commonjs/left.d.ts",
+        "typescript_oracle/modambient-ambient-merged-missing-commonjs/right.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2741,
+        "category": "error",
+        "message": "Property 'tag' is missing in type '{ value: number; }' but required in type 'Item'.",
+        "file": "typescript_oracle/modambient-ambient-merged-missing-commonjs/main.ts",
+        "start": 50,
+        "length": 6,
+        "line": 1,
+        "column": 51,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'tag' is declared here.",
+            "file": "typescript_oracle/modambient-ambient-merged-missing-commonjs/right.d.ts",
+            "start": 44,
+            "length": 3,
+            "line": 1,
+            "column": 45
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2741,
+          "category": "error",
+          "message": "Property 'tag' is missing in type '{ value: number; }' but required in type 'Item'.",
+          "file": "typescript_oracle/modambient-ambient-merged-missing-commonjs/main.ts",
+          "start": 50,
+          "length": 6,
+          "line": 1,
+          "column": 51,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'tag' is declared here.",
+              "file": "typescript_oracle/modambient-ambient-merged-missing-commonjs/right.d.ts",
+              "start": 44,
+              "length": 3,
+              "line": 1,
+              "column": 45
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-ambient-merged-missing-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-merged-missing-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-merged-missing-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-merged-missing-es2022/left.d.ts",
+        "typescript_oracle/modambient-ambient-merged-missing-es2022/right.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-merged-missing-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-merged-missing-es2022/left.d.ts",
+        "typescript_oracle/modambient-ambient-merged-missing-es2022/right.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2741,
+        "category": "error",
+        "message": "Property 'tag' is missing in type '{ value: number; }' but required in type 'Item'.",
+        "file": "typescript_oracle/modambient-ambient-merged-missing-es2022/main.ts",
+        "start": 50,
+        "length": 6,
+        "line": 1,
+        "column": 51,
+        "related": [
+          {
+            "code": 2728,
+            "category": "message",
+            "message": "'tag' is declared here.",
+            "file": "typescript_oracle/modambient-ambient-merged-missing-es2022/right.d.ts",
+            "start": 44,
+            "length": 3,
+            "line": 1,
+            "column": 45
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2741,
+          "category": "error",
+          "message": "Property 'tag' is missing in type '{ value: number; }' but required in type 'Item'.",
+          "file": "typescript_oracle/modambient-ambient-merged-missing-es2022/main.ts",
+          "start": 50,
+          "length": 6,
+          "line": 1,
+          "column": 51,
+          "related": [
+            {
+              "code": 2728,
+              "category": "message",
+              "message": "'tag' is declared here.",
+              "file": "typescript_oracle/modambient-ambient-merged-missing-es2022/right.d.ts",
+              "start": 44,
+              "length": 3,
+              "line": 1,
+              "column": 45
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-ambient-named-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-named-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-named-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-named-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-named-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-named-commonjs/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-named-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-named-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-named-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-named-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-named-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-named-es2022/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-private-export-marker-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-private-export-marker-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-private-export-marker-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-private-export-marker-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-private-export-marker-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-private-export-marker-commonjs/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-private-export-marker-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-private-export-marker-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-private-export-marker-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-private-export-marker-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-private-export-marker-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-private-export-marker-es2022/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-relative-script-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-relative-script-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-relative-script-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-relative-script-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-relative-script-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-relative-script-commonjs/ambient.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2436,
+        "category": "error",
+        "message": "Ambient module declaration cannot specify relative module name.",
+        "file": "typescript_oracle/modambient-ambient-relative-script-commonjs/ambient.d.ts",
+        "start": 15,
+        "length": 11,
+        "line": 1,
+        "column": 16
+      },
+      "diagnostics": [
+        {
+          "code": 2436,
+          "category": "error",
+          "message": "Ambient module declaration cannot specify relative module name.",
+          "file": "typescript_oracle/modambient-ambient-relative-script-commonjs/ambient.d.ts",
+          "start": 15,
+          "length": 11,
+          "line": 1,
+          "column": 16
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-ambient-relative-script-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-relative-script-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-relative-script-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-relative-script-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-relative-script-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-relative-script-es2022/ambient.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2436,
+        "category": "error",
+        "message": "Ambient module declaration cannot specify relative module name.",
+        "file": "typescript_oracle/modambient-ambient-relative-script-es2022/ambient.d.ts",
+        "start": 15,
+        "length": 11,
+        "line": 1,
+        "column": 16
+      },
+      "diagnostics": [
+        {
+          "code": 2436,
+          "category": "error",
+          "message": "Ambient module declaration cannot specify relative module name.",
+          "file": "typescript_oracle/modambient-ambient-relative-script-es2022/ambient.d.ts",
+          "start": 15,
+          "length": 11,
+          "line": 1,
+          "column": 16
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-ambient-shorthand-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-shorthand-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-shorthand-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-shorthand-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-shorthand-commonjs/main.ts",
+        "typescript_oracle/modambient-ambient-shorthand-commonjs/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-ambient-shorthand-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-ambient-shorthand-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-ambient-shorthand-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-shorthand-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-ambient-shorthand-es2022/main.ts",
+        "typescript_oracle/modambient-ambient-shorthand-es2022/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-augment-conflicting-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-augment-conflicting-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-augment-conflicting-commonjs/main.ts",
+        "typescript_oracle/modambient-augment-conflicting-commonjs/augment.d.ts",
+        "typescript_oracle/modambient-augment-conflicting-commonjs/dep.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-augment-conflicting-commonjs/main.ts",
+        "typescript_oracle/modambient-augment-conflicting-commonjs/augment.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2717,
+        "category": "error",
+        "message": "Subsequent property declarations must have the same type.  Property 'value' must be of type 'number', but here has type 'string'.",
+        "file": "typescript_oracle/modambient-augment-conflicting-commonjs/augment.d.ts",
+        "start": 77,
+        "length": 5,
+        "line": 1,
+        "column": 78,
+        "related": [
+          {
+            "code": 6203,
+            "category": "message",
+            "message": "'value' was also declared here.",
+            "file": "typescript_oracle/modambient-augment-conflicting-commonjs/dep.ts",
+            "start": 24,
+            "length": 5,
+            "line": 1,
+            "column": 25
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2717,
+          "category": "error",
+          "message": "Subsequent property declarations must have the same type.  Property 'value' must be of type 'number', but here has type 'string'.",
+          "file": "typescript_oracle/modambient-augment-conflicting-commonjs/augment.d.ts",
+          "start": 77,
+          "length": 5,
+          "line": 1,
+          "column": 78,
+          "related": [
+            {
+              "code": 6203,
+              "category": "message",
+              "message": "'value' was also declared here.",
+              "file": "typescript_oracle/modambient-augment-conflicting-commonjs/dep.ts",
+              "start": 24,
+              "length": 5,
+              "line": 1,
+              "column": 25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-augment-conflicting-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-augment-conflicting-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-augment-conflicting-es2022/main.ts",
+        "typescript_oracle/modambient-augment-conflicting-es2022/augment.d.ts",
+        "typescript_oracle/modambient-augment-conflicting-es2022/dep.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-augment-conflicting-es2022/main.ts",
+        "typescript_oracle/modambient-augment-conflicting-es2022/augment.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2717,
+        "category": "error",
+        "message": "Subsequent property declarations must have the same type.  Property 'value' must be of type 'number', but here has type 'string'.",
+        "file": "typescript_oracle/modambient-augment-conflicting-es2022/augment.d.ts",
+        "start": 77,
+        "length": 5,
+        "line": 1,
+        "column": 78,
+        "related": [
+          {
+            "code": 6203,
+            "category": "message",
+            "message": "'value' was also declared here.",
+            "file": "typescript_oracle/modambient-augment-conflicting-es2022/dep.ts",
+            "start": 24,
+            "length": 5,
+            "line": 1,
+            "column": 25
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2717,
+          "category": "error",
+          "message": "Subsequent property declarations must have the same type.  Property 'value' must be of type 'number', but here has type 'string'.",
+          "file": "typescript_oracle/modambient-augment-conflicting-es2022/augment.d.ts",
+          "start": 77,
+          "length": 5,
+          "line": 1,
+          "column": 78,
+          "related": [
+            {
+              "code": 6203,
+              "category": "message",
+              "message": "'value' was also declared here.",
+              "file": "typescript_oracle/modambient-augment-conflicting-es2022/dep.ts",
+              "start": 24,
+              "length": 5,
+              "line": 1,
+              "column": 25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-augment-interface-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-augment-interface-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-augment-interface-commonjs/main.ts",
+        "typescript_oracle/modambient-augment-interface-commonjs/augment.d.ts",
+        "typescript_oracle/modambient-augment-interface-commonjs/dep.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-augment-interface-commonjs/main.ts",
+        "typescript_oracle/modambient-augment-interface-commonjs/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-augment-interface-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-augment-interface-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-augment-interface-es2022/main.ts",
+        "typescript_oracle/modambient-augment-interface-es2022/augment.d.ts",
+        "typescript_oracle/modambient-augment-interface-es2022/dep.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-augment-interface-es2022/main.ts",
+        "typescript_oracle/modambient-augment-interface-es2022/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-augment-missing-module-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-augment-missing-module-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-augment-missing-module-commonjs/main.ts",
+        "typescript_oracle/modambient-augment-missing-module-commonjs/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-augment-missing-module-commonjs/main.ts",
+        "typescript_oracle/modambient-augment-missing-module-commonjs/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-augment-missing-module-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-augment-missing-module-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-augment-missing-module-es2022/main.ts",
+        "typescript_oracle/modambient-augment-missing-module-es2022/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-augment-missing-module-es2022/main.ts",
+        "typescript_oracle/modambient-augment-missing-module-es2022/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-augment-new-export-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-augment-new-export-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-augment-new-export-commonjs/main.ts",
+        "typescript_oracle/modambient-augment-new-export-commonjs/augment.d.ts",
+        "typescript_oracle/modambient-augment-new-export-commonjs/dep.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-augment-new-export-commonjs/main.ts",
+        "typescript_oracle/modambient-augment-new-export-commonjs/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-augment-new-export-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-augment-new-export-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-augment-new-export-es2022/main.ts",
+        "typescript_oracle/modambient-augment-new-export-es2022/augment.d.ts",
+        "typescript_oracle/modambient-augment-new-export-es2022/dep.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-augment-new-export-es2022/main.ts",
+        "typescript_oracle/modambient-augment-new-export-es2022/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-global-conflicting-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-global-conflicting-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-global-conflicting-commonjs/globals.d.ts",
+        "typescript_oracle/modambient-global-conflicting-commonjs/main.ts",
+        "typescript_oracle/modambient-global-conflicting-commonjs/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-global-conflicting-commonjs/main.ts",
+        "typescript_oracle/modambient-global-conflicting-commonjs/globals.d.ts",
+        "typescript_oracle/modambient-global-conflicting-commonjs/augment.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2717,
+        "category": "error",
+        "message": "Subsequent property declarations must have the same type.  Property 'value' must be of type 'number', but here has type 'string'.",
+        "file": "typescript_oracle/modambient-global-conflicting-commonjs/augment.d.ts",
+        "start": 51,
+        "length": 5,
+        "line": 1,
+        "column": 52,
+        "related": [
+          {
+            "code": 6203,
+            "category": "message",
+            "message": "'value' was also declared here.",
+            "file": "typescript_oracle/modambient-global-conflicting-commonjs/globals.d.ts",
+            "start": 23,
+            "length": 5,
+            "line": 1,
+            "column": 24
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2717,
+          "category": "error",
+          "message": "Subsequent property declarations must have the same type.  Property 'value' must be of type 'number', but here has type 'string'.",
+          "file": "typescript_oracle/modambient-global-conflicting-commonjs/augment.d.ts",
+          "start": 51,
+          "length": 5,
+          "line": 1,
+          "column": 52,
+          "related": [
+            {
+              "code": 6203,
+              "category": "message",
+              "message": "'value' was also declared here.",
+              "file": "typescript_oracle/modambient-global-conflicting-commonjs/globals.d.ts",
+              "start": 23,
+              "length": 5,
+              "line": 1,
+              "column": 24
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-global-conflicting-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-global-conflicting-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-global-conflicting-es2022/globals.d.ts",
+        "typescript_oracle/modambient-global-conflicting-es2022/main.ts",
+        "typescript_oracle/modambient-global-conflicting-es2022/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-global-conflicting-es2022/main.ts",
+        "typescript_oracle/modambient-global-conflicting-es2022/globals.d.ts",
+        "typescript_oracle/modambient-global-conflicting-es2022/augment.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2717,
+        "category": "error",
+        "message": "Subsequent property declarations must have the same type.  Property 'value' must be of type 'number', but here has type 'string'.",
+        "file": "typescript_oracle/modambient-global-conflicting-es2022/augment.d.ts",
+        "start": 51,
+        "length": 5,
+        "line": 1,
+        "column": 52,
+        "related": [
+          {
+            "code": 6203,
+            "category": "message",
+            "message": "'value' was also declared here.",
+            "file": "typescript_oracle/modambient-global-conflicting-es2022/globals.d.ts",
+            "start": 23,
+            "length": 5,
+            "line": 1,
+            "column": 24
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2717,
+          "category": "error",
+          "message": "Subsequent property declarations must have the same type.  Property 'value' must be of type 'number', but here has type 'string'.",
+          "file": "typescript_oracle/modambient-global-conflicting-es2022/augment.d.ts",
+          "start": 51,
+          "length": 5,
+          "line": 1,
+          "column": 52,
+          "related": [
+            {
+              "code": 6203,
+              "category": "message",
+              "message": "'value' was also declared here.",
+              "file": "typescript_oracle/modambient-global-conflicting-es2022/globals.d.ts",
+              "start": 23,
+              "length": 5,
+              "line": 1,
+              "column": 24
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-global-merged-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-global-merged-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-global-merged-commonjs/globals.d.ts",
+        "typescript_oracle/modambient-global-merged-commonjs/main.ts",
+        "typescript_oracle/modambient-global-merged-commonjs/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-global-merged-commonjs/main.ts",
+        "typescript_oracle/modambient-global-merged-commonjs/globals.d.ts",
+        "typescript_oracle/modambient-global-merged-commonjs/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-global-merged-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-global-merged-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-global-merged-es2022/globals.d.ts",
+        "typescript_oracle/modambient-global-merged-es2022/main.ts",
+        "typescript_oracle/modambient-global-merged-es2022/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-global-merged-es2022/main.ts",
+        "typescript_oracle/modambient-global-merged-es2022/globals.d.ts",
+        "typescript_oracle/modambient-global-merged-es2022/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-global-module-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-global-module-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-global-module-commonjs/main.ts",
+        "typescript_oracle/modambient-global-module-commonjs/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-global-module-commonjs/main.ts",
+        "typescript_oracle/modambient-global-module-commonjs/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-global-module-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-global-module-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-global-module-es2022/main.ts",
+        "typescript_oracle/modambient-global-module-es2022/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-global-module-es2022/main.ts",
+        "typescript_oracle/modambient-global-module-es2022/augment.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-global-script-invalid-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-global-script-invalid-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-global-script-invalid-commonjs/main.ts",
+        "typescript_oracle/modambient-global-script-invalid-commonjs/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-global-script-invalid-commonjs/main.ts",
+        "typescript_oracle/modambient-global-script-invalid-commonjs/augment.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2669,
+        "category": "error",
+        "message": "Augmentations for the global scope can only be directly nested in external modules or ambient module declarations.",
+        "file": "typescript_oracle/modambient-global-script-invalid-commonjs/augment.d.ts",
+        "start": 8,
+        "length": 6,
+        "line": 1,
+        "column": 9
+      },
+      "diagnostics": [
+        {
+          "code": 2669,
+          "category": "error",
+          "message": "Augmentations for the global scope can only be directly nested in external modules or ambient module declarations.",
+          "file": "typescript_oracle/modambient-global-script-invalid-commonjs/augment.d.ts",
+          "start": 8,
+          "length": 6,
+          "line": 1,
+          "column": 9
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-global-script-invalid-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-global-script-invalid-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-global-script-invalid-es2022/main.ts",
+        "typescript_oracle/modambient-global-script-invalid-es2022/augment.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-global-script-invalid-es2022/main.ts",
+        "typescript_oracle/modambient-global-script-invalid-es2022/augment.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2669,
+        "category": "error",
+        "message": "Augmentations for the global scope can only be directly nested in external modules or ambient module declarations.",
+        "file": "typescript_oracle/modambient-global-script-invalid-es2022/augment.d.ts",
+        "start": 8,
+        "length": 6,
+        "line": 1,
+        "column": 9
+      },
+      "diagnostics": [
+        {
+          "code": 2669,
+          "category": "error",
+          "message": "Augmentations for the global scope can only be directly nested in external modules or ambient module declarations.",
+          "file": "typescript_oracle/modambient-global-script-invalid-es2022/augment.d.ts",
+          "start": 8,
+          "length": 6,
+          "line": 1,
+          "column": 9
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-reference-lib-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-lib-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-lib-commonjs/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-lib-commonjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-reference-lib-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-lib-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-lib-es2022/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-lib-es2022/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-reference-lib-missing-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-lib-missing-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-lib-missing-commonjs/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-lib-missing-commonjs/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2726,
+        "category": "error",
+        "message": "Cannot find lib definition for 'absent'.",
+        "file": "typescript_oracle/modambient-reference-lib-missing-commonjs/main.ts",
+        "start": 20,
+        "length": 6,
+        "line": 1,
+        "column": 21
+      },
+      "diagnostics": [
+        {
+          "code": 2726,
+          "category": "error",
+          "message": "Cannot find lib definition for 'absent'.",
+          "file": "typescript_oracle/modambient-reference-lib-missing-commonjs/main.ts",
+          "start": 20,
+          "length": 6,
+          "line": 1,
+          "column": 21
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-reference-lib-missing-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-lib-missing-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-lib-missing-es2022/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-lib-missing-es2022/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2726,
+        "category": "error",
+        "message": "Cannot find lib definition for 'absent'.",
+        "file": "typescript_oracle/modambient-reference-lib-missing-es2022/main.ts",
+        "start": 20,
+        "length": 6,
+        "line": 1,
+        "column": 21
+      },
+      "diagnostics": [
+        {
+          "code": 2726,
+          "category": "error",
+          "message": "Cannot find lib definition for 'absent'.",
+          "file": "typescript_oracle/modambient-reference-lib-missing-es2022/main.ts",
+          "start": 20,
+          "length": 6,
+          "line": 1,
+          "column": 21
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-reference-path-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-path-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-path-commonjs/globals.d.ts",
+        "typescript_oracle/modambient-reference-path-commonjs/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-path-commonjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-reference-path-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-path-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-path-es2022/globals.d.ts",
+        "typescript_oracle/modambient-reference-path-es2022/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-path-es2022/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-reference-path-missing-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-path-missing-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-path-missing-commonjs/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-path-missing-commonjs/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 6053,
+        "category": "error",
+        "message": "File '<fixtures>/typescript_oracle/modambient-reference-path-missing-commonjs/missing.d.ts' not found.",
+        "file": "typescript_oracle/modambient-reference-path-missing-commonjs/main.ts",
+        "start": 21,
+        "length": 14,
+        "line": 1,
+        "column": 22
+      },
+      "diagnostics": [
+        {
+          "code": 6053,
+          "category": "error",
+          "message": "File '<fixtures>/typescript_oracle/modambient-reference-path-missing-commonjs/missing.d.ts' not found.",
+          "file": "typescript_oracle/modambient-reference-path-missing-commonjs/main.ts",
+          "start": 21,
+          "length": 14,
+          "line": 1,
+          "column": 22
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-reference-path-missing-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-path-missing-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-path-missing-es2022/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-path-missing-es2022/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 6053,
+        "category": "error",
+        "message": "File '<fixtures>/typescript_oracle/modambient-reference-path-missing-es2022/missing.d.ts' not found.",
+        "file": "typescript_oracle/modambient-reference-path-missing-es2022/main.ts",
+        "start": 21,
+        "length": 14,
+        "line": 1,
+        "column": 22
+      },
+      "diagnostics": [
+        {
+          "code": 6053,
+          "category": "error",
+          "message": "File '<fixtures>/typescript_oracle/modambient-reference-path-missing-es2022/missing.d.ts' not found.",
+          "file": "typescript_oracle/modambient-reference-path-missing-es2022/main.ts",
+          "start": 21,
+          "length": 14,
+          "line": 1,
+          "column": 22
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-reference-types-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-types-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-types-commonjs/main.ts",
+        "typescript_oracle/modambient-reference-types-commonjs/node_modules/@types/owned/index.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-types-commonjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-reference-types-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-types-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-types-es2022/main.ts",
+        "typescript_oracle/modambient-reference-types-es2022/node_modules/@types/owned/index.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-types-es2022/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-reference-types-missing-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-types-missing-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-types-missing-commonjs/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-types-missing-commonjs/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2688,
+        "category": "error",
+        "message": "Cannot find type definition file for 'absent'.",
+        "file": "typescript_oracle/modambient-reference-types-missing-commonjs/main.ts",
+        "start": 22,
+        "length": 6,
+        "line": 1,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2688,
+          "category": "error",
+          "message": "Cannot find type definition file for 'absent'.",
+          "file": "typescript_oracle/modambient-reference-types-missing-commonjs/main.ts",
+          "start": 22,
+          "length": 6,
+          "line": 1,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-reference-types-missing-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reference-types-missing-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reference-types-missing-es2022/main.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reference-types-missing-es2022/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2688,
+        "category": "error",
+        "message": "Cannot find type definition file for 'absent'.",
+        "file": "typescript_oracle/modambient-reference-types-missing-es2022/main.ts",
+        "start": 22,
+        "length": 6,
+        "line": 1,
+        "column": 23
+      },
+      "diagnostics": [
+        {
+          "code": 2688,
+          "category": "error",
+          "message": "Cannot find type definition file for 'absent'.",
+          "file": "typescript_oracle/modambient-reference-types-missing-es2022/main.ts",
+          "start": 22,
+          "length": 6,
+          "line": 1,
+          "column": 23
+        }
+      ]
+    },
     {
       "id": "class:class-accessor-assign-mismatch/main.ts",
       "matrix": "class",

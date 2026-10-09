@@ -6297,3 +6297,51 @@ frozen hashes and logs, and `blueice-k6-root-refactor-mechanical-report.json`.
 Commit/push this refactor independently. Normal complete final-source hosted
 workspace/platform/coverage CI remains open; a diagnostic-only workflow does
 not replace that gate.
+
+
+### K.6.3 ambient and augmentation baseline (2026-10-09)
+
+The isolated test-only baseline starts from verified production `4e975cef`.
+It records 48 TypeScript 5.9.3 programs in ES2022 and CommonJS: 28 accepted
+programs and 20 rejected programs. Accepted witnesses independently execute
+under Node and compare generated declarations before any BlueTS comparison.
+Explicit ES2022 library controls and default-library controls agree on all
+48 verdicts, primary/related diagnostics and accepted execution/declarations.
+
+The measured forms include named, implicit, merged and shorthand ambient
+modules, ambient value type queries, global augmentation from modules,
+interface augmentation with retained and added exports, conflicting members,
+and triple-slash path, types and library references. Relative ambient names
+in scripts, ambient initializers and script global augmentation retain their
+pinned errors. The missing augmentation target in the declaration fixture is
+accepted by the pinned compiler; the baseline does not invent a rejection.
+A path reference is the only root's route to its declaration input. The
+owned `@types/owned` package is a fixture input, rather than an ambient host
+filesystem dependency. No declaration supplies runtime authority.
+
+The shared recorder now records explicit per-fixture roots and source inputs,
+including nested package declarations. Strict replay copies those inputs
+and retains the recorded roots. Every prior 2,464 complete observation and
+template is unchanged; the 638 existing strict replay root lists are also
+identical. The expanded shared corpus has 2,512 programs and 216 templates
+(1,239 accepted, 1,273 rejected), and live recording is byte-identical.
+
+The frozen Linux baseline passes format and BlueTS/bridge all-target Clippy
+with warnings denied. Completeness and pinned recorders pass. Public replay
+reports 46 verdict/primary differences and 26 emission fixture differences;
+shared replay records 74 diagnostic and 20 presentation differences. Missing
+primary diagnostics are collected as case failures without interrupting the
+remaining presentation replay. All 157 backend hashes match. The final
+helper replay reuses the successful shared live recorder only after proving
+that its 156 other backend inputs, including all fixtures and generated
+records, are unchanged. Evidence: `/private/tmp/blueice-k14-linux/blueice-k63-baseline-final-{status,report}.json`,
+`blueice-k63-corpus-baseline-report.json`, `blueice-k63-shared-comparison.json`,
+`blueice-k63-baseline-controls-report.json` and
+`blueice-k63-baseline-final-oracle-reuse.json`, frozen hashes and logs.
+
+Commit the test baseline before production work and keep it unpushed until
+the complete K.0 gate passes. The implementation must retain declaration
+source identities, owner-canonical resolution bounds, work budgets, static
+module surfaces and fingerprint/cache observations. Ambient and augmented
+surfaces must remain separate from runtime bindings and host capabilities.
+K.6.3 and the hosted full-CI gate remain open.

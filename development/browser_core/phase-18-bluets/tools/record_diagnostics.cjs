@@ -50,7 +50,7 @@ function commandOptions(matrix, entry, target) {
     if (matrix === 'lib' || matrix === 'infer-return') flags.push('--lib', target);
     if (matrix === 'legacy-decorators') flags.push('--experimentalDecorators');
     if (entry.startsWith('imported-type-cjs-interop-')) flags.push('--esModuleInterop');
-    if (matrix === 'class-modifiers' || matrix === 'class-dynamic' || matrix === 'class-retirement' || matrix === 'module-exports' || matrix === 'module-types') {
+    if (matrix === 'class-modifiers' || matrix === 'class-dynamic' || matrix === 'class-retirement' || matrix === 'module-exports' || matrix === 'module-types' || matrix === 'ambient') {
         const filename = path.join(corpus, path.dirname(entry), 'flags.txt');
         if (fs.existsSync(filename)) flags.push(...fs.readFileSync(filename, 'utf8').trim().split(/\s+/));
     }
@@ -114,8 +114,17 @@ function recordCorpus() {
             const target = fields.length === 3 ? fields[1] : undefined;
             const verdict = fields[fields.length - 1];
             const { flags, options } = commandOptions(matrix, entry, target);
-            record(`${matrix}:${entry}`, [path.join(corpus, entry)], options,
-                { matrix, entry, flags, verdict, ...settings });
+            const programSettings = settings.cases && settings.cases[path.dirname(entry)];
+            const names = programSettings
+                ? programSettings.files.map(file => path.join(corpus, path.dirname(entry), file))
+                : [path.join(corpus, entry)];
+            const metadata = { matrix, entry, flags, verdict, ...settings };
+            delete metadata.cases;
+            if (programSettings) {
+                metadata.fixtureInputs = programSettings.sources.map(file =>
+                    relative(path.join(corpus, path.dirname(entry), file)));
+            }
+            record(`${matrix}:${entry}`, names, options, metadata);
         }
     }
     const strictness = path.join(fixtures, 'strictness');

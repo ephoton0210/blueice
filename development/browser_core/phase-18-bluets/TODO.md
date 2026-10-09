@@ -453,6 +453,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   `declare global`, global augmentation from a module, triple-slash `reference path/types/lib`,
   shorthand ambient modules; all under the J.4 authority rules (a declaration never creates a runtime
   binding).
+  - *Failing baseline (2026-10-09):* On production `4e975cef`, 48 pinned TypeScript 5.9.3 programs (28 accept, 20 reject) retain ambient named/implicit/merged/shorthand modules, module/global augmentation and `reference path/types/lib`. All 28 independent Node/declaration controls run before BlueTS comparison. The public CLI reports 46 verdict/primary differences and 26 emission fixture differences. Format and both-crate all-target Clippy pass; completeness and both pinned recorders pass. Shared replay records 74 diagnostic and 20 presentation differences. All 157 frozen backend hashes match. The shared corpus contains 2,512 programs and 216 templates; all prior 2,464 full observations, templates and 638 strict replay roots are unchanged. Evidence: `/private/tmp/blueice-k14-linux/blueice-k63-baseline-final-{status,report}.json`, `blueice-k63-corpus-baseline-report.json`, `blueice-k63-shared-comparison.json` and `blueice-k63-baseline-final-oracle-reuse.json`, logs/hashes. No production change; commit this test baseline before implementation and keep it unpushed until K.0 passes. K.6.3 and full hosted CI remain open.
 
 #### K.6 source refactoring queue
 
