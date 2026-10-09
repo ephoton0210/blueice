@@ -7432,3 +7432,49 @@ controls while computing literal types for actual constant substitutions.
 Commit this failing replay before the production inference correction.
 The shared target corpus already records all 22 constant-template declaration
 failures. K.7.1 remains open and all production changes remain unpushed.
+
+### K.7.1 Checker and declarations checkpoint (2026-10-10)
+
+The correctly frozen 7,028-file constant-template final replay passes format,
+three-crate all-target Clippy, all focused context/native recorder tests,
+direct pattern execution and getter/default Node effects with exact `.d.ts`.
+All 638 target verdicts and primary diagnostics, all 600 accepted target
+declarations, the owned target declarations and the complete shared primary/
+presentation matrices pass. Constant types reuse the original enum arithmetic
+evaluator only for bounded, checked literal operands; mutable/annotated/call
+operands remain broad strings. The declaration emitter retains a proved
+constant template's initializer syntax.
+
+The complete ordinary replay passes 1,089 tests in 116 groups and fails one
+old frontend test that still expects object/array destructuring to be invalid
+syntax. Both original sources are preserved verbatim in native-recorded exact
+TS2304 controls; all eight previous pattern observations are unchanged. The
+new ten-source replay asserts the accepted verdict and output presence as
+well as every code, span, length and complete message. A second full frozen
+ordinary/every-ignored replay is pending. No production commit or push has
+occurred; original target lowering and the final K.0 gate remain open.
+
+The first runtime retry detected a source-hash/tar mismatch before any Cargo
+command, because the next template change began before the snapshot finished.
+That snapshot was discarded. All later snapshots wait for formatting and
+complete serialization before independent source changes or Cargo execution.
+
+### K.7.1 Optional and nullish target failing baseline (2026-10-10)
+
+An original ES2019 bridge witness records missing/present receivers, getter
+reads, fallback calls and a parenthesized arithmetic consumer. The real public
+Linux compiler probe in `blueice-k71-optional-target-red-report.json` matches
+native TypeScript/Node values [20,42,42,[3,2,1]] and exact declarations, then
+fails pinned Acorn's ES2019 syntax check at an unlowered optional property.
+Its TypeScript reference emits successfully. The probe links the actual
+frozen compiler library outside Cargo artifacts. Commit this failing runtime/
+declaration/edition replay before implementing original optional/nullish
+target transforms.
+
+The corrected 7,028-file complete ordinary gate passes all 1,090 tests in
+116 groups, with zero failures and 181 ignored tests. All focused exact native
+contexts, pattern runtime/declarations, format, three-crate all-target Clippy,
+target declarations/verdicts and shared diagnostics pass. The every-ignored
+gate is running. The new optional-target baseline is separate from those
+frozen sources. Keep the leaf open and all production uncommitted/unpushed
+until actual target lowering and every K.0 oracle pass.
