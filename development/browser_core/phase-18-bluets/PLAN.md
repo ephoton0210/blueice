@@ -5992,3 +5992,47 @@ its logs/hashes and `blueice-k61-generator-probe.json` under
 `/private/tmp/blueice-k14-linux/`. K.6.1 reopens for the measured correction.
 The baseline stays unpushed until its complete K.0 gate passes; K.6.2 and
 full hosted CI stay open.
+
+### K.6.1 Default generator correction — 2026-10-09
+
+After failing baseline `2d1cd401e`, CommonJS anonymous default generators insert
+`default_1` after `*`, producing executable `function* default_1` syntax.
+The four synchronous ESM/CommonJS and named/anonymous controls now match pinned
+TypeScript 5.9.3 Node names, output and exact declarations. The four async
+controls retain the existing mandatory frontend refusal and publish no output.
+`module-exports-v2.1` changes compiler/artifact fingerprints with this emission
+correction so the previous generated artifact cannot retain the same identity.
+
+The final integrated frozen nine-file Linux gate passes format and all-target
+Clippy for BlueTS, its bridge, IPC and engine with warnings denied. Both BlueTS
+crates pass 1,019 ordinary tests and the complete 1,170-test run in 84 groups,
+including all 151 ignored oracles in 45 suite files. All source hashes match.
+The generated refusal inventory remains 160 sites in ten areas, and all BlueTS
+production sources remain below 1,200 lines. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k61-generator-ci-{status,report}.json`,
+logs and frozen hashes. K.6.1 closes again; K.6.2/K.6.3 and complete hosted CI
+remain open.
+
+### K.6 Complete CI: preserve IPC frame progress — 2026-10-09
+
+K.5.3 hosted CI `37859872555` also reports a macOS 15 x86_64 navigation read
+failure (`WouldBlock`, os error 35). Its SLE BCI 15.7 x86_64 prerequisite
+installation separately times out downloading repository metadata and is retried.
+A public IPC regression identifies a framing gap: the four-byte length prefix
+can be fully consumed while the payload read reports zero-progress timeout.
+The old helper treats that payload as a new read and propagates the timeout,
+abandoning the consumed prefix. This is a reproducible framing defect; the
+hosted log alone does not prove which navigation read reached that boundary.
+
+Test-only baseline `a06f2dfb6` records two passing controls and the failing
+prefix/payload boundary before production repair `0f93fd987`. The helper now
+carries whole-frame progress into the payload read. The tests inject both
+`WouldBlock` and `TimedOut`, preserve two distinct messages and their tab/request
+identities, and verify that a timeout before any prefix byte still returns to
+the poller. Format, IPC/engine all-target Clippy, all 139 IPC tests and all 20
+real core subprocess tests pass. The previously failing named subprocess test
+also passes on Linux. The same checks pass again on the integrated nine-file
+source snapshot with the complete BlueTS gate above. Evidence:
+`blueice-k6-ci-frame-{red,final}-{status,report}.json`, logs/hashes and
+`blueice-k53-ci-macos15-x86-failure.log` under `/private/tmp/blueice-k14-linux/`.
+Complete hosted platform/workspace/coverage CI must verify the pushed correction.

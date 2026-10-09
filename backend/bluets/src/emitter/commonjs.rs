@@ -339,7 +339,7 @@ pub(super) fn lower_commonjs(
                 if function.anonymous {
                     let position = tokens[token_at(function.span.start)..]
                         .iter()
-                        .find(|token| token.is("function"))
+                        .find(|token| token.is(if function.generator { "*" } else { "function" }))
                         .unwrap()
                         .end;
                     edits.push(TextEdit {
