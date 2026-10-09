@@ -7563,3 +7563,31 @@ was unchanged. Commit the actual failing request/edition replay before writing
 the original async-generator helper. Evidence:
 `blueice-k71-async-generator-baseline-second-{status,source-hashes}.json` and its
 runtime log. K.7.1 stays open and all production remains uncommitted/unpushed.
+
+### K.7.1 ES5 scope and indexed-call failing regressions (2026-10-10)
+
+The frozen 7,045-file async-generator implementation passes format, all-target
+Clippy, 241 unit tests, its committed native request oracle and both earlier
+runtime oracles. The entire accepted target corpus has no build, runtime or
+declaration differences. Every ES2015-or-newer edition passes; the remaining
+49 target syntax differences and two protocol editions are exclusively ES5.
+Evidence: `blueice-k71-async-generator-first-{status,differences}.json` and logs.
+
+An original ES5 source retains two block shadows, five loop/block captures and
+an explicit receiver's lexical arrow. Pinned TypeScript 5.9.3 independently
+accepts it and executes [42,1,[20,22,0,1,2],42], with an exact declaration
+record in `blueice-k71-es5-scope-native-proof.json`. The frozen public replay
+passes format and Clippy but rejects its array of indexed function results:
+`callbacks[0]()` is incorrectly inferred as the function container instead
+of its return type. Fix this semantic defect before the ES5 scope transform.
+
+Six independently pinned indexed-call controls cover arrays, tuples, wrong
+result and argument types, missing arguments and a non-callable element.
+TypeScript accepts two and rejects four. The live recorder passes; the actual
+7,049-file public replay fails all six observations, including three false
+accepts. Code, start, length and complete normalized messages remain asserted.
+Commit both failing regressions before correcting indexed inference and
+reusing call-signature validation. Evidence:
+`blueice-k71-es5-scope-baseline-status.json`,
+`blueice-k71-indexed-call-baseline-status.json`, their logs/frozen hashes and
+the native reference. K.7.1 and all production remain uncommitted/unpushed.
