@@ -39,6 +39,18 @@ impl JavaScriptPageExecutor {
         {
             return Err("native debugger entry scheduling duplicated a program identity");
         }
+        let registered = self
+            .debugger_programs
+            .get_mut(&tab_id)
+            .into_iter()
+            .flatten()
+            .find(|registered| {
+                registered.program_handle == program.program_handle
+                    && registered.program_generation == program.program_generation
+            })
+            .expect("the admitted debugger program remains registered");
+        registered.supports_root_continuation =
+            matches!(&execution, DeferredJavaScriptExecution::Classic { .. });
         self.pending_debugger_executions
             .entry(tab_id)
             .or_default()

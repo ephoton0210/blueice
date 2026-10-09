@@ -550,6 +550,8 @@ pub(super) struct DebuggerProgramRecord {
     program_handle: u64,
     program_generation: u64,
     bluejs_handle: BlueJsProgramHandle,
+    /// Retained after completion; scheduler state cannot make a module resumable.
+    supports_root_continuation: bool,
 }
 
 /// Internal orderable form of a source-free breakpoint record. It excludes
@@ -857,7 +859,13 @@ impl JavaScriptPageExecutor {
             code_unit_ordinal,
             bytecode_offset,
         )?;
-        if code_unit_ordinal != 0 {
+        let record = self.debugger_program_record(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        if code_unit_ordinal != 0 || !record.supports_root_continuation {
             return Err(JavaScriptPageDebuggerError::NotResumableRootSafePoint);
         }
         let key = DebuggerProgramKey {
@@ -1108,6 +1116,7 @@ impl JavaScriptPageExecutor {
                 program_handle,
                 program_generation: bluejs_handle.generation().as_u64(),
                 bluejs_handle,
+                supports_root_continuation: false,
             });
         }
         self.next_debugger_program_handle = next_after;

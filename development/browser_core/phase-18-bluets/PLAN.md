@@ -6252,3 +6252,28 @@ exact safe-point/generation validation, classic execution-state rejection,
 breakpoint bounds and source-free public replies. This changes neither page
 execution scheduling nor continuation capability grants. The full hosted CI
 gate remains open.
+
+
+### Verified module root-continuation refusal repair (2026-10-09)
+
+The opaque debugger program record retains whether its deferred declaration
+is a classic root whose continuation the native scheduler represents. This
+flag starts false and is set only from the already admitted execution kind;
+it expires with the existing realm/program records. Exact live target and
+safe-point validation still runs first. Module roots are then refused before
+transient execution-state validation. Completed classic roots continue to
+return `InvalidExecutionState`; a refusal installs no breakpoint. Public
+capability grants and page execution scheduling are unchanged.
+
+The frozen four-file Linux gate passes format, engine all-target Clippy with
+warnings denied, launcher binary build, the public completed-module/classic
+regression and all 508 engine tests. All source hashes match. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k6-root-final-{status,report}.json`,
+frozen hashes and logs. The hosted diagnostic's failed binary assertion is
+consistent with this deterministically reproduced ordering defect; it did
+not record the actual reply, so the exact macOS rejection is not asserted
+as independently observed. Its navigation fixture passed on that run.
+
+The repaired `debugger_support.rs` is 1,266 lines. Commit/push this repair
+first, then execute queued K.6.CI.R in a separate verified commit/push. Full
+normal final-source hosted CI remains mandatory and open.
