@@ -207,6 +207,10 @@
       "message": "'{0}' cannot be used as a value because it was imported using 'import type'."
     },
     {
+      "code": 1362,
+      "message": "'{0}' cannot be used as a value because it was exported using 'export type'."
+    },
+    {
       "code": 1363,
       "message": "A type-only import can specify a default import or named bindings, but not both."
     },
@@ -3913,6 +3917,234 @@
       "accepts": true,
       "first": null,
       "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-reexport-value-only-query-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reexport-value-only-query-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reexport-value-only-query-commonjs/main.ts",
+        "typescript_oracle/modambient-reexport-value-only-query-commonjs/public.ts",
+        "typescript_oracle/modambient-reexport-value-only-query-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reexport-value-only-query-commonjs/main.ts",
+        "typescript_oracle/modambient-reexport-value-only-query-commonjs/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-reexport-value-only-query-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reexport-value-only-query-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reexport-value-only-query-es2022/main.ts",
+        "typescript_oracle/modambient-reexport-value-only-query-es2022/public.ts",
+        "typescript_oracle/modambient-reexport-value-only-query-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reexport-value-only-query-es2022/main.ts",
+        "typescript_oracle/modambient-reexport-value-only-query-es2022/ambient.d.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient:modambient-reexport-value-only-runtime-bad-commonjs/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reexport-value-only-runtime-bad-commonjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-commonjs/main.ts",
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-commonjs/public.ts",
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-commonjs/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-commonjs/main.ts",
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-commonjs/ambient.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1362,
+        "category": "error",
+        "message": "'answer' cannot be used as a value because it was exported using 'export type'.",
+        "file": "typescript_oracle/modambient-reexport-value-only-runtime-bad-commonjs/main.ts",
+        "start": 261,
+        "length": 6,
+        "line": 5,
+        "column": 58,
+        "related": [
+          {
+            "code": 1377,
+            "category": "message",
+            "message": "'answer' was exported here.",
+            "file": "typescript_oracle/modambient-reexport-value-only-runtime-bad-commonjs/public.ts",
+            "start": 218,
+            "length": 6,
+            "line": 5,
+            "column": 15
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 1362,
+          "category": "error",
+          "message": "'answer' cannot be used as a value because it was exported using 'export type'.",
+          "file": "typescript_oracle/modambient-reexport-value-only-runtime-bad-commonjs/main.ts",
+          "start": 261,
+          "length": 6,
+          "line": 5,
+          "column": 58,
+          "related": [
+            {
+              "code": 1377,
+              "category": "message",
+              "message": "'answer' was exported here.",
+              "file": "typescript_oracle/modambient-reexport-value-only-runtime-bad-commonjs/public.ts",
+              "start": 218,
+              "length": 6,
+              "line": 5,
+              "column": 15
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambient:modambient-reexport-value-only-runtime-bad-es2022/main.ts",
+      "matrix": "ambient",
+      "entry": "modambient-reexport-value-only-runtime-bad-es2022/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "fixtureInputs": [
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-es2022/main.ts",
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-es2022/public.ts",
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-es2022/ambient.d.ts"
+      ],
+      "inputs": [
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-es2022/main.ts",
+        "typescript_oracle/modambient-reexport-value-only-runtime-bad-es2022/ambient.d.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1362,
+        "category": "error",
+        "message": "'answer' cannot be used as a value because it was exported using 'export type'.",
+        "file": "typescript_oracle/modambient-reexport-value-only-runtime-bad-es2022/main.ts",
+        "start": 261,
+        "length": 6,
+        "line": 5,
+        "column": 58,
+        "related": [
+          {
+            "code": 1377,
+            "category": "message",
+            "message": "'answer' was exported here.",
+            "file": "typescript_oracle/modambient-reexport-value-only-runtime-bad-es2022/public.ts",
+            "start": 218,
+            "length": 6,
+            "line": 5,
+            "column": 15
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 1362,
+          "category": "error",
+          "message": "'answer' cannot be used as a value because it was exported using 'export type'.",
+          "file": "typescript_oracle/modambient-reexport-value-only-runtime-bad-es2022/main.ts",
+          "start": 261,
+          "length": 6,
+          "line": 5,
+          "column": 58,
+          "related": [
+            {
+              "code": 1377,
+              "category": "message",
+              "message": "'answer' was exported here.",
+              "file": "typescript_oracle/modambient-reexport-value-only-runtime-bad-es2022/public.ts",
+              "start": 218,
+              "length": 6,
+              "line": 5,
+              "column": 15
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "ambient:modambient-reexport-value-query-bad-commonjs/main.ts",

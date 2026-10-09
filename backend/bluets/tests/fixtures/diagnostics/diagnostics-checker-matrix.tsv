@@ -58,6 +58,10 @@ ambient:modambient-reexport-transitive-bad-commonjs/main.ts	reject
 ambient:modambient-reexport-transitive-bad-es2022/main.ts	reject
 ambient:modambient-reexport-transitive-commonjs/main.ts	accept
 ambient:modambient-reexport-transitive-es2022/main.ts	accept
+ambient:modambient-reexport-value-only-query-commonjs/main.ts	accept
+ambient:modambient-reexport-value-only-query-es2022/main.ts	accept
+ambient:modambient-reexport-value-only-runtime-bad-commonjs/main.ts	reject
+ambient:modambient-reexport-value-only-runtime-bad-es2022/main.ts	reject
 ambient:modambient-reexport-value-query-bad-commonjs/main.ts	reject
 ambient:modambient-reexport-value-query-bad-es2022/main.ts	reject
 ambient:modambient-reexport-value-query-commonjs/main.ts	accept

@@ -6589,3 +6589,37 @@ no filename exclusions. No gate is weakened. Evidence:
 `blueice-k6-root-final-source-coverage-verified.json` and raw logs. The macOS
 15 full-workload diagnostic remains in Test; there is no verified navigation
 repair or complete hosted CI success yet.
+
+
+### K.6.3 exported ambient value failing baseline (2026-10-09)
+
+Following test baseline `b8f1270f`, the 76-program re-export draft passes its
+complete frozen 5,475-input K.0 gate: format, both-crate all-target Clippy,
+all 13 static/cache controls, 1,051 ordinary tests and all 1,209 tests in 96
+groups, including every 158 ignored oracle, pass. All source hashes match;
+the 2,540-program live diagnostics record is byte-identical. Evidence:
+`blueice-k63-reexports-final-{status,report}.json` and logs/hashes.
+
+Four independent pinned controls expose a further public composition defect.
+ES2022/CommonJS accept an ordinary import used only by a `typeof` annotation;
+both reference programs print `42` and emit declarations. Runtime value use
+is rejected with TS1362 and related TS1377 at the original type export.
+The corpus now has 80 ambient programs (44 accept, 36 reject), 44 Node and
+declaration witnesses, and 2,544 shared programs with 217 templates. Every
+prior 2,540 full observation and every prior 76 ambient record is unchanged.
+Only the existing pinned recorders generate the four gold files, in an
+isolated copy of the same frozen source. See the runtime corpus comparison,
+recorder source proof and independent runtime/origin probes.
+
+The final test-only replay has exact MapLoader `.ts` identifiers. Format and
+both-crate all-target Clippy pass; the three public controls have one pass
+and two failures. Checked incorrectly accepts a type-exported value, and a
+valid query retains an unnecessary JavaScript import. The expanded ambient
+and shared checking/emission replays also fail, including declaration quote
+preservation. All 5,492 frozen inputs match. Evidence:
+`blueice-k63-runtime-red-third-{status,report}.json` and logs/hashes.
+The earlier unformatted and inexact MapLoader attempts are retained separately.
+TranspileOnly's explicit unchecked policy remains, without an ambient physical
+source or runtime resolution. Commit this test-only supplement before repair;
+keep every K.6.3 baseline unpushed until the expanded full K.0 gate passes.
+K.6.3 and original complete hosted CI remain open.

@@ -1972,6 +1972,150 @@
       "first": null
     },
     {
+      "entry": "modambient-reexport-value-only-query-commonjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "public.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modambient-reexport-value-only-query-es2022/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "public.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modambient-reexport-value-only-runtime-bad-commonjs/main.ts",
+      "accepts": false,
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "public.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1362,
+        "message": "'answer' cannot be used as a value because it was exported using 'export type'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 58,
+          "length": 6
+        },
+        "related": [
+          {
+            "code": 1377,
+            "message": "'answer' was exported here.",
+            "module": "public.ts",
+            "position": {
+              "line": 5,
+              "column": 15,
+              "length": 6
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modambient-reexport-value-only-runtime-bad-es2022/main.ts",
+      "accepts": false,
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "es2022",
+        "--moduleResolution",
+        "node10",
+        "--strict"
+      ],
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "public.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1362,
+        "message": "'answer' cannot be used as a value because it was exported using 'export type'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 58,
+          "length": 6
+        },
+        "related": [
+          {
+            "code": 1377,
+            "message": "'answer' was exported here.",
+            "module": "public.ts",
+            "position": {
+              "line": 5,
+              "column": 15,
+              "length": 6
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
       "entry": "modambient-reexport-value-query-bad-commonjs/main.ts",
       "accepts": false,
       "flags": [

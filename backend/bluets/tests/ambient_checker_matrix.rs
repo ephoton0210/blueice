@@ -83,17 +83,17 @@ fn prepare(case: &Value, directory: &Path) -> PathBuf {
 #[test]
 fn matrix_covers_every_ambient_fixture() {
     let cases = cases();
-    assert_eq!(cases.len(), 76);
+    assert_eq!(cases.len(), 80);
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
-        42
+        44
     );
     assert_eq!(
         cases
             .iter()
             .filter(|case| case["declaration"] == true)
             .count(),
-        42
+        44
     );
     let recorded = cases
         .iter()

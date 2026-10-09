@@ -950,6 +950,58 @@
       ],
       "runtime": false,
       "declaration": false
+    },
+    "modambient-reexport-value-only-query-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "public.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-value-only-runtime-bad-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "public.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-value-only-query-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "public.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-value-only-runtime-bad-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "public.ts",
+        "ambient.d.ts"
+      ],
+      "runtime": false,
+      "declaration": false
     }
   }
 }
