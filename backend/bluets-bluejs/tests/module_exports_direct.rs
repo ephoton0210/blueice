@@ -47,6 +47,34 @@ fn default_expressions_and_anonymous_declarations_reach_the_vm() {
 }
 
 #[test]
+fn anonymous_default_names_and_identifier_snapshots_match_module_semantics() {
+    for base in [
+        "export default function(value: number): number { return value; }",
+        "export default class { constructor(public value: number) {} }",
+        "export default (value: number): number => value;",
+    ] {
+        let value = run([
+            (
+                "graph/main.ts",
+                "import value from './base.ts'; value.name;",
+            ),
+            ("graph/base.ts", base),
+        ]);
+        assert_eq!(value, Value::String("default".into()));
+    }
+    for export in ["export default value;", "export {value as default};"] {
+        let base = format!("let value: number = 1; {export} value = 2;");
+        assert_eq!(
+            run([
+                ("graph/main.ts", "import value from './base.ts'; value;"),
+                ("graph/base.ts", &base),
+            ]),
+            Value::Number(if export.contains('{') { 2.0 } else { 1.0 })
+        );
+    }
+}
+
+#[test]
 fn named_and_star_reexports_keep_live_bindings() {
     for barrel in [
         "export {value, inc} from './base.ts';",
