@@ -319,8 +319,8 @@ jobs:
         # under Node, declarations, option combinations, direct-runtime parity), so
         # none may be skipped: one that fails fails the job.
         run: >-
-          npm exec --yes --package typescript@5.9.3 --
-          env BLUEICE_BLUETSC_ORACLE=tsc FORCE_COLOR=0
+          npm exec --yes --package typescript@5.9.3 --package acorn@8.15.0 --
+          env BLUEICE_BLUETSC_ORACLE=tsc BLUEICE_ACORN_ORACLE=acorn FORCE_COLOR=0
           cargo test -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --ignored
 
   # The single check branch protection requires. It depends on every other

@@ -6729,3 +6729,48 @@ the complete workspace and original 29-job CI. This reduces measured unused
 font work; the unresolved full macOS workload still needs final hosted evidence.
 Assertions, navigation timeouts, coverage floors/exclusions and original CI
 workflows have not changed. K.7.1 remains the next implementation leaf after M8.
+
+### K.7.1 isolated target test baseline (2026-10-10)
+
+Keep production at `1f76ff28c` while M8's original final-source CI is pending.
+An isolated test branch records seventeen forms for eleven targets: ES5,
+ES2015 through ES2023 and ESNext. The forms cover lexical loop/arrow captures,
+binding patterns, object/sparse-array spread, iterator closing, generator and
+async state, async iteration, inheritance, short-circuit/logical assignment,
+exponentiation, templates, rest calls, BigInt and private state. Fixture names
+use `emittarget-` without words claimed by other matrices. Every source has
+the MPL header. Reference flags retain strict checking and `lib ES2020`;
+five ES5 iterator-sensitive forms explicitly select `downlevelIteration`.
+
+TypeScript 5.9.3 accepts 180 programs and rejects seven: six old-target BigInt
+literals and one ES5 private name. All 180 accepted references pass Node,
+exact declaration generation and Acorn 8.15.0 at the requested edition.
+`record_targets.cjs` independently reproduces the complete canonical record.
+Only observations and helper names are retained; upstream helper bodies stay
+in temporary oracle output. The independent reference uses twelve helper
+names. A console-context adjustment is separately proved to preserve all
+187 reference verdicts/primary diagnostics and all 180 JavaScript, declaration
+and runtime outputs byte-for-byte. The original variadic ambient-method gap
+remains recorded in the earlier probe artifacts.
+
+The shared pinned diagnostic recorder consumes the new matrix and flags.
+Its 2,731 cases/219 templates retain every one of the prior 2,544 observations
+unchanged. Public CLI tests preserve exact project flags, primary diagnostics,
+Node/declaration parity, target syntax and helper-version manifest/fingerprint
+identity. A separate current-owned-profile ES2020 control shows why execution
+alone is insufficient: Node accepts the output's logical assignment, while
+the ES2020 parser rejects it. BlueJS currently exposes no edition-selecting
+parser API; the independent Acorn check does not close that implementation
+requirement. The isolated oracle workflow installs pinned Acorn alongside
+pinned TypeScript without altering job counts, coverage or skips.
+
+The frozen test-only Linux gate passes format, both-crate all-target Clippy
+with warnings denied and shared matrix completeness. The public replay has
+two passing and four failing tests, with zero ignored tests; the live pinned
+reference recorder is one of the passing tests. Production remains unchanged.
+Evidence: `blueice-k71-test-baseline-second-{status,source-hashes}.json`,
+`blueice-k71-shared-reference-proof.json`, retained first replay logs and the
+independent probe artifacts. Commit this failing baseline on the isolated
+branch before production changes. It remains unpushed until the verified
+leaf's complete K.0 gate passes. K.7.1 remains open, and implementation waits
+for M8's complete original hosted CI.
