@@ -7005,3 +7005,42 @@ a native owner config intentionally auto-discovers a colocated tsconfig, so
 sharing one root would conflate the two public paths and their defaults.
 The ES6 and omitted-target controls likewise keep native defaults separate
 from tsconfig selection. The original-source target refusal is unchanged.
+
+### K.7.1 first target-selection implementation slice (2026-10-10)
+
+The isolated implementation introduces an ordered eleven-variant `EcmaTarget`
+in `compiler/targets.rs` (58 lines), with case-insensitive parsing and the
+ES6 alias. All positional/native/tsconfig paths use that selection; tsconfig
+retains TypeScript's `es6` showConfig spelling and its ES5 omitted-target
+default. The native/API default remains ES2022. Class-field defaults and
+native field lowering use the ES2022 threshold. Existing ES2020/ES2022
+owned library bytes and identities remain intact; per-target older library
+profiles still need implementation. No target transforms/helpers are claimed
+by accepting a target name.
+
+The frozen 5,862-file Linux replay passes format, both-crate all-target Clippy
+with warnings denied, four independent public target configuration tests and
+eighteen existing CLI tests. The complete ordinary two-crate run has 1,059
+passes, seven known K.7.1 failures and 165 ignored oracles in 101 groups.
+Shared primary/presentation differences remain exactly 714/38 and belong
+only to the target corpus. All other ordinary regressions pass. Every ignored
+oracle is running separately on these same frozen inputs; this is not a
+green K.0 gate. Evidence: `blueice-k71-target-config-third-{status,source-hashes,
+ordinary-report}.json`, logs and the corrected original-source baseline.
+
+Production files remain uncommitted/unpushed on `work/bluets-k71-targets`
+until complete target lowering, helper provenance, library/iteration options,
+BlueJS edition validation and all K.0 tests succeed. The configuration slice
+does not close K.7.1. No runtime, filesystem or network grant changes.
+
+### K.7.1 edition API failing baseline (2026-10-10)
+
+An ordinary bridge replay now selects each BlueJS syntax edition for the
+existing 605 pinned Acorn observations (403 accept, 202 reject). The original
+public BlueJS library has no `SyntaxEdition`, `parse_with_edition` or
+`parse_module_with_edition`; a Linux rustc probe fails on those three missing
+symbols without writing to the shared Cargo target. Its exact library/probe
+hashes and compiler output are `blueice-k71-edition-api-red-{report.json,log}`.
+Commit this API replay before adding parser support. The 55 authored sources
+and all reference verdicts remain unchanged; the latest/default parsing
+control remains independent. K.7.1 and its full K.0 gate remain open.

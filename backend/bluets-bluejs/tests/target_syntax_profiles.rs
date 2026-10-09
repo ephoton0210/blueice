@@ -79,6 +79,49 @@ fn existing_bluejs_parser_accepts_every_latest_syntax_witness() {
 }
 
 #[test]
+fn selected_bluejs_editions_match_every_independent_syntax_observation() {
+    use blueice_bluejs::{parse_module_with_edition, parse_with_edition, SyntaxEdition};
+
+    let mut failures = Vec::new();
+    for [entry, mode, target, verdict] in rows() {
+        let edition = match target {
+            "ES5" => SyntaxEdition::Es5,
+            "ES2015" => SyntaxEdition::Es2015,
+            "ES2016" => SyntaxEdition::Es2016,
+            "ES2017" => SyntaxEdition::Es2017,
+            "ES2018" => SyntaxEdition::Es2018,
+            "ES2019" => SyntaxEdition::Es2019,
+            "ES2020" => SyntaxEdition::Es2020,
+            "ES2021" => SyntaxEdition::Es2021,
+            "ES2022" => SyntaxEdition::Es2022,
+            "ES2023" => SyntaxEdition::Es2023,
+            "ESNext" => SyntaxEdition::EsNext,
+            _ => panic!("unknown recorded target {target}"),
+        };
+        let source = fs::read_to_string(fixtures().join(entry)).unwrap();
+        let parsed = if mode == "module" {
+            parse_module_with_edition(&source, edition).map(|_| ())
+        } else {
+            parse_with_edition(&source, edition).map(|_| ())
+        };
+        if parsed.is_ok() != (verdict == "accept") {
+            failures.push(format!(
+                "{entry}/{mode}/{target}: expected {verdict}, got {parsed:?}"
+            ));
+        }
+        if verdict == "reject" {
+            if let Err(error) = parsed {
+                assert!(
+                    error.known_syntax && error.resource.is_none(),
+                    "{entry}/{target}: {error:?}"
+                );
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
 #[ignore = "requires pinned Acorn 8.15.0 and Node"]
 fn syntax_edition_observations_match_the_pinned_independent_parser() {
     let recorder = Path::new(env!("CARGO_MANIFEST_DIR"))
