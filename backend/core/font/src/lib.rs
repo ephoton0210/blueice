@@ -19,6 +19,10 @@
 //! .rasterize(..)`'s cumulative advance will draw, because both call
 //! into the same loaded `fontdue::Font`.
 //!
+//! Each bundled face is parsed on its first use and shared thereafter. Latin
+//! text does not initialize unrelated weights or the CJK fallback; mixed text
+//! initializes the fallback only when its primary face lacks a glyph.
+//!
 //! Bundles the DejaVu Sans family (Regular/Bold/Oblique/BoldOblique,
 //! Bitstream Vera-derived permissive license, `assets/DejaVuSans-
 //! LICENSE.txt`) -- credited on the Help/About/Credits screen
@@ -50,30 +54,38 @@ const FONT_BOLD_ITALIC: &[u8] = include_bytes!("../assets/DejaVuSans-BoldOblique
 const FONT_CJK_FALLBACK: &[u8] = include_bytes!("../assets/NotoSansTC-Regular.otf");
 
 struct FontSet {
-    regular: fontdue::Font,
-    bold: fontdue::Font,
-    italic: fontdue::Font,
-    bold_italic: fontdue::Font,
-    cjk_fallback: fontdue::Font,
+    regular: OnceLock<fontdue::Font>,
+    bold: OnceLock<fontdue::Font>,
+    italic: OnceLock<fontdue::Font>,
+    bold_italic: OnceLock<fontdue::Font>,
+    cjk_fallback: OnceLock<fontdue::Font>,
 }
 
 fn fonts() -> &'static FontSet {
-    static FONTS: OnceLock<FontSet> = OnceLock::new();
-    FONTS.get_or_init(|| {
-        let load = |bytes| {
-            #[cfg(test)]
-            cold_start::record_parsed_font(bytes);
-            fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
-                .expect("bundled font must parse")
-        };
-        FontSet {
-            regular: load(FONT_REGULAR),
-            bold: load(FONT_BOLD),
-            italic: load(FONT_ITALIC),
-            bold_italic: load(FONT_BOLD_ITALIC),
-            cjk_fallback: load(FONT_CJK_FALLBACK),
-        }
+    static FONTS: FontSet = FontSet {
+        regular: OnceLock::new(),
+        bold: OnceLock::new(),
+        italic: OnceLock::new(),
+        bold_italic: OnceLock::new(),
+        cjk_fallback: OnceLock::new(),
+    };
+    &FONTS
+}
+
+fn load_font(
+    slot: &'static OnceLock<fontdue::Font>,
+    bytes: &'static [u8],
+) -> &'static fontdue::Font {
+    slot.get_or_init(|| {
+        #[cfg(test)]
+        cold_start::record_parsed_font(bytes);
+        fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
+            .expect("bundled font must parse")
     })
+}
+
+fn cjk_fallback() -> &'static fontdue::Font {
+    load_font(&fonts().cjk_fallback, FONT_CJK_FALLBACK)
 }
 
 /// The bundled font matching this bold/italic combination -- ignores
@@ -83,12 +95,13 @@ fn fonts() -> &'static FontSet {
 /// Greek, DejaVu Sans's actual coverage).
 pub fn font_for(bold: bool, italic: bool) -> &'static fontdue::Font {
     let set = fonts();
-    match (bold, italic) {
-        (false, false) => &set.regular,
-        (true, false) => &set.bold,
-        (false, true) => &set.italic,
-        (true, true) => &set.bold_italic,
-    }
+    let (slot, bytes) = match (bold, italic) {
+        (false, false) => (&set.regular, FONT_REGULAR),
+        (true, false) => (&set.bold, FONT_BOLD),
+        (false, true) => (&set.italic, FONT_ITALIC),
+        (true, true) => (&set.bold_italic, FONT_BOLD_ITALIC),
+    };
+    load_font(slot, bytes)
 }
 
 /// The font to draw `c` with at this weight/style: the matching DejaVu
@@ -105,7 +118,7 @@ pub fn font_for_char(c: char, bold: bool, italic: bool) -> &'static fontdue::Fon
     if primary.has_glyph(c) {
         return primary;
     }
-    &fonts().cjk_fallback
+    cjk_fallback()
 }
 
 /// The real rendered width of `text` at `font_size_px` in the given
@@ -161,7 +174,7 @@ mod tests {
     #[test]
     fn font_for_char_falls_back_to_the_cjk_face_for_a_character_dejavu_lacks() {
         let chosen = font_for_char('關', false, false) as *const _;
-        let cjk = &fonts().cjk_fallback as *const _;
+        let cjk = cjk_fallback() as *const _;
         assert_eq!(chosen, cjk);
     }
 
@@ -177,7 +190,7 @@ mod tests {
         // no bold/italic CJK face is bundled (module docs) -- every
         // weight/style combination must resolve a CJK character to the
         // exact same single fallback face, not go blank for e.g. bold.
-        let cjk = &fonts().cjk_fallback as *const _;
+        let cjk = cjk_fallback() as *const _;
         for (bold, italic) in [(true, false), (false, true), (true, true)] {
             assert_eq!(font_for_char('關', bold, italic) as *const _, cjk);
         }
@@ -185,7 +198,7 @@ mod tests {
 
     #[test]
     fn measuring_a_cjk_character_uses_the_fallback_fonts_real_metrics() {
-        let expected = fonts().cjk_fallback.metrics('關', 16.0).advance_width as f64;
+        let expected = cjk_fallback().metrics('關', 16.0).advance_width as f64;
         assert_eq!(measure_text_width("關", 16.0, false, false), expected);
     }
 
@@ -196,7 +209,7 @@ mod tests {
         // for the whole string.
         let mixed = measure_text_width("a關", 16.0, false, false);
         let latin = font_for(false, false).metrics('a', 16.0).advance_width as f64;
-        let cjk = fonts().cjk_fallback.metrics('關', 16.0).advance_width as f64;
+        let cjk = cjk_fallback().metrics('關', 16.0).advance_width as f64;
         assert_eq!(mixed, latin + cjk);
     }
 

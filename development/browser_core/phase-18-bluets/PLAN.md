@@ -6706,3 +6706,26 @@ byte-identical. Evidence: `blueice-font-cold-red-{status,source-hashes}.json`
 and logs. Commit this failing baseline before per-face lazy initialization.
 This candidate reduces unnecessary cold work while preserving font data,
 selection, metrics and fallback; hosted full CI must establish its outcome.
+
+
+### M8 per-face bundled-font candidate verification (2026-10-09)
+
+After failing baseline `a8083c019`, each bundled face has its own OnceLock;
+Latin measures with the selected DejaVu face alone, and a missing primary
+glyph initializes the shared CJK fallback. Font bytes, FontSettings, weight/
+style selection, glyph lookup, metrics, fallback and public APIs are unchanged.
+The two fresh-process parse-observation regressions now pass with masks 1/17;
+all twelve prior Latin/CJK/style/measurement/cache tests pass as well.
+
+Frozen Linux validation passes format and all-target font/layout/raster/engine
+Clippy with warnings denied, plus all 567 tests in twelve groups (zero failures,
+zero ignored), including every core-binary navigation/session test. Both
+changed file hashes match, and every other backend/build input is byte-identical
+to the completed K.6.3 workspace gate. Evidence:
+`blueice-font-cold-first-{status,report,source-hashes}.json` and logs.
+The production font module is 256 lines, below the refactor review threshold.
+Commit/push this tested candidate, then verify its exact final source through
+the complete workspace and original 29-job CI. This reduces measured unused
+font work; the unresolved full macOS workload still needs final hosted evidence.
+Assertions, navigation timeouts, coverage floors/exclusions and original CI
+workflows have not changed. K.7.1 remains the next implementation leaf after M8.
