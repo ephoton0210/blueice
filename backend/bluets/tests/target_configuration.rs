@@ -105,20 +105,21 @@ fn positional_targets_are_case_insensitive_and_have_distinct_artifact_identity()
 
 #[test]
 fn native_and_typescript_configs_select_each_target_and_class_field_default() {
-    let project = Project::new();
+    let native_project = Project::new();
+    let typescript_project = Project::new();
     for target in TARGETS {
-        project.write(
+        native_project.write(
             "bluetsc.json",
             json!({"entries":["main.ts"],"outDir":"out","declaration":true,"target":target}),
         );
-        let native = project.build(&["build", "--config", "bluetsc.json"], target);
-        project.write(
+        let native = native_project.build(&["build", "--config", "bluetsc.json"], target);
+        typescript_project.write(
             "tsconfig.json",
             json!({"files":["main.ts"],"compilerOptions":{
                 "target":target.to_ascii_uppercase(),"module":"es2022", "declaration":true,"outDir":"out"
             }}),
         );
-        let typescript = project.build(&["build", "--config", "tsconfig.json"], target);
+        let typescript = typescript_project.build(&["build", "--config", "tsconfig.json"], target);
         assert_eq!(native["standardLibrary"], typescript["standardLibrary"]);
     }
 }
@@ -143,6 +144,7 @@ fn es6_alias_selects_es2015_at_every_configuration_boundary() {
         json!({"entries":["main.ts"],"target":"ES6","declaration":true,"outDir":"out"}),
     );
     project.build(&["build", "--config", "bluetsc.json"], "es2015");
+    let project = Project::new();
     project.write(
         "tsconfig.json",
         json!({"files":["main.ts"],"compilerOptions":{
@@ -162,6 +164,7 @@ fn omitted_typescript_target_uses_es5_without_changing_the_native_default() {
         }}),
     );
     project.build(&["build", "--config", "tsconfig.json"], "es5");
+    let project = Project::new();
     project.write(
         "bluetsc.json",
         json!({"entries":["main.ts"],"declaration":true,"outDir":"out"}),

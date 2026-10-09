@@ -6999,3 +6999,9 @@ again fails all four tests, this time on genuine unsupported target/default
 messages only. `blueice-k71-config-red-corrected-{status,source-hashes}.json`
 and its log supersede the initial default-target failure. No production
 change is committed by this baseline correction.
+
+Native and TypeScript configuration controls now use separate scratch roots:
+a native owner config intentionally auto-discovers a colocated tsconfig, so
+sharing one root would conflate the two public paths and their defaults.
+The ES6 and omitted-target controls likewise keep native defaults separate
+from tsconfig selection. The original-source target refusal is unchanged.
