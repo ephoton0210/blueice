@@ -6414,3 +6414,59 @@ source hashes match. Evidence:
 Commit these tests before changing incremental dependency invalidation.
 The production draft remains uncommitted and K.6.3 remains open; keep its
 baselines unpushed until the complete K.0 gate passes.
+
+
+### K.6.3 global augmentation cache draft verification (2026-10-09)
+
+After baseline `5086a2a85`, the incremental dependency closure detects an
+affected global augmentation in either the old or new graph and rechecks
+all current consumers. Transitive imports are included before this check,
+so changing an imported interface also invalidates the global surface.
+Projects without an affected augmentation retain the ordinary dependency
+closure. No loading, resolution or runtime grant is added.
+
+The independent frozen 5,368-input Linux gate passes format, both-crate
+all-target Clippy with warnings denied and all three public regressions.
+Incremental rejection now matches fresh compilation's complete diagnostics,
+and the unrelated import alias remains refused. Ordinary BlueTS/bridge
+replay reports 1,038 pass, three known ambient/shared tests fail and 158
+ignored in 94 groups; it introduces no additional failing target. Source
+hashes match. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k63-cache-green-{status,report}.json`
+and frozen hashes/logs. This is draft verification, not a completed K.0 gate.
+Named ambient modules, module augmentation and path/types/lib references
+remain open. Keep the production draft uncommitted until the complete leaf
+passes all ordinary and ignored oracles and the other K.0 requirements.
+
+
+### K.6.3 named module/reference draft and cache baseline (2026-10-09)
+
+The uncommitted static-graph draft retains named ambient surfaces separately
+from public runtime resolutions and canonical source records. Physical
+augmentation uses the owner resolver; references retain exact source positions,
+owner edges, module/edge/depth/byte limits and resolver observations. On the
+frozen 5,372-input source, format, both-crate all-target Clippy, all four ambient
+tests (52 programs, 30 Node and 30 declaration witnesses), the three global
+cache controls and ordinary shared diagnostics/presentation replay pass.
+Evidence: `blueice-k63-reference-first-{status,report}.json` and frozen hashes
+in `/private/tmp/blueice-k14-linux/`. The full K.0 gate is still open.
+
+Six independent TypeScript 5.9.3 controls verify initial acceptance and fresh
+TS2322 rejection after a referenced global, named module or module augmentation
+changes. Fresh BlueTS agrees on all six. Public incremental regressions expose
+only referenced globals: the changed declaration leaves an unconnected consumer
+incorrectly reused and accepted. Named and physical augmentation consumers
+recheck correctly. Four public controls also prove exact owner-edge refusal,
+module/edge/depth/aggregate-byte limits, canonical source retention without a
+runtime resolution, and executable ambient import/re-export refusal under
+checked and transpile-only policies.
+
+The frozen 5,374-input baseline passes format and both-crate Clippy; the new
+seven tests have six passes and one reference-cache failure, while all three
+previous global-cache regressions pass. All source hashes match. Evidence:
+`blueice-k63-static-red-{status,report}.json`, logs/hashes and
+`blueice-k63-static-cache-probe/report.json`. Commit the two test files before
+the reference invalidation repair; keep the baseline unpushed until complete
+K.0 passes. The production draft remains uncommitted. K.6.3 and original
+29-job hosted CI remain open; no source-size exception or runtime grant is
+added. Library references currently measure the owned ES2020/ES2022 profiles.
