@@ -150,3 +150,74 @@ fn known_unavailable_library_selectors_keep_a_precise_frontend_refusal() {
         );
     }
 }
+
+#[test]
+fn an_identical_owner_declaration_referenced_by_path_is_collected_once() {
+    let options = |source: &str| CompilerOptions {
+        ambient_declaration_modules: vec![ModuleSource::new(GLOBALS, source)],
+        ..CompilerOptions::default()
+    };
+    let loader = MapLoader::from([
+        ModuleSource::new(MAIN, SOURCE),
+        ModuleSource::new(GLOBALS, DECLARATION),
+    ]);
+    let result = compile(MAIN, &loader, options(DECLARATION));
+    assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    assert_eq!(result.project.source(GLOBALS), Some(DECLARATION));
+    assert_eq!(result.project.resolved_module(MAIN, "./globals.d.ts"), None);
+    let different = compile(
+        MAIN,
+        &loader,
+        options("interface GlobalItem { value: string; }"),
+    );
+    assert!(different.has_errors());
+    assert!(different.output.is_none());
+    assert!(different
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::InvalidDeclarationFile));
+    let imported = MapLoader::from([
+        ModuleSource::new(
+            MAIN,
+            "import type {} from './globals.d.ts'; export const answer: number = 42;",
+        ),
+        ModuleSource::new(GLOBALS, DECLARATION),
+    ]);
+    let duplicate = compile(MAIN, &imported, options(DECLARATION));
+    assert!(duplicate.has_errors());
+    assert!(duplicate.output.is_none());
+    assert!(duplicate
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::InvalidDeclarationFile));
+}
+
+#[test]
+fn project_roots_and_path_references_share_the_same_owned_declaration() {
+    let root = std::env::temp_dir().join(format!(
+        "bluets-ambient-reference-roots-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("main.ts"), SOURCE).unwrap();
+    std::fs::write(root.join("globals.d.ts"), DECLARATION).unwrap();
+    let config = root.join("tsconfig.json");
+    std::fs::write(&config, serde_json::json!({
+        "compilerOptions": {"target":"ES2022","module":"ES2022","moduleResolution":"node10","strict":true},
+        "files":["main.ts","globals.d.ts"]
+    }).to_string()).unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .arg("--project")
+        .arg(config)
+        .args(["--noEmit", "--diagnostics-json"])
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(&root).unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

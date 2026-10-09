@@ -6494,3 +6494,25 @@ Evidence: `blueice-k63-library-red-{status,report}.json`, hashes/logs and
 repair. Full library content/selection remains the recorded K.10/catalog gap;
 K.6.3 measures the existing owned profiles. Production remains uncommitted,
 this baseline stays unpushed until complete K.0, and hosted CI remains open.
+
+
+### K.6.3 identical referenced project-root baseline (2026-10-09)
+
+The uncommitted library diagnostic repair now passes the known-but-unavailable
+selector control. Its original lookup is generated from the 100 pinned catalog
+entries, which contain 97 unique labels; only factual labels are retained, with
+exact metadata proof in `blueice-k63-library-catalog-source-proof.json`.
+
+Two further public regressions expose duplicate collection when an identical
+canonical declaration is selected both by a path reference and by the owner or
+`tsconfig.files`. Independent pinned TypeScript controls accept both reference-
+only and explicit-root forms; current BlueTS accepts the former and rejects the
+latter. The compiler control also retains content-mismatch and ordinary-import
+duplicate refusals for the eventual repair. The frozen 5,375-input baseline
+passes format and both-crate Clippy; five static boundary controls pass and two
+identical-root controls fail, while all three earlier global-cache controls pass.
+All source hashes match. Evidence: `blueice-k63-reference-roots-red-
+{status,report}.json`, logs/hashes and `blueice-k63-reference-roots-probe/
+report.json`. Commit the failed tests before canonical/content deduplication.
+Production stays uncommitted and the baseline stays unpushed until full K.0.
+K.6.3 and original complete hosted CI remain open.
