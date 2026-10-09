@@ -6148,3 +6148,7 @@ first suite; the final replay uses `--no-fail-fast` to execute both suites.
 Commit these test-only regressions before implementing the fallback and
 resolution-observation fingerprint propagation. They remain unpushed until the
 complete K.0 gate passes; K.6.2 and full hosted CI remain open.
+
+### K.6.2 JSON asset controls before production (2026-10-09)
+
+*JSON asset failing controls (2026-10-09):* Before JSON production support, three public owner-CLI controls require original asset bytes, nested JSON-derived types, content-sensitive artifact fingerprints, explicit effective `resolveJsonModule`, malformed-input refusal and canonical symlink bounds. The disabled-option control passes; valid asset and canonical-root controls fail because JSON is unresolved. Format/all-target Clippy pass; all 317 frozen draft-source hashes match. The existing 86-program committed pinned baseline supplies the independent positive JSON references. Evidence: `/private/tmp/blueice-k14-linux/blueice-k62-json-red-{status,report}.json` and logs/hashes. This additional test-only commit precedes JSON production work and stays unpushed until K.0 passes. K.6.2 remains open.
