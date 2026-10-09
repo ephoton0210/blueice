@@ -98,3 +98,29 @@ fn type_only_import_and_reexport_cannot_grant_a_declaration_value() {
         assert!(compile_direct_module_graph("graph/main.ts", &loader, options()).is_err());
     }
 }
+
+#[test]
+fn json_data_needs_a_runtime_profile_for_imports_and_graph_entries() {
+    let loader = MapLoader::from([
+        ModuleSource::new(
+            "graph/main.ts",
+            "import data from './data.json' with {type:'json'}; data.answer;",
+        ),
+        ModuleSource::new("graph/data.json", "{\"answer\":42}"),
+    ]);
+    for entry in ["graph/data.json", "graph/main.ts"] {
+        assert!(
+            compile_direct_module_graph(
+                entry,
+                &loader,
+                CompilerOptions {
+                    resolve_json_module: true,
+                    import_attributes: true,
+                    ..options()
+                }
+            )
+            .is_err(),
+            "JSON data entry {entry} needs an explicit runtime profile"
+        );
+    }
+}
