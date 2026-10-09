@@ -7274,3 +7274,41 @@ emitter/runtime representation. K.7.1 production remains uncommitted, unpushed
 and incomplete. The preceding frozen target replay has 132 primary differences
 in six forms, three failing ordinary target tests and all 22 protocol
 declarations passing.
+
+### K.7.1 Explicit receiver parameter implementation in progress (2026-10-10)
+
+`this` remains in function/method types and emitted declarations while the
+parser removes its complete runtime parameter and following comma. Callable
+arity and generic inference address runtime parameters separately; direct
+BlueJS lowering skips the receiver parameter. Receiver compatibility is
+checked for direct, member and call/apply/bind calls. Misplaced and arrow
+receiver parameters retain TS2680/TS2730. The strict boundary profile continues
+to refuse explicit receiver parameters.
+
+Frozen Linux gate `blueice-k71-explicit-this-implementation-third-status.json`
+(7,011 files) passes format, three-crate all-target Clippy, thirteen focused
+context/library/runtime tests and 241 BlueTS unit tests. All thirteen original
+diagnostic sources match code, start, length and complete flattened message;
+flattening matches the pinned recorder's message-chain separator and preserves
+all text. Three direct-runtime programs return 42. Node and pinned TypeScript
+match six receiver/arity observations [42,42,20,1,1,0] and exact declarations.
+The target primary differences fall from 132 to 88: 22 each for binding
+patterns, pattern evaluation, rest calls and generator catch narrowing. All
+22 protocol declarations pass; three ordinary target tests still fail.
+The complete two-crate ordinary/ignored replay is pending. Production remains
+uncommitted and unpushed; K.7.1 is open.
+
+### K.7.1 Receiver parameter grammar boundaries failing baseline (2026-10-10)
+
+Six native TypeScript 5.9.3 controls record constructor/accessor receiver
+prohibitions and malformed optional/default/rest receiver syntax. The public
+regression compares full diagnostics for constructors/accessors; the malformed
+headers must be refused without reproducing TypeScript's secondary recovery
+parameters. All original native observations remain recorded and live-checked.
+
+Before validation changes, `blueice-k71-receiver-boundaries-red-report.json`
+records a real Linux `rustc --test` probe linked against the unchanged frozen
+public BlueTS compiler rlib. All six fail: four invalid sources are admitted,
+and getters/setters have the wrong diagnostics. The probe does not modify the
+Cargo target or source and runs while the complete ignored replay continues.
+This failing baseline is committed before implementing boundary validation.
