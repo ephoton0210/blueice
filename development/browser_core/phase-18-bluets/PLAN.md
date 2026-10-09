@@ -7195,3 +7195,23 @@ The standalone replay compiles actual public-API tests, links the Cargo rlib
 whose hash/fingerprint is recorded, and writes outside the shared target; it
 does not start a second Cargo or substitute a parser implementation. Evidence:
 `blueice-k71-statement-baseline-report.json` and native test/build logs.
+
+### K.7.1 object receiver context failing baseline (2026-10-10)
+
+The complete named-async export correction passes all 4,110 ordinary BlueJS
+regressions in 335 groups and all four ignored Node differential tests, with
+frozen source hashes verified. The follow-up braced-statement parser correction
+passes its three public regressions, all 30 explicit-library observations,
+19 focused tests and 241 BlueTS units. Target replay remains red (two ordinary
+target tests pass, three fail); the separate protocol declaration replay still
+incorrectly diagnoses computed-method receiver `this` as TS2683.
+
+Ten independently recorded TypeScript 5.9.3 controls (seven accept, three
+reject) distinguish computed/named/string methods, accessors, lexical arrows,
+function-valued properties, ordinary nested functions and outer computed-key
+reads. The public compiler replay fails on seven controls before production
+changes. Exact diagnostic codes, source offsets and lengths are asserted,
+including the valid function-valued property confirmed by the actual compiler.
+Evidence: `blueice-k71-object-context-{input,reference}.json`,
+`blueice-k71-object-context-baseline-status.json` and its frozen hashes/log.
+K.7.1 remains open, and its production changes remain uncommitted/unpushed.
