@@ -6976,3 +6976,18 @@ Evidence: `blueice-font-cold-workspace-{status,report,source-hashes}.json`,
 `blueice-k63-final-source-ci-final-report.json`, raw logs and frozen inputs.
 M8 is verified. Continue K.7.1's committed test-first baseline through
 implementation and the full K.0 gate; K.7 through K.10 remain open.
+
+### K.7.1 public target-selection failing baseline (2026-10-10)
+
+After M8 closes on exact `1f76ff28c`, four public configuration tests fail
+on unchanged production. They cover all eleven target spellings, case folding,
+ES6/ES2015 aliasing, positional/native/tsconfig selection, distinct artifact
+fingerprints and class-field defaults, using a function with no downlevel
+syntax. The omitted tsconfig target must mean ES5; the native default remains
+ES2022. Pinned TypeScript 5.9.3 independently records thirteen target/default
+observations in `blueice-k71-config-pinned-defaults-proof.json`.
+The frozen Linux replay is zero pass/four fail (`blueice-k71-config-red-*`).
+This baseline is committed before implementation and stays unpushed until
+K.7.1's full K.0 gate succeeds. The existing 638 verdicts, 600 emit witnesses,
+605 grammar observations and normative iterator/generator protocols remain
+required; configuration selection alone does not close target emission.
