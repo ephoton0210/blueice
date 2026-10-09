@@ -6873,3 +6873,31 @@ shared-reference-proof,public-replay-proof}.json`,
 `blueice-k71-control-flow-baseline-final{,-second}-{status,source-hashes}.json`
 / logs. Commit this failing baseline on the isolated branch before production
 changes. K.7.1 stays open and unpushed; M8 complete final-source CI is pending.
+
+### K.7.1 owned-profile emission baseline (2026-10-10)
+
+The exact project replay currently refuses the explicit `lib: ES2020`
+configuration before it reaches emission. Keep that full 638-case replay and
+all its flags. Supplement it with the 112 accepted ES2020/ES2022 cases through
+the existing native CLI, in both module kinds, selecting the existing owned
+library profiles. This supplements the exact TypeScript library/checking
+contract; it does not replace it or claim the two library surfaces agree.
+
+An ordinary test builds the selected programs and compares exact declarations
+without optional tools. The separate ignored test also runs Node and checks
+the requested Acorn edition. Of 112 native builds, 68 succeed and 44 fail.
+All 68 emitted programs match reference execution; 64 match declarations and
+66 meet the syntax edition. Both ES2020 logical-assignment module variants
+execute successfully under Node but retain syntax rejected by the ES2020
+parser. These controls expose emission independently of configuration refusal.
+
+The expanded frozen Linux baseline passes format and both-crate all-target
+Clippy with warnings denied. The target suite has two passing/seven failing
+tests and zero ignored, including the passing live 638-program recorder.
+All 533 frozen changed inputs, sixty prior syntax inputs and every unaffected
+production/build input match. All source fixtures, target observations and
+the 3,182-case shared record remain unchanged. Evidence:
+`blueice-k71-owned-profile-baseline-{status,source-hashes}.json`, its logs and
+`blueice-k71-owned-profile-public-replay-proof.json`. Commit this test-only
+baseline before production changes and retain it unpushed until the complete
+K.0 gate passes. K.7.1 implementation and final-source M8 hosted CI remain open.

@@ -413,6 +413,106 @@ fn target_outputs_preserve_execution_declarations_and_syntax_edition() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+fn owned_profile_cases() -> Vec<Value> {
+    let cases = cases()
+        .into_iter()
+        .filter(|case| {
+            case["accepts"] == true && matches!(case["target"].as_str(), Some("ES2020" | "ES2022"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(cases.len(), 112);
+    cases
+}
+
+fn build_owned_profile(case: &Value, directory: &Path) -> Output {
+    prepare(case, directory, false);
+    let target = case["target"].as_str().unwrap().to_ascii_lowercase();
+    // The native route selects the existing owned library profile. Keep the
+    // separate project replay's explicit TypeScript lib and checking flags.
+    Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .arg("build")
+        .arg(directory.join("main.ts"))
+        .arg("--project-root")
+        .arg(directory)
+        .args(["--target", &target, "--module", module_kind(case)])
+        .arg("--declaration")
+        .arg("--out-dir")
+        .arg(directory.join("blue"))
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn owned_target_profiles_emit_the_pinned_declarations_without_optional_tools() {
+    let root = temporary_root("owned-emit");
+    let mut failures = Vec::new();
+    for (index, case) in owned_profile_cases().into_iter().enumerate() {
+        let directory = root.join(index.to_string());
+        let built = build_owned_profile(&case, &directory);
+        let entry = case["entry"].as_str().unwrap();
+        if !built.status.success() {
+            failures.push(format!("{entry}: owned build failed: {}", report(&built)));
+            continue;
+        }
+        let javascript = fs::read_to_string(directory.join("blue/main.js")).unwrap();
+        assert!(!javascript.is_empty(), "{entry}: empty JavaScript");
+        let declaration = fs::read_to_string(directory.join("blue/main.d.ts"))
+            .unwrap()
+            .replace("\r\n", "\n");
+        if declaration != case["declaration_text"].as_str().unwrap() {
+            failures.push(format!(
+                "{entry}: owned declarations differ: {declaration:?}"
+            ));
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+#[ignore = "requires pinned Acorn 8.15.0 and Node"]
+fn owned_target_profiles_match_runtime_declarations_and_syntax() {
+    let root = temporary_root("owned-runtime");
+    let mut failures = Vec::new();
+    for (index, case) in owned_profile_cases().into_iter().enumerate() {
+        let directory = root.join(index.to_string());
+        let built = build_owned_profile(&case, &directory);
+        let entry = case["entry"].as_str().unwrap();
+        if !built.status.success() {
+            failures.push(format!("{entry}: owned build failed: {}", report(&built)));
+            continue;
+        }
+        let file = directory.join("blue/main.js");
+        let parsed = syntax(&file, case["target"].as_str().unwrap(), module_kind(&case));
+        if !parsed.status.success() {
+            failures.push(format!(
+                "{entry}: owned syntax differs: {}",
+                report(&parsed)
+            ));
+        }
+        let node = Command::new("node").arg(file).output().unwrap();
+        if !node.status.success()
+            || String::from_utf8_lossy(&node.stdout).replace("\r\n", "\n")
+                != case["stdout"].as_str().unwrap()
+        {
+            failures.push(format!(
+                "{entry}: owned execution differs: {}",
+                report(&node)
+            ));
+        }
+        let declaration = fs::read_to_string(directory.join("blue/main.d.ts"))
+            .unwrap()
+            .replace("\r\n", "\n");
+        if declaration != case["declaration_text"].as_str().unwrap() {
+            failures.push(format!(
+                "{entry}: owned declarations differ: {declaration:?}"
+            ));
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 #[test]
 #[ignore = "requires pinned Acorn 8.15.0 and Node"]
 fn existing_es2020_logical_assignment_obeys_the_syntax_floor() {
