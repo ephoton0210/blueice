@@ -7234,3 +7234,25 @@ protocol projects now match exact declarations. Both original v1 library
 source files remain byte-identical; new versioned supplemental declarations
 and v2 identity include well-known Symbol keys and invalidate their actual
 source fingerprint. Complete target emission and K.0 remain open.
+
+### K.7.1 named async-generator type context baseline (2026-10-10)
+
+Six TypeScript 5.9.3 observations (three accept, three reject) cover explicit
+`AsyncGenerator<number, void, unknown>` annotations with direct, promised and
+awaited yields, invalid string yields and invalid numeric returns. Each primary
+code, offset and length is asserted. The live pinned recorder passes; the public
+compiler fails all six at its existing blanket async-generator parser refusal.
+Format and three-crate all-target Clippy pass. The shared function-context
+recorder remains an actual TypeScript program and is reused by the existing
+object-receiver oracle. Evidence: `blueice-k71-async-generator-baseline-status.json`,
+its 7,005-file hashes and native log, and the source/diagnostic reference hash
+`d7f2233c923fbf74765a4a8dacb9d49d0e911a6f572def4e9ce580ff36fe4f82`.
+
+The first exponentiation transform passes the four ES2015/ES2016 module-boundary
+programs and six effect witnesses against actual TypeScript, native ES2016,
+Node, exact declarations and the public edition-selecting BlueJS parser.
+All 241 BlueTS units pass. A complete earlier 7,001-file ordinary replay passes
+1,073 tests across 105 groups and fails five tests, confined to the target and
+shared diagnostic matrices. The subsequent optional-call-receiver correction
+reduces the canonical primary differences to 178. No complete K.7.1 or K.0
+success is claimed, and production stays uncommitted/unpushed.
