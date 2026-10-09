@@ -5972,3 +5972,23 @@ Evidence: `/private/tmp/blueice-k14-linux/blueice-k6-refactor-final-status.json`
 to 160 sites in ten areas. Commit/push this behavior-preserving refactor
 separately before K.6.2. Hosted complete workspace/platform/coverage CI follows
 on its exact pushed SHA; K.6.2/K.6.3 and the remaining milestones stay open.
+
+### K.6.1 Default generator output failing regression — 2026-10-09
+
+A further public-CLI probe on `d8b9e6a68` finds invalid CommonJS JavaScript
+for an anonymous default generator: `function default_1*`. ESM anonymous
+and both named synchronous controls execute normally. The dedicated pinned
+regression checks eight programs in both module systems: four synchronous
+forms compare Node execution, function names and exact declarations; four
+async forms retain the existing mandatory frontend refusal and no publication.
+All eight TypeScript 5.9.3 reference programs execute and emit declarations
+before the BlueTSC phase. Only the anonymous CommonJS synchronous execution
+differs. No declaration difference remains in the supported controls.
+
+This test-only baseline is committed before changing the name insertion.
+Format and both-crate all-target Clippy with warnings denied pass; all five
+frozen backend hashes match. Evidence is `blueice-k61-generator-red-{status,report}.json`,
+its logs/hashes and `blueice-k61-generator-probe.json` under
+`/private/tmp/blueice-k14-linux/`. K.6.1 reopens for the measured correction.
+The baseline stays unpushed until its complete K.0 gate passes; K.6.2 and
+full hosted CI stay open.
