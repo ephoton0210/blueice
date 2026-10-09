@@ -7537,3 +7537,29 @@ comma in the generated generator parameters. Commit this failing test and
 fixture before removing that comma for the older edition. Evidence:
 `blueice-k71-async-default-baseline-{status,source-hashes}.json` and its actual
 runtime log. Production and the full K.7.1 leaf remain uncommitted/unpushed.
+
+### K.7.1 Async generator request failing baseline (2026-10-10)
+
+The async-default correction passes the committed effect/arity/declaration/
+ES2015 oracle, format and Clippy. The subsequent frozen 7,041-file for-await
+transform passes format, Clippy, 241 unit tests and both earlier runtime
+oracles. All 37 native protocol observations and exact declarations agree;
+only the two ES5 protocol editions remain invalid. The 638-case target replay
+still has 61 syntax differences, including the not-yet-lowered async generator
+declarations. There are no build, execution or declaration differences. Native
+adapter controls cover cached next methods, sync value assimilation, async
+iterator values and closing-result validation.
+
+An original async-generator source now checks queued next requests, return and
+throw before entry, completed requests, finally counters and a rejected return
+argument caught inside the generator. Its pinned TypeScript reference uses
+ES2022 native generator semantics with an explicit ES2020 library; emitted
+BlueTS uses ES2017 with the same library selection. Exact declarations and
+every normative native observation agree before lowering. The corrected frozen
+7,043-file baseline passes format and three-crate Clippy, then fails Acorn at
+the unlowered async generator declaration. The first attempt omitted the
+required newer library and was corrected in the test configuration; production
+was unchanged. Commit the actual failing request/edition replay before writing
+the original async-generator helper. Evidence:
+`blueice-k71-async-generator-baseline-second-{status,source-hashes}.json` and its
+runtime log. K.7.1 stays open and all production remains uncommitted/unpushed.
