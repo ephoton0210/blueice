@@ -634,6 +634,322 @@
       ],
       "runtime": false,
       "declaration": false
+    },
+    "modambient-reexport-named-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-named-bad-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-star-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-star-bad-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-qualified-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-qualified-bad-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-transitive-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts",
+        "forward.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-transitive-bad-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts",
+        "forward.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-value-query-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-value-query-bad-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-function-query-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-function-query-bad-es2022": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-named-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-named-bad-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-star-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-star-bad-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-qualified-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-qualified-bad-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-transitive-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts",
+        "forward.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-transitive-bad-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts",
+        "forward.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-value-query-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-value-query-bad-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-reexport-function-query-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-reexport-function-query-bad-commonjs": {
+      "files": [
+        "main.ts",
+        "ambient.d.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "ambient.d.ts",
+        "public.ts"
+      ],
+      "runtime": false,
+      "declaration": false
     }
   }
 }

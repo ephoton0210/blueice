@@ -6516,3 +6516,76 @@ All source hashes match. Evidence: `blueice-k63-reference-roots-red-
 report.json`. Commit the failed tests before canonical/content deduplication.
 Production stays uncommitted and the baseline stays unpushed until full K.0.
 K.6.3 and original complete hosted CI remain open.
+
+
+### K.6.3 final draft gate in progress (2026-10-09)
+
+Following baseline `828e2440e`, an owner declaration already reached by a path
+reference is collected once only when its canonical identity and full contents
+match and it has script declaration syntax. Content mismatches and ordinary-
+import duplicates retain their refusals. Global collection uses the set union
+of owner declarations and referenced declarations. The frozen 5,375-input
+Linux gate passes format, both-crate all-target Clippy, all 13 public static/
+global-cache controls and all 1,051 ordinary tests in 96 groups. All 158 ignored
+oracles are now replaying; this is a pending K.0 gate, not a completed leaf.
+Evidence: `blueice-k63-final-first-progress.json` and ongoing logs/hashes in
+`/private/tmp/blueice-k14-linux/`. All current backend/build hashes match.
+
+Nine new production files have the required MPL header. No changed production
+source reaches the 1,200-line review threshold; the largest is the CLI at 1,182
+lines, followed by parser 1,168 and checker 1,058. Section 4 of the inventory
+is regenerated to 162 refusal sites in 11 areas. Production stays uncommitted
+and all K.6.3 baselines stay unpushed until the complete gate passes.
+
+The c1-based macOS 26 Intel full-workload trace run 37916810866 succeeds on
+diagnostic source `2ad9f88d`, with all original platform steps/profile preserved.
+Its raw log has 6,843 passing tests in 502 groups (including platform extras),
+zero failed and 160 ignored. The real core-binary suite has all 20 tests passing.
+83 traced sessions include 55 with navigation; the sole timeout-option EINVAL
+session has no navigation trace. These observations do not establish a repair
+for the original macOS 15 Intel navigation failure. Normal CI 37912159021
+remains pending Coverage, with that one platform failure; macOS 15 full-workload
+trace run 37923851331 has entered Test. No assertion, timeout or CI gate is
+weakened. See `blueice-k6-stage-workspace-diagnostic-macos26-{report,stage-report}
+.json` and raw/plain logs.
+
+
+### K.6.3 ambient re-export failing baseline (2026-10-09)
+
+The earlier 52-program draft completes its frozen 5,375-input K.0 gate: format,
+both-crate all-target Clippy, all 13 public static/cache controls, 1,051 ordinary
+tests and all 1,209 tests in 96 groups, including every 158 ignored oracle, pass.
+All backend/build hashes match, and the complete 2,516-case live diagnostics
+record is byte-identical. See `blueice-k63-final-first-{status,report}.json`.
+The leaf remains open because an independent composition probe exposes a
+public type-only re-export failure from the new named ambient surfaces.
+
+Twenty-four new pinned programs cover named aliases, star and qualified
+re-exports, transitive surfaces, and constant/function type queries under
+ES2022 and CommonJS, with accepted/rejected pairs. All twelve new accepted
+programs independently run under Node and emit declarations before BlueTS
+comparison. The ambient corpus now has 76 programs (42 accept, 34 reject),
+42 execution and declaration witnesses. The shared corpus has 2,540 programs
+(1,253 accept, 1,287 reject) and the unchanged 216 templates. Every prior
+2,516 complete observation and every prior 52 ambient record is unchanged;
+new ambient/shared primary and related information agree exactly. Only the
+existing pinned recorders generated the four gold files.
+
+The frozen 5,475-input baseline passes format and both-crate all-target Clippy;
+completeness and live ambient recording pass, but checking and emission fail
+for the new re-export forms. Source hashes match. See
+`blueice-k63-reexports-red-{status,report}.json`, logs/hashes,
+`blueice-k63-reexports-corpus-comparison.json`, source proof and independent
+`blueice-k63-ambient-reexport-forms-probe/report.json`. Commit only this test
+supplement before repairing the static export propagation. Production stays
+uncommitted, and baselines stay unpushed until the full expanded K.0 gate passes.
+
+Original normal CI 37912159021 on `c1b651eed` is now terminal: 27 of 29 jobs
+succeed; macOS 15 Intel navigation and the final CI gate fail. Both pinned
+TypeScript jobs pass. Coverage passes at 94.78% workspace lines and 99.53%
+independent BlueJS lines. The original four process-wiring exclusions in the
+workspace gate remain byte-identical to the previous workflow; BlueJS uses
+no filename exclusions. No gate is weakened. Evidence:
+`blueice-k6-root-final-source-coverage-verified.json` and raw logs. The macOS
+15 full-workload diagnostic remains in Test; there is no verified navigation
+repair or complete hosted CI success yet.
