@@ -7116,3 +7116,53 @@ Evidence: `blueice-k71-edition-cargo-first-bluejs-report.json`,
 `blueice-k71-edition-routing-final-status.json` and their source hashes/logs.
 The library configuration baseline has zero passes/four expected failures;
 K.7.1 as a whole remains open and production is uncommitted/unpushed.
+
+### K.7.1 configuration and binding logical assignment progress (2026-10-10)
+
+The committed library/iteration baseline has become green on isolated production.
+All 29 pinned library cases match (19 accept/ten reject), including independently
+chosen syntax/library versions and missing global types with an empty set. The
+owner may still supply intrinsic declarations; protected owner interfaces and
+page runtime-call authority remain enforced. Sixteen focused tests, including
+the new live TypeScript recorder, pass; the existing library matrix passes all
+six tests including its three ignored oracles, and all eighteen CLI regressions
+pass. Format and three-crate all-target Clippy pass on 6,463 frozen files. The
+original ES2020 and ES2022 declaration source bytes and default selection are
+retained. Earlier/additional editions use original cumulative v2 profiles.
+Evidence: `blueice-k71-library-options-second-status.json` and
+`blueice-k71-library-regression-first-status.json`.
+
+Binding `||=`, `&&=` and `??=` now lower below ES2021 after type/module rewriting.
+The right operand stays in its lexical environment; a temporary reads the
+nullish binding once. An original ES5-compatible strict-nullish helper is
+versioned as `blue-ts-target-helper-v1`, included in fingerprint content and
+recorded by `target_helper_version`. The existing ES2020 Node/Acorn syntax-floor
+replay and the 22 distinct target/module helper identities now pass. Format,
+three-crate lint and sixteen configuration/library tests pass on 6,465 files.
+Member logical assignment, remaining older syntax, suspension helpers and the
+complete target/parser/checker surface are still unfinished.
+
+A public bridge regression compares BlueTS ES2020, original ES2021 and pinned
+TypeScript execution for single accessor reads, conditional/nested assignments,
+throw priority, helper collisions and await. Node observations match in all
+three versions, but BlueJS's syntax assertion fails with a known error:
+`expected an export declaration (found Identifier("async"))`. Its parser
+already accepts default async exports, but lacks the named async export branch.
+The new named async/function-generator controls are pinned independently with
+Acorn 8.15.0 before changing that parser; all 341 previous observations remain
+identical, now 363 decisions (279 accept/84 reject). This baseline remains
+isolated/unpushed. The complete target ordinary replay still has 256 primary
+verdict/diagnostic mismatches and five failing target/protocol tests.
+Evidence: `blueice-k71-logical-lowering-first-status.json`,
+`blueice-k71-logical-effects-first-status.json`,
+`blueice-k71-logical-effects-diagnostic-report.json` and their frozen hashes/logs.
+The largest newly extended source is `bluetsc.rs` at 1,190 lines; the target
+transform is 161 lines and no existing near/over-1,300-line BlueJS source gained
+responsibilities. K.7.1 remains open; no production commit or push is claimed.
+
+Before the named async export production fix, the frozen 6,467-file Cargo
+baseline passes format and three-crate all-target lint. The standalone named
+export and edition-control tests each fail as expected, while the live Acorn
+context recorder passes. All fifteen new native mismatches are the two missing
+named async export forms; the previous 341 decisions still match. Evidence:
+`blueice-k71-named-async-baseline-status.json` and frozen source hashes/logs.

@@ -1581,6 +1581,108 @@
           true
         ]
       ]
+    },
+    {
+      "name": "named-export-async",
+      "mode": "module",
+      "source": "export async function answer() { return 42; }",
+      "verdicts": [
+        [
+          "ES5",
+          false
+        ],
+        [
+          "ES2015",
+          false
+        ],
+        [
+          "ES2016",
+          false
+        ],
+        [
+          "ES2017",
+          true
+        ],
+        [
+          "ES2018",
+          true
+        ],
+        [
+          "ES2019",
+          true
+        ],
+        [
+          "ES2020",
+          true
+        ],
+        [
+          "ES2021",
+          true
+        ],
+        [
+          "ES2022",
+          true
+        ],
+        [
+          "ES2023",
+          true
+        ],
+        [
+          "ESNext",
+          true
+        ]
+      ]
+    },
+    {
+      "name": "named-export-async-generator",
+      "mode": "module",
+      "source": "export async function* sequence() { yield 42; }",
+      "verdicts": [
+        [
+          "ES5",
+          false
+        ],
+        [
+          "ES2015",
+          false
+        ],
+        [
+          "ES2016",
+          false
+        ],
+        [
+          "ES2017",
+          false
+        ],
+        [
+          "ES2018",
+          true
+        ],
+        [
+          "ES2019",
+          true
+        ],
+        [
+          "ES2020",
+          true
+        ],
+        [
+          "ES2021",
+          true
+        ],
+        [
+          "ES2022",
+          true
+        ],
+        [
+          "ES2023",
+          true
+        ],
+        [
+          "ESNext",
+          true
+        ]
+      ]
     }
   ]
 }

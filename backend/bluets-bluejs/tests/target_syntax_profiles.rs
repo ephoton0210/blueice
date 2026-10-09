@@ -134,3 +134,41 @@ fn syntax_edition_observations_match_the_pinned_independent_parser() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+#[ignore = "requires pinned Acorn 8.15.0 and Node"]
+fn context_controls_match_the_actual_pinned_independent_parser() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let script = r#"
+const fs = require('node:fs');
+const acorn = require(process.argv[2])();
+const reference = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+if (reference.version !== acorn.version) throw Error('oracle version differs');
+let observed = 0;
+for (const item of reference.cases) {
+    for (const [target, expected] of item.verdicts) {
+        const ecmaVersion = target === 'ESNext' ? 'latest' : Number(target.slice(2));
+        let actual = true;
+        try { acorn.parse(item.source, {
+            ecmaVersion, sourceType: item.mode,
+            allowImportExportEverywhere: item.mode === 'module' && ecmaVersion === 5
+        }); } catch { actual = false; }
+        if (actual !== expected) throw Error(`${item.name}/${target}: oracle verdict changed`);
+        observed++;
+    }
+}
+if (observed !== 363) throw Error('incomplete context record');
+"#;
+    let output = Command::new("node")
+        .args(["-e", script])
+        .arg(root.join("../bluejs/tests/fixtures/syntax_editions.json"))
+        .arg(root.join("../bluets/tests/fixtures/oracle_support/load_acorn.cjs"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
