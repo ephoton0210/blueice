@@ -6003,3 +6003,25 @@ its logs/hashes and `blueice-k62-shared-comparison.json` under
 `/private/tmp/blueice-k14-linux/`. The baseline is committed before production
 and stays unpushed until the complete implementation passes K.0. The separately
 measured K.6.1 generator output defect is repaired first; K.6.2 remains open.
+
+### K.6.2 Resolution-mode condition failing regression — 2026-10-09
+
+Two supplemental pinned programs resolve one package through both `import` and
+`require` conditions in the same source: direct type-only imports, and a barrel
+with two type-only re-exports. The conditions declare literal member types 1
+and 2. Both TypeScript 5.9.3/Node programs run successfully to `3` and emit
+exact declarations before any BlueTSC result is collected. On committed
+production baseline `46f908786`, BlueTSC resolves both requests to the import
+branch and produces four TS2322 errors. This exposes the source/specifier
+resolution-key collision that relative-file attribute controls cannot detect.
+
+The replay restores every draft production file from the committed baseline
+and omits the new draft emitter helper. Format and both-crate all-target Clippy
+pass; all six new test/fixture hashes match. The ignored public-CLI regression
+fails after both pinned reference programs complete. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k62-resolution-red-{status,report}.json`,
+logs/hashes, snapshot manifest and the two independent condition probes.
+Commit this supplemental baseline before attribute/resolution implementation;
+hold it unpushed until the complete K.6.2 gate passes. Each edge must retain its
+resolution mode with canonical owner bounds, observation records and compiler
+fingerprints. K.6.2 and its measured JSON prerequisites remain open.
