@@ -6381,3 +6381,36 @@ validation. Evidence: `/private/tmp/blueice-k14-linux/blueice-k63-context-red-{s
 This supplement commits only tests, generated observations and plans. The
 production draft remains uncommitted, K.6.3 remains open, and the baseline
 stays unpushed until the complete K.0 gate passes.
+
+
+### K.6.3 global augmentation cache baseline (2026-10-09)
+
+The imported-global draft now matches all four supplemental pinned cases,
+including exact primary and related information and accepted execution and
+declarations. The frozen 5,367-input broad replay runs every BlueTS/bridge
+test, including all ignored TypeScript/Node/declaration oracles: 1,192 pass,
+four fail in 93 groups, with zero ignored. Only the still-open ambient and
+shared diagnostic targets fail (32 ambient checking differences, 40 shared
+diagnostic and 12 presentation differences). No prior non-ambient target
+fails. Format and both-crate Clippy pass on this source. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k63-context-{third,broad}-report.json`
+and `blueice-k63-imported-global-matching-report.json`, hashes and logs.
+
+Three public compiler tests then retain global augmentation invalidation and
+import-alias scope. The source graph's entry imports its augmentation and an
+otherwise unconnected consumer. Changing either the augmentation or its
+imported interface makes TypeScript and fresh BlueTS compilation reject the
+consumer with TS2322. The incremental compiler instead reuses that accepted
+consumer and emits output. Both mutation tests fail before the repair. A
+control verifies that the augmentation's imported alias does not become an
+unrelated consumer's global type: both compilers refuse it with TS2304.
+
+The frozen 5,368-input Linux baseline passes format and BlueTS/bridge
+all-target Clippy; the public tests report one pass and two failures. All
+source hashes match. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k63-cache-red-{status,report}.json`,
+`blueice-k63-global-cache-probe/report.json`,
+`blueice-k63-global-alias-scope-probe/report.json`, frozen sources and logs.
+Commit these tests before changing incremental dependency invalidation.
+The production draft remains uncommitted and K.6.3 remains open; keep its
+baselines unpushed until the complete K.0 gate passes.
