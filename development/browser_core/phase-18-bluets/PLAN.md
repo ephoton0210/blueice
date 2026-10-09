@@ -6221,3 +6221,34 @@ parent exposes only the child members it already consumes. This split adds
 no graph edge, input authority, policy or behavior.
 
 Mechanical comparison after formatting preserves graph-loader and fingerprint bodies and string literals, apart from required `pub(super)` visibility. Source sizes are `compiler.rs` 756, `project_builder.rs` 348 and `fingerprint.rs` 140 lines; largest production source is the CLI at 1,165 lines. Public APIs, canonical bounds, per-edge modes, resolver observations, work limits, cache identity/reuse and source provenance are preserved. The frozen Linux gate passes format, BlueTS/bridge/engine all-target Clippy with warnings denied, all 507 engine tests, 1,036 ordinary BlueTS/bridge tests and all 1,192 tests in 92 groups, including every 156 ignored oracle in 49 suite files. All 331 backend hashes match, and the actual 2,464-program diagnostics record is byte-identical. Evidence: `/private/tmp/blueice-k14-linux/blueice-k62-refactor-final-{status,report}.json`, logs/hashes and `blueice-k62-refactor-mechanical-report.json`. Inventory remains 161 sites in 11 areas. Full hosted workspace/platform/coverage CI remains open; test-only navigation/HTTP diagnostics are integrated for the unresolved macOS timeout, without changing assertions or timeouts.
+
+
+### macOS module root-continuation refusal regression (2026-10-09)
+
+Full-workload macOS 26 Intel diagnostic CI
+[37900009937](https://github.com/ephoton0210/blueice/actions/runs/37900009937)
+on `06c86150` passes the previously failing navigation fixture, but fails
+`real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugger_leaks`
+when a replacement module root is expected to return `InvalidSafePoint`.
+That assertion did not print the actual reply. Its test-only diagnostic now
+retains the exact rejection while rendering any unexpected source-free reply.
+
+A deterministic public debugger-route regression on production `4e975cef`
+completes an admitted module before requesting root continuation. It receives
+`InvalidExecutionState` rather than `InvalidSafePoint`. The existing handler
+checks scheduling state before checking pending execution kind. Completed
+module work has already left the pending queue. The regression also retains
+`InvalidExecutionState` for completed classic work and requires that refusal
+installs no breakpoint. Format and engine all-target Clippy pass; the new
+public module assertion fails. Both frozen backend hashes match. Evidence:
+`/private/tmp/blueice-k14-linux/blueice-k6-root-red-{status,report}.json`,
+frozen hashes and logs. The initial wrong-package command ran zero tests
+and is excluded from this regression evidence.
+
+Commit the failing public regression before production work. Retain immutable
+classic-root eligibility with the opaque program's realm lifetime, and reject
+ineligible module roots before checking transient scheduler state. Preserve
+exact safe-point/generation validation, classic execution-state rejection,
+breakpoint bounds and source-free public replies. This changes neither page
+execution scheduling nor continuation capability grants. The full hosted CI
+gate remains open.

@@ -402,19 +402,23 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
             .expect("module fixture must expose a root safe-point inventory"),
         other => panic!("expected module debugger safe points, got {other:?}"),
     };
-    assert!(matches!(
-        debugger_request(
-            &mut debugger,
-            &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
-                safe_point: module_safe_point,
-            },
-            PAGE_SECRET,
+    let module_root_reply = debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
+            safe_point: module_safe_point,
+        },
+        PAGE_SECRET,
+    );
+    assert!(
+        matches!(
+            module_root_reply,
+            blueice_ipc::debugger::DebuggerReply::Error {
+                code: blueice_ipc::debugger::DebuggerErrorCode::InvalidSafePoint,
+                ..
+            }
         ),
-        blueice_ipc::debugger::DebuggerReply::Error {
-            code: blueice_ipc::debugger::DebuggerErrorCode::InvalidSafePoint,
-            ..
-        }
-    ));
+        "module root continuation must be refused: {module_root_reply:?}"
+    );
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();

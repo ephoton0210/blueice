@@ -710,3 +710,89 @@ fn source_step_budget_stop_keeps_a_distinct_verified_public_reason() {
         }
     );
 }
+
+#[test]
+fn native_debugger_module_root_refusal_survives_execution_completion() {
+    for (html, expected_code) in [
+        (
+            "<script type=\"module\">export const value = 1;</script>",
+            DebuggerErrorCode::InvalidSafePoint,
+        ),
+        (
+            "<script>globalThis.value = 1;</script>",
+            DebuggerErrorCode::InvalidExecutionState,
+        ),
+    ] {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            html,
+            Some("https://example.test/completed-root-refusal.html".to_string()),
+        );
+        let realm = DebuggerPageRealm {
+            browser_context_id: DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab_id.as_u64(),
+            realm_generation: 1,
+        };
+        let mut executor = JavaScriptPageExecutor::with_config(
+            crate::script::javascript::JavaScriptPageExecutorConfig {
+                native_debugger_execution_control: true,
+                ..crate::script::javascript::JavaScriptPageExecutorConfig::default()
+            },
+        )
+        .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let DebuggerReply::Programs(programs) = handle_debugger_request_with_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListPrograms { realm },
+        ) else {
+            panic!("expected an admitted program")
+        };
+        let program = programs[0];
+        let DebuggerReply::SafePoints(safe_points) =
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListSafePoints { program },
+            )
+        else {
+            panic!("expected compiler-verified safe points")
+        };
+        let safe_point = *safe_points
+            .iter()
+            .find(|point| point.code_unit_ordinal == 0)
+            .unwrap();
+        for _ in 0..2 {
+            executor.synchronize_and_execute(&tabs).unwrap();
+        }
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program }
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Completed
+            }
+        );
+        let reply = handle_debugger_request_with_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ArmRootSafePointBreakpoint { safe_point },
+        );
+        assert!(
+            matches!(reply, DebuggerReply::Error { code, .. } if code == expected_code),
+            "completed root refusal for {html}: {reply:?}"
+        );
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListBreakpoints { realm }
+            ),
+            DebuggerReply::Breakpoints(vec![])
+        );
+    }
+}
