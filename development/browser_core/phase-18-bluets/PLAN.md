@@ -7181,3 +7181,17 @@ occurs during this replay. This additional accepted case is committed before
 the profile fix, growing the library record from 29 to 30 cases (20 accept/ten
 reject), with all original observations unchanged. The live pinned recorder
 and public reference loop cover the additional case.
+
+### K.7.1 statement/object parsing failing baseline (2026-10-10)
+
+Three new public parser tests reuse the already pinned iteration-close and
+37-observation protocol inputs. A test linked to the actual existing Cargo
+BlueTS library passes the keyword-object-method control and fails both
+regressions: a block `if (value === 42)` is incorrectly parsed with method
+parameter grammar, and a braced loop without a semicolon absorbs subsequent
+module function declarations. The new tests and failing replay are committed
+before parser changes. No fixture source or upstream observation is changed.
+The standalone replay compiles actual public-API tests, links the Cargo rlib
+whose hash/fingerprint is recorded, and writes outside the shared target; it
+does not start a second Cargo or substitute a parser implementation. Evidence:
+`blueice-k71-statement-baseline-report.json` and native test/build logs.
