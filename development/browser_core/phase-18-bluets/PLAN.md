@@ -6189,3 +6189,8 @@ closed-project loading and fingerprint construction for a separate verified
 refactor after the K.6.2 implementation commit/push and before K.6.3. The full
 K.0 oracle gate and final-source hosted CI are still pending; this design note
 does not close either gate.
+
+
+### K.6.2 JSON parser budget baseline (2026-10-09)
+
+*JSON parser budget failing regression (2026-10-09):* Four public closed-loader controls retain Unicode asset bytes and owner source-byte, token and schema-depth bounds. Byte/depth refusal and the positive control pass; JSON ignores `max_tokens = 2` and incorrectly emits an asset. Format and both-crate all-target Clippy pass, and all 326 frozen backend hashes match. The preceding complete gate executes all 1,187 tests in 90 groups with no ignored tests left: 1,186 pass and only the shared diagnostics live recorder fails. Both shared record files have 28 ordering differences after two fixture renames, with identical 2,464-case identity sets. Evidence: `/private/tmp/blueice-k14-linux/blueice-k62-json-limits-red-{status,report}.json`, `blueice-k62-twentieth-{status,report}.json` and `blueice-k62-diagnostics-order-proof.json`, logs/hashes. The test-only commit precedes enforcement of the existing token limit; source ordering and the complete K.0/final-source hosted gates remain open.
