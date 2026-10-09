@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.6.R.1 (module/declaration source split before K.6.2).** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.6.2 (type-only forms and attributes).** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -444,7 +444,8 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
 
 #### K.6 source refactoring queue
 
-- [ ] **K.6.R.1 Split module-declaration AST records and declaration emission.** After the verified K.6.1 implementation commit/push, move those responsibilities out of `parser.rs` (1,207 lines) and `emitter.rs` (1,208 lines), preserving the public API, emission and source provenance. Run K.0's complete two-crate gate, then make a separate English refactor commit and push before K.6.2.
+- [x] **K.6.R.1 Split module-declaration AST records and declaration emission.** After the verified K.6.1 implementation commit/push, move those responsibilities out of `parser.rs` (1,207 lines) and `emitter.rs` (1,208 lines), preserving the public API, emission and source provenance. Run K.0's complete two-crate gate, then make a separate English refactor commit and push before K.6.2.
+  - *Verified (2026-10-09):* Module records retain their public re-exports in `parser.rs`; declaration emission and its export/type-parameter helpers move to `emitter/declarations.rs`. Mechanical comparison preserves every AST field, declaration code body and string literal. Source sizes are parser 1,150, module records 68, emitter 863 and declarations 357 lines; all BlueTS production sources stay below 1,200. The complete frozen four-file K.0 gate passes format, both-crate all-target Clippy with warnings denied and all 1,169 tests in 83 groups, including every one of the 150 ignored oracles in 44 suite files. All source hashes match. Evidence: `/private/tmp/blueice-k14-linux/blueice-k6-refactor-final-{status,report}.json`, logs/hashes and `blueice-k6-refactor-mechanical-report.json`. Refusal inventory regenerated to 160 sites in ten areas. The refactor gets its own commit/push; K.6.2/K.6.3 and hosted complete CI remain open.
 
 ### K.7 Emit breadth — M9 — gaps G-E1 to G-E4
 

@@ -5946,3 +5946,29 @@ committed and pushed, split module-declaration AST records and declaration
 emission into focused modules, preserve the public API and provenance, and
 run the complete two-crate gate before the separate refactor commit/push.
 K.6.2/K.6.3 and the remaining milestones stay open.
+
+### K.6.R.1 Module and declaration source split — 2026-10-09
+
+After verified K.6.1 commit `b1eb3872e` is pushed, the independent split moves
+import/export AST records to `parser/module_declarations.rs`, retaining the
+public re-exports, fields and source identities. Declaration emission, retained
+export-name queries and type-parameter rendering move to
+`emitter/declarations.rs`; existing parent/sibling callers retain their entry
+points. No runtime, diagnostics, JavaScript/declaration text or authority
+changes. Mechanical comparison verifies unchanged record fields, declaration
+code bodies and string literals.
+
+Parser falls from 1,207 to 1,150 lines; its module-record file has 68 lines.
+Emitter falls from 1,208 to 863 lines; declaration emission has 357 lines.
+All BlueTS production files remain below the 1,200-line review threshold.
+The complete frozen four-file Linux K.0 gate passes format, both-crate
+all-target Clippy with warnings denied and all 1,169 tests in 83 groups.
+Every one of the 150 ignored oracles in 44 suite files executes successfully;
+no test fails or remains ignored, and all source hashes match the host.
+
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k6-refactor-final-status.json`,
+`blueice-k6-refactor-final-report.json`, logs/hashes and
+`blueice-k6-refactor-mechanical-report.json`. Refusal inventory is regenerated
+to 160 sites in ten areas. Commit/push this behavior-preserving refactor
+separately before K.6.2. Hosted complete workspace/platform/coverage CI follows
+on its exact pushed SHA; K.6.2/K.6.3 and the remaining milestones stay open.

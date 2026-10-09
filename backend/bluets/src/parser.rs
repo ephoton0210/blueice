@@ -150,69 +150,12 @@ impl Declaration {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImportDeclaration {
-    /// `import x = require("m")`: one binding of the module's `export =` value.
-    pub equals_require: bool,
-    pub type_only: bool,
-    pub specifier: String,
-    pub specifier_span: SourceSpan,
-    pub bindings: Vec<ImportBinding>,
-    pub span: SourceSpan,
-}
+mod module_declarations;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImportBinding {
-    pub imported: String,
-    pub local: String,
-    pub type_only: bool,
-}
-
-/// A static-only `export type` declaration.  It has no JavaScript runtime
-/// representation but can still extend the closed type-module graph.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypeExportDeclaration {
-    pub bindings: Vec<String>,
-    pub specifier: Option<String>,
-    pub span: SourceSpan,
-}
-
-/// A value export in the narrowly supported `export default localName` form.
-/// The referenced local remains the runtime declaration, while this node
-/// records the public ESM binding for checking and declaration emission.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DefaultExportDeclaration {
-    pub name: String,
-    /// Expressions use an internal snapshot binding, absent from source text.
-    pub expression: bool,
-    pub span: SourceSpan,
-}
-
-/// A value export in the narrowly supported local
-/// `export { localName as publicName }` form. It keeps its JavaScript syntax
-/// and records the public bindings required by static checking and `.d.ts`
-/// emission.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValueExportDeclaration {
-    /// `export = name;`: the module's whole export is that value, as the one
-    /// binding named `export=`.
-    pub export_assignment: bool,
-    pub bindings: Vec<ValueExportBinding>,
-    /// A retained, closed graph edge for `export ... from "module"`.
-    pub specifier: Option<String>,
-    pub specifier_span: Option<SourceSpan>,
-    /// `export *`, excluding `default`; an optional name denotes `* as name`.
-    pub star: bool,
-    pub namespace: Option<String>,
-    pub span: SourceSpan,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValueExportBinding {
-    pub local: String,
-    pub exported: String,
-    pub span: SourceSpan,
-}
+pub use module_declarations::{
+    DefaultExportDeclaration, ImportBinding, ImportDeclaration, TypeExportDeclaration,
+    ValueExportBinding, ValueExportDeclaration,
+};
 
 /// A JavaScript runtime statement that the bounded TypeScript parser does not
 /// otherwise classify. Its already-tokenized source is retained so an
