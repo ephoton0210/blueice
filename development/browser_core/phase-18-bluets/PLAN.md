@@ -5838,3 +5838,43 @@ Linux format, all-target Clippy with warnings denied and all 136 tests, includin
 the sixteen-thread regression. Evidence:
 `/private/tmp/blueice-k14-linux/blueice-k52-ipc-fixture-status.json`, its source
 hash and logs. A fresh final-source workspace CI run remains required.
+
+### K.6.1 Default and re-export failing baseline — 2026-10-09
+
+The isolated `modexport-*` corpus records 74 programs from pinned TypeScript
+5.9.3: 56 accept and 18 reject. Forty-one programs execute under Node, and
+forty-seven compile exact declaration references. ESM and CommonJS witnesses
+cover default expressions, anonymous function/class declarations, snapshot
+versus alias binding, named/star/namespace forwarding, live mutation, diamonds,
+explicit conflict resolution, cycles, evaluation order and imported identities.
+Default-expression origins, missing members/defaults, duplicate defaults,
+namespace writes, type/value boundaries and private identities retain exact
+primary and related diagnostics.
+
+On unchanged verified K.5.3 source `13079a4f3`, the frozen Linux replay records
+74 verdict/primary differences and 47 emission failures. Completeness and the
+live pinned recorder pass; all 41 reference programs execute successfully before
+BlueTS emission failures are collected. Three direct module-graph export tests
+fail, while declaration-only runtime authority remains refused. Format and
+both-crate all-target Clippy pass. All 217 backend hashes match. The shared
+corpus records 2,378 programs and 198 templates; all prior 2,304 observations
+remain unchanged. Embedded fixture roots alone are removed from two messages,
+matching the existing virtual module identity rule and retaining every code,
+position, related origin and verdict.
+
+Evidence: `/private/tmp/blueice-k14-linux/blueice-k61-baseline/`, including
+`report.json`, `rust-baseline-status.json`, `comparison.json`,
+`normalization-comparison.json`, backend/recorder source hashes and logs.
+Commit this failing replay before production; hold it locally until the leaf's
+implementation passes the complete K.0 gate. K.6.1 remains open.
+
+Two pinned observations constrain the implementation. Named namespace
+re-export property writes are accepted by the checker, while ordinary namespace
+import writes retain the readonly rejection. Separately, twelve isolated
+ES2020 default-class probes show that anonymous private-field declarations are
+accepted but fail under Node in ESM/CommonJS and both field modes; named
+private-field and anonymous public-field controls run normally. The generated
+JavaScript and Node errors are retained in `default-ctor-probes/`. The runtime
+matrix uses valid public-field witnesses; it does not weaken a Node comparison
+to accept invalid output. Preserve this measured private-field boundary while
+implementing supported defaults and re-exports.

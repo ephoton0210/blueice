@@ -79,6 +79,10 @@
       "message": "A parameter property may not be declared using a binding pattern."
     },
     {
+      "code": 1192,
+      "message": "Module '{0}' has no default export."
+    },
+    {
       "code": 1206,
       "message": "Decorators are not valid here."
     },
@@ -205,6 +209,10 @@
     {
       "code": 2305,
       "message": "Module '{0}' has no exported member '{1}'."
+    },
+    {
+      "code": 2308,
+      "message": "Module {0} has already exported a member named '{1}'. Consider explicitly re-exporting to resolve the ambiguity."
     },
     {
       "code": 2314,
@@ -437,6 +445,10 @@
     {
       "code": 2515,
       "message": "Non-abstract class '{0}' does not implement inherited abstract member {1} from class '{2}'."
+    },
+    {
+      "code": 2528,
+      "message": "A module cannot have multiple default exports."
     },
     {
       "code": 2540,
@@ -58290,6 +58302,2162 @@
           "length": 10,
           "line": 5,
           "column": 192
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-declarations-alias-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-declarations-alias-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-declarations-alias-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-declarations-alias-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-declarations-alias-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-declarations-alias-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-declarations-default-function-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-declarations-default-function-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-declarations-default-function-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-declarations-default-function-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-declarations-default-function-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-declarations-default-function-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-declarations-generic-ctor-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-declarations-generic-ctor-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-declarations-generic-ctor-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-declarations-generic-ctor-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-declarations-generic-ctor-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-declarations-generic-ctor-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-default-alias-duplicate-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-alias-duplicate-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-alias-duplicate-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2528,
+        "category": "error",
+        "message": "A module cannot have multiple default exports.",
+        "file": "typescript_oracle/modexport-default-alias-duplicate-error/main.ts",
+        "start": 238,
+        "length": 7,
+        "line": 5,
+        "column": 35,
+        "related": [
+          {
+            "code": 2753,
+            "category": "error",
+            "message": "Another export default is here.",
+            "file": "typescript_oracle/modexport-default-alias-duplicate-error/main.ts",
+            "start": 263,
+            "length": 5,
+            "line": 5,
+            "column": 60
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2528,
+          "category": "error",
+          "message": "A module cannot have multiple default exports.",
+          "file": "typescript_oracle/modexport-default-alias-duplicate-error/main.ts",
+          "start": 238,
+          "length": 7,
+          "line": 5,
+          "column": 35,
+          "related": [
+            {
+              "code": 2753,
+              "category": "error",
+              "message": "Another export default is here.",
+              "file": "typescript_oracle/modexport-default-alias-duplicate-error/main.ts",
+              "start": 263,
+              "length": 5,
+              "line": 5,
+              "column": 60
+            }
+          ]
+        },
+        {
+          "code": 2528,
+          "category": "error",
+          "message": "A module cannot have multiple default exports.",
+          "file": "typescript_oracle/modexport-default-alias-duplicate-error/main.ts",
+          "start": 263,
+          "length": 5,
+          "line": 5,
+          "column": 60,
+          "related": [
+            {
+              "code": 2752,
+              "category": "error",
+              "message": "The first export default is here.",
+              "file": "typescript_oracle/modexport-default-alias-duplicate-error/main.ts",
+              "start": 238,
+              "length": 7,
+              "line": 5,
+              "column": 35
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-default-anon-call-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-anon-call-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-anon-call-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2345,
+        "category": "error",
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "file": "typescript_oracle/modexport-default-anon-call-error/main.ts",
+        "start": 235,
+        "length": 5,
+        "line": 5,
+        "column": 32
+      },
+      "diagnostics": [
+        {
+          "code": 2345,
+          "category": "error",
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "typescript_oracle/modexport-default-anon-call-error/main.ts",
+          "start": 235,
+          "length": 5,
+          "line": 5,
+          "column": 32
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-default-async-fn/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-async-fn/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-async-fn/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-default-call/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-call/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-call/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-default-conditional/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-conditional/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-conditional/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-default-ctor-field-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-ctor-field-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-ctor-field-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/modexport-default-ctor-field-error/main.ts",
+        "start": 239,
+        "length": 3,
+        "line": 5,
+        "column": 36
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/modexport-default-ctor-field-error/main.ts",
+          "start": 239,
+          "length": 3,
+          "line": 5,
+          "column": 36
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-default-duplicate-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-duplicate-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-duplicate-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2528,
+        "category": "error",
+        "message": "A module cannot have multiple default exports.",
+        "file": "typescript_oracle/modexport-default-duplicate-error/main.ts",
+        "start": 204,
+        "length": 17,
+        "line": 5,
+        "column": 1,
+        "related": [
+          {
+            "code": 2753,
+            "category": "error",
+            "message": "Another export default is here.",
+            "file": "typescript_oracle/modexport-default-duplicate-error/main.ts",
+            "start": 222,
+            "length": 17,
+            "line": 5,
+            "column": 19
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 2528,
+          "category": "error",
+          "message": "A module cannot have multiple default exports.",
+          "file": "typescript_oracle/modexport-default-duplicate-error/main.ts",
+          "start": 204,
+          "length": 17,
+          "line": 5,
+          "column": 1,
+          "related": [
+            {
+              "code": 2753,
+              "category": "error",
+              "message": "Another export default is here.",
+              "file": "typescript_oracle/modexport-default-duplicate-error/main.ts",
+              "start": 222,
+              "length": 17,
+              "line": 5,
+              "column": 19
+            }
+          ]
+        },
+        {
+          "code": 2528,
+          "category": "error",
+          "message": "A module cannot have multiple default exports.",
+          "file": "typescript_oracle/modexport-default-duplicate-error/main.ts",
+          "start": 222,
+          "length": 17,
+          "line": 5,
+          "column": 19,
+          "related": [
+            {
+              "code": 2752,
+              "category": "error",
+              "message": "The first export default is here.",
+              "file": "typescript_oracle/modexport-default-duplicate-error/main.ts",
+              "start": 204,
+              "length": 17,
+              "line": 5,
+              "column": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-default-local-alias/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-local-alias/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-local-alias/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-default-type-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-type-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-type-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/modexport-default-type-error/main.ts",
+        "start": 241,
+        "length": 3,
+        "line": 5,
+        "column": 38
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/modexport-default-type-error/main.ts",
+          "start": 241,
+          "length": 3,
+          "line": 5,
+          "column": 38
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-default-unknown-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-default-unknown-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-default-unknown-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2304,
+        "category": "error",
+        "message": "Cannot find name 'missing'.",
+        "file": "typescript_oracle/modexport-default-unknown-error/main.ts",
+        "start": 219,
+        "length": 7,
+        "line": 5,
+        "column": 16
+      },
+      "diagnostics": [
+        {
+          "code": 2304,
+          "category": "error",
+          "message": "Cannot find name 'missing'.",
+          "file": "typescript_oracle/modexport-default-unknown-error/main.ts",
+          "start": 219,
+          "length": 7,
+          "line": 5,
+          "column": 16
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-named-default/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-named-default/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-named-default/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-named-missing-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-named-missing-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-named-missing-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2305,
+        "category": "error",
+        "message": "Module '\"./base.ts\"' has no exported member 'missing'.",
+        "file": "typescript_oracle/modexport-named-missing-error/main.ts",
+        "start": 212,
+        "length": 7,
+        "line": 5,
+        "column": 9
+      },
+      "diagnostics": [
+        {
+          "code": 2305,
+          "category": "error",
+          "message": "Module '\"./base.ts\"' has no exported member 'missing'.",
+          "file": "typescript_oracle/modexport-named-missing-error/main.ts",
+          "start": 212,
+          "length": 7,
+          "line": 5,
+          "column": 9
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-named-mutation-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-named-mutation-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-named-mutation-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2632,
+        "category": "error",
+        "message": "Cannot assign to 'value' because it is an import.",
+        "file": "typescript_oracle/modexport-named-mutation-error/main.ts",
+        "start": 239,
+        "length": 5,
+        "line": 5,
+        "column": 36
+      },
+      "diagnostics": [
+        {
+          "code": 2632,
+          "category": "error",
+          "message": "Cannot assign to 'value' because it is an import.",
+          "file": "typescript_oracle/modexport-named-mutation-error/main.ts",
+          "start": 239,
+          "length": 5,
+          "line": 5,
+          "column": 36
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-named-private-identity-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-named-private-identity-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-named-private-identity-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'Right' is not assignable to type 'Left'.\n  Types have separate declarations of a private property 'value'.",
+        "file": "typescript_oracle/modexport-named-private-identity-error/main.ts",
+        "start": 251,
+        "length": 3,
+        "line": 5,
+        "column": 48
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'Right' is not assignable to type 'Left'.\n  Types have separate declarations of a private property 'value'.",
+          "file": "typescript_oracle/modexport-named-private-identity-error/main.ts",
+          "start": 251,
+          "length": 3,
+          "line": 5,
+          "column": 48
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-named-type-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-named-type-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-named-type-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/modexport-named-type-error/main.ts",
+        "start": 245,
+        "length": 3,
+        "line": 5,
+        "column": 42
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/modexport-named-type-error/main.ts",
+          "start": 245,
+          "length": 3,
+          "line": 5,
+          "column": 42
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-named-type-value-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-named-type-value-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-named-type-value-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2693,
+        "category": "error",
+        "message": "'Item' only refers to a type, but is being used as a value here.",
+        "file": "typescript_oracle/modexport-named-type-value-error/main.ts",
+        "start": 250,
+        "length": 4,
+        "line": 5,
+        "column": 47
+      },
+      "diagnostics": [
+        {
+          "code": 2693,
+          "category": "error",
+          "message": "'Item' only refers to a type, but is being used as a value here.",
+          "file": "typescript_oracle/modexport-named-type-value-error/main.ts",
+          "start": 250,
+          "length": 4,
+          "line": 5,
+          "column": 47
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-named-types/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-named-types/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-named-types/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-ns-import-write-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-ns-import-write-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-ns-import-write-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2540,
+        "category": "error",
+        "message": "Cannot assign to 'value' because it is a read-only property.",
+        "file": "typescript_oracle/modexport-ns-import-write-error/main.ts",
+        "start": 244,
+        "length": 5,
+        "line": 5,
+        "column": 41
+      },
+      "diagnostics": [
+        {
+          "code": 2540,
+          "category": "error",
+          "message": "Cannot assign to 'value' because it is a read-only property.",
+          "file": "typescript_oracle/modexport-ns-import-write-error/main.ts",
+          "start": 244,
+          "length": 5,
+          "line": 5,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-ns-missing-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-ns-missing-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-ns-missing-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2339,
+        "category": "error",
+        "message": "Property 'missing' does not exist on type 'typeof import(\"<fixtures>/typescript_oracle/modexport-ns-missing-error/base\")'.",
+        "file": "typescript_oracle/modexport-ns-missing-error/main.ts",
+        "start": 241,
+        "length": 7,
+        "line": 5,
+        "column": 38
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "category": "error",
+          "message": "Property 'missing' does not exist on type 'typeof import(\"<fixtures>/typescript_oracle/modexport-ns-missing-error/base\")'.",
+          "file": "typescript_oracle/modexport-ns-missing-error/main.ts",
+          "start": 241,
+          "length": 7,
+          "line": 5,
+          "column": 38
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-ns-type-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-ns-type-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-ns-type-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2322,
+        "category": "error",
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "file": "typescript_oracle/modexport-ns-type-error/main.ts",
+        "start": 243,
+        "length": 3,
+        "line": 5,
+        "column": 40
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "category": "error",
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "typescript_oracle/modexport-ns-type-error/main.ts",
+          "start": 243,
+          "length": 3,
+          "line": 5,
+          "column": 40
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-ns-write-accepted/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-ns-write-accepted/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-ns-write-accepted/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-anon-ctor-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-anon-ctor-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-anon-ctor-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-anon-ctor-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-anon-ctor-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-anon-ctor-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-anon-fn-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-anon-fn-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-anon-fn-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-anon-fn-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-anon-fn-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-anon-fn-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-arrow-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-arrow-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-arrow-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-arrow-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-arrow-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-arrow-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-ctor-chain-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-ctor-chain-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-ctor-chain-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-ctor-chain-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-ctor-chain-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-ctor-chain-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-cycle-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-cycle-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-cycle-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-cycle-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-cycle-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-cycle-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-default-alias-live-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-default-alias-live-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-default-alias-live-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-default-alias-live-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-default-alias-live-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-default-alias-live-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-es2020-ctor-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-es2020-ctor-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs",
+        "--target",
+        "ES2020"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-es2020-ctor-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-es2020-ctor-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-es2020-ctor-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--target",
+        "ES2020"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-es2020-ctor-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-evaluation-once-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-evaluation-once-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-evaluation-once-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-evaluation-once-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-evaluation-once-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-evaluation-once-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-generic-fn-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-generic-fn-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-generic-fn-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-generic-fn-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-generic-fn-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-generic-fn-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-named-ctor-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-named-ctor-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-named-ctor-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-named-ctor-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-named-ctor-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-named-ctor-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-named-live-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-named-live-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-named-live-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-named-live-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-named-live-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-named-live-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-ns-ctor-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-ns-ctor-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-ns-ctor-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-ns-ctor-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-ns-ctor-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-ns-ctor-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-ns-live-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-ns-live-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-ns-live-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-ns-live-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-ns-live-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-ns-live-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-number-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-number-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-number-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-number-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-number-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-number-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-record-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-record-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-record-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-record-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-record-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-record-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-snapshot-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-snapshot-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-snapshot-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-snapshot-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-snapshot-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-snapshot-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-star-default-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-star-default-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-star-default-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-star-default-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-star-default-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-star-default-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-star-diamond-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-star-diamond-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-star-diamond-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-star-diamond-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-star-diamond-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-star-diamond-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-star-explicit-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-star-explicit-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-star-explicit-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-star-explicit-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-star-explicit-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-star-explicit-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-star-live-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-star-live-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-star-live-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-star-live-esm/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-star-live-esm/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-star-live-esm/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-runtime-star-own-cjs/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-runtime-star-own-cjs/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit",
+        "--module",
+        "commonjs"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-runtime-star-own-cjs/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-star-conflict-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-star-conflict-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-star-conflict-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2308,
+        "category": "error",
+        "message": "Module \"./left.ts\" has already exported a member named 'value'. Consider explicitly re-exporting to resolve the ambiguity.",
+        "file": "typescript_oracle/modexport-star-conflict-error/main.ts",
+        "start": 231,
+        "length": 27,
+        "line": 5,
+        "column": 28
+      },
+      "diagnostics": [
+        {
+          "code": 2308,
+          "category": "error",
+          "message": "Module \"./left.ts\" has already exported a member named 'value'. Consider explicitly re-exporting to resolve the ambiguity.",
+          "file": "typescript_oracle/modexport-star-conflict-error/main.ts",
+          "start": 231,
+          "length": 27,
+          "line": 5,
+          "column": 28
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-star-default-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-star-default-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-star-default-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 1192,
+        "category": "error",
+        "message": "Module '\"<fixtures>/typescript_oracle/modexport-star-default-error/barrel\"' has no default export.",
+        "file": "typescript_oracle/modexport-star-default-error/main.ts",
+        "start": 211,
+        "length": 5,
+        "line": 5,
+        "column": 8,
+        "related": [
+          {
+            "code": 1195,
+            "category": "error",
+            "message": "'export *' does not re-export a default.",
+            "file": "typescript_oracle/modexport-star-default-error/barrel.ts",
+            "start": 204,
+            "length": 26,
+            "line": 5,
+            "column": 1
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "code": 1192,
+          "category": "error",
+          "message": "Module '\"<fixtures>/typescript_oracle/modexport-star-default-error/barrel\"' has no default export.",
+          "file": "typescript_oracle/modexport-star-default-error/main.ts",
+          "start": 211,
+          "length": 5,
+          "line": 5,
+          "column": 8,
+          "related": [
+            {
+              "code": 1195,
+              "category": "error",
+              "message": "'export *' does not re-export a default.",
+              "file": "typescript_oracle/modexport-star-default-error/barrel.ts",
+              "start": 204,
+              "length": 26,
+              "line": 5,
+              "column": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-star-disjoint/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-star-disjoint/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-star-disjoint/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-star-missing-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-star-missing-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-star-missing-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2305,
+        "category": "error",
+        "message": "Module '\"./barrel.ts\"' has no exported member 'missing'.",
+        "file": "typescript_oracle/modexport-star-missing-error/main.ts",
+        "start": 212,
+        "length": 7,
+        "line": 5,
+        "column": 9
+      },
+      "diagnostics": [
+        {
+          "code": 2305,
+          "category": "error",
+          "message": "Module '\"./barrel.ts\"' has no exported member 'missing'.",
+          "file": "typescript_oracle/modexport-star-missing-error/main.ts",
+          "start": 212,
+          "length": 7,
+          "line": 5,
+          "column": 9
+        }
+      ]
+    },
+    {
+      "id": "module-exports:modexport-star-types/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-star-types/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "accept",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-star-types/main.ts"
+      ],
+      "accepts": true,
+      "first": null,
+      "diagnostics": []
+    },
+    {
+      "id": "module-exports:modexport-unknown-module-error/main.ts",
+      "matrix": "module-exports",
+      "entry": "modexport-unknown-module-error/main.ts",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--noEmit"
+      ],
+      "verdict": "reject",
+      "replayChecking": "strict",
+      "inputs": [
+        "typescript_oracle/modexport-unknown-module-error/main.ts"
+      ],
+      "accepts": false,
+      "first": {
+        "code": 2792,
+        "category": "error",
+        "message": "Cannot find module './missing.ts'. Did you mean to set the 'moduleResolution' option to 'nodenext', or to add aliases to the 'paths' option?",
+        "file": "typescript_oracle/modexport-unknown-module-error/main.ts",
+        "start": 218,
+        "length": 14,
+        "line": 5,
+        "column": 15
+      },
+      "diagnostics": [
+        {
+          "code": 2792,
+          "category": "error",
+          "message": "Cannot find module './missing.ts'. Did you mean to set the 'moduleResolution' option to 'nodenext', or to add aliases to the 'paths' option?",
+          "file": "typescript_oracle/modexport-unknown-module-error/main.ts",
+          "start": 218,
+          "length": 14,
+          "line": 5,
+          "column": 15
         }
       ]
     },
