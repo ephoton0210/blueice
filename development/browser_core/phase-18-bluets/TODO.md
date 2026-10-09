@@ -18,7 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current gate: M8 workspace and complete hosted CI; next implementation leaf is K.7.1.** Sections A to J are complete (summarized below); J.6 closed in its
+**Current leaf: K.7.1 target emission (M9). M8 workspace and complete hosted CI
+are verified on `1f76ff28c`.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -488,18 +489,24 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
 - [x] **K.6.R.1 Split module-declaration AST records and declaration emission.** After the verified K.6.1 implementation commit/push, move those responsibilities out of `parser.rs` (1,207 lines) and `emitter.rs` (1,208 lines), preserving the public API, emission and source provenance. Run K.0's complete two-crate gate, then make a separate English refactor commit and push before K.6.2.
   - *Verified (2026-10-09):* Module records retain their public re-exports in `parser.rs`; declaration emission and its export/type-parameter helpers move to `emitter/declarations.rs`. Mechanical comparison preserves every AST field, declaration code body and string literal. Source sizes are parser 1,150, module records 68, emitter 863 and declarations 357 lines; all BlueTS production sources stay below 1,200. The complete frozen four-file K.0 gate passes format, both-crate all-target Clippy with warnings denied and all 1,169 tests in 83 groups, including every one of the 150 ignored oracles in 44 suite files. All source hashes match. Evidence: `/private/tmp/blueice-k14-linux/blueice-k6-refactor-final-{status,report}.json`, logs/hashes and `blueice-k6-refactor-mechanical-report.json`. Refusal inventory regenerated to 160 sites in ten areas. The refactor gets its own commit/push; K.6.2/K.6.3 and hosted complete CI remain open.
 
-**M8 final verification remains open.** K.6.3 `e75d62128` passes the complete
-Linux workspace gate: all-target build, 6,859 tests in 504 groups, three Intl
-Node matrices, all-target workspace Clippy and format; all frozen inputs match.
-Its separate K.0 gate runs every 158 BlueTS/bridge oracle (1,212 passing tests).
-After the cold-font test baseline `a8083c019`, candidate `930a2e574` initializes
-only requested font faces and passes 567 font/layout/raster/engine tests,
-format and all-target Clippy. Font selection, metrics and navigation assertions/
-timeouts are preserved. The candidate's final-source workspace and original
-29-job hosted CI, including coverage, are pending. A successful isolated
-macOS font diagnostic does not establish the full-workload timeout cause.
-See PLAN.md and `blueice-k63-workspace-report.json` /
-`blueice-font-cold-first-report.json` for the exact completed scopes.
+**M8 final verification is complete (2026-10-10).** Final source `1f76ff28c`
+passes the frozen Linux workspace gate: all-target build, 6,861 tests in 504
+groups, three Intl Node matrices, all-target workspace Clippy and format;
+all 5,493 backend/build inputs match. K.6.3's separate K.0 gate runs every
+158 BlueTS/bridge oracle (1,212 passing tests). Original final-source CI
+[37949582570](https://github.com/ephoton0210/blueice/actions/runs/37949582570)
+passes all 29 jobs, with all required build/test/lint/Intl/format steps across
+25 platforms, both pinned oracle jobs, coverage and the final gate. Each
+hosted oracle executes all 158 tests with zero failures and zero ignored.
+Workspace line coverage is 94.77% (201,590 lines, 10,552 missed); independent
+BlueJS is 99.53% (81,248 lines, 384 missed), with no new coverage exclusion.
+The per-face font change preserves selection, metrics and navigation
+assertions/timeouts. Earlier K.6.3 source `e75d62128` also passes all 29 original
+CI jobs. Successful isolated/full font diagnostics do not establish the prior
+timeout's inner cause or prove the font change necessary. See PLAN.md and
+`blueice-font-cold-workspace-report.json`,
+`blueice-font-cold-final-source-ci-final-report.json` and the hosted oracle/
+coverage/required-step proofs. K.7 through K.10 remain open.
 
 ### K.7 Emit breadth — M9 — gaps G-E1 to G-E4
 
