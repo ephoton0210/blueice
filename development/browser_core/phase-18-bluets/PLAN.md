@@ -6723,7 +6723,7 @@ zero ignored), including every core-binary navigation/session test. Both
 changed file hashes match, and every other backend/build input is byte-identical
 to the completed K.6.3 workspace gate. Evidence:
 `blueice-font-cold-first-{status,report,source-hashes}.json` and logs.
-The production font module is 256 lines, below the refactor review threshold.
+The production font module is 257 lines, below the refactor review threshold.
 Commit/push this tested candidate, then verify its exact final source through
 the complete workspace and original 29-job CI. This reduces measured unused
 font work; the unresolved full macOS workload still needs final hosted evidence.
