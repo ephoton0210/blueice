@@ -442,7 +442,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
                 "--gatekeeper-socket",
                 gatekeeper_path.to_str().unwrap(),
             ])
-            .stderr(Stdio::piped())
+            .stderr(Stdio::inherit())
             .spawn()
             .unwrap()
     };
@@ -454,7 +454,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
         .set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
-    navigate_default_tab(&mut frontend, format!("http://{first_addr}"));
+    navigate_default_tab(&mut frontend, format!("http://{first_addr}"), "first");
     let first_dom = read_tab_dom(&mut frontend, 1, 1);
     assert!(first_dom.contains("first"));
 
@@ -677,7 +677,11 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
         ScriptReply::Ack
     );
     assert!(read_tab_dom(&mut frontend, 1, 51).contains("replaced subtree"));
-    navigate_default_tab(&mut frontend, format!("http://{replacement_addr}"));
+    navigate_default_tab(
+        &mut frontend,
+        format!("http://{replacement_addr}"),
+        "replacement",
+    );
     let replacement_dom = read_tab_dom(&mut frontend, 1, 6);
     assert!(replacement_dom.contains("replacement"));
     assert!(matches!(
@@ -729,7 +733,11 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
         .set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
     blueice_ipc::client_handshake(&mut successor_frontend).unwrap();
-    navigate_default_tab(&mut successor_frontend, format!("http://{successor_addr}"));
+    navigate_default_tab(
+        &mut successor_frontend,
+        format!("http://{successor_addr}"),
+        "successor",
+    );
     let successor_dom = read_tab_dom(&mut successor_frontend, 1, 9);
     assert!(successor_dom.contains("successor"));
     let successor_target = ScriptDocumentTarget {
