@@ -31,7 +31,7 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
             "--frame-dir",
             frame_dir.to_str().unwrap(),
         ])
-        .stderr(Stdio::piped())
+        .stderr(Stdio::inherit())
         .spawn()
         .expect("failed to spawn blueice-core with its compiler listener");
 
@@ -462,7 +462,7 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
             gatekeeper_path.to_str().unwrap(),
             "--inline-bluejs",
         ])
-        .stderr(Stdio::piped())
+        .stderr(Stdio::inherit())
         .spawn()
         .expect("failed to spawn blueice-core");
 
