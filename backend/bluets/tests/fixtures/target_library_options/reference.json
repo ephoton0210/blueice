@@ -462,6 +462,20 @@
       },
       "accepts": true,
       "codes": []
+    },
+    {
+      "id": "es5-symbol-primitive-interface",
+      "source": "export function stringify(value: symbol): string { return value.toString(); }",
+      "options": {
+        "target": "es5",
+        "module": "es2022",
+        "lib": [
+          "es5"
+        ],
+        "strict": true
+      },
+      "accepts": true,
+      "codes": []
     }
   ]
 }

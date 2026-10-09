@@ -133,3 +133,26 @@ fn library_case_and_es6_alias_are_normalized_in_show_config() {
     assert_eq!(shown["compilerOptions"]["lib"], json!(["es6", "es2020"]));
     assert_eq!(shown["compilerOptions"]["downlevelIteration"], true);
 }
+
+#[test]
+#[ignore = "requires pinned TypeScript 5.9.3 and Node"]
+fn library_reference_matches_the_live_pinned_typescript_oracle() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let result = Command::new("node")
+        .arg(root.join(
+            "development/browser_core/phase-18-bluets/tools/record_target_library_options.cjs",
+        ))
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let actual: Value = serde_json::from_slice(&result.stdout).unwrap();
+    let expected: Value = serde_json::from_str(include_str!(
+        "fixtures/target_library_options/reference.json"
+    ))
+    .unwrap();
+    assert_eq!(actual, expected);
+}

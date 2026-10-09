@@ -7166,3 +7166,18 @@ export and edition-control tests each fail as expected, while the live Acorn
 context recorder passes. All fifteen new native mismatches are the two missing
 named async export forms; the previous 341 decisions still match. Evidence:
 `blueice-k71-named-async-baseline-status.json` and frozen source hashes/logs.
+
+### K.7.1 ES5 primitive-symbol library correction baseline (2026-10-10)
+
+Read-only AST inspection of the installed pinned TypeScript 5.9.3 library proves
+that ES5 already supplies the primitive `Symbol` interface's `toString` and
+`valueOf` types; the global Symbol factory is a separate ES2015 addition. The
+new owned profile incorrectly placed both at ES2015. Before correcting it, a
+public CLI replay of an ES5-lib function accepting `symbol` fails with BTS3003
+for `value.toString()`, whereas pinned TypeScript accepts with no diagnostics.
+The exact CLI binary SHA is recorded in
+`blueice-k71-es5-symbol-type-red-report.json`; no Cargo rebuild or source change
+occurs during this replay. This additional accepted case is committed before
+the profile fix, growing the library record from 29 to 30 cases (20 accept/ten
+reject), with all original observations unchanged. The live pinned recorder
+and public reference loop cover the additional case.
