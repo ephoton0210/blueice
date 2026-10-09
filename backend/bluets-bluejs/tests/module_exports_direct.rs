@@ -6,7 +6,7 @@
 
 use blueice_bluejs::{Value, Vm};
 use blueice_bluets::{CheckingOptions, CompilerOptions, MapLoader, ModuleSource};
-use blueice_bluets_bluejs::compile_direct_module_graph;
+use blueice_bluets_bluejs::{compile_direct_module_graph, BridgeError};
 
 fn options() -> CompilerOptions {
     CompilerOptions {
@@ -51,7 +51,6 @@ fn anonymous_default_names_and_identifier_snapshots_match_module_semantics() {
     for base in [
         "export default function(value: number): number { return value; }",
         "export default class { constructor(public value: number) {} }",
-        "export default (value: number): number => value;",
     ] {
         let value = run([
             (
@@ -62,6 +61,22 @@ fn anonymous_default_names_and_identifier_snapshots_match_module_semantics() {
         ]);
         assert_eq!(value, Value::String("default".into()));
     }
+    // Arrow expressions retain the existing direct-profile refusal. Emitted
+    // module defaults cover them through the pinned Node oracle instead.
+    let loader = MapLoader::from([
+        ModuleSource::new(
+            "graph/main.ts",
+            "import value from './base.ts'; value.name;",
+        ),
+        ModuleSource::new(
+            "graph/base.ts",
+            "export default (value: number): number => value;",
+        ),
+    ]);
+    assert!(matches!(
+        compile_direct_module_graph("graph/main.ts", &loader, options()),
+        Err(BridgeError::UnsupportedRuntimeTarget { .. })
+    ));
     for export in ["export default value;", "export {value as default};"] {
         let base = format!("let value: number = 1; {export} value = 2;");
         assert_eq!(
