@@ -578,6 +578,62 @@
       "sources": [
         "main.ts"
       ]
+    },
+    "modambient-global-imported-good-es2022": {
+      "files": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-global-imported-bad-es2022": {
+      "files": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ],
+      "runtime": false,
+      "declaration": false
+    },
+    "modambient-global-imported-good-commonjs": {
+      "files": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ],
+      "runtime": true,
+      "declaration": true
+    },
+    "modambient-global-imported-bad-commonjs": {
+      "files": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ],
+      "sources": [
+        "main.ts",
+        "augment.d.ts",
+        "dep.ts"
+      ],
+      "runtime": false,
+      "declaration": false
     }
   }
 }

@@ -6345,3 +6345,39 @@ source identities, owner-canonical resolution bounds, work budgets, static
 module surfaces and fingerprint/cache observations. Ambient and augmented
 surfaces must remain separate from runtime bindings and host capabilities.
 K.6.3 and the hosted full-CI gate remain open.
+
+
+### K.6.3 imported-global regression supplement (2026-10-09)
+
+The integrated baseline follows production `c1b651ee`. Four further pinned
+programs retain an imported interface used inside a global augmentation,
+in ES2022 and CommonJS, with accepted and rejected assignments. TypeScript
+accepts both good programs, their Node executions print `42`, and their
+declarations agree. The current uncommitted implementation draft rejects
+both good programs and diagnoses both bad programs at the unresolved import
+alias rather than the nested `number` property. Commit these test inputs
+before repairing that declaration-context lookup.
+
+All 102 earlier TypeScript fixture sources now carry the required MPL-2.0
+header. Their program bodies are byte-identical. Both pinned recorders
+regenerate the four golden outputs; after accounting for the header's four
+lines and 204 UTF-16 units, every previous 2,512 shared observation is
+unchanged. The original 2,464 non-ambient observations and all 216 templates
+are unchanged without normalization. The ambient corpus has 52 programs
+(30 accepted, 22 rejected); the shared corpus has 2,516 programs. Independent
+and shared primary/related observations agree after fixture-path rendering.
+
+The frozen 5,365-input Linux draft gate passes format and BlueTS/bridge
+all-target Clippy with warnings denied. All four ambient tests run, including
+both ignored oracles: completeness and the recorder pass, while public
+checking and execution/declaration comparison fail. Checking reports 36
+case differences. Shared replay reports 44 diagnostic and 14 presentation
+differences; its completeness and presentation controls pass. All source
+hashes match. These are failing-baseline measurements, not completed K.0
+validation. Evidence: `/private/tmp/blueice-k14-linux/blueice-k63-context-red-{status,report}.json`,
+`blueice-k63-context-corpus-comparison.json`,
+`blueice-k63-fixture-header-proof.json`, generated outputs and frozen logs.
+
+This supplement commits only tests, generated observations and plans. The
+production draft remains uncommitted, K.6.3 remains open, and the baseline
+stays unpushed until the complete K.0 gate passes.
