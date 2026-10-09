@@ -61,6 +61,8 @@ fn fonts() -> &'static FontSet {
     static FONTS: OnceLock<FontSet> = OnceLock::new();
     FONTS.get_or_init(|| {
         let load = |bytes| {
+            #[cfg(test)]
+            cold_start::record_parsed_font(bytes);
             fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
                 .expect("bundled font must parse")
         };
@@ -236,3 +238,7 @@ mod tests {
         assert_ne!(italic, bold_italic);
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/cold_start/mod.rs"]
+mod cold_start;

@@ -6675,3 +6675,34 @@ font-parse tracing is running in `37944681469`; diagnostic workflows are not
 merged into production. See `blueice-k6-stage-workspace-diagnostic-macos26-
 durations.json`. Original normal final-source CI remains 27/29, with the
 macOS 15 navigation failure and final CI gate unresolved.
+
+
+### M8 final K.6.3 workspace and cold-font baseline (2026-10-09)
+
+Implementation `e75d6212842b76aad43f0ce52f914848843dbe71` passes the
+complete frozen Linux workspace gate: all-target build, 6,859 tests in 504
+groups (zero failures, 162 ignored), three explicit Intl Node differential
+matrices, all-target workspace Clippy with warnings denied and format.
+All 5,492 backend/build hashes match. Test262 is exactly
+`72faf8ec1445c55149615e8b35187830783aba1a`, with LF/CR/CRLF bytes verified;
+the fetched WPT revision is `fc4dce436b08d0bfcec2da90a433b26dc5323870`.
+The separately completed K.0 gate ran all 158 BlueTS/bridge ignored oracles.
+Evidence: `blueice-k63-workspace-{status,report}.json`, frozen hashes/logs.
+Original 29-job hosted CI `37944994980` is still running; M8 remains open.
+
+Isolated original-profile macOS 15 font diagnostic `37944681469` passes
+all 20 core-binary tests. Its cold document applications take 1,096–1,314 ms;
+regular parsing is 66–69 ms, while CJK fallback takes 845–1,065 ms. This does
+not reproduce the full-workload 40–43-second failure. Full-workload font
+tracing `37946351718` is queued. Do not claim a proven inner failure cause.
+
+Two fresh-process public font-measurement controls record the actual bundled
+font parses without timing thresholds. On unchanged production, Latin loads
+all five faces instead of regular alone; mixed Latin/CJK loads all five instead
+of its regular primary and fallback. The frozen test-only Linux replay passes
+format/all-target font Clippy; 12 existing tests pass and both new controls
+fail (actual mask 31, expected 1/17). All other backend/build inputs remain
+byte-identical. Evidence: `blueice-font-cold-red-{status,source-hashes}.json`
+and logs. Commit this failing baseline before per-face lazy initialization.
+This candidate reduces unnecessary cold work while preserving font data,
+selection, metrics and fallback; hosted full CI must establish its outcome.
