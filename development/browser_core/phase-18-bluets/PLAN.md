@@ -7327,3 +7327,20 @@ compiler rlib outside the Cargo target while the old ignored replay runs.
 The ordinary integration regression compares all codes, starts, lengths and
 complete messages, with a live TypeScript recorder check. Commit this baseline
 before changing call spread expansion or the original owned Array declarations.
+
+### K.7.1 Rest parameter declaration failing baseline (2026-10-10)
+
+The rest-array bridge fixture exports an annotated rest function and observes
+its fold result, source evaluation count, member call and runtime arity.
+`blueice-k71-rest-array-implementation-second-status.json` (7,017 files)
+passes format, three-crate all-target Clippy and all context/library tests,
+including the eight pinned array/rest sources, six receiver boundary sources,
+eight default generator execution/declaration combinations and the recovered
+complete `call` receiver messages. Both older frontend regressions pass.
+
+Both original receiver runtime tests and the two direct array-rest programs
+pass. The new array runtime oracle matches native TypeScript/Node observations
+[42,1,42,0], but its exact declaration comparison fails. Named-function
+declaration emission omits the rest parameter's ellipsis. Commit this runtime/
+declaration failing replay before correcting that emission path. Keep all
+production changes uncommitted and unpushed until the complete K.0 leaf gate.
