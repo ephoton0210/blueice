@@ -365,6 +365,72 @@ fn syntax(file: &Path, target: &str, module: &str) -> Output {
 
 #[test]
 #[ignore = "requires pinned TypeScript 5.9.3, Acorn 8.15.0 and Node"]
+fn exponentiation_crosses_the_es2016_syntax_boundary_with_pinned_execution() {
+    let oracle = env::var_os("BLUEICE_BLUETSC_ORACLE").expect("set BLUEICE_BLUETSC_ORACLE");
+    let version = Command::new(&oracle).arg("--version").output().unwrap();
+    assert!(version.status.success(), "{}", report(&version));
+    assert_eq!(
+        String::from_utf8_lossy(&version.stdout).trim(),
+        "Version 5.9.3"
+    );
+    let root = temporary_root("power");
+    let cases: Vec<_> = cases()
+        .into_iter()
+        .filter(|case| {
+            case["form"] == "power" && matches!(case["target"].as_str(), Some("ES2015" | "ES2016"))
+        })
+        .collect();
+    assert_eq!(cases.len(), 4);
+    let mut failures = Vec::new();
+    for (index, case) in cases.iter().enumerate() {
+        let directory = root.join(index.to_string());
+        let config = prepare(case, &directory, true);
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .arg("--project")
+            .arg(config)
+            .output()
+            .unwrap();
+        assert!(built.status.success(), "{}", report(&built));
+        let flags: Vec<_> = case["flags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap())
+            .collect();
+        let recorded = Command::new(&oracle)
+            .current_dir(&directory)
+            .arg("main.ts")
+            .args(flags)
+            .args(["--declaration", "--outDir", "oracle"])
+            .output()
+            .unwrap();
+        assert!(recorded.status.success(), "{}", report(&recorded));
+        for emitter in ["blue", "oracle"] {
+            let file = directory.join(emitter).join("main.js");
+            let parsed = syntax(&file, case["target"].as_str().unwrap(), module_kind(case));
+            if !parsed.status.success() {
+                failures.push(format!("{} {emitter}: {}", case["entry"], report(&parsed)));
+            }
+            let executed = Command::new("node").arg(file).output().unwrap();
+            assert!(executed.status.success(), "{}", report(&executed));
+            assert_eq!(
+                String::from_utf8_lossy(&executed.stdout).replace("\r\n", "\n"),
+                case["stdout"].as_str().unwrap()
+            );
+            assert_eq!(
+                fs::read_to_string(directory.join(emitter).join("main.d.ts"))
+                    .unwrap()
+                    .replace("\r\n", "\n"),
+                case["declaration_text"].as_str().unwrap()
+            );
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+#[ignore = "requires pinned TypeScript 5.9.3, Acorn 8.15.0 and Node"]
 fn target_outputs_preserve_execution_declarations_and_syntax_edition() {
     // Regenerate all reference observations before trusting the frozen expectations.
     recorded_targets_match_pinned_typescript();

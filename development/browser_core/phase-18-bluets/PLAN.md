@@ -7215,3 +7215,22 @@ including the valid function-valued property confirmed by the actual compiler.
 Evidence: `blueice-k71-object-context-{input,reference}.json`,
 `blueice-k71-object-context-baseline-status.json` and its frozen hashes/log.
 K.7.1 remains open, and its production changes remain uncommitted/unpushed.
+
+### K.7.1 exponentiation syntax boundary failing replay (2026-10-10)
+
+The existing 638-case pinned target corpus supplies four unchanged power
+programs at ES2015/ES2016 in CommonJS/ES2022 modules. A focused ignored test
+builds BlueTS and actual TypeScript 5.9.3, checks both real programs with pinned
+Acorn, executes both under Node and compares every emitted declaration. Before
+power lowering, both ES2015 BlueTS outputs fail the edition parser; all eight
+Node/declaration comparisons and both ES2016 syntax controls pass. The failing
+replay is committed before adding the transform. Format and three-crate
+all-target Clippy pass. Evidence: `blueice-k71-power-baseline-status.json`, its
+frozen 7,000-file hashes and `blueice-k71-power-baseline-power.log`.
+
+The object-context correction separately passes all ten exact receiver
+controls and the live pinned oracle, 36 focused tests and 241 units. All 22
+protocol projects now match exact declarations. Both original v1 library
+source files remain byte-identical; new versioned supplemental declarations
+and v2 identity include well-known Symbol keys and invalidate their actual
+source fingerprint. Complete target emission and K.0 remain open.
