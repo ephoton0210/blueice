@@ -7256,3 +7256,21 @@ All 241 BlueTS units pass. A complete earlier 7,001-file ordinary replay passes
 shared diagnostic matrices. The subsequent optional-call-receiver correction
 reduces the canonical primary differences to 178. No complete K.7.1 or K.0
 success is claimed, and production stays uncommitted/unpushed.
+
+### K.7.1 Explicit receiver parameter failing baseline (2026-10-10)
+
+Thirteen original function-context sources record TypeScript 5.9.3 diagnostics,
+including object methods with tuple/array spread, named and function-valued
+`this` parameters, callable annotations, class methods, incompatible receivers,
+misplaced receiver parameters and the arrow prohibition. The public replay
+compares every primary code, source start/length and full message. A nested
+function returned by an arrow retains its own implicit receiver diagnostic.
+
+Linux frozen gate `blueice-k71-explicit-this-baseline-status.json` (7,008 files)
+passes format, three-crate all-target Clippy and the live TypeScript recorder;
+the public replay fails on twelve sources because receiver parameters are
+refused. This baseline is committed before changing their parser/checker/
+emitter/runtime representation. K.7.1 production remains uncommitted, unpushed
+and incomplete. The preceding frozen target replay has 132 primary differences
+in six forms, three failing ordinary target tests and all 22 protocol
+declarations passing.
