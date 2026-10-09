@@ -289,7 +289,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         let point = convert(event.locationInWindow, from: nil)
         if let model, let snapshot = model.representation, let window,
            let node = snapshot.nodes.reversed().first(where: {
-               $0.state.fileInput && !$0.state.disabled && !$0.occluded
+               $0.state.fileInput && $0.state.nativeFocusable && !$0.state.disabled && !$0.occluded
                    && snapshot.viewRect(for: $0,viewport: bounds.size,image: size).contains(point)
            }) {
             filePicker.present(node: node,model: model,window: window)
@@ -298,17 +298,13 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         pendingSelectPopup = nil
         if let model, let snapshot = model.representation,
            let node = snapshot.nodes.reversed().first(where: {
-               $0.role == .comboBox && !$0.state.selectList && !$0.state.disabled && !$0.occluded
+               $0.role == .comboBox && $0.state.nativeFocusable && !$0.state.selectList && !$0.state.disabled && !$0.occluded
                && snapshot.viewRect(for: $0, viewport: bounds.size, image: size).contains(point)
            }) { pendingSelectPopup = (snapshot.tabID, model.accessibilityEpoch, node.id) }
         pendingMarked = nil; pendingSelection = nil; pendingContext = nil
         if let model, let input = model.textInputState, input.document?.version == 1,
            let snapshot = model.representation, input.frame_generation == snapshot.generation,
-           !snapshot.nodes.contains(where: { node in
-               let control: Bool
-               switch node.role { case .button, .textBox, .checkBox, .slider, .comboBox, .option: control = true; default: control = false }
-               return control && snapshot.viewRect(for: node, viewport: bounds.size, image: size).contains(point)
-           }) {
+           !snapshot.containsNativeControl(at: point,viewport: bounds.size,image: size) {
             documentGesture = DocumentGesture(owner: ObjectIdentifier(model), tab: snapshot.tabID, epoch: model.accessibilityEpoch,
                 document: input.document_generation, viewSize: bounds.size, cssSize: size, start: point)
             model.textInput(.documentPointer(point.x * size.width / bounds.width, point.y * size.height / bounds.height,
@@ -547,7 +543,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     override func scrollWheel(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         if let model, let snapshot = model.representation, let size = model.cssViewportSize,
-           snapshot.nodes.contains(where: { $0.state.selectList && !$0.state.disabled && !$0.occluded
+           snapshot.nodes.contains(where: { $0.state.selectList && $0.state.nativeFocusable && !$0.state.disabled && !$0.occluded
                && snapshot.viewRect(for: $0, viewport: bounds.size, image: size).contains(point) }),
            event.scrollingDeltaY != 0, bounds.width > 0, bounds.height > 0 {
             model.textInput(.selectScroll(point.x * size.width / bounds.width, point.y * size.height / bounds.height,

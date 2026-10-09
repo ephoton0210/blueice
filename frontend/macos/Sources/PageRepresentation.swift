@@ -202,6 +202,21 @@ struct PageRepresentation: Decodable, Sendable {
         tabID == tab && self.generation == generation && frameSource == source && self.url == url
     }
 
+    func containsNativeControl(at point: CGPoint, viewport: CGSize, image: CGSize) -> Bool {
+        let hidden = Set(accessibility?.hidden_nodes ?? [])
+        return nodes.contains { node in
+            // Inert controls remain in the painted snapshot. They cannot
+            // intercept the containing document's correlated gesture.
+            // Enabled aria-hidden controls still have native focus geometry.
+            guard node.state.nativeFocusable || !hidden.contains(node.id) else { return false }
+            switch node.role {
+            case .button, .textBox, .checkBox, .slider, .comboBox, .option:
+                return viewRect(for: node,viewport: viewport,image: image).contains(point)
+            default: return false
+            }
+        }
+    }
+
     func viewRect(for node: PageNode, viewport: CGSize, image: CGSize) -> CGRect {
         guard image.width > 0, image.height > 0 else { return .zero }
         let xScale = viewport.width / image.width, yScale = viewport.height / image.height

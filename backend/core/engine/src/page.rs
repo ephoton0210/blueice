@@ -621,7 +621,7 @@ impl Page {
     /// (for example, a link navigation) to apply unless it is prevented.
     pub fn click_target(&self, x: f64, y: f64) -> Option<NodeId> {
         let content_y = y + self.scroll_y;
-        hit_test(&self.fragment, x, content_y)
+        hit_test(&self.doc, &self.fragment, x, content_y)
     }
 
     /// Applies the native default focus action for a pointer click. Only an
@@ -647,7 +647,7 @@ impl Page {
     /// hit-test to text nodes, but the first event profile exposes element
     /// listeners, so route to their nearest element ancestor.
     pub(crate) fn click_event_target(&self, x: f64, y: f64) -> Option<NodeId> {
-        let node = hit_test(&self.fragment, x, y + self.scroll_y)?;
+        let node = hit_test(&self.doc, &self.fragment, x, y + self.scroll_y)?;
         self.event_element_target(node)
     }
 
@@ -670,7 +670,7 @@ impl Page {
     /// pointer leaving the window's content area.
     pub fn hover_at(&mut self, x: f64, y: f64) {
         let content_y = y + self.scroll_y;
-        self.hovered = hit_test(&self.fragment, x, content_y);
+        self.hovered = hit_test(&self.doc, &self.fragment, x, content_y);
     }
 
     /// Sets or clears (`None`) the highlighted node -- rendered as an

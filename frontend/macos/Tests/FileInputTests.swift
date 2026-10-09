@@ -8,6 +8,72 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class FileInputTests: XCTestCase {
+    func testNativeInertControlPointerUsesActiveLabelAndPreservesAriaHiddenButtonInteraction() async throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let workspace = BrowserWorkspace(); await workspace.start(launcher: launcher)
+        defer { Task { await workspace.stop() } }
+        let model = try XCTUnwrap(workspace.models[1])
+        let view = CorePageView(frame: NSRect(x: 0,y: 0,width: 500,height: 300)); view.model = model
+        let window = FileInputWindow(contentRect: view.bounds,styleMask: [.borderless],backing: .buffered,defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = view
+        defer { window.close() }
+        var activations: [FileInputState] = []
+        model.nativeFileActivation = { activations.append($0) }
+        for mode in ["span", "button", "ancestor", "file", "select", "aria"] {
+            let url = fixture.origin + "/inert-pointer-descendant?mode=" + mode
+            model.address = url; model.navigateAddress()
+            let deadline = Date().addingTimeInterval(15)
+            while model.representation?.url != url || model.representation?.generation != model.textInputState?.frame_generation
+                || model.displayState?.frameGeneration != model.generation || model.textInputBusy
+                || model.representation?.nodes.contains(where: { $0.name == "Inert descendant script ready" }) != true {
+                guard Date() < deadline else { return XCTFail("The actual inert control document did not refresh: \(mode)") }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let snapshot = try XCTUnwrap(model.representation)
+            let anchor = try XCTUnwrap(snapshot.nodes.first { $0.name == "Inert descendant anchor" })
+            let image = try XCTUnwrap(model.cssViewportSize)
+            let rect = snapshot.viewRect(for: anchor,viewport: view.bounds.size,image: image)
+            let point = view.convert(NSPoint(x: rect.minX + 40 * view.bounds.width / image.width,
+                                            y: rect.minY - 16 * view.bounds.height / image.height),to: nil)
+            XCTAssertTrue(window.makeFirstResponder(view),"The owned fixture must accept its page responder")
+            let activeHidden = mode == "aria" ? snapshot.nodes.first(where: { $0.role == .button && $0.state.nativeFocusable && snapshot.accessibility?.hidden_nodes.contains($0.id) == true }) : nil
+            if mode == "aria" { XCTAssertNotNil(activeHidden) }
+            let previous = activations.count
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                let event = try XCTUnwrap(NSEvent.mouseEvent(with: type,location: point,modifierFlags: [],timestamp: 0,
+                    windowNumber: window.windowNumber,context: nil,eventNumber: 0,clickCount: 1,pressure: 1))
+                if type == .leftMouseDown { view.mouseDown(with: event) } else { view.mouseUp(with: event) }
+                if mode == "aria" && type == .leftMouseDown {
+                    let focusDeadline = Date().addingTimeInterval(10)
+                    while model.textInputState?.focused_node != activeHidden?.id || model.textInputBusy {
+                        guard Date() < focusDeadline else { return XCTFail("The enabled aria-hidden button must retain native pointer focus") }
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                }
+            }
+            let activatedDeadline = Date().addingTimeInterval(10)
+            if mode == "aria" {
+                while model.representation?.nodes.contains(where: { $0.name == "child:1" }) != true || model.textInputBusy {
+                    guard Date() < activatedDeadline else { return XCTFail("The enabled aria-hidden button must still receive its click") }
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                XCTAssertEqual(activations.count,previous)
+            } else {
+                while activations.count == previous {
+                    guard Date() < activatedDeadline else { return XCTFail("The inert \(mode) intercepted its active ancestor's native gesture") }
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                XCTAssertEqual(activations.count,previous + 1)
+                XCTAssertEqual(activations.last?.accept,"image/*")
+                XCTAssertFalse(snapshot.nodes.contains { $0.id == activations.last?.context.node_id && $0.state.fileInput })
+                XCTAssertTrue(model.fileInputIsCurrent(try XCTUnwrap(activations.last).context,tab: 1))
+            }
+        }
+        XCTAssertEqual(fixture.requests,["span", "button", "ancestor", "file", "select", "aria"].map { "/inert-pointer-descendant?mode=" + $0 })
+        await workspace.stop()
+    }
+
     func testNativeActivationWirePreservesGestureContextAndOptionalFileHint() throws {
         let context = TextInputContext(version: 1,frame_source: 7,document_generation: 8,focus_generation: 9)
         let data = try BrowserWire.encode(.nativeActivate(context,21,12,34),tab: 3,request: 21)
@@ -130,4 +196,11 @@ final class FileInputTests: XCTestCase {
         XCTAssertFalse(staleValidation); XCTAssertFalse(staleCancel)
         await workspace.stop()
     }
+}
+
+// The standalone XCTest host has no key application window. Simulate that
+// ownership guard here; XCUITest separately verifies real window ownership.
+@MainActor
+private final class FileInputWindow: NSWindow {
+    override var isKeyWindow: Bool { true }
 }

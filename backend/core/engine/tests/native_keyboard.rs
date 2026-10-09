@@ -2759,3 +2759,119 @@ fn labels_activate_nonrendered_checkbox_and_radio_defaults_without_control_focus
         }
     }
 }
+
+#[test]
+fn inert_pointer_label_sources_do_not_activate_external_file_controls() {
+    for (source, inert) in [
+        ("<label for='upload' style='display:block;width:220px;height:40px'>Upload</label>", false),
+        ("<label inert for='upload' style='display:block;width:220px;height:40px'>Upload</label>", true),
+        ("<div inert><label for='upload' style='display:block;width:220px;height:40px'><span>Upload</span></label></div>", true),
+        ("<label inert='false' for='upload' style='display:block;width:220px;height:40px'>Upload</label>", true),
+    ] {
+        let nodes = Arc::new(Mutex::new(Vec::new()));
+        let mut browser = Browser::with_page_executor(
+            &format!("<body style='margin:0'>{source}<input id='upload' type='file' aria-label='Upload'></body>"),
+            Some(Box::new(LabelExecutor { nodes: nodes.clone(), prevent_at: None, replace_at: None })),
+        );
+        let upload = browser.snapshot().nodes.into_iter().find(|node| node.name.as_deref() == Some("Upload")).unwrap();
+        let hint = browser.activate(browser.context(), 4.0, 20.0).unwrap();
+        let dispatched = nodes.lock().unwrap().clone();
+        if inert {
+            assert!(hint.is_none(), "An inert label source cannot mint a native picker hint");
+            assert!(!dispatched.contains(&upload.id));
+            assert!(dispatched.len() <= 1, "Only the non-inert containing page can receive this click");
+            assert_ne!(browser.state.focused_node, Some(upload.id));
+        } else {
+            assert_eq!(hint.unwrap().context.node_id, upload.id, "The control case establishes the pointer point");
+            assert_eq!(dispatched.len(), 2);
+            assert_eq!(dispatched[1], upload.id);
+        }
+    }
+}
+
+#[test]
+fn inert_descendants_retarget_pointer_activation_to_an_active_label() {
+    for child in [
+        "<span inert style='display:block;width:220px;height:40px'>Inert text</span>",
+        "<button inert type='button' style='width:220px;height:40px'>Inert button</button>",
+        "<div inert><span style='display:block;width:220px;height:40px'>Inherited inert text</span></div>",
+    ] {
+        let nodes = Arc::new(Mutex::new(Vec::new()));
+        let mut browser = Browser::with_page_executor(
+            &format!("<body style='margin:0'><label for='upload' role='button' aria-label='Active file label' style='display:block;width:220px;height:40px'>{child}</label><input id='upload' type='file' aria-label='Upload'></body>"),
+            Some(Box::new(LabelExecutor { nodes: nodes.clone(), prevent_at: None, replace_at: None })),
+        );
+        let snapshot = browser.snapshot();
+        let label = snapshot.nodes.iter().find(|node| node.name.as_deref() == Some("Active file label")).unwrap();
+        let upload = snapshot.nodes.iter().find(|node| node.name.as_deref() == Some("Upload")).unwrap();
+        let hint = browser.activate(browser.context(), 4.0, 20.0).unwrap().expect("Pointer-transparent descendants leave the active label operable");
+        assert_eq!(hint.context.node_id, upload.id);
+        assert_eq!(*nodes.lock().unwrap(), [label.id, upload.id]);
+    }
+}
+
+#[test]
+fn inert_link_subtrees_are_transparent_to_public_pointer_hit_testing() {
+    for (markup, navigates) in [
+        ("<a href='/next' style='display:block;width:220px;height:40px'>Active</a>", true),
+        ("<a inert href='/next' style='display:block;width:220px;height:40px'>Inert</a>", false),
+        ("<div inert><a href='/next' style='display:block;width:220px;height:40px'>Inherited inert</a></div>", false),
+        ("<a href='/next' style='display:block;width:220px;height:40px'><span inert style='display:block;width:220px;height:40px'>Active ancestor</span></a>", true),
+    ] {
+        let mut page = Page::new(500.0, 300.0);
+        page.load_html_str(&format!("<body style='margin:0'>{markup}</body>"), Some("https://example.test/form".into()));
+        assert_eq!(page.click(4.0, 20.0), navigates.then(|| "https://example.test/next".to_string()));
+    }
+}
+
+#[test]
+fn inert_overlays_leave_the_next_live_fragment_available_for_pointer_activation() {
+    for overlay in [
+        "<a inert href='/inert-must-not-navigate' style='display:block;width:220px;height:40px;margin-top:-40px;background-color:#0000ff'>Inert overlay</a>",
+        "<div inert style='display:block;width:220px;height:40px;margin-top:-40px;background-color:#0000ff'><button type='button' style='width:120px;height:40px'>Inert button</button></div>",
+    ] {
+        let mut page = Page::new(500.0, 300.0);
+        page.load_html_str(
+            &format!("<body style='margin:0'><div style='width:220px;height:40px'><a href='/live-underlay' style='display:block;width:220px;height:40px;background-color:#00ff00'>Live underlay</a>{overlay}</div></body>"),
+            Some("https://example.test/form".into()),
+        );
+        assert_eq!(page.render_visible().get_pixel(180, 20), [0, 0, 255, 255], "The inert layer remains painted above the live link");
+        assert_eq!(page.click(180.0, 20.0), Some("https://example.test/live-underlay".into()));
+    }
+}
+
+#[test]
+fn inert_document_roots_do_not_dispatch_pointer_listeners() {
+    for html in [
+        "<html inert><body style='margin:0'><input type='file' style='display:block;width:220px;height:40px'></body></html>",
+        "<html inert><body style='margin:0'><label for='upload' style='display:block;width:220px;height:40px'>Upload</label><input id='upload' type='file'></body></html>",
+    ] {
+        let nodes = Arc::new(Mutex::new(Vec::new()));
+        let mut browser = Browser::with_page_executor(html, Some(Box::new(LabelExecutor {
+            nodes: nodes.clone(), prevent_at: None, replace_at: None,
+        })));
+        assert!(browser.activate(browser.context(), 4.0, 20.0).unwrap().is_none());
+        assert!(nodes.lock().unwrap().is_empty());
+        assert_eq!(browser.state.focused_node, None);
+    }
+}
+
+#[test]
+fn pointer_hit_testing_prioritizes_later_painted_siblings_and_skips_inert_layers() {
+    for (inert, path) in [("", "/painted-top"), ("inert", "/underlay")] {
+        let mut page = Page::new(500.0, 300.0);
+        page.load_html_str(
+            &format!("<body style='margin:0'><div style='width:220px;height:40px'><a href='/underlay' style='display:block;width:220px;height:40px;background-color:#00ff00'>Underlay</a><a {inert} href='/painted-top' style='display:block;width:220px;height:40px;margin-top:-40px;background-color:#0000ff'>Top</a></div></body>"),
+            Some("https://example.test/form".into()),
+        );
+        assert_eq!(
+            page.render_visible().get_pixel(180, 20),
+            [0, 0, 255, 255],
+            "The same pointer point lies on the later-painted blue layer"
+        );
+        assert_eq!(
+            page.click(180.0, 20.0),
+            Some(format!("https://example.test{path}"))
+        );
+    }
+}

@@ -135,6 +135,89 @@ final class HTTPFixture: @unchecked Sendable {
                     report.textContent='Ordinary script ready';
                     </script>
                     """
+                case "/inert-pointer-label":
+                    let mode = URLComponents(string: self.origin + path)?.queryItems?.first?.value ?? "self"
+                    let source: String
+                    switch mode {
+                    case "active": source = "<label id='source' for='upload' role='button' aria-label='Pointer source label' style='display:block;height:32px'>Active source</label>"
+                    case "false": source = "<label id='source' inert='false' for='upload' role='button' aria-label='Pointer source label' style='display:block;height:32px'>Boolean inert source</label>"
+                    case "ancestor": source = "<div inert><label id='source' for='upload' role='button' aria-label='Pointer source label' style='display:block;height:32px'><span>Inherited inert source</span></label></div>"
+                    default: source = "<label id='source' inert for='upload' role='button' aria-label='Pointer source label' style='display:block;height:32px'>Inert source</label>"
+                    }
+                    body = """
+                    <html><body><h1>Inert pointer label fixture</h1><p id='report'>Pointer script pending</p>
+                    \(source)<input id='upload' type='file' style='display:none'>
+                    <input readonly aria-label='Inert pointer anchor' value='retained 中文' style='display:block;height:32px;width:300px'>
+                    <button id='inspect' type='button' aria-label='Inspect pointer counters'>Inspect</button>
+                    <script>
+                    const report = document.getElementById('report');
+                    let labels = 0; let files = 0;
+                    document.getElementById('source').addEventListener('click',function(event) { labels += 1; });
+                    document.getElementById('upload').addEventListener('click',function(event) { files += 1; });
+                    document.getElementById('inspect').addEventListener('click',function(event) { report.textContent='label:' + labels + ',file:' + files; });
+                    report.textContent='Inert pointer script ready';
+                    </script></body></html>
+                    """
+                case "/inert-pointer-link":
+                    let mode = URLComponents(string: self.origin + path)?.queryItems?.first?.value ?? "self"
+                    let source: String
+                    switch mode {
+                    case "active": source = "<a id='source' href='/inert-pointer-next' aria-label='Pointer source link' style='display:block;height:32px'><span inert style='display:block;height:32px'>Active ancestor link</span></a>"
+                    case "ancestor": source = "<div inert><a id='source' href='/inert-pointer-next' aria-label='Pointer source link' style='display:block;height:32px'>Inherited inert link</a></div>"
+                    default: source = "<a id='source' inert href='/inert-pointer-next' aria-label='Pointer source link' style='display:block;height:32px'>Inert link</a>"
+                    }
+                    body = """
+                    <html><body><h1>Inert pointer link fixture</h1><p id='report'>Link script pending</p>
+                    \(source)<input readonly aria-label='Inert link anchor' value='link retained' style='display:block;height:32px;width:300px'>
+                    <button id='inspect' type='button' aria-label='Inspect link counter'>Inspect</button>
+                    <script>
+                    const report = document.getElementById('report'); let clicks = 0;
+                    document.getElementById('source').addEventListener('click',function(event) { clicks += 1; });
+                    document.getElementById('inspect').addEventListener('click',function(event) { report.textContent='link:' + clicks; });
+                    report.textContent='Inert link script ready';
+                    </script></body></html>
+                    """
+                case "/inert-pointer-descendant":
+                    let mode = URLComponents(string: self.origin + path)?.queryItems?.first?.value ?? "span"
+                    let child: String
+                    switch mode {
+                    case "file": child = "<input id='child' inert type='file' aria-label='Inert child control' style='display:block;height:32px;width:300px'>"
+                    case "select": child = "<select id='child' inert aria-label='Inert child control' style='display:block;height:32px;width:300px'><option>Inert choice</option></select>"
+                    case "aria": child = "<button id='child' aria-hidden='true' type='button' aria-label='Inert child control' style='display:block;height:32px;width:300px'>Active hidden button</button>"
+                    case "button": child = "<button id='child' inert type='button' aria-label='Inert child control' style='display:block;height:32px;width:300px'>Inert button</button>"
+                    case "ancestor": child = "<div inert><span id='child' style='display:block;height:32px'>Inherited inert text</span></div>"
+                    default: child = "<span id='child' inert style='display:block;height:32px'>Inert text</span>"
+                    }
+                    body = """
+                    <html><body><h1>Inert descendant fixture</h1><p id='report'>Descendant script pending</p>
+                    <label id='source' for='upload' role='button' aria-label='Active ancestor label' style='display:block;height:32px'>\(child)</label>
+                    <input id='upload' type='file' accept='image/*' style='display:none'>
+                    <input readonly aria-label='Inert descendant anchor' value='descendant retained' style='display:block;height:32px;width:300px'>
+                    <script>
+                    const report = document.getElementById('report'); const clicks = []; let children = 0;
+                    document.getElementById('source').addEventListener('click',function(event) { clicks.push('label'); });
+                    document.getElementById('child').addEventListener('click',function(event) { children += 1; if ('\(mode)' == 'aria') { report.textContent='child:' + children; } });
+                    const upload = document.getElementById('upload');
+                    upload.addEventListener('click',function(event) { clicks.push('file'); });
+                    upload.addEventListener('cancel',function(event) { report.textContent=clicks.join(',') + ':child:' + children; });
+                    report.textContent='Inert descendant script ready';
+                    </script></body></html>
+                    """
+                case "/inert-pointer-next": body = "<html><body><h1>Active pointer link reached</h1></body></html>"
+                case "/inert-pointer-overlap":
+                    let mode = URLComponents(string: self.origin + path)?.queryItems?.first?.value ?? "active"
+                    let inert = mode == "inert" ? "inert" : ""
+                    body = """
+                    <html><body><h1>Overlapping pointer fixture</h1><p>Overlapping pointer fixture ready</p>
+                    <div style='width:220px;height:40px'>
+                    <a href='/inert-overlap-underlay' aria-label='Underlay pointer link' style='display:block;width:220px;height:40px;background-color:#00ff00'>Underlay</a>
+                    <a \(inert) href='/inert-overlap-top' aria-label='Top pointer link' style='display:block;width:220px;height:40px;margin-top:-40px;background-color:#0000ff'>Top</a>
+                    </div><input readonly aria-label='Overlap pointer anchor' value='overlap retained' style='display:block;width:300px;height:32px'>
+                    </body></html>
+                    """
+                case "/inert-overlap-top": body = "<html><body><h1>Painted top link reached</h1></body></html>"
+                case "/inert-overlap-underlay": body = "<html><body><h1>Live underlay link reached</h1></body></html>"
+
                 case "/label-hidden-file": body = """
                     <html><body><h1>Hidden file label fixture</h1><p id="report">Hidden file script pending</p>
                     <form>

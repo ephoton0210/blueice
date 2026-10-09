@@ -829,3 +829,29 @@ suite executed all 273 methods: 272 passed and the same physical Zhuyin method
 skipped. All final gates share 1,837 unchanged inputs. See the
 [owned update/shutdown contract](MACOS_UPDATE_SHUTDOWN_CONTRACT.md) and
 [dated results](MACOS_UPDATE_SHUTDOWN_RESULTS.md).
+
+
+## Inert sources and painted pointer order increment
+
+Ordinary pointer traversal excludes inert DOM subtrees and visits eligible
+siblings in reverse paint order. Native routing excludes unavailable
+accessibility-hidden controls while preserving enabled aria-hidden controls;
+file/select interception also checks native focus availability.
+
+Six public Rust regressions and a new native dispatch XCTest establish two
+unchanged-test red-to-green proofs. Expanded native focus passes 15 methods;
+fresh unfiltered native acceptance passes 277 methods and retains the single
+physical Zhuyin skip, preserving all 273 parent methods. Rust formatting, strict
+Clippy, all-target build and workspace gates passed with 7,401 passes and 69
+ignored cases across 483 groups. The Rust input manifest is retained honestly:
+only a private UI positioning-helper file changed before corrected native gates,
+with all other 1,836 program/build inputs and all 122 UI test method bodies
+preserved. The two earlier full-native positioning failures, exact window
+geometry, bounded fixture correction and separate zero-method sandbox startup
+failure remain in the results. See the [contract](MACOS_INERT_POINTER_CONTRACT.md)
+and [dated results](MACOS_INERT_POINTER_RESULTS.md).
+
+Ordinary macOS mouse-movement/leave forwarding to shared core hover state remains
+pending. Full CSS stacking/positioned layout, general pointer-events,
+flat-tree/modal inertness and remaining software, distribution and physical
+requirements remain open.

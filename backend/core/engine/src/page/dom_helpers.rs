@@ -338,11 +338,25 @@ pub(super) fn highlight_border_commands(bounds: blueice_ipc::Bounds) -> Vec<Pain
     ]
 }
 
-pub(super) fn hit_test(fragment: &Fragment, x: f64, y: f64) -> Option<NodeId> {
-    hit_test_rec(fragment, x, y, 0.0, 0.0)
+/// Inert boxes are pointer-transparent. Excluding a hit during traversal
+/// permits the next live fragment or non-inert ancestor to receive it.
+pub(super) fn hit_test(doc: &Document, fragment: &Fragment, x: f64, y: f64) -> Option<NodeId> {
+    hit_test_rec(doc, fragment, x, y, 0.0, 0.0)
+}
+
+fn pointer_target_available(doc: &Document, id: NodeId) -> bool {
+    let mut cursor = Some(id);
+    while let Some(node) = cursor {
+        if !doc.contains(node) || element_attribute(doc, node, "inert").is_some() {
+            return false;
+        }
+        cursor = doc.parent(node);
+    }
+    true
 }
 
 pub(super) fn hit_test_rec(
+    doc: &Document,
     fragment: &Fragment,
     x: f64,
     y: f64,
@@ -354,8 +368,15 @@ pub(super) fn hit_test_rec(
     if x < fx || y < fy || x > fx + fragment.width || y > fy + fragment.height {
         return None;
     }
-    for child in &fragment.children {
-        if let Some(hit) = hit_test_rec(child, x, y, fx, fy) {
+    if fragment
+        .node
+        .is_some_and(|node| !pointer_target_available(doc, node))
+    {
+        return None;
+    }
+    // Paint emits children in order; the last painted eligible box wins.
+    for child in fragment.children.iter().rev() {
+        if let Some(hit) = hit_test_rec(doc, child, x, y, fx, fy) {
             return Some(hit);
         }
     }

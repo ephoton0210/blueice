@@ -14,6 +14,31 @@ import Darwin
 @MainActor
 final class BrowserUITests: XCTestCase {
     private var printPanel: XCUIElement { app.sheets.containing(.menuButton,identifier: "PDF").firstMatch }
+    private func positionOwnedWindow(_ window: XCUIElement, x: CGFloat, y: CGFloat = 40) {
+        func atTarget() -> Bool {
+            let frame = window.frame
+            return abs(frame.minX - x) < 3 && abs(frame.minY - y) < 3
+        }
+        // Calibrate actual owned-window geometry after each native drag. Keep
+        // the exact placement assertion; a single synthesized drag can stop
+        // short of the requested destination.
+        for attempt in 1...3 {
+            if atTarget() { return }
+            let frame = window.frame
+            let title = window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+                .withOffset(CGVector(dx: frame.width / 2, dy: 12))
+            title.click(forDuration: 0.1, thenDragTo: title.withOffset(
+                CGVector(dx: x - frame.minX, dy: y - frame.minY)))
+            let reached = XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate { _, _ in atTarget() }, object: window)], timeout: 3)
+            let actual = window.frame
+            print("OWNED_WINDOW_POSITION_CALIBRATION id=\(window.identifier) attempt=\(attempt) requested=(\(x),\(y)) actual=(\(actual.minX),\(actual.minY))")
+            if reached == .completed { return }
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in atTarget() }, object: window)], timeout: 10), .completed,
+            "Owned window must reach the requested position before sheet or cross-window drag assertions")
+    }
     private func positionWindowForUnobstructedSheet(_ window: XCUIElement) {
         // Keep owned sheets clear of the host's existing Local Network prompt.
         // Move only BlueIce; the system prompt and its permissions remain untouched.
@@ -26,12 +51,7 @@ final class BrowserUITests: XCTestCase {
                 abs(window.frame.width - 900) < 3
             }, object: window)], timeout: 10), .completed)
         }
-        let titleBar = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
-        titleBar.click(forDuration: 0.1, thenDragTo: titleBar.withOffset(
-            CGVector(dx: 40 - window.frame.minX, dy: 40 - window.frame.minY)))
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            abs(window.frame.minX - 40) < 3 && abs(window.frame.minY - 40) < 3
-        }, object: window)], timeout: 10), .completed)
+        positionOwnedWindow(window, x: 40)
     }
     private func configureAssistant(_ model: AssistantModelFixture) throws {
         let settings: [String: Any] = ["version": 1, "backend": "loopback", "idle_timeout_secs": 600,
@@ -704,6 +724,104 @@ final class BrowserUITests: XCTestCase {
         let image = XCTAttachment(screenshot: app.screenshot())
         image.name = "macos-ordinary-page-script"; image.lifetime = .keepAlways; add(image)
     }
+    func testNativeInertLabelSourcesDoNotOpenExternalFilePickersOrRunTheirListeners() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch()
+        for mode in ["self", "false", "ancestor"] {
+            let path = "/inert-pointer-label?mode=" + mode
+            enter(fixture.origin + path); waitPageContent("Inert pointer script ready")
+            let anchor = app.groups["page"].textFields["Inert pointer anchor"]
+            XCTAssertTrue(anchor.waitForExistence(timeout: 15), app.debugDescription)
+            XCTAssertFalse(app.groups["page"].buttons["Pointer source label"].exists)
+            anchor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+            XCTAssertFalse(app.sheets["open-panel"].exists, app.debugDescription)
+            app.groups["page"].buttons["Inspect pointer counters"].click()
+            waitPageContent("label:0,file:0")
+            waitValue(app.textFields["address"], fixture.origin + path)
+            waitValue(anchor, "retained 中文")
+        }
+        let active = "/inert-pointer-label?mode=active"
+        enter(fixture.origin + active); waitPageContent("Inert pointer script ready")
+        let anchor = app.groups["page"].textFields["Inert pointer anchor"]
+        XCTAssertTrue(anchor.waitForExistence(timeout: 15))
+        anchor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+        let panel = app.sheets["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), app.debugDescription)
+        panel.buttons["Cancel"].click()
+        app.groups["page"].buttons["Inspect pointer counters"].click()
+        waitPageContent("label:1,file:1")
+        XCTAssertEqual(fixture.requests, ["/inert-pointer-label?mode=self", "/inert-pointer-label?mode=false",
+                                         "/inert-pointer-label?mode=ancestor", active])
+    }
+
+    func testNativeInertLinkSourcesKeepTheDocumentAndDoNotRunTheirListeners() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch()
+        for mode in ["self", "ancestor"] {
+            let path = "/inert-pointer-link?mode=" + mode
+            enter(fixture.origin + path); waitPageContent("Inert link script ready")
+            let anchor = app.groups["page"].textFields["Inert link anchor"]
+            XCTAssertTrue(anchor.waitForExistence(timeout: 15), app.debugDescription)
+            XCTAssertFalse(pageContent("Pointer source link").exists)
+            anchor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+            app.groups["page"].buttons["Inspect link counter"].click()
+            waitPageContent("link:0")
+            waitValue(app.textFields["address"], fixture.origin + path)
+            waitValue(anchor, "link retained")
+        }
+        let active = "/inert-pointer-link?mode=active"
+        enter(fixture.origin + active); waitPageContent("Inert link script ready")
+        let anchor = app.groups["page"].textFields["Inert link anchor"]
+        XCTAssertTrue(anchor.waitForExistence(timeout: 15))
+        anchor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+        waitValue(app.textFields["address"], fixture.origin + "/inert-pointer-next")
+        waitPageContent("Active pointer link reached")
+        XCTAssertEqual(fixture.requests, ["/inert-pointer-link?mode=self", "/inert-pointer-link?mode=ancestor",
+                                         active, "/inert-pointer-next"])
+    }
+
+    func testNativeInertDescendantsLeaveTheirActiveFileLabelOperable() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch()
+        for mode in ["span", "button", "ancestor", "file", "select"] {
+            let path = "/inert-pointer-descendant?mode=" + mode
+            enter(fixture.origin + path); waitPageContent("Inert descendant script ready")
+            let anchor = app.groups["page"].textFields["Inert descendant anchor"]
+            XCTAssertTrue(anchor.waitForExistence(timeout: 15), app.debugDescription)
+            XCTAssertFalse(pageContent("Inert child control").exists)
+            anchor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40,dy: -16)).click()
+            let panel = app.sheets["open-panel"]
+            XCTAssertTrue(panel.waitForExistence(timeout: 10), app.debugDescription)
+            panel.buttons["Cancel"].click()
+            waitPageContent("label,file:child:0")
+            waitValue(app.textFields["address"], fixture.origin + path)
+            waitValue(anchor, "descendant retained")
+        }
+        XCTAssertEqual(fixture.requests, ["/inert-pointer-descendant?mode=span",
+                                         "/inert-pointer-descendant?mode=button",
+                                         "/inert-pointer-descendant?mode=ancestor", "/inert-pointer-descendant?mode=file",
+                                         "/inert-pointer-descendant?mode=select"])
+    }
+
+    func testNativePointerNavigationFollowsThePaintedTopLinkAndPassesThroughInertLayers() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch()
+        for (mode, destination, heading) in [
+            ("active", "/inert-overlap-top", "Painted top link reached"),
+            ("inert", "/inert-overlap-underlay", "Live underlay link reached")
+        ] {
+            let path = "/inert-pointer-overlap?mode=" + mode
+            enter(fixture.origin + path); waitPageContent("Overlapping pointer fixture ready")
+            let anchor = app.groups["page"].textFields["Overlap pointer anchor"]
+            XCTAssertTrue(anchor.waitForExistence(timeout: 15), app.debugDescription)
+            anchor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 180,dy: -20)).click()
+            waitValue(app.textFields["address"], fixture.origin + destination)
+            waitPageContent(heading)
+        }
+        XCTAssertEqual(fixture.requests, ["/inert-pointer-overlap?mode=active", "/inert-overlap-top",
+                                         "/inert-pointer-overlap?mode=inert", "/inert-overlap-underlay"])
+    }
+
     func testNativeLabelsOpenHiddenFilePickersPreserveCancellationAndResetSelection() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
@@ -2189,11 +2307,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             abs(window.frame.width - 760) < 3 && abs(window.frame.height - 600) < 3
         }, object: window)], timeout: 10), .completed)
-        let title = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
-        title.click(forDuration: 0.1, thenDragTo: title.withOffset(CGVector(dx: x - window.frame.minX, dy: 40 - window.frame.minY)))
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            abs(window.frame.minX - x) < 3 && abs(window.frame.minY - 40) < 3
-        }, object: window)], timeout: 10), .completed)
+        positionOwnedWindow(window, x: x)
     }
 
     func testTabDragTransfersLiveWindowStateAndRefusesDifferentProfile() throws {
