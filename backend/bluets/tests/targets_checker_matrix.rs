@@ -106,23 +106,23 @@ fn matrix_covers_every_target_and_form() {
     let reference = reference();
     let cases = cases();
     assert_eq!(reference["targets"].as_array().unwrap().len(), 11);
-    assert_eq!(reference["forms"].as_array().unwrap().len(), 17);
+    assert_eq!(reference["forms"].as_array().unwrap().len(), 29);
     assert_eq!(reference["modules"].as_array().unwrap().len(), 2);
-    assert_eq!(cases.len(), 374);
+    assert_eq!(cases.len(), 638);
     assert_eq!(
         cases.iter().filter(|case| case["accepts"] == true).count(),
-        360
+        600
     );
     assert_eq!(
         cases.iter().filter(|case| case["runtime"] == true).count(),
-        360
+        600
     );
     assert_eq!(
         cases
             .iter()
             .filter(|case| case["declaration"] == true)
             .count(),
-        360
+        600
     );
     for target in reference["targets"].as_array().unwrap() {
         for form in reference["forms"].as_array().unwrap() {
@@ -304,6 +304,42 @@ fn target_manifests_record_helper_version_and_distinct_identity() {
         "all targets use one versioned helper family: {failures:?}"
     );
     assert_eq!(fingerprints.len(), 22, "{failures:?}");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn target_projects_emit_the_pinned_declarations_without_optional_tools() {
+    let root = temporary_root("emit");
+    let mut failures = Vec::new();
+    for (index, case) in cases()
+        .into_iter()
+        .filter(|case| case["accepts"] == true)
+        .enumerate()
+    {
+        let directory = root.join(index.to_string());
+        let config = prepare(&case, &directory, true);
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .arg("--project")
+            .arg(config)
+            .output()
+            .unwrap();
+        let entry = case["entry"].as_str().unwrap();
+        if !built.status.success() {
+            failures.push(format!("{entry}: build failed: {}", report(&built)));
+            continue;
+        }
+        match fs::read_to_string(directory.join("blue/main.js")) {
+            Ok(javascript) if !javascript.is_empty() => {}
+            result => failures.push(format!("{entry}: missing JavaScript output: {result:?}")),
+        }
+        match fs::read_to_string(directory.join("blue/main.d.ts")) {
+            Ok(declaration)
+                if declaration.replace("\r\n", "\n")
+                    == case["declaration_text"].as_str().unwrap() => {}
+            result => failures.push(format!("{entry}: declarations differ: {result:?}")),
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 

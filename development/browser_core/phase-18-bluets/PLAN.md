@@ -6835,3 +6835,41 @@ and every unaffected production/build input. Evidence:
 `blueice-k71-esm-baseline-final-third-{status,source-hashes}.json` / logs.
 Commit the expanded failing baseline before implementation. The branch stays
 unpushed until K.0 passes; main remains at `1f76ff28c` for M8 hosted CI.
+
+### K.7.1 control-flow and receiver baseline (2026-10-10)
+
+Twelve additional forms exercise generator return/throw, yielding from
+finally, delegated iterator closing, await rejection, finally overriding an
+awaited return, async-iterator closing before the caller resumes, destructuring
+getter/default order, abrupt loop closing and spread receiver evaluation.
+Arrow receiver controls separate lexical `this` from lexical `arguments`.
+The same forms run across eleven targets and both module kinds.
+
+The corpus now has 638 programs: 600 accepted and 38 rejected. TypeScript
+5.9.3 refuses arrow `arguments` in ES5 with TS2496 and array spread into a
+fixed-arity method with TS2556. These rejection controls remain in the corpus;
+the valid lexical-this and tuple-spread companions execute independently.
+The first 594-program probe is retained, and all earlier 374 observations
+and then all earlier 594 observations match exactly after the additions.
+All 600 accepted references pass Node, exact declarations and pinned syntax
+edition validation. Upstream helper implementations remain temporary output.
+
+The shared recorder now has 3,182 cases/221 templates and preserves all
+prior 2,918 observations. A new ordinary public build/declaration test
+exercises the 600 accepted emit paths without optional tools; live pinned
+Node/syntax execution remains in the separate oracle. This keeps emitted
+declarations and emitter paths in the normal test/coverage flow.
+
+Frozen Linux validation passes format and both-crate all-target Clippy with
+warnings denied. The complete expanded target replay has two passing/five
+failing tests and no ignored tests; the live 638-program reference recorder
+passes. Shared completeness passes, and both shared diagnostic replays remain
+red. All 714 primary differences and all 38 presentation differences belong
+to targets; the old pre-target corpus has no reported mismatch. All 533
+changed inputs and the prior syntax/unchanged production/build inputs match.
+Evidence: `blueice-k71-control-flow-{reference-proof,positive-reference-proof,
+shared-reference-proof,public-replay-proof}.json`,
+`blueice-k71-control-flow-targets-{status,source-hashes}.json` and
+`blueice-k71-control-flow-baseline-final{,-second}-{status,source-hashes}.json`
+/ logs. Commit this failing baseline on the isolated branch before production
+changes. K.7.1 stays open and unpushed; M8 complete final-source CI is pending.
