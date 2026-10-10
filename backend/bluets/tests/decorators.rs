@@ -104,24 +104,26 @@ fn an_exported_decorated_class_is_exported_after_its_definition() {
 }
 
 #[test]
-fn unlowered_forms_are_refused_not_guessed() {
+fn previously_unlowered_forms_build_through_the_public_compiler() {
+    for source in [
+        format!("{DECL}namespace N {{ @d export class C {{}} }}\n"),
+        format!("{DECL}class C {{ @d #m(): void {{}} }}\n"),
+        format!("{DECL}class C {{ @d accessor #value: number = 1; }}\n"),
+        format!("{DECL}class B {{ static x(): number {{ return 1; }} }}\n@d class C extends B {{ static value: number = super.x(); }}\n"),
+        format!("{DECL}class B {{ static x(): void {{}} }}\n@d class C extends B {{ static y(): void {{ super.x(); }} }}\n"),
+        format!("{DECL}class C {{ @d [\"computed\"](): void {{}} }}\n"),
+    ] {
+        let javascript = build(&source, es2022()).unwrap();
+        assert!(!javascript.contains("@d"), "{javascript}");
+        assert!(javascript.contains("__bluetsEsDecorate"), "{javascript}");
+    }
+}
+
+#[test]
+fn residual_decorator_forms_keep_precise_refusals() {
     for (source, expected) in [
-        (
-            format!("{DECL}namespace N {{ @d export class C {{}} }}\n"),
-            "inside a namespace",
-        ),
-        (
-            format!("{DECL}class C {{ @d #m(): void {{}} }}\n"),
-            "private method or accessor",
-        ),
-        (
-            format!("{DECL}class B {{ static x(): void {{}} }}\n@d class C extends B {{ static y(): void {{ super.x(); }} }}\n"),
-            "`super` in a static member",
-        ),
-        (
-            format!("{DECL}class C {{ @d [\"computed\"](): void {{}} }}\n"),
-            "not supported",
-        ),
+        (format!("{DECL}class C {{ @d \"literal\"(): void {{}} }}\n"), "not supported"),
+        (format!("{DECL}class B {{ m(): void {{}} }}\nclass C extends B {{ @d #m(): void {{ super.m(); }} }}\n"), "super in a decorated private callable"),
     ] {
         let messages = build(&source, es2022()).unwrap_err().join("\n");
         assert!(messages.contains(expected), "{source}: {messages}");
@@ -129,7 +131,7 @@ fn unlowered_forms_are_refused_not_guessed() {
 }
 
 #[test]
-fn other_targets_and_assign_semantics_are_refused_with_the_supported_combination() {
+fn other_targets_and_assign_semantics_lower_standard_decorators() {
     let source = format!("{DECL}@d class C {{}}\n");
     for options in [
         CompilerOptions {
@@ -141,11 +143,9 @@ fn other_targets_and_assign_semantics_are_refused_with_the_supported_combination
             ..es2022()
         },
     ] {
-        let messages = build(&source, options).unwrap_err().join("\n");
-        assert!(
-            messages.contains("target ES2022 with class fields defined"),
-            "{messages}"
-        );
+        let javascript = build(&source, options).unwrap();
+        assert!(!javascript.contains("@d"), "{javascript}");
+        assert!(javascript.contains("__bluetsEsDecorate"), "{javascript}");
     }
 }
 
@@ -335,12 +335,15 @@ fn standard_decorator_refusals_cover_each_unlowered_shape() {
             "declare function mk(n: number): (v: any, c: any) => void;\n@mk(// c\n 1) class A {}\n".to_string(),
             "line comment",
         ),
-        (
-            format!("{DECL}class A {{ accessor a: number = 1; }}\nnamespace N {{ export class B {{ accessor b: number = 1; }} }}\n"),
-            "inside a namespace",
-        ),
     ] {
         let joined = build(&source, es2022()).unwrap_err().join("\n");
         assert!(joined.contains(expected), "{source}: {joined}");
     }
+}
+
+#[test]
+fn undecorated_namespace_auto_accessors_keep_their_public_exports() {
+    let javascript = build(&format!("{DECL}class A {{ accessor a: number = 1; }}\nnamespace N {{ export class B {{ accessor b: number = 1; }} }}\n"), es2022()).unwrap();
+    assert!(javascript.contains("N.B = B;"), "{javascript}");
+    assert!(javascript.contains("#b_accessor_storage"), "{javascript}");
 }

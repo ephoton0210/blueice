@@ -14,6 +14,7 @@ pub(super) struct Context<'a> {
     project: &'a Project,
     used_imports: BTreeSet<String>,
     variables: BTreeMap<String, (String, bool)>,
+    value_types: BTreeMap<String, Type>,
     return_types: BTreeMap<usize, String>,
     parameter_types: BTreeMap<usize, String>,
     private_aliases: BTreeMap<String, String>,
@@ -30,6 +31,20 @@ impl<'a> Context<'a> {
             project,
             used_imports: BTreeSet::new(),
             variables: BTreeMap::new(),
+            value_types: checked
+                .symbols
+                .iter()
+                .filter_map(|symbol| {
+                    (symbol.kind == crate::checker::SymbolKind::Variable)
+                        .then(|| {
+                            symbol
+                                .value_type
+                                .clone()
+                                .map(|value| (symbol.name.clone(), value))
+                        })
+                        .flatten()
+                })
+                .collect(),
             return_types: BTreeMap::new(),
             parameter_types: BTreeMap::new(),
             private_aliases: BTreeMap::new(),
@@ -249,6 +264,23 @@ impl<'a> Context<'a> {
 
     pub(super) fn variable(&self, name: &str) -> Option<&(String, bool)> {
         self.variables.get(name)
+    }
+
+    /// A broad computed method name is represented as a function-valued property.
+    pub(super) fn computed_method_property(
+        &self,
+        member: &crate::parser::ClassMemberShell,
+    ) -> bool {
+        let [open, name, close] = member.key.as_slice() else {
+            return false;
+        };
+        open.is("[")
+            && close.is("]")
+            && name.kind == crate::TokenKind::Identifier
+            && self
+                .value_types
+                .get(&name.text)
+                .is_some_and(|value| !matches!(value, Type::Literal(_) | Type::UniqueSymbol(_)))
     }
 
     pub(super) fn return_type(&self, start: usize) -> Option<&str> {

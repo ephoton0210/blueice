@@ -57,6 +57,17 @@ pub(super) fn lower(
         }
         name
     });
+    if expression.name.is_none() {
+        let class_token = tokens
+            .iter()
+            .find(|token| token.start == class.span.start && token.is("class"))
+            .expect("the owned expression starts at its class token");
+        edits.push(TextEdit {
+            start: class_token.end,
+            end: class_token.end,
+            replacement: format!(" {}", class.name),
+        });
+    }
     let private = PrivateNames::collect(module, &class)?;
     let mut helpers = BTreeSet::new();
     if let Some(private) = &private {

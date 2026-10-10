@@ -420,7 +420,9 @@ fn emit_javascript(
         edits.extend(strict_edits);
         strict_runtime = Some(record);
     }
-    let emitted = targets::lower(apply_edits(&module.source, edits), module, options)?;
+    let emitted =
+        decorators::targets::lower(apply_edits(&module.source, edits), module, project, options)?;
+    let emitted = targets::lower(emitted, module, options)?;
     let emitted = targets::es5::lower(emitted, module, options, &lexical)?;
     helper_selection::validate(&emitted, module, options)?;
     let emitted = if wrapper == crate::ModuleKind::System {

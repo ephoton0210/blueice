@@ -8,6 +8,18 @@ use super::*;
 
 impl Parser {
     pub(in crate::parser::implementation) fn parse_default_declaration(&mut self, start: usize) {
+        let decorators = self.parse_decorators();
+        if !decorators.is_empty() {
+            if self.peek("class") {
+                self.pending_decorators.extend(decorators);
+            } else {
+                self.error_at(
+                    decorators[0].span.clone(),
+                    DiagnosticCode::ParseError,
+                    "decorators are not valid here; they decorate a class or a class member",
+                );
+            }
+        }
         let async_function = self.peek("async")
             && self
                 .tokens

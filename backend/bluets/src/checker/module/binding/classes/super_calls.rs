@@ -73,6 +73,34 @@ fn is_deferred_this_context(tokens: &[Token]) -> bool {
 }
 
 impl ModuleChecker<'_> {
+    /// ES5 cannot dispatch a base accessor through its retained receiver.
+    pub(super) fn check_es5_super_properties(&mut self, class: &ClassDeclaration) {
+        if self.target != crate::EcmaTarget::Es5 {
+            return;
+        }
+        for member in &class.members {
+            let is_static = member.method.as_ref().is_some_and(|m| m.is_static)
+                || member.accessor.as_ref().is_some_and(|a| a.is_static)
+                || member.field.as_ref().is_some_and(|f| f.is_static)
+                || member.kind == ClassMemberKind::StaticBlock;
+            let tokens = &class.body[member.token_start..member.token_end];
+            for triple in tokens.windows(3) {
+                if triple[0].is("super")
+                    && triple[1].is(".")
+                    && matches!(
+                        self.base_member_kind(class, &triple[2].text, is_static),
+                        Ok(Some(super::accessors::BaseMemberKind::Accessor))
+                    )
+                {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnsupportedSyntax, triple[2].span(&self.module.id),
+                        "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+                    ).with_typescript(2340, Vec::new()));
+                }
+            }
+        }
+    }
+
     /// The type `super` has in a class body: the base instance type for
     /// constructors and instance methods, the base constructor side for
     /// static methods. `None` when there is no bound base.

@@ -76,18 +76,12 @@ pub(super) fn lower_legacy_decorators(
     let mut first_start: Option<usize> = None;
     let mut need_param = false;
     let mut need_metadata = false;
-    for (declaration, nested) in super::runtime_declarations(&module.declarations) {
+    for (declaration, _) in super::runtime_declarations(&module.declarations) {
         let Declaration::Class(class) = declaration else {
             continue;
         };
         if !needs_work(class) {
             continue;
-        }
-        if nested {
-            return Err(unsupported(
-                &class.name_span,
-                "a decorated class inside a namespace is not lowered yet",
-            ));
         }
         let mut lowerer = Lowerer {
             module,
@@ -98,7 +92,9 @@ pub(super) fn lower_legacy_decorators(
         lowerer.class(class)?;
         need_param |= lowerer.need_param;
         need_metadata |= options.emit_decorator_metadata;
-        first_start = Some(first_start.map_or(class.span.start, |at| at.min(class.span.start)));
+        let helper_start = super::decorators::namespace_owner(module, class)
+            .map_or(class.span.start, |(_, outer_start)| outer_start);
+        first_start = Some(first_start.map_or(helper_start, |at| at.min(helper_start)));
     }
     if let Some(at) = first_start {
         let mut text = format!("{DECORATE_HELPER} ");
@@ -344,8 +340,13 @@ impl Lowerer<'_, '_> {
             self.push(class.span.start, header_end, header);
             let close = class.body_span.end - 1;
             let export_suffix = if class.exported {
-                if self.options.module_kind == crate::compiler::ModuleKind::CommonJs {
-                    format!(" exports.{0} = {0};", class.name)
+                if let Some((namespace, _)) = super::decorators::namespace_owner(self.module, class)
+                {
+                    format!(" {namespace}.{0} = {0};", class.name)
+                } else if self.options.module_kind == crate::compiler::ModuleKind::CommonJs {
+                    format!(" exports.{} = {};", class.export_name(), class.name)
+                } else if class.default_export {
+                    format!(" export default {};", class.name)
                 } else {
                     format!(" export {{ {} }};", class.name)
                 }

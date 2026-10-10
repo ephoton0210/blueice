@@ -366,15 +366,18 @@ pub(super) fn lower_commonjs(
             // A class whose decorators or auto-accessors are lowered carries its
             // own `export` and `exports.C = C`.
             Declaration::Class(class)
-                if class.exported && super::decorators::lowers_class(class) =>
+                if class.exported && super::decorators::lowers_class(class, options) =>
             {
                 es_syntax = true;
-                chain.push(class.name.clone());
+                chain.push(class.export_name().to_string());
             }
             Declaration::Class(class) if class.exported => {
                 es_syntax = true;
                 chain.push(class.export_name().to_string());
-                strip_export(&tokens, token_at(class.span.start), edits);
+                let header = token_at(class.span.start)..token_at(class.name_span.start);
+                if let Some(export) = header.into_iter().find(|index| tokens[*index].is("export")) {
+                    strip_export(&tokens, export, edits);
+                }
                 if class.anonymous {
                     edits.push(TextEdit {
                         start: class.name_span.start,

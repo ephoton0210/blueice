@@ -234,6 +234,24 @@ impl ModuleChecker<'_> {
                 ).with_typescript(18028, Vec::new()));
             }
         }
+        if self.target < crate::EcmaTarget::Es2015 {
+            for member in &class.members {
+                if member
+                    .field
+                    .as_ref()
+                    .is_some_and(|field| field.accessor && !field.name.starts_with('#'))
+                {
+                    if let Some(key) = member.key.first() {
+                        self.diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::UnsupportedSyntax,
+                            key.span(&self.module.id),
+                            "Properties with the 'accessor' modifier are only available when targeting ECMAScript 2015 and higher.",
+                        ).with_typescript(18045, Vec::new()));
+                    }
+                }
+            }
+        }
+        self.check_es5_super_properties(class);
         if class.default_export
             && class.anonymous
             && self.target == crate::EcmaTarget::Es2020

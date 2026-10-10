@@ -56,6 +56,21 @@ enum Callee {
 
 impl<'a> ModuleChecker<'a> {
     pub(super) fn check_class_decorators(&mut self, class: &ClassDeclaration) {
+        if self.experimental_decorators && self.module.class_expression(class.span.start).is_some()
+        {
+            for decorator in class
+                .decorators
+                .iter()
+                .chain(class.members.iter().flat_map(|member| &member.decorators))
+            {
+                self.type_error(
+                    &decorator.span,
+                    "decorators are not valid here".to_string(),
+                    DiagnosticCode::InvalidDeclarationFile,
+                );
+            }
+            return;
+        }
         let scope = self.values.clone();
         // Parameter decorators are legacy only; elsewhere they are not valid.
         for shell in &class.members {
@@ -98,9 +113,11 @@ impl<'a> ModuleChecker<'a> {
                 continue;
             }
             let first = &shell.decorators[0].span;
-            if shell.key.first().is_some_and(|key| {
-                key.is("[") || matches!(key.kind, TokenKind::String | TokenKind::Number)
-            }) {
+            if shell
+                .key
+                .first()
+                .is_some_and(|key| matches!(key.kind, TokenKind::String | TokenKind::Number))
+            {
                 self.type_error(
                     first,
                     "decorators on computed or literal member names are not supported yet".into(),

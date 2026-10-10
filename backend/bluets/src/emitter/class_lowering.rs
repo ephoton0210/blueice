@@ -40,6 +40,7 @@ mod expressions;
 struct FieldEmit {
     es2022: bool,
     define: bool,
+    preserve_accessors: bool,
 }
 
 impl FieldEmit {
@@ -56,9 +57,27 @@ pub(super) fn lower_class_members(
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
+    lower_classes(module, options, edits, false)
+}
+
+pub(super) fn lower_generated_class_members(
+    module: &Module,
+    options: &CompilerOptions,
+    edits: &mut Vec<TextEdit>,
+) -> Result<(), Diagnostic> {
+    lower_classes(module, options, edits, true)
+}
+
+fn lower_classes(
+    module: &Module,
+    options: &CompilerOptions,
+    edits: &mut Vec<TextEdit>,
+    standard_output: bool,
+) -> Result<(), Diagnostic> {
     let emit = FieldEmit {
         es2022: options.target >= EcmaTarget::Es2022,
         define: options.defines_class_fields(),
+        preserve_accessors: options.target == EcmaTarget::EsNext,
     };
     let mut needed: BTreeSet<Helper> = BTreeSet::new();
     let mut first_private_class: Option<usize> = None;
@@ -81,6 +100,14 @@ pub(super) fn lower_class_members(
     // Lower children before a field initializer or private method moves them.
     classes.sort_by_key(|(class, _)| std::cmp::Reverse(class.span.start));
     for (class, nested) in classes {
+        // Standard decorators first build an ES2022 class. Its generated fields
+        // are lowered in a separate owned-output pass, after decorator initialization.
+        if !standard_output
+            && !options.experimental_decorators
+            && super::decorators::lowers_class(class, options)
+        {
+            continue;
+        }
         if emit.native() {
             native_parameter_properties(class, edits)?;
             continue;
@@ -191,6 +218,9 @@ fn lower_class(
         let Some(field) = member.field.as_ref().filter(|field| !field.is_static) else {
             continue;
         };
+        if emit.preserve_accessors && field.accessor {
+            continue;
+        }
         let value = field
             .initializer
             .as_deref()
@@ -232,6 +262,9 @@ fn lower_class(
             continue;
         }
         if let Some(field) = member.field.as_ref().filter(|field| field.is_static) {
+            if emit.preserve_accessors && field.accessor {
+                continue;
+            }
             let value = field
                 .initializer
                 .as_deref()

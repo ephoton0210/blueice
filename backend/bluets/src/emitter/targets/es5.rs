@@ -37,6 +37,7 @@ pub(in crate::emitter) fn prepare(
         .filter(|function| {
             tokens.iter().any(|token| {
                 token.is("this")
+                    && !class_receiver(module, token, function.span.start)
                     && token.start >= function.span.start
                     && token.end <= function.span.end
                     && !module.nested_functions.values().any(|nested| {
@@ -121,6 +122,7 @@ pub(in crate::emitter) fn prepare(
         if let Some(capture) = capture {
             for token in tokens.iter().filter(|token| {
                 token.is("this")
+                    && !class_receiver(module, token, function.span.start)
                     && token.start >= body.start
                     && token.end <= function.span.end
                     && !module.nested_functions.values().any(|nested| {
@@ -138,6 +140,35 @@ pub(in crate::emitter) fn prepare(
         }
     }
     Ok(lexical)
+}
+
+/// A class body introduces its own receiver; computed keys keep the outer one.
+fn class_receiver(module: &Module, token: &Token, arrow_start: usize) -> bool {
+    runtime_declarations(&module.declarations)
+        .into_iter()
+        .filter_map(|(declaration, _)| match declaration {
+            Declaration::Class(class) => Some(class),
+            _ => None,
+        })
+        .chain(
+            module
+                .class_expressions
+                .values()
+                .map(|expression| &expression.class),
+        )
+        .any(|class| {
+            class.span.start > arrow_start
+                && token.start >= class.body_span.start
+                && token.end <= class.body_span.end
+                && !class.members.iter().any(|member| {
+                    member.key.first().is_some_and(|key| key.is("["))
+                        && member
+                            .key
+                            .first()
+                            .is_some_and(|key| token.start >= key.start)
+                        && member.key.last().is_some_and(|key| token.end <= key.end)
+                })
+        })
 }
 
 pub(in crate::emitter) fn lower(

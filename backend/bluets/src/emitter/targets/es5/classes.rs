@@ -6,6 +6,8 @@
 
 use super::*;
 
+mod super_members;
+
 pub(super) fn lower(
     mut emitted: EmittedJavaScript,
     module: &Module,
@@ -24,7 +26,7 @@ pub(super) fn lower(
             module
                 .class_expressions
                 .values()
-                .map(|expression| expression.class.name.clone()),
+                .filter_map(|expression| expression.name.clone()),
         )
         .collect::<std::collections::BTreeSet<_>>();
     let mut remaining = options.limits.parser.max_tokens;
@@ -91,7 +93,18 @@ pub(super) fn lower(
             let accessor = matches!(tokens[first].text.as_str(), "get" | "set")
                 && !tokens.get(first + 1).is_some_and(|token| token.is("("));
             let property = first + usize::from(accessor);
-            let parameters = property + 1;
+            let property_end = if tokens[property].is("[") {
+                exponentiation::matching_close(&tokens, property).ok_or_else(|| {
+                    unsupported(
+                        module,
+                        &SourceSpan::new(&module.id, 0, 0),
+                        "computed member key was not retained",
+                    )
+                })? + 1
+            } else {
+                property + 1
+            };
+            let parameters = property_end;
             if !tokens.get(parameters).is_some_and(|token| token.is("(")) {
                 return Err(unsupported(
                     module,
@@ -133,7 +146,25 @@ pub(super) fn lower(
                 } else {
                     format!("{name}.prototype")
                 };
-                let key = if tokens[property].kind == TokenKind::String {
+                let text = if extends {
+                    super_members::body(
+                        &emitted.javascript,
+                        &tokens,
+                        body,
+                        end,
+                        &base,
+                        is_static,
+                        module,
+                    )?
+                } else {
+                    text.to_string()
+                };
+                let key = if tokens[property].is("[") {
+                    format!(
+                        "({})",
+                        &emitted.javascript[tokens[property].end..tokens[property_end - 1].start]
+                    )
+                } else if tokens[property].kind == TokenKind::String {
                     tokens[property].text.clone()
                 } else {
                     serde_json::to_string(&tokens[property].text).unwrap()
@@ -164,8 +195,15 @@ pub(super) fn lower(
         } else {
             ""
         };
-        let replacement = format!("var {name} = (function ({}) {{\n{constructor}{inheritance}{members}return {name};\n}})({argument});",
-            if extends { base.as_str() } else { "" });
+        let expression = format!(
+            "(function ({}) {{\n{constructor}{inheritance}{members}return {name};\n}})({argument})",
+            if extends { base.as_str() } else { "" }
+        );
+        let replacement = if class_is_expression(&tokens, start) {
+            format!("({expression})")
+        } else {
+            format!("var {name} = {expression};")
+        };
         let insertion = directive_end(&tokens);
         let helper = if options.import_helpers {
             if !extends {
@@ -198,6 +236,37 @@ pub(super) fn lower(
             ],
         );
     }
+}
+
+/// A class expression produces a constructor value at its existing expression
+/// site. Decorator lowering can introduce such a site for an original class
+/// declaration, so classify the retained emitted syntax rather than its source
+/// declaration alone.
+fn class_is_expression(tokens: &[crate::Token], start: usize) -> bool {
+    start.checked_sub(1).is_some_and(|before| {
+        matches!(
+            tokens[before].text.as_str(),
+            "=" | "("
+                | "["
+                | ","
+                | ":"
+                | "?"
+                | "return"
+                | "new"
+                | "=>"
+                | "&&"
+                | "||"
+                | "??"
+                | "+"
+                | "-"
+                | "!"
+                | "~"
+                | "void"
+                | "typeof"
+                | "yield"
+                | "await"
+        )
+    })
 }
 
 fn derived_body(

@@ -310,6 +310,19 @@ fn accessor_pairs_describe_the_pair_and_need_an_annotation() {
 }
 
 #[test]
+fn decorated_namespace_exports_receive_the_replacement_class() {
+    let javascript = build(
+        &format!("{DECL}namespace N {{ @d export class C {{}} }}\n"),
+        legacy(),
+    )
+    .unwrap();
+    let decorated = javascript.find("C = __bluetsDecorate").unwrap();
+    let exported = javascript.find("N.C = C;").unwrap();
+    assert!(decorated < exported, "{javascript}");
+    assert!(!javascript.contains("@d"), "{javascript}");
+}
+
+#[test]
 fn unlowered_legacy_forms_are_refused_with_a_reason() {
     for (source, expected) in [
         (
@@ -319,10 +332,6 @@ fn unlowered_legacy_forms_are_refused_with_a_reason() {
         (
             format!("{DECL}class A {{ @d #p: number = 1; }}\n"),
             "private names",
-        ),
-        (
-            format!("{DECL}namespace N {{ @d export class C {{}} }}\n"),
-            "inside a namespace",
         ),
         (
             format!(

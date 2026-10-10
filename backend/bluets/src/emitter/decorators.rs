@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Standard (TC39) decorators, lowered for ES2022 (J.5.3).
+//! Standard (TC39) decorators with target-aware class lowering (K.7.4).
 //!
 //! A decorated class becomes the shape TypeScript 5.9.3 emits: an immediately
 //! invoked arrow function holding the helper state, whose class has two leading
@@ -20,12 +20,19 @@
 //! where it is, wrapped in place. Auto-accessors (`accessor x`) are lowered to a
 //! private backing field with a getter and a setter, decorated or not.
 //!
-//! Not lowered (refused, never guessed): computed or string-literal member names,
-//! decorated private methods and accessors, decorators on constructors, static
-//! blocks and overload signatures, `super` in the static members of a decorated
-//! class, decorated class expressions, and classes inside namespaces.
+//! Computed keys, namespace and class-expression scopes, private descriptors and
+//! static super receivers are lowered before the existing target transforms.
+//! ESNext define semantics preserve proposals. Literal member names, decorators
+//! on constructors/static blocks/overload signatures, super in decorated private
+//! callables and static-initializer super writes retain precise refusals.
 
 use std::collections::BTreeSet;
+
+mod private_members;
+mod scopes;
+mod super_members;
+pub(super) mod targets;
+pub(super) use scopes::namespace_owner;
 
 use super::{Module, TextEdit};
 use crate::compiler::{CompilerOptions, EcmaTarget};
@@ -82,6 +89,8 @@ struct Plan<'a> {
     name: String,
     /// The helper variable's stem: `_static_get_x`, `_private_p`.
     var: String,
+    /// Captured property key, evaluated once at class definition.
+    runtime_key: Option<String>,
 }
 
 impl Plan<'_> {
@@ -136,8 +145,12 @@ pub(super) fn relocated(start: usize, end: usize) -> String {
 
 /// Whether the emitter lowers this class's decorators or auto-accessors (so the
 /// other passes leave its `export` and its name to this one).
-pub(super) fn lowers_class(class: &ClassDeclaration) -> bool {
-    needs_lowering(class)
+pub(super) fn lowers_class(class: &ClassDeclaration, options: &CompilerOptions) -> bool {
+    needs_lowering(class) && !preserves_proposals(options)
+}
+
+fn preserves_proposals(options: &CompilerOptions) -> bool {
+    options.target == EcmaTarget::EsNext && options.defines_class_fields()
 }
 
 fn needs_lowering(class: &ClassDeclaration) -> bool {
@@ -148,15 +161,21 @@ fn needs_lowering(class: &ClassDeclaration) -> bool {
         })
 }
 
+pub(super) fn has_standard_lowering(module: &Module) -> bool {
+    super::runtime_declarations(&module.declarations).into_iter().any(
+        |(declaration, _)| matches!(declaration, Declaration::Class(class) if needs_lowering(class)),
+    ) || module.class_expressions.values().any(|expression| needs_lowering(&expression.class))
+}
+
 pub(super) fn lower_decorators(
     module: &Module,
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
-    let any = super::runtime_declarations(&module.declarations)
-        .into_iter()
-        .any(|(declaration, _)| matches!(declaration, Declaration::Class(class) if needs_lowering(class)));
-    if !any {
+    if preserves_proposals(options) {
+        return Ok(());
+    }
+    if !has_standard_lowering(module) {
         return Ok(());
     }
     let Ok(tokens) = crate::lex(&module.id, &module.source) else {
@@ -170,24 +189,12 @@ pub(super) fn lower_decorators(
             .collect(),
     };
     let mut first_class_start: Option<usize> = None;
-    for (declaration, nested) in super::runtime_declarations(&module.declarations) {
+    for (declaration, _) in super::runtime_declarations(&module.declarations) {
         let Declaration::Class(class) = declaration else {
             continue;
         };
         if !needs_lowering(class) {
             continue;
-        }
-        if nested {
-            return Err(unsupported(
-                &class.name_span,
-                "a decorated class or auto-accessor inside a namespace is not lowered yet",
-            ));
-        }
-        if options.target != EcmaTarget::Es2022 || !options.defines_class_fields() {
-            return Err(unsupported(
-                &class.name_span,
-                "decorators and auto-accessors are lowered for target ES2022 with class fields defined (the default); other targets are not supported yet",
-            ));
         }
         Lowerer {
             module,
@@ -195,9 +202,28 @@ pub(super) fn lower_decorators(
             names: &mut names,
             edits,
         }
-        .class(class)?;
-        first_class_start =
-            Some(first_class_start.map_or(class.span.start, |at| at.min(class.span.start)));
+        .class(class, false)?;
+        let helper_start = scopes::helper_start(module, class);
+        first_class_start = Some(first_class_start.map_or(helper_start, |at| at.min(helper_start)));
+    }
+    for expression in module.class_expressions.values() {
+        if !needs_lowering(&expression.class) {
+            continue;
+        }
+        let mut class = expression.class.clone();
+        class.name = expression
+            .name
+            .clone()
+            .unwrap_or_else(|| names.unique("_decoratedClass"));
+        Lowerer {
+            module,
+            options,
+            names: &mut names,
+            edits,
+        }
+        .class(&class, true)?;
+        let at = scopes::helper_start(module, &class);
+        first_class_start = Some(first_class_start.map_or(at, |first| first.min(at)));
     }
     if let Some(at) = first_class_start {
         edits.push(TextEdit {
@@ -294,9 +320,11 @@ impl Lowerer<'_, '_> {
     fn plans<'c>(&mut self, class: &'c ClassDeclaration) -> Result<Vec<Plan<'c>>, Diagnostic> {
         let mut plans = Vec::new();
         for shell in &class.members {
-            if shell.key.first().is_some_and(|key| {
-                key.is("[") || matches!(key.kind, TokenKind::String | TokenKind::Number)
-            }) {
+            if shell
+                .key
+                .first()
+                .is_some_and(|key| matches!(key.kind, TokenKind::String | TokenKind::Number))
+            {
                 return Err(unsupported(
                     &shell.span,
                     "computed or literal member names in decorator lowering are not supported yet",
@@ -374,18 +402,6 @@ impl Lowerer<'_, '_> {
                 }
             };
             let private = name.starts_with('#');
-            if private
-                && !shell.decorators.is_empty()
-                && matches!(
-                    kind,
-                    Kind::Method | Kind::Getter | Kind::Setter | Kind::Accessor
-                )
-            {
-                return Err(unsupported(
-                    &shell.decorators[0].span,
-                    "a decorated private method or accessor is not lowered yet",
-                ));
-            }
             let mut stem = String::from("_");
             if is_static {
                 stem.push_str("static_");
@@ -398,14 +414,21 @@ impl Lowerer<'_, '_> {
             if private {
                 stem.push_str("private_");
             }
-            stem.push_str(name.trim_start_matches('#'));
+            let computed = shell.key.first().is_some_and(|key| key.is("["));
+            stem.push_str(if computed {
+                "member"
+            } else {
+                name.trim_start_matches('#')
+            });
             // Only decorated members get helper variables; keep their stems unique.
             let var = if shell.decorators.is_empty() {
                 stem
             } else {
                 self.names.unique(&stem)
             };
+            let runtime_key = computed.then(|| self.names.unique("_computedKey"));
             plans.push(Plan {
+                runtime_key,
                 shell,
                 kind,
                 is_static,
@@ -419,6 +442,16 @@ impl Lowerer<'_, '_> {
 
     /// The `{ has, get, set }` access object of a decorated member.
     fn access(plan: &Plan) -> String {
+        if let Some(key) = &plan.runtime_key {
+            let has = format!("obj => {key} in obj");
+            let get = format!("obj => obj[{key}]");
+            let set = format!("(obj, value) => {{ obj[{key}] = value; }}");
+            return match plan.kind {
+                Kind::Method | Kind::Getter => format!("{{ has: {has}, get: {get} }}"),
+                Kind::Setter => format!("{{ has: {has}, set: {set} }}"),
+                Kind::Field | Kind::Accessor => format!("{{ has: {has}, get: {get}, set: {set} }}"),
+            };
+        }
         let key = plan.name.clone();
         let has = if plan.private {
             format!("obj => {key} in obj")
@@ -442,34 +475,10 @@ impl Lowerer<'_, '_> {
         }
     }
 
-    fn class(&mut self, class: &ClassDeclaration) -> Result<(), Diagnostic> {
+    fn class(&mut self, class: &ClassDeclaration, expression: bool) -> Result<(), Diagnostic> {
         let plans = self.plans(class)?;
         let class_decorated = !class.decorators.is_empty();
         let extends = class.extends_span.clone();
-        // `super` in a static member of a class whose binding is replaced would
-        // need `Reflect.get` rewrites.
-        if class_decorated {
-            for shell in &class.members {
-                let is_static = shell.method.as_ref().is_some_and(|method| method.is_static)
-                    || shell
-                        .accessor
-                        .as_ref()
-                        .is_some_and(|accessor| accessor.is_static)
-                    || shell.field.as_ref().is_some_and(|field| field.is_static)
-                    || shell.kind == ClassMemberKind::StaticBlock;
-                if !is_static {
-                    continue;
-                }
-                let tokens = &class.body[shell.token_start..shell.token_end];
-                if tokens.iter().any(|token| token.is("super")) {
-                    return Err(unsupported(
-                        &shell.span,
-                        "`super` in a static member of a class with decorators is not lowered yet",
-                    ));
-                }
-            }
-        }
-
         let class_this = if class_decorated {
             self.names.unique("_classThis")
         } else {
@@ -499,6 +508,10 @@ impl Lowerer<'_, '_> {
             })
             .then(|| self.names.unique("_instanceExtraInitializers"));
 
+        if let Some(base) = &class_super {
+            self.rewrite_static_super(class, base, &class_this)?;
+        }
+
         // ---- the header --------------------------------------------------
         let mut lets = String::new();
         if class_decorated {
@@ -524,12 +537,20 @@ impl Lowerer<'_, '_> {
         if let Some(name) = &instance_extra {
             lets.push_str(&format!("let {name} = []; "));
         }
+        for plan in &plans {
+            if let Some(key) = &plan.runtime_key {
+                lets.push_str(&format!("let {key}; "));
+            }
+        }
         for is_static in [true, false] {
             for plan in plans
                 .iter()
                 .filter(|plan| plan.decorated() && plan.is_static == is_static)
             {
                 lets.push_str(&format!("let {}; ", plan.decorators_var()));
+                if plan.private_descriptor() {
+                    lets.push_str(&format!("let {}; ", plan.descriptor_var()));
+                }
                 if matches!(plan.kind, Kind::Field | Kind::Accessor) {
                     lets.push_str(&format!(
                         "let {} = []; let {} = []; ",
@@ -557,7 +578,23 @@ impl Lowerer<'_, '_> {
                 .map(|decorator| self.decorator_expression(decorator))
                 .collect::<Result<Vec<_>, _>>()?
                 .join(", ");
-            leading.push_str(&format!("{} = [{decorators}]; ", plan.decorators_var()));
+            if let Some(key) = &plan.runtime_key {
+                let tokens = &plan.shell.key;
+                let start = tokens.first().expect("a computed key has an opener").end;
+                let end = tokens.last().expect("a computed key has a closer").start;
+                let value = relocated(start, end);
+                self.push(tokens[0].start, tokens.last().unwrap().end,
+                    format!("[({} = [{decorators}], {key} = (typeof ({key} = {value}) === \"symbol\" ? {key} : \"\".concat({key})))]", plan.decorators_var()));
+            } else {
+                leading.push_str(&format!("{} = [{decorators}]; ", plan.decorators_var()));
+            }
+            if plan.private_descriptor() {
+                if plan.kind == Kind::Accessor {
+                    leading.push_str(&plan.private_accessor_descriptor());
+                } else {
+                    leading.push_str(&self.private_callable(class, plan)?);
+                }
+            }
         }
         let this_for = |plan: &Plan| -> &'static str {
             if matches!(
@@ -573,7 +610,10 @@ impl Lowerer<'_, '_> {
                         static_extra: &Option<String>,
                         instance_extra: &Option<String>|
          -> String {
-            let name = quoted(&plan.name);
+            let name = plan
+                .runtime_key
+                .clone()
+                .unwrap_or_else(|| quoted(&plan.name));
             let context = format!(
                 "{{ kind: {}, name: {name}, static: {}, private: {}, access: {}, metadata: {metadata} }}",
                 quoted(plan.kind.label()),
@@ -598,9 +638,13 @@ impl Lowerer<'_, '_> {
                     },
                 ),
             };
+            let (target, descriptor) = if plan.private_descriptor() {
+                ("null", plan.descriptor_var())
+            } else {
+                (this_for(plan), "null".to_string())
+            };
             format!(
-                "{ES_DECORATE}({}, null, {}, {context}, {initializers}, {extra}); ",
-                this_for(plan),
+                "{ES_DECORATE}({target}, {descriptor}, {}, {context}, {initializers}, {extra}); ",
                 plan.decorators_var()
             )
         };
@@ -744,7 +788,10 @@ impl Lowerer<'_, '_> {
 
         // ---- assemble the header and the footer --------------------------------
         let blocks = if class_decorated {
-            format!("static {{ {class_this} = this; }} static {{ {leading}{leading_extra}}} ")
+            format!(
+                r#"static {{ Object.defineProperty(this, "name", {{ value: {}, configurable: true }}); {class_this} = this; }} static {{ {leading}{leading_extra}}} "#,
+                quoted(&class.name)
+            )
         } else {
             format!("static {{ {leading}{leading_extra}}} ")
         };
@@ -757,28 +804,37 @@ impl Lowerer<'_, '_> {
         } else {
             format!("return class {}{extends_clause} {{ ", class.name)
         };
-        let header = format!("let {} = (() => {{ {lets}{opener}{blocks}", class.name);
+        let header = if expression {
+            format!("(() => {{ {lets}{opener}{blocks}")
+        } else {
+            format!("let {} = (() => {{ {lets}{opener}{blocks}", class.name)
+        };
         let header_end = body_open + 1;
         let header = format!("{header}{}", self.newlines(class.span.start, header_end));
         self.push(class.span.start, header_end, header);
 
         let close = class.body_span.end - 1;
         let export_suffix = if class.exported {
-            if self.options.module_kind == crate::compiler::ModuleKind::CommonJs {
-                format!(" exports.{0} = {0};", class.name)
+            if let Some((namespace, _)) = namespace_owner(self.module, class) {
+                format!(" {namespace}.{0} = {0};", class.name)
+            } else if self.options.module_kind == crate::compiler::ModuleKind::CommonJs {
+                format!(" exports.{} = {};", class.export_name(), class.name)
+            } else if class.default_export {
+                format!(" export default {};", class.name)
             } else {
                 format!(" export {{ {} }};", class.name)
             }
         } else {
             String::new()
         };
+        let terminator = if expression { "" } else { ";" };
         let finish = if class_decorated {
             format!(
-                "}}; return {} = {class_this}; }})();{export_suffix}",
+                "}}; return {} = {class_this}; }})(){terminator}{export_suffix}",
                 class.name
             )
         } else {
-            format!("}}; }})();{export_suffix}")
+            format!("}}; }})(){terminator}{export_suffix}")
         };
         self.push(close, close + 1, format!("{tail} {finish}"));
         Ok(())
@@ -844,13 +900,18 @@ impl Lowerer<'_, '_> {
                 self.rewrite_this_tokens(tokens, class_this);
             }
         }
-        if plan.kind == Kind::Accessor {
+        if plan.kind == Kind::Accessor
+            && (self.options.target != EcmaTarget::EsNext || plan.private)
+        {
             let storage = plan.storage();
             let name = &plan.name;
             let modifier = if plan.is_static { "static " } else { "" };
-            let accessors = format!(
-                "{modifier}get {name}() {{ return this.{storage}; }} {modifier}set {name}(value) {{ this.{storage} = value; }}"
-            );
+            let accessors = if plan.private_descriptor() {
+                let descriptor = plan.descriptor_var();
+                format!("{modifier}get {name}() {{ return {descriptor}.get.call(this); }} {modifier}set {name}(value) {{ {descriptor}.set.call(this, value); }}")
+            } else {
+                format!("{modifier}get {name}() {{ return this.{storage}; }} {modifier}set {name}(value) {{ this.{storage} = value; }}")
+            };
             match initializer_range {
                 Some((start, end)) => {
                     self.push(

@@ -8487,3 +8487,76 @@ Every frozen source hash matches after each step. Evidence:
 `blueice-k73-ci-regex-second-status.json` and retained logs. Complete hosted CI
 must run on the integrated repair; its completion is not claimed here.
 K.7.4 through K.10 remain open.
+
+
+### K.7.4 complete native target replay, before the final K.0 gate (2026-10-11)
+
+The first corrected 10,514-file snapshot passes format, three-crate all-target
+Clippy and every test of the 880-configuration corpus, including both ignored
+oracles. All 816 accepted actual emitted programs match native execution,
+exact declarations and target/proposal syntax. All 64 rejected primary codes,
+messages and source positions agree. Every native golden hash remains unchanged:
+782 outputs execute directly under Node and 34 raw ESNext proposal outputs use
+the documented actual-emitted-JavaScript-only adapter.
+
+Standard decorator output retains ESNext proposals under native field semantics.
+Other targets reparse owned generated output, reuse class-field/private lowering
+and compose source provenance; ES5 passes preserve class receivers inside arrows.
+Named ES5 class expressions emit values instead of duplicate variable bindings.
+Decorated private callables retain brands through descriptor wrappers; computed
+keys evaluate once in source order. Namespace exports receive the replacement
+class, default exports retain their correct binding, and broad computed method
+names print function-valued declaration properties as Native does.
+
+The final K.0 gate must cover this implementation integrated with the independently
+verified CI regex fixture repair and the migrated ordinary refusal regressions.
+Private auto-accessors, broader static-initializer/block super forms and other
+unmeasured compositions remain precise refusals. K.7.4 is still open; this entry
+does not claim full K.0 or hosted CI completion. Evidence:
+`blueice-k74-declarations-first-proof.json` and its frozen hashes/status/logs.
+
+### K.7.4 private-accessor and static-super residual replay (2026-10-11)
+
+Commit `31394a54b` records 264 additional pinned native configurations before
+implementing these remaining forms: private auto-accessors and setters, plus
+static fields, blocks, getters and setters referencing a base accessor after a
+class decorator replaces the constructor. Native accepts 240 and rejects 24.
+The committed red replay has 190 verdict and sixteen primary differences.
+All native accepted JavaScript executes (228 directly, twelve preserved ESNext
+outputs through the existing emitted-JavaScript-only proposal adapter).
+The original 880 golden observations remain unchanged.
+
+Private auto-accessors now use lexical get/set descriptors and retain brands,
+returned initializers and extra-initializer queues. ESNext assignment semantics
+lower private auto-accessors while preserving public proposal accessors, as the
+pinned compiler does. Static initialization reads use the retained superclass
+and decorated constructor receiver; retained getter/setter bodies keep native
+home objects and dynamic receivers. ES5 base-accessor super references report
+exact TS2340, and private auto-accessors retain the TS18028 primary.
+
+The immutable 11,313-file focused snapshot passes format, three-crate all-target
+Clippy and all four residual tests, including both ignored native oracles.
+Every one of the 240 actual emitted outputs, exact declarations and syntax
+observations agrees; all 24 rejected primaries agree. Evidence:
+`blueice-k74-private-accessor-super-first-proof.json` and retained hashes/logs.
+The final complete K.0 gate is running; K.7.4 remains open until it passes.
+
+### K.7.4 verified target and decorator closure (2026-10-11)
+
+The final immutable 11,313-file K.0 gate passes format and three-crate all-target
+Clippy with warnings denied. All 1,118 ordinary tests and every one of the 198
+ignored oracles pass, totaling 1,316 tests in 131 target/doctest groups per pass.
+All 11,177 backend/Cargo/workflow hashes match the tested source. Both native
+recorders verify the original goldens without updates. The combined 1,144
+configurations retain 1,056 native accepts and 88 exact primary rejections;
+every accepted actual output, execution, declaration and syntax observation
+agrees. Evidence: `blueice-k74-full-k0-second-proof.json`, frozen hashes and logs.
+
+K.7.4 is complete for these measured forms. Production emitter responsibilities
+are separated into scope, private descriptor, static super and generated target
+modules; the largest changed source is 1,019 lines, below the 1,200-line review
+threshold. Regenerated inventory records 211 refusals in eleven areas, retaining
+unmeasured compositions, literal decorated names, private-callable super and
+static-initializer super writes/computed keys. No runtime or loader authority
+is added. Commit and push this leaf; final-source hosted workspace, platform
+and coverage verification remains open. K.8.1 is the next leaf.

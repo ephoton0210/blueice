@@ -560,9 +560,14 @@ pub(super) fn emit_class_declaration(
                 if method.optional {
                     output.push('?');
                 }
+                let function_property =
+                    context.is_some_and(|context| context.computed_method_property(shell));
+                if function_property {
+                    output.push_str(": ");
+                }
                 super::emit_type_parameters(output, &method.type_parameters);
                 output.push_str(&parameters_to_ts(&method.parameters));
-                output.push_str(": ");
+                output.push_str(if function_property { " => " } else { ": " });
                 output.push_str(
                     &context
                         .and_then(|context| context.return_type(method.span.start))

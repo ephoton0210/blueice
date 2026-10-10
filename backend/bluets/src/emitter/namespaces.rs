@@ -56,6 +56,7 @@ struct Walk<'a> {
     inline_const_enums: bool,
     preserve_const_enums: bool,
     commonjs: bool,
+    options: &'a CompilerOptions,
 }
 
 pub(super) fn lower_namespaces(
@@ -92,6 +93,7 @@ pub(super) fn lower_namespaces(
         inline_const_enums: options.inlines_const_enums(),
         preserve_const_enums: options.preserve_const_enums,
         commonjs: options.module_kind == crate::compiler::ModuleKind::CommonJs,
+        options,
     };
     // The names a module-level namespace may merge into.
     let mut declared: BTreeSet<String> = BTreeSet::new();
@@ -266,7 +268,12 @@ impl Walk<'_> {
                 }
                 Declaration::Class(class) => {
                     declared_here.insert(class.name.clone());
-                    if class.exported {
+                    let owns_decorators = if self.options.experimental_decorators {
+                        super::legacy_decorators::lowers_class(class)
+                    } else {
+                        super::decorators::lowers_class(class, self.options)
+                    };
+                    if class.exported && !owns_decorators {
                         self.exported_member(&class.span, &class.name, &param);
                     }
                 }
@@ -372,9 +379,12 @@ impl Walk<'_> {
     /// An exported function or class keeps its declaration, loses `export`, and
     /// is stored on the namespace right after it.
     fn exported_member(&mut self, span: &SourceSpan, name: &str, param: &str) {
-        let from = self.token_at(span.start);
-        if let (Some(export), Some(next)) = (self.tokens.get(from), self.tokens.get(from + 1)) {
-            if export.is("export") {
+        let range = self.token_at(span.start)..self.token_at(span.end);
+        if let Some(from) = range
+            .into_iter()
+            .find(|index| self.tokens[*index].is("export"))
+        {
+            if let (Some(export), Some(next)) = (self.tokens.get(from), self.tokens.get(from + 1)) {
                 let (start, end) = (export.start, next.start);
                 self.edit(start, end, "");
             }
