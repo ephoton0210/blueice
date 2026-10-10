@@ -170,7 +170,7 @@ fn inherited_paths_without_base_url_retain_the_declaring_directory() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let files = String::from_utf8_lossy(&output.stdout);
+    let files = String::from_utf8_lossy(&output.stdout).replace('\\', "/");
     assert!(files.contains("config/types/answer.d.ts"), "{files}");
     assert!(!files
         .lines()
@@ -232,7 +232,9 @@ fn explicit_owner_roots_allow_external_type_libraries_with_stable_identities() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("shared/globals/index.d.ts"));
+    assert!(String::from_utf8_lossy(&output.stdout)
+        .replace('\\', "/")
+        .contains("shared/globals/index.d.ts"));
     tree.write(
         "shared/globals/index.d.ts",
         "declare type Answer = string;\n",
