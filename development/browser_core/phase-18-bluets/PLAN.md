@@ -8218,3 +8218,33 @@ and `blueice-k72-final-verification-proof.json`. K.7.2 is complete in its
 measured form. G-E1/G-M1 retain broader module/helper/target and declaration
 input combinations. Publish this leaf before the separately tested CLI
 FileLoader split; CLI size remains 1,210 lines. K.7.3 through K.10 remain open.
+
+### K.7.2 CLI loader split in progress (2026-10-10)
+
+The verified module-systems leaf is committed and pushed as `992daf8ee`.
+Its 1,210-line CLI now delegates FileLoader state, canonical identities,
+root-confined loading, package observations and declaration-cache checks to
+`bluetsc/file_loader.rs`. The CLI is 945 lines and the new module 276 lines.
+The loader body is byte-identical after removing the new parent-only
+visibility qualifiers; no I/O authority or resolver behavior changes.
+Formatting passes. The separate complete K.0 gate is required before
+committing and pushing this split, and before adding K.7.3 responsibilities.
+
+### K.7.2 verified CLI loader split (2026-10-10)
+
+The separate immutable 7,446-file Linux snapshot passes formatting,
+warnings-denied three-crate all-target Clippy, all 1,107 ordinary tests
+and all 190 ignored oracles in 127 target/doctest groups per test command.
+All 106 module configurations, actual execution/declarations and Node file
+suffixes remain equal to the pinned reference. The moved loader body is
+preserved exactly after parent-only visibility normalization.
+
+The CLI is 945 lines; `bluetsc/file_loader.rs` is 276 lines. Evidence:
+`blueice-k72-cli-split-first-{status,source-hashes}.json`, its logs,
+`blueice-k72-cli-split-body-proof.json` and
+`blueice-k72-cli-split-final-proof.json`. Commit and push this focused split
+separately before K.7.3. The prepared K.7.3 baseline records 72 native
+configurations, 68 actual accepted Node executions and four TS5102 refusals;
+current BlueTSC differs in all 68 accepted decisions and all four removed
+option primary diagnostics. Its fixtures remain outside the repository
+until the split is published. K.7.3 through K.10 remain open.
