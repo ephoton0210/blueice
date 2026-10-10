@@ -27,6 +27,12 @@ struct TextInputContext: Encodable, Equatable, Sendable {
     let focus_generation: UInt64
 }
 
+struct NativePointerContext: Encodable, Equatable, Sendable {
+    let version: UInt32
+    let frame_source: UInt64
+    let document_generation: UInt64
+}
+
 enum TextMovement: String, Encodable, Sendable {
     case backward = "Backward", forward = "Forward", wordBackward = "WordBackward", wordForward = "WordForward"
     case beginning = "Beginning", end = "End", lineBeginning = "LineBeginning", lineEnd = "LineEnd", up = "Up", down = "Down"

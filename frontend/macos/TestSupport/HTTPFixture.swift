@@ -70,6 +70,12 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/native-hover": body = """
+                    <html><body style="margin:0">
+                    <a href='/native-hover-next' aria-label='First hover link' style='display:block;width:240px;height:40px'>First hover link</a>
+                    <a href='/native-hover-next' aria-label='Second hover link' style='display:block;width:240px;height:40px'>Second hover link</a>
+                    </body></html>
+                    """
                 case "/search":
                     let query = URLComponents(string: self.origin + path)?.queryItems?.last?.value ?? ""
                     let text = query.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
@@ -599,4 +605,84 @@ final class HTTPFixture: @unchecked Sendable {
     }
 
     deinit { stop() }
+}
+
+// A separate read-only connection observes shared core state. It cannot use
+// a front-end cache as evidence that a native pointer event reached core.
+func readOwnedCoreHover(runtime: URL, context: UInt64, window: UInt64, tab: UInt64) throws -> [UInt64] {
+    let data = try readOwnedCoreRepresentation(runtime: runtime,context: context,window: window,tab: tab)
+    guard let page = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let nodes = page["nodes"] as? [[String: Any]] else { throw POSIXError(.EIO) }
+    return try nodes.filter { ($0["state"] as? [String: Any])?["hovered"] as? Bool == true }.map {
+        guard let id = ($0["id"] as? NSNumber)?.uint64Value else { throw POSIXError(.EIO) }
+        return id
+    }.sorted()
+}
+
+func readOwnedCoreRepresentation(runtime: URL, context: UInt64, window: UInt64, tab: UInt64) throws -> Data {
+    var address = sockaddr_un()
+    let path = Array(runtime.appendingPathComponent("browser.sock").path.utf8) + [0]
+    guard path.count <= MemoryLayout.size(ofValue: address.sun_path) else { throw POSIXError(.ENAMETOOLONG) }
+    address.sun_family = sa_family_t(AF_UNIX); address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+    withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: path) }
+    let descriptor = Darwin.socket(AF_UNIX,SOCK_STREAM,0)
+    guard descriptor >= 0 else { throw POSIXError(.EIO) }
+    defer { Darwin.close(descriptor) }
+    var noSignal: Int32 = 1, timeout = timeval(tv_sec: 2,tv_usec: 0)
+    guard setsockopt(descriptor,SOL_SOCKET,SO_NOSIGPIPE,&noSignal,socklen_t(MemoryLayout.size(ofValue: noSignal))) == 0,
+          setsockopt(descriptor,SOL_SOCKET,SO_SNDTIMEO,&timeout,socklen_t(MemoryLayout.size(ofValue: timeout))) == 0 else { throw POSIXError(.EIO) }
+    let connected = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self,capacity: 1) { Darwin.connect(descriptor,$0,socklen_t(MemoryLayout<sockaddr_un>.size)) }
+    }
+    guard connected == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    func readExactly(_ count: Int,deadline: Date) throws -> Data {
+        var result = Data()
+        while result.count < count {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { throw POSIXError(.ETIMEDOUT) }
+            var waiting = pollfd(fd: descriptor,events: Int16(POLLIN),revents: 0)
+            guard Darwin.poll(&waiting,1,Int32(max(1,min(2000,remaining * 1000)))) > 0 else { throw POSIXError(.ETIMEDOUT) }
+            var bytes = [UInt8](repeating: 0,count: count - result.count)
+            let size = Darwin.read(descriptor,&bytes,bytes.count)
+            guard size > 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            result.append(contentsOf: bytes.prefix(size))
+        }
+        return result
+    }
+    func exchange(_ command: Any,request: UInt64,scoped: Bool) throws -> [String: Any] {
+        let wrapped: Any = scoped ? ["BrowserContext": ["Command": ["context_id": context,
+            "message": ["Window": ["Command": ["window_id": window,"message": command]]]]]] : command
+        var envelope: [String: Any] = ["request_id": request,"message": wrapped]
+        if scoped { envelope["tab_id"] = tab }
+        let payload = try JSONSerialization.data(withJSONObject: envelope)
+        var length = UInt32(payload.count).littleEndian
+        let packet = withUnsafeBytes(of: &length) { Data($0) } + payload
+        var offset = 0
+        try packet.withUnsafeBytes { buffer in
+            while offset < buffer.count {
+                let written = Darwin.write(descriptor,buffer.baseAddress!.advanced(by: offset),buffer.count - offset)
+                guard written > 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                offset += written
+            }
+        }
+        let deadline = Date().addingTimeInterval(2)
+        for _ in 0..<64 {
+            let header = try readExactly(4,deadline: deadline)
+            let count = header.enumerated().reduce(UInt32(0)) { $0 | UInt32($1.element) << (8 * $1.offset) }
+            guard count > 0, count <= 16 * 1024 * 1024,
+                  let root = try JSONSerialization.jsonObject(with: readExactly(Int(count),deadline: deadline)) as? [String: Any] else { throw POSIXError(.EIO) }
+            if (root["request_id"] as? NSNumber)?.uint64Value == request {
+                guard !scoped || (root["tab_id"] as? NSNumber)?.uint64Value == tab,
+                      let message = root["message"] as? [String: Any], message["Error"] == nil else { throw POSIXError(.EIO) }
+                return message
+            }
+        }
+        throw POSIXError(.ETIMEDOUT)
+    }
+    let hello = try exchange(["Hello": ["protocol_version": 2]],request: 1,scoped: false)
+    guard (hello["Hello"] as? [String: Any])?["protocol_version"] as? Int == 2 else { throw POSIXError(.EIO) }
+    let message = try exchange("GetRepresentation",request: 2,scoped: true)
+    guard let page = message["Representation"] as? [String: Any],
+          (page["tab_id"] as? NSNumber)?.uint64Value == tab else { throw POSIXError(.EIO) }
+    return try JSONSerialization.data(withJSONObject: page)
 }

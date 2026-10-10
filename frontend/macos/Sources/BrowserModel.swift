@@ -237,7 +237,9 @@ final class BrowserModel: ObservableObject {
     private var groupOperation: UUID?
     private var groupReplies: [IncomingEnvelope] = []
     private var groupRequests: [UInt64] = []
-    @Published private(set) var selected: UInt64?
+    @Published private(set) var selected: UInt64? {
+        didSet { if selected != oldValue { clearNativeHover() } }
+    }
     @Published var address = ""
     @Published private(set) var status = "Starting BlueIce…"
     var localizedStatus: String {
@@ -268,6 +270,7 @@ final class BrowserModel: ObservableObject {
     var canInteract: Bool { ready && !interactionSuspended }
     func suspendInteraction(_ value: Bool) {
         guard value != interactionSuspended else { return }
+        if value { clearNativeHover() }
         interactionSuspended = value
         (nativeWindow as? BrowserWindow)?.pageInput?.supersedeKeyboardFocus()
         (nativeWindow as? BrowserWindow)?.chromeFocus?.discardQueuedInput()
@@ -587,6 +590,7 @@ final class BrowserModel: ObservableObject {
                 // Retry only when a newer document/frame superseded the in-flight request.
                 requestRepresentation(tab)
             }
+            if hoverRepresentationPending.contains(tab) { requestRepresentation(tab) }
         case .representationUnavailable:
             if let tab { representationRequests.removeValue(forKey: tab); representations.removeValue(forKey: tab) }
             if tab == selected { representation = nil; status = "Page accessibility unavailable" }
@@ -964,8 +968,70 @@ final class BrowserModel: ObservableObject {
 
     private func requestRepresentation(_ tab: UInt64) {
         guard ready, representationRequests[tab] == nil, let frame = frames[tab] else { return }
+        hoverRepresentationPending.remove(tab)
         representationRequests[tab] = (documentEpochs[tab, default: 0], frame.generation)
         Task { await send(.unit("GetRepresentation"), tab: tab) }
+    }
+
+    private struct HoverUpdate {
+        let tab: UInt64
+        let ownerContext: UInt64
+        let epoch: UInt64
+        let context: NativePointerContext
+        let frame: UInt64
+        var point: CGPoint?
+    }
+    private var hoverOwner: HoverUpdate?
+    private var hoverUpdates: [HoverUpdate] = []
+    private var hoverTask: Task<Void, Never>?
+    private var hoverRepresentationPending: Set<UInt64> = []
+
+    func nativeHover(_ point: CGPoint) {
+        guard canInteract, status != "Loading…", let tab = selected,
+              let input = inputStates[tab], input.frame_generation == generation,
+              let size = cssViewportSize, point.x.isFinite, point.y.isFinite,
+              point.x >= 0, point.y >= 0, point.x < size.width, point.y < size.height else {
+            clearNativeHover(); return
+        }
+        let update = HoverUpdate(tab: tab,ownerContext: contextID,epoch: accessibilityEpoch,
+            context: NativePointerContext(version: 1,frame_source: input.frame_source,document_generation: input.document_generation),
+            frame: generation,point: point)
+        hoverOwner = update
+        // Coalesce movement, but retain ordered leaves for previous owners.
+        hoverUpdates.removeAll { $0.point != nil }
+        hoverUpdates.append(update)
+        drainNativeHover()
+    }
+
+    func clearNativeHover() {
+        hoverUpdates.removeAll { $0.point != nil }
+        guard var previous = hoverOwner else { return }
+        hoverOwner = nil; previous.point = nil
+        hoverUpdates.append(previous)
+        drainNativeHover()
+    }
+
+    private func drainNativeHover() {
+        guard hoverTask == nil else { return }
+        hoverTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.hoverTask = nil }
+            while !Task.isCancelled, self.ready, !self.hoverUpdates.isEmpty {
+                let update = self.hoverUpdates.removeFirst()
+                guard self.contextID == update.ownerContext else { continue }
+                if update.point != nil {
+                    guard self.canInteract, self.status != "Loading…", self.selected == update.tab,
+                          self.accessibilityEpoch == update.epoch,
+                          self.generation == update.frame,
+                          self.textInputState?.frame_source == update.context.frame_source,
+                          self.textInputState?.document_generation == update.context.document_generation else { continue }
+                }
+                guard await self.send(.nativeHover(update.context,update.frame,update.point),tab: update.tab) != nil,
+                      self.ready, self.documentEpochs[update.tab,default: 0] == update.epoch else { continue }
+                self.hoverRepresentationPending.insert(update.tab)
+                self.requestRepresentation(update.tab)
+            }
+        }
     }
 
     func acknowledgeAccessibility(_ snapshot: PageRepresentation, epoch: UInt64) {
@@ -1344,6 +1410,7 @@ final class BrowserModel: ObservableObject {
     func viewportChanged(_ size: CGSize, deviceScale: Double = 1) {
         guard size.width > 0, size.height > 0, deviceScale.isFinite, deviceScale >= 1,
               viewport != size || self.deviceScale != deviceScale else { return }
+        clearNativeHover()
         viewport = size
         self.deviceScale = min(4, deviceScale)
         resizeTask?.cancel()
@@ -1363,5 +1430,5 @@ final class BrowserModel: ObservableObject {
         }
     }
 
-    func stop() async { accessibilityDeliveryJobs.values.forEach { $0.task.cancel() }; accessibilityDeliveryJobs.removeAll(); accessibilityDeliveryRequests.removeAll(); assistant.clear(); groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); if workspace == nil { await session.stop() } }
+    func stop() async { hoverTask?.cancel(); hoverUpdates.removeAll(); hoverOwner = nil; hoverRepresentationPending.removeAll(); accessibilityDeliveryJobs.values.forEach { $0.task.cancel() }; accessibilityDeliveryJobs.removeAll(); accessibilityDeliveryRequests.removeAll(); assistant.clear(); groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); if workspace == nil { await session.stop() } }
 }

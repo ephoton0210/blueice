@@ -4,6 +4,7 @@
 
 """Own the update fixture's files outside the sandboxed XCUITest Runner."""
 import hmac
+import ctypes
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
@@ -15,6 +16,11 @@ import subprocess
 import sys
 import tempfile
 import threading
+from urllib.parse import parse_qs, urlsplit
+import stat
+import socket
+import struct
+import time
 
 
 HEADER = """#!/bin/sh
@@ -59,6 +65,49 @@ def interrupted(signum, frame):
     raise SystemExit(128 + signum)
 
 
+def read_core_representation(runtime, context, window, tab):
+    """Read shared core state through the ordinary scoped protocol only."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(2)
+        connection.connect(str(runtime / "browser.sock"))
+        def exchange(command, request, scoped):
+            if scoped:
+                command = {"BrowserContext": {"Command": {"context_id": context,
+                    "message": {"Window": {"Command": {"window_id": window, "message": command}}}}}}
+            envelope = {"request_id": request, "message": command}
+            if scoped:
+                envelope["tab_id"] = tab
+            data = json.dumps(envelope).encode()
+            connection.sendall(struct.pack("<I", len(data)) + data)
+            deadline = time.monotonic() + 2
+            def read_exactly(count):
+                result = bytearray()
+                while len(result) < count:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError("core observation deadline")
+                    connection.settimeout(remaining)
+                    piece = connection.recv(count - len(result))
+                    if not piece:
+                        raise EOFError("core observation disconnected")
+                    result.extend(piece)
+                return result
+            for _ in range(64):
+                count, = struct.unpack("<I", read_exactly(4))
+                assert 0 < count <= 16 * 1024 * 1024
+                reply = json.loads(read_exactly(count))
+                if reply.get("request_id") != request:
+                    continue
+                assert not scoped or reply.get("tab_id") == tab
+                assert isinstance(reply.get("message"), dict) and "Error" not in reply["message"]
+                return reply["message"]
+            raise TimeoutError("core observation reply count")
+        assert exchange({"Hello": {"protocol_version": 2}}, 1, False) == {"Hello": {"protocol_version": 2}}
+        message = exchange("GetRepresentation", 2, True)
+        assert message["Representation"]["tab_id"] == tab
+        return message["Representation"]
+
+
 assert len(sys.argv) >= 3, "Provide the real service bundle and xcodebuild command"
 bundle = Path(sys.argv[1]).resolve(strict=True)
 assert bundle.name == "BlueIce.app" and bundle.is_dir()
@@ -89,6 +138,48 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.headers.get("Content-Length", "0") != "0":
             self.send_error(400)
+            return
+        route = urlsplit(self.path).path
+        if route in ("/runtime", "/hover"):
+            try:
+                query = parse_qs(urlsplit(self.path).query, strict_parsing=True)
+                assert set(query) == ({"launcher", "application"} if route == "/runtime" else {"launcher", "application", "context", "window", "tab"})
+                assert all(len(values) == 1 and values[0].isdecimal() for values in query.values())
+                launcher, application = int(query["launcher"][0]), int(query["application"][0])
+                assert launcher > 1 and application > 1
+                libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
+                def executable_path(pid):
+                    value = ctypes.create_string_buffer(4096)
+                    assert libproc.proc_pidpath(pid, value, len(value)) > 0
+                    return Path(os.fsdecode(value.value)).resolve(strict=True)
+                def parent_pid():
+                    value = subprocess.check_output(["/bin/ps", "-p", str(launcher), "-o", "ppid="], text=True, timeout=2)
+                    return int(value.strip())
+                assert executable_path(application) == bundle / "Contents/MacOS/BlueIce"
+                assert executable_path(launcher) == bundle / "Contents/MacOS/blueice-launcher"
+                assert parent_pid() == application
+                names = subprocess.check_output(["/usr/sbin/lsof", "-n", "-P", "-a", "-p", str(launcher), "-U", "-Fn"], text=True, timeout=2)
+                sockets = {line[1:] for line in names.splitlines()
+                           if line.startswith("n/private/tmp/bi-") and line.endswith("/browser.sock")}
+                assert len(sockets) == 1
+                socket = Path(sockets.pop())
+                assert stat.S_ISSOCK(socket.stat().st_mode)
+                runtime = socket.parent.resolve(strict=True)
+                info = runtime.stat()
+                assert info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700
+                assert parent_pid() == application
+                if route == "/hover":
+                    context, window, tab = (int(query[name][0]) for name in ("context", "window", "tab"))
+                    assert all(0 < value < 2**64 for value in (context, window, tab))
+                    data = json.dumps(read_core_representation(runtime, context, window, tab)).encode()
+                else:
+                    data = json.dumps({"runtime": str(runtime), "launcher": launcher, "application": application}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            except (AssertionError, OSError, ValueError, KeyError, EOFError, subprocess.SubprocessError) as error:
+                self.send_error(400, "Owned runtime lookup failed: " + type(error).__name__)
             return
         if self.path == "/update" and not finished:
             staged = directory / "blueice-core.staged"

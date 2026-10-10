@@ -28,6 +28,7 @@ enum BrowserCommand: Encodable, Sendable {
     case textInput(TextInputContext, TextInputAction)
     case nativeClick(TextInputContext, Double, Double)
     case nativeActivate(TextInputContext, UInt64, Double, Double)
+    case nativeHover(NativePointerContext, UInt64, CGPoint?)
     case accessibilityText(AccessibilityTextContext, AccessibilityTextAction)
     case accessibilityReveal(AccessibilityTextContext)
     case accessibilityAcknowledge(AccessibilityDelivery)
@@ -74,6 +75,14 @@ enum BrowserCommand: Encodable, Sendable {
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("NativeClick"))
             try value.encode(context, forKey: MessageKey("context"))
             try value.encode(x, forKey: MessageKey("x")); try value.encode(y, forKey: MessageKey("y"))
+        case .nativeHover(let context, let frame, let point):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("NativeHover"))
+            try value.encode(context, forKey: MessageKey("context"))
+            try value.encode(frame, forKey: MessageKey("frame_generation"))
+            if let point {
+                try value.encode(["x": Double(point.x), "y": Double(point.y)],forKey: MessageKey("point"))
+            } else { try value.encodeNil(forKey: MessageKey("point")) }
         case .nativeActivate(let context, let gesture, let x, let y):
             var root = encoder.container(keyedBy: MessageKey.self)
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("NativeActivate"))

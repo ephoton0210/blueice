@@ -39,6 +39,42 @@ final class AutomaticUpdateFixture {
     func triggerUpdate() throws { try post("update") }
     func stop() { try? post("finish") }
 
+    // Read-only lookup from the external harness, which verifies exact built
+    // executable paths and the GUI/launcher parent relationship twice.
+    func inspectRuntime(launcher: pid_t, application: pid_t) throws -> URL {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/runtime?launcher=\(launcher)&application=\(application)")!)
+        request.httpMethod = "POST"; request.httpBody = Data(); request.timeoutInterval = 5
+        request.setValue("Bearer " + token,forHTTPHeaderField: "Authorization")
+        let done = DispatchSemaphore(value: 0), reply = Reply()
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, data.count <= 4096 { reply.data = data }
+            done.signal()
+        }
+        task.resume()
+        guard done.wait(timeout: .now() + 6) == .success else { task.cancel(); throw NSError(domain: "AutomaticUpdateFixture",code: 6) }
+        struct Runtime: Decodable { let runtime: String; let launcher: pid_t; let application: pid_t }
+        guard let data = reply.data else { throw NSError(domain: "AutomaticUpdateFixture",code: 7) }
+        let value = try JSONDecoder().decode(Runtime.self,from: data)
+        guard value.launcher == launcher, value.application == application,
+              value.runtime.hasPrefix("/private/tmp/bi-"), !value.runtime.contains("/../") else { throw NSError(domain: "AutomaticUpdateFixture",code: 8) }
+        return URL(fileURLWithPath: value.runtime)
+    }
+
+    func inspectRepresentation(launcher: pid_t, application: pid_t, context: UInt64, window: UInt64, tab: UInt64) throws -> Data {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/hover?launcher=\(launcher)&application=\(application)&context=\(context)&window=\(window)&tab=\(tab)")!)
+        request.httpMethod = "POST"; request.httpBody = Data(); request.timeoutInterval = 5
+        request.setValue("Bearer " + token,forHTTPHeaderField: "Authorization")
+        let done = DispatchSemaphore(value: 0), reply = Reply()
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 200, let data, data.count <= 16 * 1024 * 1024 { reply.data = data }
+            done.signal()
+        }
+        task.resume()
+        guard done.wait(timeout: .now() + 6) == .success else { task.cancel(); throw NSError(domain: "AutomaticUpdateFixture",code: 9) }
+        guard let data = reply.data else { throw NSError(domain: "AutomaticUpdateFixture",code: 10) }
+        return data
+    }
+
     func processID(_ name: String) -> pid_t? {
         guard let contents = try? String(contentsOf: directory.appendingPathComponent(name + ".pid"), encoding: .utf8),
               let pid = pid_t(contents.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0 else { return nil }
@@ -51,7 +87,7 @@ final class AutomaticUpdateFixture {
             + "serving=\(String(describing: processID("serving")))\n" + log
     }
 
-    private final class Reply: @unchecked Sendable { var accepted = false }
+    private final class Reply: @unchecked Sendable { var accepted = false; var data: Data? }
 
     private func post(_ operation: String) throws {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/\(operation)")!)

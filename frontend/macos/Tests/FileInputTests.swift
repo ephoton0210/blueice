@@ -8,6 +8,56 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class FileInputTests: XCTestCase {
+    func testNativeMouseMovementAndExitUpdateTheActualCoreHoverState() async throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")
+        let workspace = BrowserWorkspace(); await workspace.start(launcher: launcher)
+        defer { Task { await workspace.stop() } }
+        let model = try XCTUnwrap(workspace.models[1])
+        let view = CorePageView(frame: NSRect(x: 0,y: 0,width: 1000,height: 600)); view.model = model
+        let window = FileInputWindow(contentRect: view.bounds,styleMask: [.borderless],backing: .buffered,defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = view; window.orderFront(nil)
+        defer { window.close() }
+        let url = fixture.origin + "/native-hover"
+        model.address = url; model.navigateAddress()
+        let deadline = Date().addingTimeInterval(15)
+        while model.representation?.url != url || model.representation?.generation != model.textInputState?.frame_generation
+            || model.displayState?.frameGeneration != model.generation || model.textInputBusy {
+            guard Date() < deadline else { return XCTFail("The actual hover document did not refresh") }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let snapshot = try XCTUnwrap(model.representation)
+        let cssSize = try XCTUnwrap(model.cssViewportSize)
+        let runtime = workspace.session.runtimeDirectory, context = model.contextID, owner = model.windowID
+        func assertHovered(_ expected: [UInt64]) async throws {
+            let limit = Date().addingTimeInterval(5)
+            while true {
+                let actual = try await Task.detached {
+                    try readOwnedCoreHover(runtime: runtime,context: context,window: owner,tab: snapshot.tabID)
+                }.value
+                if actual == expected { return }
+                guard Date() < limit else { return XCTFail("Actual core hover \(actual) did not become \(expected)") }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        try await assertHovered([])
+        for name in ["First hover link", "Second hover link"] {
+            let node = try XCTUnwrap(snapshot.nodes.first { $0.role == .link && $0.name == name })
+            let rect = snapshot.viewRect(for: node,viewport: view.bounds.size,image: cssSize)
+            let point = view.convert(NSPoint(x: rect.midX,y: rect.midY),to: nil)
+            let event = try XCTUnwrap(NSEvent.mouseEvent(with: .mouseMoved,location: point,modifierFlags: [],timestamp: 0,
+                windowNumber: window.windowNumber,context: nil,eventNumber: 0,clickCount: 0,pressure: 0))
+            view.mouseMoved(with: event)
+            try await assertHovered([node.id])
+        }
+        let exit = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseExited,location: .zero,modifierFlags: [],timestamp: 0,
+            windowNumber: window.windowNumber,context: nil,eventNumber: 0,trackingNumber: 0,userData: nil))
+        view.mouseExited(with: exit)
+        try await assertHovered([])
+        XCTAssertEqual(fixture.requests,["/native-hover"])
+        await workspace.stop()
+    }
+
     func testNativeInertControlPointerUsesActiveLabelAndPreservesAriaHiddenButtonInteraction() async throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         let launcher = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("BlueIce.app/Contents/MacOS/blueice-launcher")

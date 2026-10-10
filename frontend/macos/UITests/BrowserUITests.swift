@@ -14,6 +14,66 @@ import Darwin
 @MainActor
 final class BrowserUITests: XCTestCase {
     private var printPanel: XCUIElement { app.sheets.containing(.menuButton,identifier: "PDF").firstMatch }
+    func testNativeOSHoverLeavesOnChromeTabSelectionAndWindowFocusChange() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let started = Date(); launch()
+        let main = app.windows["browser-window"]
+        positionWindowForUnobstructedSheet(main)
+        let url = fixture.origin + "/native-hover"
+        enter(url); waitValue(main.textFields["address"],url)
+        let first = main.links["First hover link"], second = main.links["Second hover link"]
+        XCTAssertTrue(first.waitForExistence(timeout: 15)); XCTAssertTrue(second.waitForExistence(timeout: 15))
+        let owned = try ownedHoverRuntime(started: started)
+        func assertHovered(_ name: String?) throws {
+            var lastError: Error?
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                do {
+                    let data = try AutomaticUpdateFixture().inspectRepresentation(launcher: owned.launcher,application: owned.application,context: 1,window: 1,tab: 1)
+                    guard let page = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          page["url"] as? String == url, let nodes = page["nodes"] as? [[String: Any]] else { return false }
+                    let hovered = nodes.filter { ($0["state"] as? [String: Any])?["hovered"] as? Bool == true }
+                    return name.map { expected in hovered.count == 1 && hovered[0]["name"] as? String == expected } ?? hovered.isEmpty
+                } catch { lastError = error; return false }
+            },object: main)
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation],timeout: 10),.completed,
+                "Actual owned core hover must be \(String(describing: name)); observer error: \(String(describing: lastError))")
+        }
+        first.hover(); try assertHovered("First hover link")
+        second.hover(); try assertHovered("Second hover link")
+        main.textFields["address"].hover(); try assertHovered(nil)
+        first.hover(); try assertHovered("First hover link")
+        main.typeKey("t",modifierFlags: .command)
+        XCTAssertTrue(main.buttons["tab-2"].waitForExistence(timeout: 15)); try assertHovered(nil)
+        main.buttons["tab-1"].click()
+        first.hover(); try assertHovered("First hover link")
+        main.typeKey("n",modifierFlags: .command)
+        let other = app.windows["browser-window-2"]
+        XCTAssertTrue(other.waitForExistence(timeout: 15)); waitValue(other.textFields["address"],"about:credits")
+        try assertHovered(nil)
+        main.textFields["address"].click()
+        first.hover(); try assertHovered("First hover link")
+        main.textFields["address"].hover(); try assertHovered(nil)
+        XCTAssertEqual(fixture.requests,["/native-hover"])
+    }
+
+    private func ownedHoverRuntime(started: Date) throws -> (runtime: URL, application: pid_t, launcher: pid_t) {
+        let applications = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIce")
+        let panels = NSRunningApplication.runningApplications(withBundleIdentifier: "cc.blueice.BlueIcePanels")
+        guard applications.count == 1, panels.count == 1, let application = applications.first,
+              application.launchDate.map({ $0 >= started.addingTimeInterval(-2) }) == true,
+              let child = panels.first else { throw NSError(domain: "BlueIceHoverOwnership",code: 1) }
+        let launcher = getpgid(child.processIdentifier)
+        var information = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.stride)
+        guard launcher > 0, proc_pidinfo(launcher,PROC_PIDTBSDINFO,0,&information,size) == size,
+              information.pbi_ppid == UInt32(application.processIdentifier) else { throw NSError(domain: "BlueIceHoverOwnership",code: 2) }
+        let runtime = try AutomaticUpdateFixture().inspectRuntime(launcher: launcher,application: application.processIdentifier)
+        let attributes = try FileManager.default.attributesOfItem(atPath: runtime.path)
+        guard (attributes[.ownerAccountID] as? NSNumber)?.uint32Value == getuid(),
+              (attributes[.posixPermissions] as? NSNumber)?.intValue == 0o700 else { throw NSError(domain: "BlueIceHoverOwnership",code: 6) }
+        return (runtime,application.processIdentifier,launcher)
+    }
+
     private func positionOwnedWindow(_ window: XCUIElement, x: CGFloat, y: CGFloat = 40) {
         func atTarget() -> Bool {
             let frame = window.frame

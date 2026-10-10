@@ -1434,6 +1434,38 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             write_unknown_tab_error(stream, request_id, target)?;
                         }
                     }
+                    ClientMessage::NativeHover {
+                        context,
+                        frame_generation,
+                        point,
+                    } => {
+                        let source = blueice_ipc::shm::frame_source_id(frame_dir);
+                        let Some(page) = tabs.get_mut(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        if let Err(message) = page.validate_native_hover_context(&context, source) {
+                            write_error(stream, reply_tab, request_id, message)?;
+                            continue;
+                        }
+                        if point.is_some_and(|point| {
+                            frame_generation != page.frame_generation()
+                                || !page.validate_menu_point(point.x, point.y)
+                        }) {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "Native hover frame is stale or outside the viewport".into(),
+                            )?;
+                            continue;
+                        }
+                        if let Some(point) = point {
+                            page.hover_at(point.x, point.y);
+                        } else {
+                            page.clear_hover();
+                        }
+                    }
                     ClientMessage::GetRepresentation => match tabs.get_mut(target) {
                         Some(page) => {
                             let mut snapshot =

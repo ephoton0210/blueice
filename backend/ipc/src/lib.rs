@@ -260,6 +260,14 @@ pub enum ClientMessage {
         x: f64,
         y: f64,
     },
+    /// Native pointer movement fenced to the displayed document and frame.
+    /// `None` explicitly leaves the page; it is not an offscreen hit test.
+    /// Like Hover, success is silent and state is read via GetRepresentation.
+    NativeHover {
+        context: input::PointerContext,
+        frame_generation: u64,
+        point: Option<input::PointerPoint>,
+    },
     /// Scroll the viewport by this many CSS pixels (positive = down).
     Scroll {
         delta_y: f64,

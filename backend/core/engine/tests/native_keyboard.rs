@@ -11,7 +11,8 @@ use blueice_engine::session::{
 };
 use blueice_engine::{Page, TabId, TabManager};
 use blueice_ipc::input::{
-    FocusDirection, PageKey, TextInputAction, TextInputContext, TextInputState,
+    FocusDirection, PageKey, PointerContext, PointerPoint, TextInputAction, TextInputContext,
+    TextInputState,
 };
 use blueice_ipc::{AiSnapshot, ClientMessage, NodeAction, ServerMessage};
 use std::io::Write;
@@ -27,6 +28,193 @@ struct Browser {
     worker: Option<thread::JoinHandle<()>>,
     root: std::path::PathBuf,
     pixels: Vec<u8>,
+}
+
+#[test]
+fn native_hover_moves_between_live_nodes_and_explicitly_leaves_without_activation() {
+    let mut browser = Browser::new(
+        "<a href='/first' aria-label='First' style='display:block;height:40px'>First</a>\
+         <a href='/second' aria-label='Second' style='display:block;height:40px'>Second</a>",
+    );
+    let original = browser.snapshot();
+    for name in ["First", "Second"] {
+        let node = original
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some(name))
+            .unwrap();
+        let snapshot = browser
+            .native_hover(
+                browser.context(),
+                original.generation,
+                Some(PointerPoint {
+                    x: node.bounds.x + node.bounds.width / 2.0,
+                    y: node.bounds.y + node.bounds.height / 2.0,
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            snapshot
+                .nodes
+                .iter()
+                .filter(|n| n.state.hovered)
+                .map(|n| n.id)
+                .collect::<Vec<_>>(),
+            vec![node.id]
+        );
+        assert_eq!(
+            snapshot.url, original.url,
+            "hover cannot navigate or activate a link"
+        );
+        assert!(snapshot.nodes.iter().all(|n| !n.state.focused));
+        assert_eq!(snapshot.generation, original.generation);
+    }
+    let snapshot = browser
+        .native_hover(browser.context(), original.generation, None)
+        .unwrap();
+    assert!(snapshot.nodes.iter().all(|n| !n.state.hovered));
+}
+
+#[test]
+fn native_hover_rejects_stale_sources_documents_frames_windows_and_contexts() {
+    let mut browser = Browser::new("<a href='/first' style='display:block;height:40px'>First</a>");
+    let snapshot = browser.snapshot();
+    let context = browser.context();
+    let point = Some(PointerPoint { x: 4.0, y: 4.0 });
+    let active = browser
+        .native_hover(context, snapshot.generation, point)
+        .unwrap();
+    let hovered = active.nodes.iter().find(|n| n.state.hovered).unwrap().id;
+    for stale in [
+        TextInputContext {
+            version: 2,
+            ..context
+        },
+        TextInputContext {
+            frame_source: context.frame_source ^ 1,
+            ..context
+        },
+        TextInputContext {
+            document_generation: context.document_generation + 1,
+            ..context
+        },
+    ] {
+        assert!(browser
+            .native_hover(stale, snapshot.generation, None)
+            .is_err());
+    }
+    assert!(browser
+        .native_hover(context, snapshot.generation + 1, point)
+        .is_err());
+    for point in [
+        PointerPoint { x: -1.0, y: 4.0 },
+        PointerPoint { x: 500.0, y: 4.0 },
+        PointerPoint { x: 4.0, y: 300.0 },
+        PointerPoint { x: 1e10, y: 4.0 },
+    ] {
+        assert!(browser
+            .native_hover(context, snapshot.generation, Some(point))
+            .is_err());
+    }
+    let leave = ClientMessage::NativeHover {
+        context: PointerContext {
+            version: context.version,
+            frame_source: context.frame_source,
+            document_generation: context.document_generation,
+        },
+        frame_generation: snapshot.generation,
+        point: None,
+    };
+    assert!(browser
+        .hover_message(ClientMessage::Window(
+            blueice_ipc::windows::WindowAction::Command {
+                window_id: 99,
+                message: Box::new(leave.clone()),
+            }
+        ))
+        .is_err());
+    assert!(browser
+        .hover_message(ClientMessage::BrowserContext(
+            blueice_ipc::browser_contexts::ContextAction::Command {
+                context_id: 99,
+                message: Box::new(leave),
+            }
+        ))
+        .is_err());
+    let retained = browser.snapshot();
+    assert_eq!(
+        retained
+            .nodes
+            .iter()
+            .filter(|n| n.state.hovered)
+            .map(|n| n.id)
+            .collect::<Vec<_>>(),
+        vec![hovered]
+    );
+    browser.key(PageKey::Tab, false);
+    assert!(
+        browser
+            .native_hover(context, snapshot.generation, point)
+            .is_err(),
+        "a genuinely superseded displayed frame is stale for coordinates"
+    );
+    browser
+        .native_hover(browser.context(), browser.state.frame_generation, None)
+        .unwrap();
+    assert!(browser.snapshot().nodes.iter().all(|n| !n.state.hovered));
+}
+
+#[test]
+fn native_hover_explicit_leave_clears_a_scrolled_document() {
+    let mut browser = Browser::new(
+        "<div style='height:360px'>Before</div><a href='/next' aria-label='Scrolled' style='display:block;height:40px'>Scrolled</a><div style='height:600px'>After</div>",
+    );
+    browser.interaction(ClientMessage::Scroll { delta_y: 350.0 });
+    let snapshot = browser.snapshot();
+    assert!(snapshot.scroll_y > 0.0);
+    let node = snapshot
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Scrolled"))
+        .unwrap();
+    let hovered = browser
+        .native_hover(
+            browser.context(),
+            snapshot.generation,
+            Some(PointerPoint {
+                x: node.bounds.x + 4.0,
+                y: node.bounds.y + 4.0 - snapshot.scroll_y,
+            }),
+        )
+        .unwrap();
+    assert!(hovered
+        .nodes
+        .iter()
+        .any(|n| n.id == node.id && n.state.hovered));
+    let cleared = browser
+        .native_hover(browser.context(), snapshot.generation, None)
+        .unwrap();
+    assert!(cleared.nodes.iter().all(|n| !n.state.hovered));
+}
+
+#[test]
+fn native_hover_leave_follows_document_lifetime_after_focus_and_frame_changes() {
+    let mut browser = Browser::new(
+        "<a href='/next' style='display:block;height:40px'>Link</a><input value='edit'>",
+    );
+    let context = browser.context();
+    let frame = browser.snapshot().generation;
+    browser
+        .native_hover(context, frame, Some(PointerPoint { x: 4.0, y: 4.0 }))
+        .unwrap();
+    browser.key(PageKey::Tab, false);
+    assert_ne!(browser.context().focus_generation, context.focus_generation);
+    assert_ne!(browser.state.frame_generation, frame);
+    let cleared = browser.native_hover(context, frame, None).unwrap();
+    assert!(
+        cleared.nodes.iter().all(|n| !n.state.hovered),
+        "a leave must still clear the same live document after keyboard focus or rendering changes"
+    );
 }
 
 #[test]
@@ -292,6 +480,52 @@ fn undo_bounded_history_retains_recent_atomic_edits_and_reports_eviction() {
 }
 
 impl Browser {
+    fn native_hover(
+        &mut self,
+        context: TextInputContext,
+        frame_generation: u64,
+        point: Option<PointerPoint>,
+    ) -> Result<AiSnapshot, String> {
+        self.hover_message(ClientMessage::NativeHover {
+            context: PointerContext {
+                version: context.version,
+                frame_source: context.frame_source,
+                document_generation: context.document_generation,
+            },
+            frame_generation,
+            point,
+        })
+    }
+
+    fn hover_message(&mut self, message: ClientMessage) -> Result<AiSnapshot, String> {
+        blueice_ipc::write_client_message_with_ids(&mut self.stream, Some(1), Some(102), &message)
+            .unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            Some(1),
+            Some(103),
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
+        let mut rejected = None;
+        loop {
+            let (tab, request, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream).unwrap();
+            assert_eq!(tab, Some(1));
+            match message {
+                ServerMessage::Error { message } => {
+                    assert_eq!(request, Some(102));
+                    rejected = Some(message);
+                }
+                ServerMessage::Representation(snapshot) => {
+                    assert_eq!(request, Some(103));
+                    return rejected.map_or(Ok(snapshot), Err);
+                }
+                message => panic!("unexpected native hover reply {message:?}"),
+            }
+        }
+    }
+
     fn new(html: &str) -> Self {
         Self::with_executor(html, None)
     }

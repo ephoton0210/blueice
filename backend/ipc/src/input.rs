@@ -34,6 +34,21 @@ pub struct TextInputContext {
     pub focus_generation: u64,
 }
 
+/// Pointer position in CSS viewport coordinates, independent of backing scale.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PointerPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// Hover belongs to a document, independently of its keyboard focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PointerContext {
+    pub version: u32,
+    pub frame_source: u64,
+    pub document_generation: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TextMovement {
     Backward,

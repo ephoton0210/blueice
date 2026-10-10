@@ -179,6 +179,7 @@ pub(super) fn scoped_command(
         | ClientMessage::NativeClick { .. }
         | ClientMessage::NativeActivate { .. }
         | ClientMessage::Hover { .. }
+        | ClientMessage::NativeHover { .. }
         | ClientMessage::Scroll { .. }
         | ClientMessage::InsertText { .. }
         | ClientMessage::DeleteBackward

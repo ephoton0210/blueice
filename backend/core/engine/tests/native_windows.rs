@@ -274,6 +274,126 @@ mod wire {
         }
     }
     #[test]
+    fn hover_stays_with_same_window_organization_but_clears_on_both_window_handoff_paths() {
+        let mut browser = Browser::new();
+        browser.window(
+            WindowAction::Create {
+                viewport: viewport(300.0, 200.0, 1.0),
+            },
+            None,
+        );
+        for (source, destination, placement) in [(1, 2, false), (2, 1, true)] {
+            let input = browser.input(1);
+            let ServerMessage::Representation(snapshot) =
+                browser.request(Some(1), ClientMessage::GetRepresentation)
+            else {
+                panic!("snapshot")
+            };
+            let node = snapshot
+                .nodes
+                .iter()
+                .find(|n| n.name.as_deref() == Some("Editor"))
+                .unwrap();
+            let context = blueice_ipc::input::PointerContext {
+                version: 1,
+                frame_source: input.frame_source,
+                document_generation: input.document_generation,
+            };
+            blueice_ipc::write_client_message_with_ids(
+                &mut browser.client,
+                Some(1),
+                None,
+                &ClientMessage::Window(WindowAction::Command {
+                    window_id: source,
+                    message: Box::new(ClientMessage::NativeHover {
+                        context,
+                        frame_generation: snapshot.generation,
+                        point: Some(blueice_ipc::input::PointerPoint {
+                            x: node.bounds.x + 4.0,
+                            y: node.bounds.y + 4.0,
+                        }),
+                    }),
+                }),
+            )
+            .unwrap();
+            let ServerMessage::Representation(hovered) =
+                browser.request(Some(1), ClientMessage::GetRepresentation)
+            else {
+                panic!("hovered snapshot")
+            };
+            assert!(hovered
+                .nodes
+                .iter()
+                .any(|n| n.id == node.id && n.state.hovered));
+            browser.window(
+                WindowAction::PlaceTab {
+                    source_window_id: source,
+                    window_id: source,
+                    before_tab_id: None,
+                    group_id: None,
+                },
+                Some(1),
+            );
+            assert!(matches!(
+                browser.request(
+                    Some(1),
+                    ClientMessage::Window(WindowAction::MoveTab { window_id: 99 })
+                ),
+                ServerMessage::Error { .. }
+            ));
+            let ServerMessage::Representation(retained) =
+                browser.request(Some(1), ClientMessage::GetRepresentation)
+            else {
+                panic!("retained snapshot")
+            };
+            assert!(
+                retained
+                    .nodes
+                    .iter()
+                    .any(|n| n.id == node.id && n.state.hovered),
+                "same-window organization and refused transfers preserve hover"
+            );
+            let action = if placement {
+                WindowAction::PlaceTab {
+                    source_window_id: source,
+                    window_id: destination,
+                    before_tab_id: None,
+                    group_id: None,
+                }
+            } else {
+                WindowAction::MoveTab {
+                    window_id: destination,
+                }
+            };
+            browser.window(action, Some(1));
+            let ServerMessage::Representation(moved) =
+                browser.request(Some(1), ClientMessage::GetRepresentation)
+            else {
+                panic!("moved snapshot")
+            };
+            assert!(
+                moved.nodes.iter().all(|n| !n.state.hovered),
+                "a pointer in the previous window does not hover the destination window"
+            );
+            assert_eq!(moved.url, snapshot.url);
+            let rejected = browser.request(
+                Some(1),
+                ClientMessage::Window(WindowAction::Command {
+                    window_id: source,
+                    message: Box::new(ClientMessage::NativeHover {
+                        context,
+                        frame_generation: snapshot.generation,
+                        point: None,
+                    }),
+                }),
+            );
+            assert!(
+                matches!(rejected, ServerMessage::Error { message } if message == "Native tab window is stale")
+            );
+        }
+    }
+
+    #[test]
     fn core_window_viewport_and_legacy_resize_repaint_only_the_addressed_window() {
         let mut b = Browser::new();
         let first = b.window(WindowAction::List, None);

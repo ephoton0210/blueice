@@ -167,6 +167,7 @@ impl Page {
     /// focus and selection, commit temporary composition and fence old keys.
     pub(crate) fn transfer_native_editor(&mut self) {
         self.commit_native_composition();
+        self.clear_hover();
         self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
         self.native_focus_exit = None;
         if let Some(editor) = self.native_editor.as_mut() {

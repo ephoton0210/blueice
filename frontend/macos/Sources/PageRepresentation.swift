@@ -78,6 +78,7 @@ struct PageNode: Decodable, Sendable {
         let required: Bool
         let selected: Bool
         let focused: Bool
+        let hovered: Bool
         let nativeTextInput: Bool
         let nativeFocusable: Bool
         let fileInput: Bool
@@ -86,7 +87,7 @@ struct PageNode: Decodable, Sendable {
         let multiple: Bool
         let protected: Bool
         enum CodingKeys: String, CodingKey {
-            case value, checked, disabled, required, selected, focused, protected
+            case value, checked, disabled, required, selected, focused, hovered, protected
             case nativeTextInput = "native_text_input"
             case nativeFocusable = "native_focusable", radio, multiple
             case selectList = "select_list"
@@ -100,6 +101,7 @@ struct PageNode: Decodable, Sendable {
             required = try value.decode(Bool.self, forKey: .required)
             selected = try value.decode(Bool.self, forKey: .selected)
             focused = try value.decode(Bool.self, forKey: .focused)
+            hovered = try value.decodeIfPresent(Bool.self, forKey: .hovered) ?? false
             nativeTextInput = try value.decodeIfPresent(Bool.self, forKey: .nativeTextInput) ?? false
             nativeFocusable = try value.decodeIfPresent(Bool.self, forKey: .nativeFocusable) ?? false
             fileInput = try value.decodeIfPresent(Bool.self, forKey: .fileInput) ?? false

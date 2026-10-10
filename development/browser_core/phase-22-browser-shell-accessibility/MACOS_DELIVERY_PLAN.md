@@ -851,7 +851,21 @@ geometry, bounded fixture correction and separate zero-method sandbox startup
 failure remain in the results. See the [contract](MACOS_INERT_POINTER_CONTRACT.md)
 and [dated results](MACOS_INERT_POINTER_RESULTS.md).
 
-Ordinary macOS mouse-movement/leave forwarding to shared core hover state remains
-pending. Full CSS stacking/positioned layout, general pointer-events,
-flat-tree/modal inertness and remaining software, distribution and physical
-requirements remain open.
+## Native hover and document-fenced leave increment
+
+Ordinary macOS mouse movement and leave now update shared core hover state.
+Movement is fenced to the current document/frame; explicit leave remains valid
+across keyboard-focus and frame changes. Cross-window MoveTab and PlaceTab clear
+the previous window's hover while same-window/refused operations preserve it.
+
+Five public regressions, a native AppKit-event test and actual OS hover/tab/window
+XCUITest pass. Expanded acceptance passes 74 public cases and 12 native methods.
+Fresh complete Rust gates pass 7,406 cases with 69 ignored; the unfiltered native
+suite executes all 280 methods, with 279 passes and the same physical Zhuyin skip.
+All final gates share 1,837 unchanged inputs, and all 122 parent UI method spans
+remain unchanged. See the [contract](MACOS_NATIVE_HOVER_CONTRACT.md) and
+[dated results](MACOS_NATIVE_HOVER_RESULTS.md).
+
+DOM pointer-event dispatch, CSS pseudo-class rendering, full CSS stacking/positioned
+layout, general pointer-events, flat-tree/modal inertness and remaining software,
+distribution and physical requirements remain open.

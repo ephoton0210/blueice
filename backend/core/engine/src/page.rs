@@ -673,6 +673,25 @@ impl Page {
         self.hovered = hit_test(&self.doc, &self.fragment, x, content_y);
     }
 
+    /// Leaving the viewport clears hover even when content is scrolled.
+    pub(crate) fn clear_hover(&mut self) {
+        self.hovered = None;
+    }
+
+    pub(crate) fn validate_native_hover_context(
+        &self,
+        context: &blueice_ipc::input::PointerContext,
+        source: u64,
+    ) -> Result<(), String> {
+        if context.version != 1
+            || context.frame_source != source
+            || context.document_generation != self.document_generation
+        {
+            return Err("Stale or unsupported native hover context".into());
+        }
+        Ok(())
+    }
+
     /// Sets or clears (`None`) the highlighted node -- rendered as an
     /// outline derived fresh from that node's current bounds on every
     /// [`Page::render`] call, per the AI-to-human sync direction

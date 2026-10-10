@@ -38,8 +38,9 @@ final class BrowserWindow: NSWindow {
         if event.type == .keyDown, chromeFocus?.tab(event) == true { return }
         super.sendEvent(event)
     }
-    override func close() { pageInput?.supersedeKeyboardFocus(); chromeFocus?.detach(); super.close() }
+    override func close() { pageInput?.model?.clearNativeHover(); pageInput?.supersedeKeyboardFocus(); chromeFocus?.detach(); super.close() }
     override func resignKey() {
+        pageInput?.model?.clearNativeHover()
         pageInput?.supersedeKeyboardFocus(); chromeFocus?.discardQueuedInput(); super.resignKey()
     }
 }
@@ -99,6 +100,7 @@ struct PageViewport: NSViewRepresentable {
 final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations {
     weak var model: BrowserModel? {
         didSet {
+            if oldValue !== model { oldValue?.clearNativeHover() }
             model?.nativeFileActivation = { [weak self, weak model] state in
                 guard let self, let model, self.model === model, let window = self.window,
                       window.isVisible, window.isKeyWindow, window.firstResponder === self else { return }
@@ -114,6 +116,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
     private var textObservation: AnyCancellable?
     private var windowObservation: AnyCancellable?
+    private var hoverTracking: NSTrackingArea?
     private struct TabTransition {
         let tab: UInt64
         let epoch: UInt64
@@ -207,10 +210,15 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     override func layout() { super.layout(); reportSize() }
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow !== window { model?.clearNativeHover() }
+        super.viewWillMove(toWindow: newWindow)
+    }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow(); reportSize()
         if window == nil { filePicker.cancel(); pendingSelectPopup = nil; activeSelectMenu?.menu.cancelTracking(); activeSelectMenu = nil }
         (window as? BrowserWindow)?.pageInput = self
+        window?.acceptsMouseMovedEvents = true
         windowObservation = window.map { window in
             NotificationCenter.default.publisher(for: NSWindow.didUpdateNotification, object: window)
                 .merge(with: NotificationCenter.default.publisher(for: NSWindow.willCloseNotification, object: window))
@@ -225,6 +233,9 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
                             || notification.name == NSControl.textDidBeginEditingNotification {
                             self.pendingSelectPopup = nil; self.activeSelectMenu?.menu.cancelTracking(); self.activeSelectMenu = nil
                         }
+                        if !owned.isKeyWindow || owned.attachedSheet != nil || notification.name == NSWindow.willCloseNotification {
+                            self.model?.clearNativeHover()
+                        }
                         self.replayPendingKeys()
                     }
                 }
@@ -234,6 +245,30 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     private func reportSize() {
         guard bounds.width > 0, bounds.height > 0 else { return }
         model?.viewportChanged(bounds.size, deviceScale: convertToBacking(bounds).width / bounds.width)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTracking { removeTrackingArea(hoverTracking) }
+        let tracking = NSTrackingArea(rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],owner: self,userInfo: nil)
+        addTrackingArea(tracking); hoverTracking = tracking
+    }
+
+    override func mouseEntered(with event: NSEvent) { mouseMoved(with: event) }
+    override func mouseMoved(with event: NSEvent) {
+        guard let window, event.windowNumber == window.windowNumber,
+              window.isVisible, window.isKeyWindow, window.attachedSheet == nil,
+              let size = model?.cssViewportSize, bounds.width > 0, bounds.height > 0 else { return }
+        let point = convert(event.locationInWindow,from: nil)
+        guard bounds.contains(point) else { model?.clearNativeHover(); return }
+        model?.nativeHover(CGPoint(x: (point.x - bounds.minX) * size.width / bounds.width,
+                                 y: (point.y - bounds.minY) * size.height / bounds.height))
+    }
+    override func mouseExited(with event: NSEvent) {
+        guard event.windowNumber == window?.windowNumber,
+              event.trackingArea == nil || event.trackingArea === hoverTracking else { return }
+        model?.clearNativeHover()
     }
 
     override func becomeFirstResponder() -> Bool {
