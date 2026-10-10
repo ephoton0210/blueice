@@ -262,3 +262,26 @@ fn recorded_declaration_inference_match_the_live_native_compiler() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn checked_namespace_variables_retain_their_inferred_public_types() {
+    let compiled = blueice_bluets::compile(
+        "memory:///main.ts",
+        &blueice_bluets::MapLoader::from([blueice_bluets::ModuleSource::new(
+            "memory:///main.ts",
+            "export namespace N { export const answer = 42; }",
+        )]),
+        blueice_bluets::CompilerOptions::default(),
+    );
+    assert!(!compiled.has_errors(), "{:?}", compiled.diagnostics);
+    let symbols = &compiled.checked.as_ref().unwrap().modules["memory:///main.ts"].symbols;
+    let answer = symbols
+        .iter()
+        .find(|symbol| symbol.name == "N.answer")
+        .unwrap_or_else(|| panic!("missing qualified variable: {symbols:?}"));
+    assert_eq!(
+        answer.value_type,
+        Some(blueice_bluets::Type::Literal("42".into())),
+        "{symbols:?}"
+    );
+}
