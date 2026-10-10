@@ -957,6 +957,19 @@ mod transport_failure_tests {
     }
 
     #[test]
+    fn zero_deadline_refuses_a_queued_reply_without_sending_work() {
+        let (mut worker, requests) = worker_replying(encode_reply(&Reply::Validated(Vec::new())));
+        assert_eq!(
+            worker.validate(Vec::new(), Duration::ZERO).unwrap_err(),
+            RuntimeError::RegexTimeout
+        );
+        assert!(matches!(
+            requests.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
     fn a_reply_is_decoded_and_its_captures_checked_after_the_transaction() {
         let ask = |reply: Vec<u8>, request: Request, input_length: Option<usize>| {
             let (mut worker, _requests) = worker_replying(reply);

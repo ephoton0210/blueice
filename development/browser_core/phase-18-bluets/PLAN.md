@@ -7790,3 +7790,27 @@ Commit and push this CI configuration change, then run every workflow job on
 its final SHA. The previous disk-exhausted run is superseded; its completed
 workspace/oracle evidence remains available. K.7.1's leaf K.0 remains green;
 complete final-source hosted CI and K.7.2 through K.10 remain open.
+
+### K.7.1 Windows regex deadline failing replay (2026-10-10)
+
+The storage-corrected full workflow on `bfe6caeeb` (run 38019846154)
+passes both 187-test pinned oracle jobs and the Ubuntu 26.04 ARM64 workspace
+gate (6,902 passes, zero failures). Its Windows Server 2022 library tests
+expose two regex deadline failures: a zero-budget BMP matcher can accept an
+already queued response, and the classification fixture's literal parser
+can exceed the default operation budget during regex initialization.
+
+A deterministic transport regression queues a genuine encoded validation
+response before calling the worker with `Duration::ZERO`. The unchanged
+implementation wrongly returns that successful response; Linux replay fails
+with exit 101, zero passes and one failure. The regression also requires that
+zero-budget calls send no work. Commit this failing test separately before
+adding the transport guard. Keep the production default budget and all
+existing literal/getter classification checks; use an explicit finite budget
+for the fixture's real constructor initialization. Complete hosted CI remains
+pending; neither this failure nor the coverage job is reported as green.
+
+The frozen 7,071-file replay and its exact log are
+`blueice-k71-windows-red-first-{source-hashes,status}.json` and
+`blueice-k71-windows-red-first-zero-deadline-red.log` under
+`/private/tmp/blueice-k14-linux`. K.7.2 through K.10 remain open.
