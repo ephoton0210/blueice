@@ -1,0 +1,19 @@
+{
+  "form": "ps0",
+  "options": {
+    "target": "ES2018",
+    "module": "ESNext",
+    "lib": [
+      "ES2020"
+    ],
+    "strict": true,
+    "noImplicitThis": false,
+    "declaration": true,
+    "noEmitOnError": true,
+    "useDefineForClassFields": false,
+    "newLine": "LF",
+    "outDir": "out",
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false
+  }
+}

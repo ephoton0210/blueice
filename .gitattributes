@@ -19,3 +19,5 @@ backend/bluets/tests/fixtures/output_validation/** text eol=lf
 
 # K.7.4 records native source digests and UTF-16 diagnostic origins.
 backend/bluets/tests/fixtures/decorator_targets/** text eol=lf
+
+backend/bluets/tests/fixtures/decorator_residuals/** text eol=lf
