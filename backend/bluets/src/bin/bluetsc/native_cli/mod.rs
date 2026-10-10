@@ -238,6 +238,7 @@ fn loader(invocation: &Invocation) -> Result<FileLoader, String> {
             .map(|settings| package_resolver(&invocation.root, settings)),
         relative: relative_resolver(&invocation.root),
         resolve_json_module: invocation.options.resolve_json_module,
+        allow_js: invocation.options.allow_js,
         remote: match invocation.remote.as_ref() {
             Some(settings) => {
                 let cache = DeclarationCache::new(

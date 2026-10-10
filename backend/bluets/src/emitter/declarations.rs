@@ -112,7 +112,9 @@ pub(super) fn emit_declaration(
             {
                 private_alias |=
                     !variable.exported && computed_key_dependencies.contains(&variable.name);
-                if variable.exported {
+                if variable.exported && module.id.ends_with(".js") {
+                    output.push_str("export ");
+                } else if variable.exported {
                     output.push_str("export declare ");
                 } else {
                     output.push_str("declare ");
@@ -124,7 +126,11 @@ pub(super) fn emit_declaration(
                     if let Some((text, initializer)) =
                         inferred.and_then(|context| context.variable(variable))
                     {
-                        output.push_str(if *initializer { " = " } else { ": " });
+                        output.push_str(if *initializer && !module.id.ends_with(".js") {
+                            " = "
+                        } else {
+                            ": "
+                        });
                         output.push_str(text);
                         output.push_str(";\n");
                         continue;
@@ -169,6 +175,8 @@ pub(super) fn emit_declaration(
             {
                 if function.default_export {
                     output.push_str("export default function ");
+                } else if function.exported && module.id.ends_with(".js") {
+                    output.push_str("export function ");
                 } else if function.exported {
                     output.push_str("export declare function ");
                 } else {
@@ -200,7 +208,13 @@ pub(super) fn emit_declaration(
                                     .annotation
                                     .as_ref()
                                     .map(type_to_ts)
-                                    .unwrap_or_else(|| "unknown".to_string())
+                                    .unwrap_or_else(|| {
+                                        if module.id.ends_with(".js") {
+                                            "any".to_string()
+                                        } else {
+                                            "unknown".to_string()
+                                        }
+                                    })
                             }),
                     );
                 }

@@ -210,6 +210,10 @@ pub struct CompilerOptions {
     pub import_attributes: bool,
     /// Owner-enabled JSON sources become typed data assets, never script code.
     pub resolve_json_module: bool,
+    /// Owner-enabled JavaScript sources share the bounded source graph.
+    pub allow_js: bool,
+    /// Check JavaScript source bodies as well as their inferred public surfaces.
+    pub check_js: bool,
     /// TypeScript's `esModuleInterop`: a default or namespace import of a
     /// CommonJS `export =` module is allowed and goes through a helper that gives
     /// it a `default` member. Only meaningful with `ModuleKind::CommonJs`.
@@ -308,6 +312,8 @@ impl Default for CompilerOptions {
             verbatim_module_syntax: false,
             import_attributes: false,
             resolve_json_module: false,
+            allow_js: false,
+            check_js: false,
             es_module_interop: false,
             experimental_decorators: false,
             emit_decorator_metadata: false,
@@ -390,6 +396,15 @@ pub trait ModuleLoader {
     /// a lookup or changing an authorized source identity.
     fn resolution_error_typescript_code(&self, _message: &str) -> Option<u32> {
         None
+    }
+
+    /// Provides diagnostic arguments from an already completed owner lookup.
+    fn resolution_error_typescript_arguments(
+        &self,
+        _message: &str,
+        specifier: &str,
+    ) -> Vec<String> {
+        vec![specifier.to_string()]
     }
 
     /// Resolves a static path directive under the owner's ordinary root policy.
@@ -719,6 +734,7 @@ fn compile_with_cache(
                 .max(),
             checking: options.checking,
             enforce_types: !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
+            check_javascript: options.allow_js.then_some(options.check_js),
             require_declared_global_calls: options.require_declared_global_calls,
             define_class_fields: options.defines_class_fields(),
             isolated_modules: options.isolated_modules || options.verbatim_module_syntax,

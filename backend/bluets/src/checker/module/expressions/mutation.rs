@@ -199,7 +199,9 @@ impl<'a> ModuleChecker<'a> {
         }
         let (expected, what) = match target {
             [name] if name.kind == TokenKind::Identifier => {
-                if !self.annotated_names.contains(&name.text) {
+                if !(self.annotated_names.contains(&name.text)
+                    || self.module.id.ends_with(".js") && self.check_javascript == Some(true))
+                {
                     return;
                 }
                 let Some(expected) = scope.get(&name.text) else {

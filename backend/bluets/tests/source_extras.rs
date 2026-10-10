@@ -189,10 +189,10 @@ fn path_verdicts_selected_inputs_and_primary_origins_match_native_typescript() {
         let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
         let column = prefix.rsplit('\n').next().unwrap().encode_utf16().count() + 1;
         if actual["code"] != expected["code"]
-            || actual["message"]
-                .as_str()
-                .map(|text| text.replace(&directory.to_string_lossy().to_string(), "<root>"))
-                != expected["message"].as_str().map(str::to_owned)
+            || actual["message"].as_str().map(|text| {
+                text.replace(&directory.to_string_lossy().to_string(), "<root>")
+                    .replace('\\', "/")
+            }) != expected["message"].as_str().map(str::to_owned)
             || actual["position"]["line"] != line
             || actual["position"]["column"] != column
             || actual["position"]["length"] != expected["length"]

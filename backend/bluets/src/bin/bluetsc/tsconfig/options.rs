@@ -365,6 +365,8 @@ pub(super) fn owner_options(
         "verbatimModuleSyntax",
         "module",
         "resolveJsonModule",
+        "allowJs",
+        "checkJs",
         "sourceMap",
         "declaration",
         "declarationMap",

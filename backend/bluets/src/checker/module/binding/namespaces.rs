@@ -170,6 +170,7 @@ fn declared_in(namespace: &NamespaceDeclaration) -> Declared {
 impl ModuleChecker<'_> {
     fn policy(&self) -> CheckerPolicy {
         CheckerPolicy {
+            check_javascript: self.check_javascript,
             checking: self.explicit_checking.then_some(self.checking),
             target: self.target,
             library_target: self.library_target,

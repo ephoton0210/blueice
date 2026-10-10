@@ -73,6 +73,8 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::emitter::SYSTEM_HELPER_SOURCE);
     add(&options.import_attributes.to_string());
     add(&options.resolve_json_module.to_string());
+    add(&options.allow_js.to_string());
+    add(&options.check_js.to_string());
     add(if options.experimental_decorators {
         "legacy-decorators"
     } else {

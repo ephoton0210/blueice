@@ -20,6 +20,7 @@ pub(crate) struct CheckerPolicy {
     pub(crate) target: crate::compiler::EcmaTarget,
     pub(crate) library_target: Option<crate::compiler::EcmaTarget>,
     pub(crate) enforce_types: bool,
+    pub(crate) check_javascript: Option<bool>,
     pub(crate) require_declared_global_calls: bool,
     /// Class fields are defined, not assigned, so a derived redeclaration
     /// without an initializer overwrites the base's value.
@@ -53,7 +54,8 @@ pub(super) struct ModuleChecker<'a> {
     pending_imports: BTreeSet<String>,
     module_namespace_imports: BTreeSet<String>,
     module_namespace_targets: BTreeMap<String, String>,
-    enforce_types: bool,
+    pub(super) enforce_types: bool,
+    check_javascript: Option<bool>,
     require_declared_global_calls: bool,
     define_class_fields: bool,
     isolated_modules: bool,

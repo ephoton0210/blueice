@@ -51,6 +51,14 @@ impl<'a> ModuleChecker<'a> {
         policy: CheckerPolicy,
         max_type_expansions: usize,
     ) -> Self {
+        let mut policy = policy;
+        if module.id.ends_with(".js") && policy.check_javascript == Some(false) {
+            policy.enforce_types = false;
+            policy
+                .checking
+                .get_or_insert_with(crate::CheckingOptions::legacy)
+                .no_implicit_any = false;
+        }
         Self {
             checking: policy
                 .checking
@@ -69,6 +77,7 @@ impl<'a> ModuleChecker<'a> {
             module_namespace_imports: BTreeSet::new(),
             module_namespace_targets: BTreeMap::new(),
             enforce_types: policy.enforce_types,
+            check_javascript: policy.check_javascript,
             require_declared_global_calls: policy.require_declared_global_calls,
             define_class_fields: policy.define_class_fields,
             isolated_modules: policy.isolated_modules,

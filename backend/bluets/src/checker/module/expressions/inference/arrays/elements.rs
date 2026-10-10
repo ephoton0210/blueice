@@ -63,6 +63,14 @@ impl ModuleChecker<'_> {
             {
                 return false;
             }
+            if self.module.declarations.iter().any(|declaration| {
+                matches!(declaration, Declaration::Import(import)
+                    if import.bindings.iter().any(|binding| binding.local == token.text)
+                        && self.project.resolved_import(&self.module.id, import)
+                            .is_some_and(|resolved| resolved.ends_with(".js")))
+            }) {
+                return true;
+            }
             return self.module.declarations.iter().any(|declaration| {
                 matches!(declaration, Declaration::Variable(variable)
                     if variable.name == token.text

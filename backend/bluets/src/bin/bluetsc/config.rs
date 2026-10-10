@@ -130,6 +130,10 @@ pub(super) struct BlueTscConfig {
     #[serde(default)]
     pub(super) resolve_json_module: bool,
     #[serde(default)]
+    pub(super) allow_js: bool,
+    #[serde(default)]
+    pub(super) check_js: bool,
+    #[serde(default)]
     pub(super) module: Option<String>,
     #[serde(default)]
     pub(super) experimental_decorators: bool,
@@ -615,6 +619,8 @@ pub(super) fn resolve_config_document(
         module_kind: options_module_kind,
         import_attributes: config.module.as_deref() == Some("esnext"),
         resolve_json_module: config.resolve_json_module,
+        allow_js: config.allow_js,
+        check_js: config.check_js,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map,
         declaration: config.declaration,

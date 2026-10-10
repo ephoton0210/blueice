@@ -67,6 +67,12 @@ impl ModuleChecker<'_> {
                         inferred.annotation = Some(value);
                     }
                 }
+                if inferred.annotation.is_none()
+                    && self.module.id.ends_with(".js")
+                    && self.check_javascript.is_some()
+                {
+                    inferred.annotation = Some(Type::Any);
+                }
                 inferred
             })
             .collect()

@@ -23,6 +23,7 @@ pub(super) struct FileLoader {
     /// resolution was not configured by the owner.
     pub(super) relative: PackageResolver<OsPackageFs>,
     pub(super) resolve_json_module: bool,
+    pub(super) allow_js: bool,
     /// The verified cache and the pinned sources whose specifiers resolve to it.
     pub(super) remote: Option<(DeclarationCache, Vec<RemoteDeclarationSource>)>,
     pub(super) import_mode: ImportMode,
@@ -30,12 +31,26 @@ pub(super) struct FileLoader {
 
 impl ModuleLoader for FileLoader {
     fn resolution_error_typescript_code(&self, message: &str) -> Option<u32> {
+        if message.starts_with("JSON source ") {
+            return Some(2732);
+        }
+        if message.starts_with("JavaScript source ") {
+            return Some(7016);
+        }
         (message.starts_with("cannot resolve ")
             && self
                 .packages
                 .as_ref()
                 .is_some_and(|packages| packages.config().resolution != ModuleResolution::Classic))
         .then_some(2307)
+    }
+
+    fn resolution_error_typescript_arguments(&self, message: &str, specifier: &str) -> Vec<String> {
+        let mut arguments = vec![specifier.to_string()];
+        if let Some((_, path)) = message.split_once("requires allowJs: ") {
+            arguments.push(path.to_string());
+        }
+        arguments
     }
 
     fn implied_module_kind(&self, module_id: &str) -> Result<ModuleKind, String> {
@@ -62,10 +77,11 @@ impl ModuleLoader for FileLoader {
             return Ok(ModuleSource::new(module_id, text));
         }
         let path = self.source_path(module_id)?;
-        if !matches!(
+        if !(matches!(
             path.extension().and_then(|extension| extension.to_str()),
             Some("ts" | "tsx" | "mts" | "cts" | "json")
-        ) {
+        ) || self.allow_js && path.extension().is_some_and(|extension| extension == "js"))
+        {
             return Err(format!(
                 "module `{module_id}` is not a supported .ts, .tsx, or .d.ts source file"
             ));
@@ -109,7 +125,9 @@ impl ModuleLoader for FileLoader {
         }
         if is_relative {
             if specifier.ends_with(".json") && !self.resolve_json_module {
-                return Err(format!("module `{specifier}` is not a supported .ts, .tsx, or .d.ts source file; enable resolveJsonModule for JSON data"));
+                return Err(format!(
+                    "JSON source `{specifier}` requires resolveJsonModule"
+                ));
             }
             let from_directory = self
                 .source_path(from_module)?
@@ -120,7 +138,7 @@ impl ModuleLoader for FileLoader {
             let found = if self.resolve_json_module && specifier.ends_with(".json") {
                 resolver.resolve_relative_json(&from_directory, specifier)
             } else {
-                resolver.resolve_relative(&from_directory, specifier)
+                resolver.resolve_relative_javascript(&from_directory, specifier)
             };
             let found = match found {
                 Err(ResolveError::NotFound { .. }) if self.mappings.is_some() => {
@@ -145,6 +163,17 @@ impl ModuleLoader for FileLoader {
                 ),
                 error => format!("`{specifier}` from `{from_module}`: {error}"),
             })?;
+            if found
+                .path
+                .extension()
+                .is_some_and(|extension| extension == "js")
+                && !self.allow_js
+            {
+                return Err(format!(
+                    "JavaScript source `{specifier}` requires allowJs: {}",
+                    found.path.display()
+                ));
+            }
             return if blueice_bluets::is_external_library_module(from_module) {
                 self.package_module_id(&found.path)
             } else {

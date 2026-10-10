@@ -280,7 +280,7 @@ fn the_file_loader_only_resolves_closed_project_ts_sources() {
 
     let expectations = [
         ("main.ts", "cannot resolve `./absent.ts` from `main.ts`"),
-        ("json.ts", "is not a supported .ts, .tsx, or .d.ts source file"),
+        ("json.ts", "JSON source `./data.json` requires resolveJsonModule"),
         (
             "escape.ts",
             "specifier `../outside.ts` resolves outside the declared project root",

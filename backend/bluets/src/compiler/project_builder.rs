@@ -371,10 +371,13 @@ impl<'a> ProjectBuilder<'a> {
                         mode,
                     ));
                     let code = self.loader.resolution_error_typescript_code(&message);
+                    let arguments = self
+                        .loader
+                        .resolution_error_typescript_arguments(&message, specifier);
                     let mut diagnostic =
                         Diagnostic::error(DiagnosticCode::ModuleNotFound, span.clone(), message);
                     if let Some(code) = code {
-                        diagnostic = diagnostic.with_typescript(code, vec![specifier.clone()]);
+                        diagnostic = diagnostic.with_typescript(code, arguments);
                     }
                     self.diagnostics.push(diagnostic);
                 }

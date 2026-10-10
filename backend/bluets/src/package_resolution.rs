@@ -31,6 +31,7 @@ use ring::digest::{digest, SHA256};
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 
 mod features;
+mod javascript;
 mod module_scope;
 mod version_ranges;
 

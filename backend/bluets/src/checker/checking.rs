@@ -128,10 +128,13 @@ pub(crate) fn check_incremental(
             let _timer = crate::performance::timer(crate::performance::Stage::Bind);
             checker.bind();
         }
-        if policy.enforce_types {
+        if checker.enforce_types {
             checker.check_names();
             checker.check_types();
             checker.dedupe_name_diagnostics();
+        } else if module.id.ends_with(".js") && policy.check_javascript == Some(false) {
+            // Unchecked JavaScript still publishes inferred declaration surfaces.
+            checker.check_types();
         }
         let exported_namespaces = checker.exported_namespaces();
         let value_exports = checker.exported_values(false);
