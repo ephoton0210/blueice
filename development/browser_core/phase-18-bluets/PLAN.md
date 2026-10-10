@@ -8113,3 +8113,16 @@ Function source-map relocation also remains to be verified before closure.
 Evidence: `blueice-k72-system-alias-red-status.json` and exact hashes/logs.
 The production draft remains isolated, uncommitted and unpushed; the entire
 K.7.2 leaf and K.7.3 through K.10 remain open.
+
+### K.7.2 System function source-map failing replay (2026-10-10)
+
+The original System draft matches all 18 native System decisions and all
+16 accepted execution/declaration observations, including the post-call alias
+publication regression. The new public-API source-map test checks original
+function/body lines under both LF and CRLF with a UTF-16 astral character.
+The frozen 7,425-file `blueice-k72-system-map-red` gate passes format and
+three-crate all-target Clippy; the test fails because the hoisted function
+at generated line 42 has no source mapping. Preserve this failing test before
+relocating source provenance. Node16/NodeNext still account for the remaining
+24 decision and 15 accepted-output differences. Production remains isolated
+and unpushed; K.7.2 is open.
