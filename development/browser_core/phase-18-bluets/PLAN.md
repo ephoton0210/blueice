@@ -8248,3 +8248,34 @@ configurations, 68 actual accepted Node executions and four TS5102 refusals;
 current BlueTSC differs in all 68 accepted decisions and all four removed
 option primary diagnostics. Its fixtures remain outside the repository
 until the split is published. K.7.3 through K.10 remain open.
+
+### K.7.3 isolated output-option baseline preparation (2026-10-10)
+
+On the tested/published `ec5823ed4` parent, 72 original configurations
+measure CommonJS/ESNext output comments, LF/CRLF, BOM, inline source content,
+internal declarations, source/map roots and removed legacy import options.
+Pinned TypeScript 5.9.3 accepts 68 and rejects four with TS5102; every
+accepted emitted program executes under Node with exact declarations and
+recorded source-map metadata/output byte properties. The current public CLI
+rejects all 68 accepted configurations and differs in all four removed-option
+primary diagnostics. Native source hashes and a reproducible recorder are
+retained. This preparation stays isolated and unpushed; production is
+unchanged. Verify the failing public replay and passing native controls
+before committing the test-first baseline. The latest complete hosted CI
+for the parent is run `38047766020`; its result remains pending.
+
+### K.7.3 verified failing public baseline (2026-10-10)
+
+The immutable 7,595-file Linux snapshot passes format and three-crate
+all-target Clippy with warnings denied. All 72 fixture configurations and
+the actual pinned TypeScript 5.9.3 recorder pass, including 68 accepted
+Node executions, exact declarations, BOM/newline/comment properties and
+source-map metadata, plus four TS5102 config origins. The public BlueTSC
+decision and emit-and-run replays fail as expected: 68 accepted decisions
+are refused and four removed-option primary diagnostics differ. Test
+results are two pass/two fail; all production bytes remain unchanged.
+
+Evidence: `blueice-k73-baseline-first-{status,source-hashes}.json`, its logs
+and `blueice-k73-blue-failing-baseline.json`. Commit this test-first
+baseline on the isolated branch, keep it unpushed, and wait for complete
+parent hosted CI before production implementation. K.7.3 remains open.

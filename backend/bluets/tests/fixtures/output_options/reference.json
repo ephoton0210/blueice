@@ -1,0 +1,3241 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "emitopt-commonjs-00",
+      "form": "flags-0",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-01",
+      "form": "flags-1",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 7,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare function hidden(): number;\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-02",
+      "form": "flags-2",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 13,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\r\nexport declare function hidden(): number;\r\n/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-03",
+      "form": "flags-3",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 7,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare function hidden(): number;\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-04",
+      "form": "flags-4",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-05",
+      "form": "flags-5",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 7,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare function hidden(): number;\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-06",
+      "form": "flags-6",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 13,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** @internal */\r\nexport declare function hidden(): number;\r\n/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-07",
+      "form": "flags-7",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 7,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare function hidden(): number;\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-08",
+      "form": "flags-8",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-09",
+      "form": "flags-9",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 7,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare function hidden(): number;\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-10",
+      "form": "flags-10",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 13,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\r\nexport declare function hidden(): number;\r\n/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-11",
+      "form": "flags-11",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 7,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare function hidden(): number;\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-12",
+      "form": "flags-12",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-13",
+      "form": "flags-13",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 7,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare function hidden(): number;\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-14",
+      "form": "flags-14",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 13,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** @internal */\r\nexport declare function hidden(): number;\r\n/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-15",
+      "form": "flags-15",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 7,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare function hidden(): number;\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-16",
+      "form": "flags-16",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-17",
+      "form": "flags-17",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 7,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-18",
+      "form": "flags-18",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 13,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-19",
+      "form": "flags-19",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 7,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-20",
+      "form": "flags-20",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-21",
+      "form": "flags-21",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 7,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-22",
+      "form": "flags-22",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 13,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-23",
+      "form": "flags-23",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 7,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-24",
+      "form": "flags-24",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-25",
+      "form": "flags-25",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 7,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-26",
+      "form": "flags-26",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 13,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-27",
+      "form": "flags-27",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 7,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-28",
+      "form": "flags-28",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-29",
+      "form": "flags-29",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 7,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-30",
+      "form": "flags-30",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 13,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-31",
+      "form": "flags-31",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 7,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-32",
+      "form": "map-roots",
+      "options": {
+        "sourceRoot": "/sources/",
+        "mapRoot": "https://example.invalid/maps/"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=https://example.invalid/maps/main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "/sources/",
+          "sources": [
+            "main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-33",
+      "form": "map-roots",
+      "options": {
+        "sourceRoot": "https://example.invalid/source/",
+        "mapRoot": "https://example.invalid/maps/"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=https://example.invalid/maps/main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "https://example.invalid/source/",
+          "sources": [
+            "main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-34",
+      "form": "removed-preserveValueImports",
+      "options": {
+        "preserveValueImports": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [
+          {
+            "code": 5102,
+            "file": "tsconfig.json",
+            "start": 256,
+            "length": 22,
+            "message": "Option 'preserveValueImports' has been removed. Please remove it from your configuration.\n  Use 'verbatimModuleSyntax' instead."
+          }
+        ],
+        "emitSkipped": true,
+        "files": []
+      }
+    },
+    {
+      "id": "emitopt-commonjs-35",
+      "form": "removed-importsNotUsedAsValues",
+      "options": {
+        "importsNotUsedAsValues": "preserve"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [
+          {
+            "code": 5102,
+            "file": "tsconfig.json",
+            "start": 256,
+            "length": 24,
+            "message": "Option 'importsNotUsedAsValues' has been removed. Please remove it from your configuration.\n  Use 'verbatimModuleSyntax' instead."
+          }
+        ],
+        "emitSkipped": true,
+        "files": []
+      }
+    },
+    {
+      "id": "emitopt-esnext-36",
+      "form": "flags-0",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-37",
+      "form": "flags-1",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 3,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare function hidden(): number;\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-38",
+      "form": "flags-2",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 9,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\r\nexport declare function hidden(): number;\r\n/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-39",
+      "form": "flags-3",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 3,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare function hidden(): number;\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-40",
+      "form": "flags-4",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-41",
+      "form": "flags-5",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 3,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare function hidden(): number;\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-42",
+      "form": "flags-6",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 9,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** @internal */\r\nexport declare function hidden(): number;\r\n/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-43",
+      "form": "flags-7",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 3,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare function hidden(): number;\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-44",
+      "form": "flags-8",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-45",
+      "form": "flags-9",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 3,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare function hidden(): number;\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-46",
+      "form": "flags-10",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 9,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\r\nexport declare function hidden(): number;\r\n/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-47",
+      "form": "flags-11",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 3,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare function hidden(): number;\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-48",
+      "form": "flags-12",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-49",
+      "form": "flags-13",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 3,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare function hidden(): number;\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-50",
+      "form": "flags-14",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 9,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** @internal */\r\nexport declare function hidden(): number;\r\n/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-51",
+      "form": "flags-15",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 3,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare function hidden(): number;\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-52",
+      "form": "flags-16",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-53",
+      "form": "flags-17",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 3,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-54",
+      "form": "flags-18",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 9,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-55",
+      "form": "flags-19",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 3,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-56",
+      "form": "flags-20",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-57",
+      "form": "flags-21",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 3,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-58",
+      "form": "flags-22",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 9,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-59",
+      "form": "flags-23",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": false,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 3,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-60",
+      "form": "flags-24",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-61",
+      "form": "flags-25",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 3,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-62",
+      "form": "flags-26",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 9,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-63",
+      "form": "flags-27",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": false,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 3,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-64",
+      "form": "flags-28",
+      "options": {
+        "removeComments": false,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-65",
+      "form": "flags-29",
+      "options": {
+        "removeComments": true,
+        "newLine": "LF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 0,
+          "bareLF": 3,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-66",
+      "form": "flags-30",
+      "options": {
+        "removeComments": false,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 9,
+          "bareLF": 0,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeff/** Public answer. */\r\nexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-67",
+      "form": "flags-31",
+      "options": {
+        "removeComments": true,
+        "newLine": "CRLF",
+        "emitBOM": true,
+        "inlineSources": true,
+        "stripInternal": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": true,
+          "crlf": 3,
+          "bareLF": 0,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "\ufeffexport declare const result: number;\r\nexport declare const text: string;\r\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ],
+          "sourcesContent": [
+            "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\n// retained ordinary comment\n/** @internal */\nexport function hidden(): number { return 1; }\n/** Public answer. */\nexport const result: number = hidden() + 41;\nexport const text: string = \"// literal /* retained */\";\n"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-68",
+      "form": "map-roots",
+      "options": {
+        "sourceRoot": "/sources/",
+        "mapRoot": "https://example.invalid/maps/"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=https://example.invalid/maps/main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "/sources/",
+          "sources": [
+            "main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-69",
+      "form": "map-roots",
+      "options": {
+        "sourceRoot": "https://example.invalid/source/",
+        "mapRoot": "https://example.invalid/maps/"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=https://example.invalid/maps/main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "https://example.invalid/source/",
+          "sources": [
+            "main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-70",
+      "form": "removed-preserveValueImports",
+      "options": {
+        "preserveValueImports": true
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [
+          {
+            "code": 5102,
+            "file": "tsconfig.json",
+            "start": 254,
+            "length": 22,
+            "message": "Option 'preserveValueImports' has been removed. Please remove it from your configuration.\n  Use 'verbatimModuleSyntax' instead."
+          }
+        ],
+        "emitSkipped": true,
+        "files": []
+      }
+    },
+    {
+      "id": "emitopt-esnext-71",
+      "form": "removed-importsNotUsedAsValues",
+      "options": {
+        "importsNotUsedAsValues": "preserve"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [
+          {
+            "code": 5102,
+            "file": "tsconfig.json",
+            "start": 254,
+            "length": 24,
+            "message": "Option 'importsNotUsedAsValues' has been removed. Please remove it from your configuration.\n  Use 'verbatimModuleSyntax' instead."
+          }
+        ],
+        "emitSkipped": true,
+        "files": []
+      }
+    }
+  ]
+}

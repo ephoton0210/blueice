@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "outDir": "out",
+    "lib": [
+      "ES2020"
+    ],
+    "removeComments": true,
+    "newLine": "LF",
+    "emitBOM": true,
+    "inlineSources": true,
+    "stripInternal": true
+  },
+  "files": [
+    "main.ts"
+  ]
+}
