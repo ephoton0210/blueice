@@ -30,6 +30,8 @@ use std::sync::Mutex;
 use ring::digest::{digest, SHA256};
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 
+mod module_scope;
+
 /// The TypeScript release whose resolution this follows.
 pub const RESOLUTION_VERSION: &str = "typescript-5.9.3-resolution-v2";
 
@@ -229,6 +231,8 @@ enum Observation {
     Content(String),
     /// A directory resolved through symlinks to this canonical path.
     Canonical(PathBuf),
+    /// A module-scope manifest retains both its target and content identity.
+    Manifest { canonical: PathBuf, hash: String },
 }
 
 pub struct PackageResolver<F: PackageFs> {
@@ -844,6 +848,11 @@ impl<F: PackageFs> PackageResolver<F> {
                 Observation::Canonical(target) => {
                     text.push_str(&format!("real:{}:{}\n", path.display(), target.display()))
                 }
+                Observation::Manifest { canonical, hash } => text.push_str(&format!(
+                    "scope:{}:{}:{hash}\n",
+                    path.display(),
+                    canonical.display()
+                )),
             }
         }
         format!("bts-packages-{}", sha256_hex(text.as_bytes()))
@@ -867,6 +876,16 @@ impl<F: PackageFs> PackageResolver<F> {
                     .fs
                     .canonicalize(path)
                     .is_ok_and(|current| &current == target),
+                Observation::Manifest { canonical, hash } => {
+                    self.fs.canonicalize(path).is_ok_and(|current| {
+                        &current == canonical
+                            && self.within_roots(&current)
+                            && self
+                                .fs
+                                .read_to_string(&current)
+                                .is_ok_and(|text| &sha256_hex(text.as_bytes()) == hash)
+                    })
+                }
             })
     }
 }
@@ -922,6 +941,20 @@ pub fn types_package_name(name: &str) -> String {
 
 /// The files a package file name may stand for, in TypeScript's order.
 fn file_candidates(path: &Path) -> Vec<PathBuf> {
+    let text = path.to_string_lossy();
+    for (javascript, source, declaration) in
+        [(".mjs", ".mts", ".d.mts"), (".cjs", ".cts", ".d.cts")]
+    {
+        if let Some(stem) = text.strip_suffix(javascript) {
+            return vec![
+                PathBuf::from(format!("{stem}{source}")),
+                PathBuf::from(format!("{stem}{declaration}")),
+            ];
+        }
+        if text.ends_with(source) {
+            return vec![path.to_path_buf()];
+        }
+    }
     let text = path.to_string_lossy().into_owned();
     if text.ends_with(".d.ts") {
         return vec![path.to_path_buf()];
@@ -960,6 +993,12 @@ fn file_candidates(path: &Path) -> Vec<PathBuf> {
 /// `.js`/`.jsx` file stood for by its source or declaration.
 fn exact_candidates(path: &Path) -> Vec<PathBuf> {
     let text = path.to_string_lossy();
+    if [".mts", ".cts", ".mjs", ".cjs"]
+        .iter()
+        .any(|extension| text.ends_with(extension))
+    {
+        return file_candidates(path);
+    }
     if text.ends_with(".d.ts") || text.ends_with(".ts") || text.ends_with(".tsx") {
         return vec![path.to_path_buf()];
     }

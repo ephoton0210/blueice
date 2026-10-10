@@ -89,7 +89,7 @@ impl ModuleChecker<'_> {
                     DiagnosticCode::TypeMismatch,
                 )
             }
-            None if self.namespace_path.is_empty() && self.module_has_module_syntax() => {}
+            None if self.namespace_path.is_empty() && self.project.is_external_module(module) => {}
             None if self.namespace_path.is_empty() => self.type_error(
                 &at,
                 "`await` at the top level of a file requires a module: add an import or an \
@@ -103,28 +103,6 @@ impl ModuleChecker<'_> {
                 DiagnosticCode::TypeMismatch,
             ),
         }
-    }
-
-    /// Whether the module has an `import` or `export`, which is what makes a file
-    /// a module and lets its top level await.
-    fn module_has_module_syntax(&self) -> bool {
-        self.module
-            .declarations
-            .iter()
-            .any(|declaration| match declaration {
-                Declaration::Import(_)
-                | Declaration::TypeExport(_)
-                | Declaration::DefaultExport(_)
-                | Declaration::ValueExport(_) => true,
-                Declaration::Variable(item) => item.exported,
-                Declaration::Function(item) => item.exported,
-                Declaration::Class(item) => item.exported,
-                Declaration::Enum(item) => item.exported,
-                Declaration::Interface(item) => item.exported,
-                Declaration::TypeAlias(item) => item.exported,
-                Declaration::Namespace(item) => item.exported,
-                Declaration::Ambient(_) | Declaration::Raw(_) | Declaration::UmdExport(_) => false,
-            })
     }
 
     fn check_nested_function(&mut self, arrow: &NestedFunction, scope: &BTreeMap<String, Type>) {

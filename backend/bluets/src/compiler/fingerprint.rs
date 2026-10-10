@@ -28,6 +28,9 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     )
     .source_fingerprint);
     add(&options.downlevel_iteration.to_string());
+    add("bluets-helper-selection/1");
+    add(&options.import_helpers.to_string());
+    add(&options.no_emit_helpers.to_string());
     add(options.target.as_str());
     add(if options.defines_class_fields() {
         "define-class-fields"
@@ -51,6 +54,11 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "object-const-enums"
     });
     add(options.module_kind.as_str());
+    add("bluets-node-file-formats/1");
+    add(&options.verbatim_module_syntax.to_string());
+    add(crate::emitter::MODULE_WRAPPERS_VERSION);
+    add("bluets-system-modules/1");
+    add(crate::emitter::SYSTEM_HELPER_SOURCE);
     add(&options.import_attributes.to_string());
     add(&options.resolve_json_module.to_string());
     add(if options.experimental_decorators {
@@ -126,6 +134,10 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     for (id, module) in &project.modules {
         add(id);
         add(&module.source);
+    }
+    for (id, kind) in &project.module_kinds {
+        add(id);
+        add(kind.as_str());
     }
     for (id, source) in &project.failed_sources {
         add(id);

@@ -59,9 +59,14 @@ pub(super) fn declaration_module_diagnostics(
                 }
                 if !import.type_only && import.specifier.ends_with(".d.ts") {
                     let stem = import.specifier.strip_suffix(".d.ts").unwrap();
-                    let implementation = match module_kind {
-                        crate::ModuleKind::CommonJs => stem.to_string(),
-                        crate::ModuleKind::Esm => format!("{stem}.ts"),
+                    let implementation = match project.module_kind(module_id, module_kind) {
+                        crate::ModuleKind::CommonJs
+                        | crate::ModuleKind::Amd
+                        | crate::ModuleKind::Umd
+                        | crate::ModuleKind::System => stem.to_string(),
+                        crate::ModuleKind::Esm
+                        | crate::ModuleKind::Node16
+                        | crate::ModuleKind::NodeNext => format!("{stem}.ts"),
                     };
                     diagnostics.push(
                         Diagnostic::error(

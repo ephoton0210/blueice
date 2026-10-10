@@ -6,6 +6,7 @@
 
 use super::*;
 mod augmentations;
+mod helper_providers;
 mod references;
 use std::collections::HashMap;
 
@@ -17,6 +18,7 @@ pub(super) struct ProjectBuilder<'a> {
     state: HashMap<String, VisitState>,
     limits: CompilerLimits,
     pub(super) resolve_json_module: bool,
+    pub(super) module_kind: ModuleKind,
     total_source_bytes: usize,
     pub(super) parsed_modules: BTreeSet<String>,
     pub(super) reused_parsed_modules: BTreeSet<String>,
@@ -48,6 +50,7 @@ impl<'a> ProjectBuilder<'a> {
             state: HashMap::new(),
             limits,
             resolve_json_module: false,
+            module_kind: ModuleKind::Esm,
             total_source_bytes: 0,
             parsed_modules: BTreeSet::new(),
             reused_parsed_modules: BTreeSet::new(),
@@ -198,6 +201,27 @@ impl<'a> ProjectBuilder<'a> {
             return;
         }
         self.total_source_bytes = total_source_bytes;
+        if matches!(self.module_kind, ModuleKind::Node16 | ModuleKind::NodeNext) {
+            match self.loader.implied_module_kind(module_id) {
+                Ok(kind @ (ModuleKind::Esm | ModuleKind::CommonJs)) => {
+                    self.project
+                        .module_kinds
+                        .insert(module_id.to_string(), kind);
+                }
+                Ok(_) => {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnsupportedSyntax,
+                        SourceSpan::new(module_id, 0, 0),
+                        "owner must select ESM or CommonJS for a Node file",
+                    ));
+                }
+                Err(message) => self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::ModuleNotFound,
+                    SourceSpan::new(module_id, 0, 0),
+                    message,
+                )),
+            }
+        }
         let module = if module_id.ends_with(".json") && self.resolve_json_module {
             match json::parse(&source, &self.limits) {
                 Ok((module, schema)) => {
@@ -293,7 +317,19 @@ impl<'a> ProjectBuilder<'a> {
                 ));
                 continue;
             }
-            match self.loader.resolve_with_mode(module_id, specifier, mode) {
+            let owner_mode = mode.or_else(|| {
+                self.project.module_kinds.get(module_id).map(|kind| {
+                    if *kind == ModuleKind::CommonJs {
+                        crate::package_resolution::ImportMode::Require
+                    } else {
+                        crate::package_resolution::ImportMode::Import
+                    }
+                })
+            });
+            match self
+                .loader
+                .resolve_with_mode(module_id, specifier, owner_mode)
+            {
                 Ok(resolved) => {
                     if self
                         .project

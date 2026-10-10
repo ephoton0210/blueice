@@ -71,7 +71,7 @@ impl<'a> ModuleChecker<'a> {
             require_declared_global_calls: policy.require_declared_global_calls,
             define_class_fields: policy.define_class_fields,
             isolated_modules: policy.isolated_modules,
-            module_kind: policy.module_kind,
+            module_kind: project.module_kind(&module.id, policy.module_kind),
             import_attributes: policy.import_attributes,
             es_module_interop: policy.es_module_interop,
             jsx_mode: policy.jsx,

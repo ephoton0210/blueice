@@ -66,8 +66,16 @@ pub(super) fn lower(
             )
         })?;
         let base = unused_name(&emitted.javascript, "base_class", &mut sequence);
-        let inherit = unused_name(&emitted.javascript, "inherit_class", &mut sequence);
-        let construct = unused_name(&emitted.javascript, "call_base", &mut sequence);
+        let inherit = if options.no_emit_helpers && !options.import_helpers {
+            "__extends".to_string()
+        } else {
+            unused_name(&emitted.javascript, "inherit_class", &mut sequence)
+        };
+        let construct = if options.import_helpers || options.no_emit_helpers {
+            "(function(base, receiver, values) { var result = Function.prototype.apply.call(base, receiver, values); return result !== null && (typeof result === 'object' || typeof result === 'function') ? result : receiver; })".to_string()
+        } else {
+            unused_name(&emitted.javascript, "call_base", &mut sequence)
+        };
         let receiver = unused_name(&emitted.javascript, "class_this", &mut sequence);
         let mut constructor = None;
         let mut members = String::new();
@@ -159,9 +167,21 @@ pub(super) fn lower(
         let replacement = format!("var {name} = (function ({}) {{\n{constructor}{inheritance}{members}return {name};\n}})({argument});",
             if extends { base.as_str() } else { "" });
         let insertion = directive_end(&tokens);
-        let helper = include_str!("../class_helpers.v1.js")
-            .replace("__blueice_target_inherit_class", &inherit)
-            .replace("__blueice_target_call_base", &construct);
+        let helper = if options.import_helpers {
+            if !extends {
+                String::new()
+            } else if options.module_kind == crate::ModuleKind::CommonJs {
+                format!("var {inherit} = require('tslib').__extends;")
+            } else {
+                format!("import {{__extends as {inherit}}} from 'tslib';")
+            }
+        } else if options.no_emit_helpers {
+            String::new()
+        } else {
+            include_str!("../class_helpers.v1.js")
+                .replace("__blueice_target_inherit_class", &inherit)
+                .replace("__blueice_target_call_base", &construct)
+        };
         emitted = mapped_edits(
             emitted,
             vec![

@@ -60,6 +60,8 @@ pub struct Module {
     pub(crate) type_assertions: BTreeMap<usize, Type>,
 }
 
+mod module_kind;
+
 mod class_expressions;
 pub(crate) use class_expressions::type_parameter_identity;
 pub use class_expressions::ClassExpression;

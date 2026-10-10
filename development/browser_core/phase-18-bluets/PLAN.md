@@ -8154,3 +8154,67 @@ reference to the corpus (100 configurations: 82 accept, 18 reject) and commit
 this failing replay before moving imported bindings into dependency setters.
 The complete earlier frozen-source ignored gate is still running; K.7.2 stays
 open and its production remains unpushed.
+
+### K.7.2 dependency setters and final gate preparation (2026-10-10)
+
+The earlier 7,430-file frozen 99-case gate passes format, three-crate
+all-target Clippy, all 1,106 ordinary tests and all 190 ignored oracles in
+127 target/doctest groups per test command. Evidence:
+`blueice-k72-full-first-status.json` and exact source hashes/logs.
+
+The new cycle moves generated direct namespace assignments into System
+dependency setters, before execute; authored variable initializers and
+`require('tslib').__extends` property reads remain executable expressions.
+Factory context names are fresh. Pinned TypeScript 5.9.3 directly confirms
+System emission is identical with interop on and off; public compilation
+checks this invariant while retaining distinct policy fingerprints.
+The frozen 7,433-file `blueice-k72-system-setters-fourth` gate passes format,
+three-crate all-target Clippy, two owner-manifest tests, incremental format
+rechecking, LF/CRLF function source maps and all six module tests. All 100
+configurations match native verdicts/primary origins, all 82 accepted actual
+executions/declarations/output suffixes and the live native recorder.
+The complete final K.0 gate must pass on these unchanged production bytes
+before checking off, committing and pushing K.7.2.
+
+The CLI review finds 1,210 lines. After publishing the green leaf, extract
+its 270-line FileLoader state and canonical identity methods into
+`bluetsc/file_loader.rs`, run the full K.0 gate and commit/push that split
+separately before adding K.7.3 responsibilities. The prepared split script
+requires a clean, published source hash and has not been applied. Broader
+module/helper/target combinations and declaration-input contexts remain
+explicitly unmeasured in G-E1/G-M1.
+
+### K.7.2 implicit Node module detection (2026-10-10)
+
+The pinned TypeScript program API confirms Node16/NodeNext default module
+detection marks ordinary `.ts`, `.mts` and `.cts` runtime sources external,
+even without import/export syntax. Declaration files retain syntax-based
+classification. Six independent ES5 class/helper fixtures receive TS2354
+from TypeScript while the pre-fix BlueTSC accepts all six. These native
+diagnostics and source hashes are committed before production correction
+(`507b7743e`); the module corpus now has 106 cases, 82 accepted and 24 rejected.
+
+Project-owned format metadata now supplies effective classification to helper
+resolution, script helper selection, top-level await and global augmentation
+contexts. Explicit syntax still determines classic module/script behavior,
+and declaration globals remain syntax-based. Final validation is pending;
+K.7.2 remains open. Evidence: `blueice-k72-module-detection-probe.json` and
+`blueice-k72-implicit-format-{native-cases,red-probe}.json`.
+
+### K.7.2 verified module systems (2026-10-10)
+
+The final immutable 7,445-file Linux snapshot passes formatting, warnings-denied
+three-crate all-target Clippy, all 1,107 ordinary tests and all 190 ignored
+oracles: 1,297 tests with 127 target/doctest groups per test command. Every
+frozen production byte matches the tested host source. All 106 pinned
+configurations match: 82 accepted actual executions/declarations/output
+suffixes and 24 exact native primary diagnostic refusals, including six
+implicit Node module helper cases. Package manifest canonical identity,
+format changes without source changes, System cycle bindings and LF/CRLF
+function provenance are covered at public boundaries.
+
+Evidence: `blueice-k72-implicit-first-{status,source-hashes}.json`, its logs
+and `blueice-k72-final-verification-proof.json`. K.7.2 is complete in its
+measured form. G-E1/G-M1 retain broader module/helper/target and declaration
+input combinations. Publish this leaf before the separately tested CLI
+FileLoader split; CLI size remains 1,210 lines. K.7.3 through K.10 remain open.

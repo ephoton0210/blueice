@@ -108,7 +108,15 @@ fn parses_the_module_system_flags() {
     };
     assert_eq!(options.module_kind, ModuleKind::CommonJs);
     assert!(options.es_module_interop);
-    assert!(args(&["check", "main.ts", "--module", "amd"]).is_err());
+    for (name, expected) in [("amd", ModuleKind::Amd), ("umd", ModuleKind::Umd)] {
+        let Input::Entry { options, .. } =
+            args(&["check", "main.ts", "--module", name]).unwrap().input
+        else {
+            panic!("expected explicit entry input");
+        };
+        assert_eq!(options.module_kind, expected);
+    }
+    assert!(args(&["check", "main.ts", "--module", "unsupported-kind"]).is_err());
 }
 
 #[test]
@@ -241,6 +249,9 @@ fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
 fn test_metadata() -> BuildMetadata {
     BuildMetadata {
         downlevel_iteration: false,
+        import_helpers: false,
+        no_emit_helpers: false,
+        verbatim_module_syntax: false,
         root_dir: None,
         standard_library: blueice_bluets::standard_library::identity(EcmaTarget::Es2022),
         language_version: "blue-ts-test",

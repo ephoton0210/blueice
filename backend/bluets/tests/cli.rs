@@ -762,6 +762,8 @@ fn builds_commonjs_output_runs_it_under_node_and_records_the_module_system() {
     .unwrap();
     for (flags, module) in [
         (&["--module", "commonjs"][..], "commonjs"),
+        (&["--module", "amd"][..], "amd"),
+        (&["--module", "umd"][..], "umd"),
         (&[][..], "esm"),
     ] {
         let output = temporary.join(format!("out-{module}"));
@@ -783,7 +785,7 @@ fn builds_commonjs_output_runs_it_under_node_and_records_the_module_system() {
         let javascript = fs::read_to_string(output.join("main.js")).unwrap();
         assert_eq!(
             javascript.contains("require("),
-            module == "commonjs",
+            module != "esm",
             "{javascript}"
         );
         if module == "commonjs" && Command::new("node").arg("--version").output().is_ok() {
@@ -797,10 +799,12 @@ fn builds_commonjs_output_runs_it_under_node_and_records_the_module_system() {
     }
     let rejected = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
         .current_dir(&temporary)
-        .args(["check", "main.ts", "--module", "amd"])
+        .args(["check", "main.ts", "--module", "unsupported-kind"])
         .output()
         .unwrap();
     assert!(!rejected.status.success());
-    assert!(String::from_utf8_lossy(&rejected.stderr).contains("unsupported module `amd`"));
+    assert!(
+        String::from_utf8_lossy(&rejected.stderr).contains("unsupported module `unsupported-kind`")
+    );
     fs::remove_dir_all(temporary).unwrap();
 }

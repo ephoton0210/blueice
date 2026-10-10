@@ -143,6 +143,34 @@ fn direct_execution_refuses_commonjs_naming_the_supported_route() {
 }
 
 #[test]
+fn direct_execution_refuses_owner_loaded_module_wrappers() {
+    use blueice_bluets::{CompilerOptions, MapLoader, ModuleKind, ModuleSource};
+    let id = "memory:///main.ts";
+    let loader = MapLoader::from([ModuleSource::new(id, "export const answer = 42;")]);
+    for kind in [ModuleKind::Amd, ModuleKind::Umd] {
+        let options = || CompilerOptions {
+            module_kind: kind,
+            ..CompilerOptions::default()
+        };
+        for result in [
+            blueice_bluets_bluejs::compile_direct_script(id, &loader, options()).err(),
+            blueice_bluets_bluejs::compile_direct_module(id, &loader, options()).err(),
+            blueice_bluets_bluejs::compile_direct_module_graph(id, &loader, options()).err(),
+        ] {
+            let message = format!(
+                "{:?}",
+                result.expect("the wrapper requires an owner loader")
+            );
+            assert!(message.contains("ECMAScript modules only"), "{message}");
+            assert!(
+                message.contains(&format!("host-provided {} loader", kind.as_str())),
+                "{message}"
+            );
+        }
+    }
+}
+
+#[test]
 fn direct_execution_links_no_remote_or_installed_package_declaration() {
     use blueice_bluets::{CompilerOptions, ModuleLoader, ModuleSource};
     struct Loader;

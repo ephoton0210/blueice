@@ -29,6 +29,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod config;
 use config::*;
 
+#[path = "bluetsc/node_modules.rs"]
+mod node_modules;
+
 #[path = "bluetsc/native_cli/mod.rs"]
 mod native_cli;
 #[path = "bluetsc/tsconfig/mod.rs"]
@@ -210,6 +213,9 @@ struct BuildMetadata {
     fingerprint: String,
     target: &'static str,
     downlevel_iteration: bool,
+    import_helpers: bool,
+    no_emit_helpers: bool,
+    verbatim_module_syntax: bool,
     /// Whether class fields are defined rather than assigned, with the
     /// target's default applied.
     use_define_for_class_fields: bool,
@@ -505,6 +511,9 @@ fn build_metadata(
         fingerprint: summary.fingerprint.clone(),
         target: invocation.options.target.as_str(),
         downlevel_iteration: invocation.options.downlevel_iteration,
+        import_helpers: invocation.options.import_helpers,
+        no_emit_helpers: invocation.options.no_emit_helpers,
+        verbatim_module_syntax: invocation.options.verbatim_module_syntax,
         use_define_for_class_fields: invocation.options.defines_class_fields(),
         preserve_const_enums: invocation.options.preserve_const_enums,
         inline_const_enums: invocation.options.inlines_const_enums(),
@@ -564,6 +573,11 @@ fn output_module_path(root: &Path, module: &Path, preserve_jsx: bool) -> String 
 /// What an emitted module is called: `.js`, or `.jsx` for a `.tsx` module whose
 /// JSX is preserved.
 fn output_extension(source: &Path, preserve_jsx: bool) -> &'static str {
+    match source.extension().and_then(|extension| extension.to_str()) {
+        Some("mts") => return "mjs",
+        Some("cts") => return "cjs",
+        _ => {}
+    }
     if preserve_jsx
         && source
             .extension()
@@ -736,6 +750,9 @@ struct FileLoader {
 }
 
 impl ModuleLoader for FileLoader {
+    fn implied_module_kind(&self, module_id: &str) -> Result<ModuleKind, String> {
+        node_modules::implied_kind(self, module_id)
+    }
     fn load(&self, module_id: &str) -> Result<ModuleSource, String> {
         if let Some(pin) = module_id
             .strip_prefix("@remote/")
@@ -759,7 +776,7 @@ impl ModuleLoader for FileLoader {
         let path = self.source_path(module_id)?;
         if !matches!(
             path.extension().and_then(|extension| extension.to_str()),
-            Some("ts" | "tsx" | "json")
+            Some("ts" | "tsx" | "mts" | "cts" | "json")
         ) {
             return Err(format!(
                 "module `{module_id}` is not a supported .ts, .tsx, or .d.ts source file"
@@ -1055,7 +1072,10 @@ fn publish_build(
                 )?;
             }
             if let Some(declaration) = &artifact.declaration {
-                fs::write(js_path.with_extension("d.ts"), declaration)?;
+                fs::write(
+                    js_path.with_extension(node_modules::declaration_extension(extension)),
+                    declaration,
+                )?;
             }
         }
         for (module_id, source) in declaration_modules {

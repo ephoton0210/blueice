@@ -91,13 +91,19 @@ pub(super) struct BlueTscConfig {
     #[serde(default)]
     pub(super) downlevel_iteration: bool,
     #[serde(default)]
+    pub(super) import_helpers: bool,
+    #[serde(default)]
+    pub(super) no_emit_helpers: bool,
+    #[serde(default)]
+    pub(super) verbatim_module_syntax: bool,
+    #[serde(default)]
     pub(super) use_define_for_class_fields: Option<bool>,
     #[serde(default)]
     pub(super) preserve_const_enums: bool,
     #[serde(default)]
     pub(super) isolated_modules: bool,
     #[serde(default)]
-    pub(super) es_module_interop: bool,
+    pub(super) es_module_interop: Option<bool>,
     #[serde(default)]
     pub(super) resolve_json_module: bool,
     #[serde(default)]
@@ -216,6 +222,9 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
                 options.libraries = Some(value()?.split(',').map(|name| parse_target(Some(name))).collect::<Result<Vec<_>, _>>()?);
             }
             "--downlevel-iteration" => options.downlevel_iteration = true,
+            "--import-helpers" => options.import_helpers = true,
+            "--no-emit-helpers" => options.no_emit_helpers = true,
+            "--verbatim-module-syntax" => options.verbatim_module_syntax = true,
             "--jsx" => {
                 let name = value()?;
                 options.jsx = Some(JsxMode::parse(&name).ok_or_else(|| {
@@ -230,15 +239,7 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--module" => {
                 let module = value()?;
                 options.import_attributes = module == "esnext";
-                options.module_kind = match module.as_str() {
-                    "esnext" | "es2022" | "es2020" | "es2015" | "es6" => ModuleKind::Esm,
-                    "commonjs" => ModuleKind::CommonJs,
-                    other => {
-                        return Err(format!(
-                            "unsupported module `{other}`; expected esnext or commonjs"
-                        ))
-                    }
-                }
+                options.module_kind = parse_module_kind(Some(&module))?;
             }
             "--use-define-for-class-fields" => {
                 options.use_define_for_class_fields = Some(match value()?.as_str() {
@@ -545,10 +546,13 @@ pub(super) fn resolve_config_document(
         target: parse_target(config.target.as_deref())?,
         libraries: config.lib.map(|libraries| libraries.iter().map(|name| parse_target(Some(name))).collect::<Result<Vec<_>, _>>()).transpose()?,
         downlevel_iteration: config.downlevel_iteration,
+        import_helpers: config.import_helpers,
+        no_emit_helpers: config.no_emit_helpers,
+        verbatim_module_syntax: config.verbatim_module_syntax,
         use_define_for_class_fields: config.use_define_for_class_fields,
         preserve_const_enums: config.preserve_const_enums,
         isolated_modules: config.isolated_modules,
-        es_module_interop: config.es_module_interop,
+        es_module_interop: config.es_module_interop.unwrap_or(matches!(options_module_kind, ModuleKind::Node16 | ModuleKind::NodeNext)),
         experimental_decorators: config.experimental_decorators,
         emit_decorator_metadata: config.emit_decorator_metadata,
         jsx: config
@@ -713,11 +717,16 @@ pub(super) fn configured_strict_boundary(
 }
 
 pub(super) fn parse_module_kind(value: Option<&str>) -> Result<ModuleKind, String> {
-    match value {
-        None | Some("esnext" | "es2022" | "es2020" | "es2015" | "es6") => Ok(ModuleKind::Esm),
-        Some("commonjs") => Ok(ModuleKind::CommonJs),
-        Some(other) => Err(format!(
-            "unsupported module `{other}`; expected esnext or commonjs"
+    match value.unwrap_or("esnext").to_ascii_lowercase().as_str() {
+        "esnext" | "es2022" | "es2020" | "es2015" | "es6" => Ok(ModuleKind::Esm),
+        "commonjs" => Ok(ModuleKind::CommonJs),
+        "amd" => Ok(ModuleKind::Amd),
+        "umd" => Ok(ModuleKind::Umd),
+        "system" => Ok(ModuleKind::System),
+        "node16" => Ok(ModuleKind::Node16),
+        "nodenext" => Ok(ModuleKind::NodeNext),
+        other => Err(format!(
+            "unsupported module `{other}`; expected esnext, commonjs, amd, umd, system, node16 or nodenext"
         )),
     }
 }
@@ -808,5 +817,9 @@ pub(super) fn ensure_not_declaration_entry(path: &Path, label: &str) -> Result<(
 pub(super) fn is_declaration_path(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".d.ts"))
+        .is_some_and(|name| {
+            [".d.ts", ".d.mts", ".d.cts"]
+                .iter()
+                .any(|extension| name.ends_with(extension))
+        })
 }

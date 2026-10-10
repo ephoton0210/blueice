@@ -786,7 +786,23 @@ fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>
 /// CommonJS loader, which the host owns and authorizes; a page gets none from
 /// CommonJS syntax alone.
 fn refuse_commonjs(entry: &str, options: &CompilerOptions) -> Result<(), BridgeError> {
-    if options.module_kind == blueice_bluets::ModuleKind::CommonJs {
+    if matches!(
+        options.module_kind,
+        blueice_bluets::ModuleKind::Amd
+            | blueice_bluets::ModuleKind::Umd
+            | blueice_bluets::ModuleKind::System
+            | blueice_bluets::ModuleKind::Node16
+            | blueice_bluets::ModuleKind::NodeNext
+    ) {
+        return Err(unsupported(
+            SourceSpan::new(entry, 0, 0),
+            format!(
+                "the direct bridge executes ECMAScript modules only; a {} project requires emitted output and a host-provided {} loader",
+                options.module_kind.as_str(), options.module_kind.as_str()
+            ),
+        ));
+    }
+    if options.module_kind != blueice_bluets::ModuleKind::Esm {
         return Err(unsupported(
             SourceSpan::new(entry, 0, 0),
             "the direct bridge executes ECMAScript modules only; a CommonJS project is run as \

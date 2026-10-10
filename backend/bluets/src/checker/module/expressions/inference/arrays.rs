@@ -316,6 +316,13 @@ impl<'a> ModuleChecker<'a> {
         if start + 1 < tokens.len() {
             values.push(self.infer_array_element(&tokens[start..tokens.len() - 1], scope));
         }
+        let mut unique = Vec::new();
+        for value in values {
+            if !unique.contains(&value) {
+                unique.push(value);
+            }
+        }
+        let values = unique;
         let Some(first) = values.first().cloned() else {
             return Type::Array(Box::new(Type::Unknown));
         };

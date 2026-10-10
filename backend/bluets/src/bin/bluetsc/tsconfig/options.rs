@@ -20,6 +20,9 @@ pub(super) const STRICT: &[&str] = &[
 
 const BOOLEAN: &[&str] = &[
     "downlevelIteration",
+    "importHelpers",
+    "noEmitHelpers",
+    "verbatimModuleSyntax",
     "sourceMap",
     "declaration",
     "useDefineForClassFields",
@@ -129,7 +132,10 @@ pub(super) fn validate(
                     let module = enumeration(
                         name,
                         string,
-                        &["esnext", "es2020", "es2022", "commonjs", "es2015", "es6"],
+                        &[
+                            "esnext", "es2020", "es2022", "commonjs", "es2015", "es6", "amd",
+                            "umd", "system", "node16", "nodenext",
+                        ],
                     )?;
                     if module == "es2015" {
                         json!("es6")
@@ -242,10 +248,11 @@ pub(super) fn effective(raw: &Map<String, Value>, directory: &Path) -> Map<Strin
     let resolution = raw
         .get("moduleResolution")
         .and_then(Value::as_str)
-        .unwrap_or(if module == "commonjs" {
-            "node10"
-        } else {
-            "classic"
+        .unwrap_or(match module {
+            "commonjs" => "node10",
+            "node16" => "node16",
+            "nodenext" => "nodenext",
+            _ => "classic",
         });
     if !raw.contains_key("moduleResolution")
         && resolution != "node10"
@@ -265,8 +272,13 @@ pub(super) fn effective(raw: &Map<String, Value>, directory: &Path) -> Map<Strin
     let interop = raw
         .get("esModuleInterop")
         .and_then(Value::as_bool)
-        .unwrap_or(false);
+        .unwrap_or(matches!(module, "node16" | "nodenext"));
     let implied = [
+        ("esModuleInterop", interop),
+        (
+            "isolatedModules",
+            raw.get("verbatimModuleSyntax").and_then(Value::as_bool) == Some(true),
+        ),
         ("allowSyntheticDefaultImports", interop || bundler),
         ("resolvePackageJsonExports", modern_resolution),
         ("resolvePackageJsonImports", modern_resolution),
@@ -314,6 +326,9 @@ pub(super) fn owner_options(
         "target",
         "lib",
         "downlevelIteration",
+        "importHelpers",
+        "noEmitHelpers",
+        "verbatimModuleSyntax",
         "module",
         "resolveJsonModule",
         "sourceMap",
@@ -339,8 +354,10 @@ pub(super) fn owner_options(
             .map_err(|_| format!("outDir {path} is outside project root"))?;
         owner.insert("outDir".to_string(), json!(output_path(relative)));
     }
-    if let Some(value) = raw.get("moduleResolution").and_then(Value::as_str) {
-        if matches!(value, "node16" | "bundler") {
+    if let Some(value) = computed.get("moduleResolution").and_then(Value::as_str) {
+        if matches!(value, "node16" | "nodenext" | "bundler")
+            || value == "node10" && raw.get("importHelpers").and_then(Value::as_bool) == Some(true)
+        {
             owner.insert("moduleResolution".to_string(), json!(value));
         }
     }

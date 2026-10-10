@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 mod fingerprint;
 mod json;
 mod native_emit;
+mod node_modules;
 mod project_builder;
 mod resolutions;
 mod targets;
@@ -54,12 +55,17 @@ impl Default for CompilerLimits {
 }
 
 /// The module system emitted JavaScript uses (TypeScript's `module`): ECMAScript
-/// modules, or CommonJS (`require`, `exports`, `module.exports`).
+/// modules, CommonJS, or owner-loaded AMD/UMD wrappers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ModuleKind {
     #[default]
     Esm,
     CommonJs,
+    Amd,
+    Umd,
+    System,
+    Node16,
+    NodeNext,
 }
 
 impl ModuleKind {
@@ -67,6 +73,11 @@ impl ModuleKind {
         match self {
             Self::Esm => "esm",
             Self::CommonJs => "commonjs",
+            Self::Amd => "amd",
+            Self::Umd => "umd",
+            Self::System => "system",
+            Self::Node16 => "node16",
+            Self::NodeNext => "nodenext",
         }
     }
 }
@@ -156,6 +167,10 @@ pub struct CompilerOptions {
     pub libraries: Option<Vec<EcmaTarget>>,
     /// Use iterator protocols when lowering iteration below ES2015.
     pub downlevel_iteration: bool,
+    /// Import supported runtime helper ABIs from an owner-resolved provider.
+    pub import_helpers: bool,
+    /// Leave supported runtime helper ABIs to the emitted realm's owner.
+    pub no_emit_helpers: bool,
     /// TypeScript's `useDefineForClassFields`: `Some(true)` defines class
     /// fields (native ES2022 fields, or `Object.defineProperty` below it),
     /// `Some(false)` assigns them in the constructor, and `None` follows the
@@ -171,6 +186,8 @@ pub struct CompilerOptions {
     pub isolated_modules: bool,
     /// The module system of the emitted JavaScript.
     pub module_kind: ModuleKind,
+    /// Preserve value module syntax and diagnose CommonJS ES declarations.
+    pub verbatim_module_syntax: bool,
     /// The selected module grammar permits runtime import attributes (ESNext).
     pub import_attributes: bool,
     /// Owner-enabled JSON sources become typed data assets, never script code.
@@ -229,7 +246,9 @@ impl CompilerOptions {
     /// Whether a use of a `const enum` member is replaced by its value.
     /// Transpile-only compiles without types, so it cannot know the value.
     pub fn inlines_const_enums(&self) -> bool {
-        !self.isolated_modules && self.runtime_policy != RuntimePolicy::TranspileOnly
+        !self.isolated_modules
+            && !self.verbatim_module_syntax
+            && self.runtime_policy != RuntimePolicy::TranspileOnly
     }
 
     /// Whether class fields are defined rather than assigned, once the target's
@@ -246,11 +265,14 @@ impl Default for CompilerOptions {
             target: EcmaTarget::Es2022,
             libraries: None,
             downlevel_iteration: false,
+            import_helpers: false,
+            no_emit_helpers: false,
             checking: None,
             use_define_for_class_fields: None,
             preserve_const_enums: false,
             isolated_modules: false,
             module_kind: ModuleKind::Esm,
+            verbatim_module_syntax: false,
             import_attributes: false,
             resolve_json_module: false,
             es_module_interop: false,
@@ -293,6 +315,18 @@ impl ModuleSource {
 /// URLs.
 pub trait ModuleLoader {
     fn load(&self, module_id: &str) -> Result<ModuleSource, String>;
+
+    /// Supplies a Node file's format using only the owner's authorized inputs.
+    /// File owners may inspect package manifests; the compiler performs no I/O.
+    fn implied_module_kind(&self, module_id: &str) -> Result<ModuleKind, String> {
+        Ok(
+            if module_id.ends_with(".mts") || module_id.ends_with(".mjs") {
+                ModuleKind::Esm
+            } else {
+                ModuleKind::CommonJs
+            },
+        )
+    }
 
     fn resolve(&self, from_module: &str, specifier: &str) -> Result<String, String> {
         resolve_relative_module(from_module, specifier)
@@ -365,7 +399,9 @@ impl ModuleLoader for MapLoader {
 /// host is still responsible for authorizing that source identity before it
 /// reaches BlueTS; this helper only controls static-only compiler behavior.
 pub(crate) fn is_declaration_module(module_id: &str) -> bool {
-    module_id.ends_with(".d.ts")
+    [".d.ts", ".d.mts", ".d.cts"]
+        .iter()
+        .any(|extension| module_id.ends_with(extension))
 }
 
 /// Whether a module comes from an installed package: its path has a
@@ -388,6 +424,7 @@ pub fn is_external_library_module(module_id: &str) -> bool {
 pub struct Project {
     pub entry: String,
     pub modules: BTreeMap<String, Module>,
+    pub(crate) module_kinds: BTreeMap<String, ModuleKind>,
     pub(crate) resolutions: BTreeMap<(String, String), String>,
     mode_resolutions: BTreeMap<(String, String, crate::package_resolution::ImportMode), String>,
     // Static namespace keys never appear as runtime/physical source targets.
@@ -410,6 +447,20 @@ pub struct Project {
 }
 
 impl Project {
+    /// Node16 and NodeNext default to module detection for runtime inputs;
+    /// declaration files retain their syntax-based global/module distinction.
+    pub(crate) fn is_external_module(&self, module: &Module) -> bool {
+        module.is_external_module()
+            || !is_declaration_module(&module.id) && self.module_kinds.contains_key(&module.id)
+    }
+
+    /// Returns an owner-selected Node format, or the caller's fixed format.
+    pub fn module_kind(&self, module_id: &str, fallback: ModuleKind) -> ModuleKind {
+        self.module_kinds
+            .get(module_id)
+            .copied()
+            .unwrap_or(fallback)
+    }
     /// Returns input already supplied by the owner, including a source whose
     /// parsing failed. This performs no I/O and does not resolve new inputs.
     pub fn source(&self, module_id: &str) -> Option<&str> {
@@ -511,6 +562,7 @@ impl Project {
         Self {
             entry: entry.into(),
             modules: BTreeMap::new(),
+            module_kinds: BTreeMap::new(),
             resolutions: BTreeMap::new(),
             mode_resolutions: BTreeMap::new(),
             ambient_resolutions: BTreeMap::new(),
@@ -544,7 +596,9 @@ fn compile_with_cache(
     let previous_project = cached.map(|cached| &cached.compilation.project);
     let mut builder = ProjectBuilder::new(loader, previous_project, options.limits.clone());
     builder.resolve_json_module = options.resolve_json_module;
+    builder.module_kind = options.module_kind;
     builder.visit(entry, 0);
+    builder.resolve_helper_providers(&options);
     for declaration in &options.ambient_declaration_modules {
         builder.visit_ambient_declaration(declaration);
     }
@@ -557,6 +611,7 @@ fn compile_with_cache(
         reused_parsed_modules,
         ..
     } = builder;
+    diagnostics.extend(node_modules::validate(&project, &options));
     let project_fingerprint = fingerprint(&project, &options);
     let graph_time = graph_started.elapsed();
 
@@ -617,7 +672,7 @@ fn compile_with_cache(
             enforce_types: !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
             require_declared_global_calls: options.require_declared_global_calls,
             define_class_fields: options.defines_class_fields(),
-            isolated_modules: options.isolated_modules,
+            isolated_modules: options.isolated_modules || options.verbatim_module_syntax,
             module_kind: options.module_kind,
             import_attributes: options.import_attributes,
             es_module_interop: options.es_module_interop,
@@ -697,7 +752,9 @@ fn changed_modules(previous: &Project, current: &Project) -> BTreeSet<String> {
         .chain(previous.failed_sources.keys())
         .chain(current.failed_sources.keys())
     {
-        if previous.source(module_id) != current.source(module_id) {
+        if previous.source(module_id) != current.source(module_id)
+            || previous.module_kinds.get(module_id) != current.module_kinds.get(module_id)
+        {
             changed.insert(module_id.clone());
         }
     }

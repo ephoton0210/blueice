@@ -190,7 +190,7 @@ suite entry, then removing the row.
 
 | ID | Gap |
 | --- | --- |
-| G-E1 | K.7.1 compares all eleven ECMAScript targets in CommonJS and ESM: 638 pinned verdicts, 600 accepted Node/declaration/Acorn observations and 600 actual outputs parsed through BlueJS at the selected edition. Explicit `lib` and `downlevelIteration` are recorded in artifact/cache identity; original versioned helpers implement the measured lexical/default/rest/template/pattern/iteration/spread/class/generator/async forms. Broader computed heritage and `super` use, nested binding patterns, constructor spreads, async arrows/methods, template-contained suspension, complex suspension graphs and other combinations remain unmeasured. Unsupported named ES5 suspension graphs are explicit refusals. Final frozen-source K.0 passes format, all-target Clippy, 1,093 ordinary tests and all 187 ignored oracles; complete final-source hosted CI is next. |
+| G-E1 | K.7.1 compares all eleven ECMAScript targets in CommonJS and ESM: 638 pinned verdicts, 600 accepted Node/declaration/Acorn observations and 600 actual outputs parsed through BlueJS at the selected edition. Explicit `lib` and `downlevelIteration` are recorded in artifact/cache identity; original versioned helpers implement the measured lexical/default/rest/template/pattern/iteration/spread/class/generator/async forms. Broader computed heritage and `super` use, nested binding patterns, constructor spreads, async arrows/methods, template-contained suspension, complex suspension graphs and other combinations remain unmeasured. Unsupported named ES5 suspension graphs are explicit refusals. K.7.1 complete hosted CI passes all 29 jobs. K.7.2 adds measured AMD/UMD/System bindings, 24 Node16/NodeNext per-file/verbatim configurations and helper/script policies. All 106 native configurations (82 accept, 24 reject), including early System cyclic imported-function calls and default Node module detection without imports/exports, pass execution, declarations, suffixes and primary diagnostics. The final complete leaf gate passes all 1,297 tests, including all 190 ignored oracles; additional module/helper/target combinations remain unmeasured, including ESM Node import-equals lowering and broader helper ABI selection. |
 | G-E2 | Module systems other than ES modules and CommonJS (`AMD`, `UMD`, `System`, `node16`/`nodenext` per-file module kind and `.mts`/`.cts`), `esModuleInterop` helper forms beyond default/namespace import, `verbatimModuleSyntax`, `importHelpers`, `noEmitHelpers`. |
 | G-E3 | Decorators and auto-accessors for targets other than ES2022 with class fields defined; decorated private members, computed names, classes in namespaces and `export default @d class`; decorator metadata for imported/unresolved class types and unannotated methods (section 4). |
 | G-E4 | `removeComments`, `preserveValueImports`, `importsNotUsedAsValues`, `stripInternal`, `newLine`, BOM/`emitBOM`, `inlineSources`, `sourceRoot`/`mapRoot`, `downlevelIteration`, `useDefineForClassFields` interactions beyond the two supported targets, `isolatedDeclarations`. |
@@ -207,7 +207,7 @@ suite entry, then removing the row.
 
 | ID | Gap |
 | --- | --- |
-| G-M1 | K.6.2 supports owner-enabled explicit relative JSON data with canonical-root bounds, static types, content/observation identity and raw asset publication; strict-runtime/direct execution still requires a supported data runtime profile. Its per-edge type-only import/require conditions select independently. Resolution features not read: `typesVersions`, `.d.mts`/`.d.cts`/`.mts`/`.cts` entry points, `paths`/`baseUrl`/`rootDirs`, package self-name imports, `moduleResolution: classic`, automatic `@types` inclusion (`types`/`typeRoots`), `allowJs`/`checkJs`, `.js` files as sources. |
+| G-M1 | K.6.2 supports owner-enabled explicit relative JSON data with canonical-root bounds, static types, content/observation identity and raw asset publication; strict-runtime/direct execution still requires a supported data runtime profile. Its per-edge type-only import/require conditions select independently. K.7.2 adds owner-selected Node16/NodeNext per-file formats, `.mts`/`.cts` sources, `.d.mts`/`.d.cts` output suffixes and canonical nearest-package observations. Broader `.d.mts`/`.d.cts` package/declaration input contexts remain unmeasured. Resolution features not read: `typesVersions`, `paths`/`baseUrl`/`rootDirs`, package self-name imports, `moduleResolution: classic`, automatic `@types` inclusion (`types`/`typeRoots`), `allowJs`/`checkJs`, `.js` files as sources. |
 | G-M2 | K.2.1 reads canonical JSONC projects, relative/package inheritance and file selectors with owner overlays. Sibling precedence preserves native Windows parent/prefix paths. K.2.3 provides native project/default discovery, `--project`, `--showConfig`, `--noEmit`, project source/emitted lists, pretty selection and exit codes; 30 pinned observations agree; K.2.4 verifies the supported options together in 768 Cartesian configurations. Remaining: project references, `--build`, `--watch`, `--incremental`/`.tsbuildinfo`, `composite`, bare-source native CLI invocations, the full installed standard-library file catalog and options beyond the documented compiler/resolver subset. |
 | G-M3 | Windows: all five workspace build/test/lint jobs pass, including replay of the pinned project and CLI matrices and native sibling precedence. Live TypeScript oracle suites run on Linux and macOS; the harness does not launch `tsc.cmd`, and symlink tests remain Unix-only. |
 
@@ -232,7 +232,7 @@ legacy decorators, preserved and automatic JSX are refused with a diagnostic nam
 Generated by `python3 tools/inventory_refusals.py` from the source (malformed-input diagnostics are
 excluded). A refusal is never silent: the program is rejected with this text.
 
-197 refusal sites in 11 areas
+206 refusal sites in 11 areas
 
 ### bin (1)
 
@@ -263,20 +263,27 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/checker/module/binding/names.rs:216` — tuple spread names an unresolved type
 - `backend/bluets/src/checker/module/binding/names.rs:220` — tuple spread requires one concrete tuple or array type
 
-### compiler (2)
+### compiler (5)
 
 - `backend/bluets/src/compiler/project_builder/references.rs:71` — library reference `{name}` is not supported by the owned declaration profiles
-- `backend/bluets/src/compiler.rs:597` — strict-runtime JSON assets require a supported runtime profile
+- `backend/bluets/src/compiler/node_modules.rs:32` — module declaration is incompatible with the selected Node file format
+- `backend/bluets/src/compiler/project_builder.rs:213` — owner must select ESM or CommonJS for a Node file
+- `backend/bluets/src/compiler/project_builder/helper_providers.rs:97` — owner-resolved helper provider does not declare the supported __extends ABI
+- `backend/bluets/src/compiler.rs:652` — strict-runtime JSON assets require a supported runtime profile
 
 ### diagnostic (1)
 
 - `backend/bluets/src/diagnostic/mapping.rs:123` — BlueTSC deliberately refuses a documented subset boundary.
 
-### emitter (70)
+### emitter (75)
 
 - `backend/bluets/src/emitter/targets/es5.rs:179` — ES5 lowering: {message}
 - `backend/bluets/src/emitter/targets/es5.rs:181` — ES5 lowering: {message}
 - `backend/bluets/src/emitter/targets/es5/templates.rs:57` — ES5 template expressions exceed the token budget
+- `backend/bluets/src/emitter/system.rs:21` — System does not support export assignment
+- `backend/bluets/src/emitter/system.rs:144` — System function body is missing
+- `backend/bluets/src/emitter/system.rs:146` — System function body is unbalanced
+- `backend/bluets/src/emitter/system.rs:159` — System variable binding requires retained names
 - `backend/bluets/src/emitter/decorators.rs:465` — `super` in a static member of a class with decorators is not lowered yet
 - `backend/bluets/src/emitter/decorators.rs:707` — a constructor of a decorated class needs its `super(...)` call as a top-level statement
 - `backend/bluets/src/emitter/legacy_decorators.rs:87` — a decorated class inside a namespace is not lowered yet
@@ -291,8 +298,8 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/emitter/class_lowering/expressions.rs:46` — an ES2020 class expression with state and an await/yield key needs lexical suspension lowering
 - `backend/bluets/src/emitter/namespaces.rs:344` — an exported namespace variable with several declarators is not supported yet
 - `backend/bluets/src/emitter/namespaces.rs:359` — an exported namespace variable's name could not be located
-- `backend/bluets/src/emitter/commonjs.rs:312` — an exported variable with several declarators is not supported in CommonJS output yet
-- `backend/bluets/src/emitter/commonjs.rs:331` — an exported variable's name could not be located
+- `backend/bluets/src/emitter/commonjs.rs:313` — an exported variable with several declarators is not supported in CommonJS output yet
+- `backend/bluets/src/emitter/commonjs.rs:332` — an exported variable's name could not be located
 - `backend/bluets/src/emitter/targets/es5.rs:66` — arrow body was not retained
 - `backend/bluets/src/emitter/targets/es5.rs:63` — arrow head was not retained
 - `backend/bluets/src/emitter/legacy_decorators.rs:215` — auto-accessors are not combined with experimentalDecorators
@@ -300,8 +307,8 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/emitter/targets/es5/loops.rs:64` — captured loop completion requires a retained completion record
 - `backend/bluets/src/emitter/targets/es5/classes.rs:62` — class body was not retained
 - `backend/bluets/src/emitter/targets/es5/classes.rs:55` — class heritage requires one retained base binding
-- `backend/bluets/src/emitter/targets/es5/classes.rs:88` — class member requires a retained named method
-- `backend/bluets/src/emitter/targets/es5/classes.rs:97` — class method body was not retained
+- `backend/bluets/src/emitter/targets/es5/classes.rs:96` — class member requires a retained named method
+- `backend/bluets/src/emitter/targets/es5/classes.rs:105` — class method body was not retained
 - `backend/bluets/src/emitter/targets/es5/objects.rs:52` — computed literal prototype/super semantics require retained home objects
 - `backend/bluets/src/emitter/decorators.rs:300` — computed or literal member names in decorator lowering are not supported yet
 - `backend/bluets/src/emitter/targets/es5/objects.rs:37` — computed property value was not retained
@@ -319,11 +326,12 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/emitter/decorators.rs:359` — decorators are not valid here
 - `backend/bluets/src/emitter/legacy_decorators.rs:263` — decorators cannot be applied to both the getter and the setter of the same name
 - `backend/bluets/src/emitter/legacy_decorators.rs:246` — decorators on private names are not valid with experimentalDecorators
-- `backend/bluets/src/emitter/commonjs.rs:262` — default export expression has no initializer
+- `backend/bluets/src/emitter/commonjs.rs:263` — default export expression has no initializer
 - `backend/bluets/src/emitter/targets/es5/parameters.rs:33` — default parameter head was not retained
-- `backend/bluets/src/emitter/targets/es5/classes.rs:240` — derived constructor returns require a retained constructor completion
-- `backend/bluets/src/emitter/targets/es5/classes.rs:207` — derived constructor super properties require a retained receiver
+- `backend/bluets/src/emitter/targets/es5/classes.rs:260` — derived constructor returns require a retained constructor completion
+- `backend/bluets/src/emitter/targets/es5/classes.rs:227` — derived constructor super properties require a retained receiver
 - `backend/bluets/src/emitter/targets/es5/suspension.rs:68` — generator declaration was not retained
+- `backend/bluets/src/emitter/helper_selection.rs:57` — helper selection does not support generated ABI `{name}`
 - `backend/bluets/src/emitter/targets.rs:91` — logical assignment has no right operand
 - `backend/bluets/src/emitter/targets/es5/patterns.rs:78` — object rest was not lowered before ES5 binding projection
 - `backend/bluets/src/emitter/targets/optional.rs:44` — optional receiver is outside the target lowering subset
@@ -382,20 +390,21 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets-bluejs/src/jsx_direct.rs:121` — preserved JSX is not executable; choose `jsx: react` for direct execution
 - `backend/bluets-bluejs/src/jsx_direct.rs:127` — the automatic JSX runtime imports a runtime module, which the direct bridge does not link; use the classic mode with an in-program factory
 
-### lib (13)
+### lib (14)
 
 - `backend/bluets-bluejs/src/lib.rs:756` — BlueTS did not retain a canonical target for this runtime import
 - `backend/bluets-bluejs/src/lib.rs:346` — BlueTS rejected the direct script with {} diagnostic(s)
 - `backend/bluets-bluejs/src/lib.rs:727` — JSON data cannot be a direct executable module-graph entry
-- `backend/bluets-bluejs/src/lib.rs:833` — a declaration module cannot be executed directly
+- `backend/bluets-bluejs/src/lib.rs:849` — a declaration module cannot be executed directly
 - `backend/bluets-bluejs/src/lib.rs:696` — a declaration module cannot be the direct module-graph entry
 - `backend/bluets-bluejs/src/lib.rs:733` — a declaration module cannot be the direct module-graph entry
-- `backend/bluets-bluejs/src/lib.rs:790` — the direct bridge executes ECMAScript modules only; a CommonJS project is run as \ `--module commonjs` emitted output in a realm with a host-provided CommonJS loader
+- `backend/bluets-bluejs/src/lib.rs:806` — the direct bridge executes ECMAScript modules only; a CommonJS project is run as \ `--module commonjs` emitted output in a realm with a host-provided CommonJS loader
+- `backend/bluets-bluejs/src/lib.rs:797` — the direct bridge executes ECMAScript modules only; a {} project requires emitted output and a host-provided {} loader
 - `backend/bluets-bluejs/src/lib.rs:769` — the direct bridge has no JSON data module runtime profile
 - `backend/bluets-bluejs/src/lib.rs:762` — the direct bridge links no installed packages: a runtime import of a package \ needs the host-provided module loader of the `bluetsc build` route
-- `backend/bluets-bluejs/src/lib.rs:827` — the requested entry was not retained in the checked source graph
+- `backend/bluets-bluejs/src/lib.rs:843` — the requested entry was not retained in the checked source graph
 - `backend/bluets-bluejs/src/lib.rs:721` — the requested module-graph entry was not retained in the checked source graph
-- `backend/bluets-bluejs/src/lib.rs:816` — the v1 direct bridge supports exactly one executable source module
+- `backend/bluets-bluejs/src/lib.rs:832` — the v1 direct bridge supports exactly one executable source module
 - `backend/bluets-bluejs/src/lib.rs:363` — {}:{}:{} cannot lower to the current BlueJS bridge: {message}
 
 ### lowering (33)

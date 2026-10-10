@@ -47,7 +47,7 @@ pub(super) fn publish(
                 emitted.push(path.with_extension(format!("{extension}.map")));
             }
             if artifact.declaration.is_some() {
-                emitted.push(path.with_extension("d.ts"));
+                emitted.push(path.with_extension(node_modules::declaration_extension(extension)));
             }
             emitted.push(path);
         }
@@ -88,7 +88,7 @@ pub(super) fn publish(
         if let Some(declaration) = &artifact.declaration {
             insert(
                 &mut writes,
-                javascript_path.with_extension("d.ts"),
+                javascript_path.with_extension(node_modules::declaration_extension(extension)),
                 declaration.as_bytes().to_vec(),
             )?;
         }

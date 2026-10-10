@@ -75,12 +75,12 @@ fn hoisted_functions_and_execute_body_keep_original_source_lines() {
             ("function bump(", 1),
             ("const marker", 2),
             ("marker.length + 20", 3),
-            ("exports.result =", 5),
+            ("exports.result", 5),
         ] {
             let line = artifact
                 .javascript
                 .lines()
-                .position(|line| line.contains(text))
+                .position(|line| line.contains(text) && !line.contains("void 0"))
                 .unwrap();
             assert!(mapped.get(line).is_some_and(|values| values.contains(&expected)),
                 "{newline:?}: generated line {line} `{text}` has mappings {:?}, expected source line {expected}", mapped.get(line));

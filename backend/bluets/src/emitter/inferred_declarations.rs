@@ -645,6 +645,21 @@ impl<'a> Context<'a> {
     }
 
     pub(super) fn import(&self, import: &ImportDeclaration) -> Option<String> {
+        let specifier = &self.module.source[import.specifier_span.start..import.specifier_span.end];
+        if !import.type_only
+            && import.bindings.is_empty()
+            && crate::lex(
+                &self.module.id,
+                &self.module.source[import.span.start..import.specifier_span.start],
+            )
+            .is_ok_and(|tokens| {
+                tokens.len() == 2
+                    && tokens[0].is("import")
+                    && tokens[1].kind == crate::TokenKind::Eof
+            })
+        {
+            return Some(format!("import {specifier};\n"));
+        }
         let bindings: Vec<_> = import
             .bindings
             .iter()
@@ -653,7 +668,6 @@ impl<'a> Context<'a> {
         if bindings.is_empty() {
             return None;
         }
-        let specifier = &self.module.source[import.specifier_span.start..import.specifier_span.end];
         if import.equals_require {
             return Some(format!(
                 "import {}{} = require({specifier});\n",

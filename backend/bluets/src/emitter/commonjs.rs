@@ -79,6 +79,7 @@ pub(super) fn lower_commonjs(
     module: &Module,
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
+    bound_import_calls: bool,
 ) -> Result<BTreeMap<String, Replacement>, Diagnostic> {
     let Ok(tokens) = crate::lex(&module.id, &module.source) else {
         return Ok(BTreeMap::new());
@@ -149,7 +150,7 @@ pub(super) fn lower_commonjs(
                             binding.local.clone(),
                             Replacement {
                                 text: format!("{variable}.{}", binding.imported),
-                                wrap_calls: true,
+                                wrap_calls: !bound_import_calls,
                             },
                         );
                     }
@@ -168,7 +169,7 @@ pub(super) fn lower_commonjs(
                             binding.local.clone(),
                             Replacement {
                                 text: format!("{variable}.default"),
-                                wrap_calls: true,
+                                wrap_calls: !bound_import_calls,
                             },
                         );
                     } else if binding.imported == "*" {

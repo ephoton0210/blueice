@@ -254,7 +254,7 @@ fn ambient_declarations(
         ambient::collect_augmentations(
             project,
             &module.declarations,
-            ambient::has_module_syntax(&module.declarations),
+            project.is_external_module(module),
             &mut ambient,
             &mut diagnostics,
         );

@@ -15,7 +15,9 @@ use std::collections::BTreeMap;
 
 pub use decorators::DECORATOR_HELPER_V1_VERSION;
 pub use legacy_decorators::LEGACY_DECORATOR_HELPER_V1_VERSION;
+pub(crate) use module_wrappers::VERSION as MODULE_WRAPPERS_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
+pub(crate) use system::HELPER_SOURCE as SYSTEM_HELPER_SOURCE;
 pub(crate) use targets::TARGET_HELPER_V1_SOURCES;
 pub use targets::TARGET_HELPER_V1_VERSION;
 
@@ -28,13 +30,16 @@ mod computed_fields;
 mod declarations;
 mod decorators;
 mod enums;
+mod helper_selection;
 mod inferred_declarations;
 mod inferred_returns;
 mod jsx;
 mod legacy_decorators;
+mod module_wrappers;
 mod namespaces;
 mod private_lowering;
 mod reexports;
+mod system;
 mod targets;
 mod type_elision;
 
@@ -136,8 +141,15 @@ pub(crate) fn emit(
                 && !project.json_modules.contains_key(*id)
         })
         .map(|(id, checked_module)| {
-            let (emitted, strict_runtime) =
-                emit_javascript(&checked_module.module, project, &exported_enums, options)?;
+            let mut file_options = options.clone();
+            file_options.module_kind = project.module_kind(id, options.module_kind);
+            file_options.isolated_modules |= options.verbatim_module_syntax;
+            let (emitted, strict_runtime) = emit_javascript(
+                &checked_module.module,
+                project,
+                &exported_enums,
+                &file_options,
+            )?;
             if options.source_map
                 && emitted.provenance.len() > options.limits.max_source_map_segments
             {
@@ -290,9 +302,39 @@ fn emit_javascript(
     exported_enums: &BTreeMap<String, BTreeMap<String, crate::checker::ExportedEnum>>,
     options: &CompilerOptions,
 ) -> Result<(EmittedJavaScript, Option<EmittedStrictModule>), Diagnostic> {
-    let emitting_module = type_elision::queries(module);
+    let mut script_options;
+    let options = if options.import_helpers && !project.is_external_module(module) {
+        script_options = options.clone();
+        script_options.import_helpers = false;
+        &script_options
+    } else {
+        options
+    };
+    let wrapper = options.module_kind;
+    let mut wrapper_options;
+    let options = if matches!(
+        wrapper,
+        crate::ModuleKind::Amd | crate::ModuleKind::Umd | crate::ModuleKind::System
+    ) {
+        wrapper_options = options.clone();
+        wrapper_options.module_kind = crate::ModuleKind::CommonJs;
+        if wrapper == crate::ModuleKind::System {
+            wrapper_options.es_module_interop = false;
+        }
+        &wrapper_options
+    } else {
+        options
+    };
+    let emitting_module = if options.verbatim_module_syntax {
+        std::borrow::Cow::Borrowed(module)
+    } else {
+        type_elision::queries(module)
+    };
     let module = emitting_module.as_ref();
     let mut edits = module.edits.clone();
+    if wrapper == crate::ModuleKind::System {
+        system::validate(module)?;
+    }
     let lexical = targets::es5::prepare(module, project, options, &mut edits)?;
     type_elision::lower(module, options.module_kind, &mut edits);
     for declaration in &module.declarations {
@@ -345,7 +387,12 @@ fn emit_javascript(
     // or move source text (a static initializer, a decorator expression), take
     // the rewritten text with them.
     let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
-        commonjs::lower_commonjs(module, options, &mut edits)?
+        commonjs::lower_commonjs(
+            module,
+            options,
+            &mut edits,
+            wrapper == crate::ModuleKind::System,
+        )?
     } else {
         BTreeMap::new()
     };
@@ -366,6 +413,13 @@ fn emit_javascript(
     }
     let emitted = targets::lower(apply_edits(&module.source, edits), module, options)?;
     let emitted = targets::es5::lower(emitted, module, options, &lexical)?;
+    helper_selection::validate(&emitted, module, options)?;
+    let emitted = if wrapper == crate::ModuleKind::System {
+        system::wrap(emitted, module, options)?
+    } else {
+        emitted
+    };
+    let emitted = module_wrappers::wrap(emitted, module, options, wrapper);
     if let Some(record) = &mut strict_runtime {
         strict_boundaries::locate_emitted_calls(module, &emitted.javascript, record)?;
     }
@@ -395,6 +449,11 @@ fn runtime_declarations(declarations: &[Declaration]) -> Vec<(&Declaration, bool
 /// The specifier an emitted module is imported by: a TypeScript extension becomes
 /// the JavaScript one (`.tsx` stays `.jsx` when JSX is preserved).
 fn javascript_specifier(specifier: &str, preserve_jsx: bool) -> String {
+    for (source, output) in [(".mts", ".mjs"), (".cts", ".cjs")] {
+        if let Some(stem) = specifier.strip_suffix(source) {
+            return format!("{stem}{output}");
+        }
+    }
     if let Some(stem) = specifier.strip_suffix(".tsx") {
         return format!("{stem}{}", if preserve_jsx { ".jsx" } else { ".js" });
     }
@@ -827,6 +886,16 @@ fn encode_mappings(segments: &[ProvenanceSegment]) -> String {
 }
 
 fn output_file_name(module_id: &str) -> String {
+    for (source, output) in [(".mts", ".mjs"), (".cts", ".cjs")] {
+        if let Some(stem) = module_id
+            .rsplit('/')
+            .next()
+            .unwrap_or(module_id)
+            .strip_suffix(source)
+        {
+            return format!("{stem}{output}");
+        }
+    }
     module_id
         .rsplit('/')
         .next()
