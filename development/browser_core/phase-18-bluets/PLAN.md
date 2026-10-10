@@ -8468,3 +8468,22 @@ declaration differences. Every source hash matches. Commit this isolated
 failing replay before implementation; retain all 880 configurations and
 native executions. Evidence: `blueice-k74-baseline-first-proof.json`, its
 status/source hashes and complete log. Production source remains unchanged.
+
+### K.7.3 hosted CI regex compilation deadline fixture (2026-10-11)
+
+Final-source CI run [38064620478](https://github.com/ephoton0210/blueice/actions/runs/38064620478)
+on `3dc87764e` exposes a Windows Server 2022 fixture assumption: compiling
+100,000 identical literal characters can complete within the requested positive
+1 ms deadline, so successful compilation does not imply a deadline violation.
+Replace that literal run with 100,000 `(a|b)` branches. Keep the 1 ms deadline,
+the default string budget, the transport-limit request and all three outcome
+assertions. The request remains below the worker frame limit; compiler and
+runtime production behavior remain unchanged.
+
+The immutable 7,864-file Linux snapshot passes formatting and BlueJS all-target
+Clippy with warnings denied. All 17 `process_hosts` tests pass, and the exact
+compilation-deadline regression passes five additional independent invocations.
+Every frozen source hash matches after each step. Evidence:
+`blueice-k73-ci-regex-second-status.json` and retained logs. Complete hosted CI
+must run on the integrated repair; its completion is not claimed here.
+K.7.4 through K.10 remain open.

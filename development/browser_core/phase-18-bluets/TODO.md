@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.7.4 decorators on new targets (M9). K.7.3 passes its complete 1,305-test K.0 gate; final-source hosted CI is pending after the debugger fixture repair. The K.7.2 CLI loader split is verified: main CLI 945 lines, loader 276 lines. K.7.1 and its Windows regex
+**Current leaf: K.7.4 decorators on new targets (M9). K.7.3 passes its complete 1,305-test K.0 gate; final-source hosted CI is pending after the debugger and regex compilation-deadline fixture repairs. The K.7.2 CLI loader split is verified: main CLI 945 lines, loader 276 lines. K.7.1 and its Windows regex
 deadline correction pass the full K.0 gate and all 29 hosted CI jobs on
 `93622d64f` (run [38027752712](https://github.com/ephoton0210/blueice/actions/runs/38027752712)).
 Workspace line coverage is 94.68%; independent BlueJS is 99.30%.
