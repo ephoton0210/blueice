@@ -19,9 +19,10 @@ Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
 **Current leaf: K.7.2 module systems (M9). K.7.1 and its Windows regex
-deadline correction pass the full K.0 gate; corrected final-source hosted
-CI is next. M8 workspace and complete hosted CI
-are verified on `1f76ff28c`.** Sections A to J are complete (summarized below); J.6 closed in its
+deadline correction pass the full K.0 gate and all 29 hosted CI jobs on
+`93622d64f` (run [38027752712](https://github.com/ephoton0210/blueice/actions/runs/38027752712)).
+Workspace line coverage is 94.68%; independent BlueJS is 99.30%.
+M8 workspace and complete hosted CI are verified on `1f76ff28c`.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
