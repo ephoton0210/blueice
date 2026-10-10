@@ -4162,10 +4162,7 @@ fn syntax_errors_carry_a_precise_expectation() {
             "declare interface A { x: number }",
             "`declare` must introduce a supported declaration",
         ),
-        (
-            "declare type A = number;",
-            "`declare` must introduce a supported declaration",
-        ),
+        ("declare type = number;", "expected a type alias name"),
         (
             "async foo;",
             "`async` must precede a function declaration in the initial matrix",
@@ -4234,6 +4231,7 @@ fn syntax_errors_carry_a_precise_expectation() {
         assert_rejected(source, "BTS1000", message);
     }
     // A flat destructured parameter is valid; a nested one is unsupported syntax.
+    assert_accepted("declare type A = number; const answer: A = 42;");
     assert_accepted("function f({ a }: { a: number }): number { return a; }");
     assert_rejected(
         "function f({ a: { b } }: { a: { b: number } }): number { return b; }",

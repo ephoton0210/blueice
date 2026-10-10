@@ -9,6 +9,7 @@ use super::*;
 #[derive(Default, Clone)]
 pub(super) struct Document {
     pub(super) options: Map<String, Value>,
+    pub(super) paths_origin: Option<PathBuf>,
     pub(super) files: Option<Vec<PathBuf>>,
     pub(super) files_supplied: bool,
     pub(super) local_empty_files: bool,
@@ -18,6 +19,9 @@ pub(super) struct Document {
 
 impl Document {
     fn merge(&mut self, other: Self) {
+        if other.options.contains_key("paths") {
+            self.paths_origin = other.paths_origin;
+        }
         self.options.extend(other.options);
         self.local_empty_files = other.local_empty_files;
         if other.files_supplied {
@@ -170,6 +174,9 @@ impl Reader {
             None => Map::new(),
         };
         let local = Document {
+            paths_origin: options
+                .contains_key("paths")
+                .then(|| directory.to_path_buf()),
             options,
             files: self.paths(object.get("files"), directory, "files")?,
             files_supplied: object.contains_key("files"),

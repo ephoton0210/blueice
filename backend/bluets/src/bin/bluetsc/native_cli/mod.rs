@@ -223,6 +223,10 @@ fn loader(invocation: &Invocation) -> Result<FileLoader, String> {
     Ok(FileLoader {
         root: invocation.root.clone(),
         imports: invocation.imports.clone(),
+        mappings: invocation
+            .project_config
+            .as_ref()
+            .and_then(|project| project.mappings.clone()),
         extra_roots: invocation
             .packages
             .as_ref()
@@ -283,7 +287,9 @@ fn compile_project(
         .iter()
         .any(|entry| !is_declaration_path(entry));
     for entry in &invocation.entries {
-        let module = project_module_id(&invocation.root, entry);
+        let module = loader
+            .module_id(entry)
+            .expect("entry has an authorized identity");
         let mut options = invocation.options.clone();
         options
             .ambient_declaration_modules

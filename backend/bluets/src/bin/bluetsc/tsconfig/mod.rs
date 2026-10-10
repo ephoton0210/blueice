@@ -15,11 +15,14 @@ mod jsonc;
 mod options;
 mod output_layout;
 mod output_options;
+mod resolution_options;
+mod type_inclusion;
 pub(super) use output_options::apply_output_flags;
 
 #[derive(Debug)]
 pub(super) struct ProjectConfig {
     pub(super) options: Map<String, Value>,
+    pub(super) mappings: Option<file_loader::PathMappings>,
     pub(super) files: Vec<PathBuf>,
     pub(super) directory: PathBuf,
     pub(super) emit_root: PathBuf,
@@ -275,6 +278,11 @@ pub(super) fn resolve(
         config_inputs.push(path.to_path_buf());
     }
     let project = ProjectConfig {
+        mappings: file_loader::PathMappings::from_options(
+            &document.options,
+            document.paths_origin.as_deref().unwrap_or(&directory),
+            |path| reader.authorize_future(path, "mapped path", true),
+        )?,
         selectors,
         config_inputs,
         options: document.options.clone(),
@@ -310,6 +318,7 @@ pub(super) fn resolve(
 }
 
 pub(super) fn prepare(invocation: &mut Invocation) -> Result<(), String> {
+    let implicit_types = type_inclusion::files(invocation)?;
     let Some(project) = &invocation.project_config else {
         return Ok(());
     };
@@ -331,14 +340,33 @@ pub(super) fn prepare(invocation: &mut Invocation) -> Result<(), String> {
         }
         *entry = canonical;
     }
-    for file in &project.files {
+    let mut declarations = project.files.clone();
+    declarations.extend(implicit_types.iter().cloned());
+    declarations.sort();
+    declarations.dedup();
+    for file in &declarations {
         if is_declaration_path(file) {
             let canonical = absolute_existing_path(file)
                 .map_err(|error| format!("cannot read configured declaration: {error}"))?;
-            ensure_within(&canonical, &invocation.root, "configured declaration")?;
+            if !canonical.starts_with(&invocation.root)
+                && !invocation.packages.as_ref().is_some_and(|packages| {
+                    packages
+                        .extra_roots
+                        .iter()
+                        .any(|root| canonical.starts_with(root))
+                })
+            {
+                return Err("configured declaration resolves outside project root".into());
+            }
             let source = fs::read_to_string(&canonical)
                 .map_err(|error| format!("cannot read configured declaration: {error}"))?;
-            let identity = project_module_id(&invocation.root, &canonical);
+            let extra_roots = invocation
+                .packages
+                .as_ref()
+                .map(|packages| packages.extra_roots.as_slice())
+                .unwrap_or_default();
+            let identity =
+                file_loader::authorized_module_id(&invocation.root, extra_roots, &canonical)?;
             invocation.options.resolver_fingerprint.push_str(&format!(
                 "+declaration:{identity}:{}",
                 sha256_label(source.as_bytes())
@@ -349,6 +377,11 @@ pub(super) fn prepare(invocation: &mut Invocation) -> Result<(), String> {
                     .ambient_declaration_modules
                     .push(ModuleSource::new(identity, source));
             }
+        }
+    }
+    for file in implicit_types {
+        if !invocation.entries.contains(&file) {
+            invocation.entries.push(file);
         }
     }
     Ok(())

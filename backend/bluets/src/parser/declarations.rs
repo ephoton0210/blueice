@@ -236,6 +236,8 @@ impl Parser {
                             .is_some_and(|token| token.kind == TokenKind::String))
                 {
                     self.parse_ambient_declaration(start);
+                } else if declared && !async_start && self.consume("type") {
+                    self.parse_type_alias(start, exported);
                 } else if self.consume("function") {
                     self.parse_function(start, exported, false, declared, async_start);
                 } else if self.consume("class") {

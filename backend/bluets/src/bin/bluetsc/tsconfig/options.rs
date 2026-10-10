@@ -94,12 +94,21 @@ pub(super) fn validate(
                     | "outDir"
                     | "declarationDir"
                     | "rootDir"
+                    | "baseUrl"
+                    | "paths"
+                    | "rootDirs"
+                    | "types"
+                    | "typeRoots"
             )
         {
             return Err(format!("unknown or unsupported compiler option `{name}`"));
         }
         if value.is_null() {
             result.insert(name.clone(), Value::Null);
+            continue;
+        }
+        if let Some(checked) = resolution_options::validate(name, value, directory, reader)? {
+            result.insert(name.clone(), checked);
             continue;
         }
         let checked = if name == "lib" {
@@ -335,6 +344,7 @@ pub(super) fn effective(raw: &Map<String, Value>, directory: &Path) -> Map<Strin
             *path = relative_text(directory, Path::new(path));
         }
     }
+    resolution_options::show(&mut values, directory);
     values
 }
 

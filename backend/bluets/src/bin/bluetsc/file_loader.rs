@@ -6,9 +6,14 @@
 
 use super::*;
 
+#[path = "file_loader/mappings.rs"]
+mod mappings;
+pub(super) use mappings::PathMappings;
+
 pub(super) struct FileLoader {
     pub(super) root: PathBuf,
     pub(super) imports: BTreeMap<String, PathBuf>,
+    pub(super) mappings: Option<PathMappings>,
     /// Authorized package roots beyond `root`; a file under one has the module
     /// id `@external/<index>/<path inside it>`.
     pub(super) extra_roots: Vec<PathBuf>,
@@ -116,6 +121,20 @@ impl ModuleLoader for FileLoader {
                 resolver.resolve_relative_json(&from_directory, specifier)
             } else {
                 resolver.resolve_relative(&from_directory, specifier)
+            };
+            let found = match found {
+                Err(ResolveError::NotFound { .. }) if self.mappings.is_some() => {
+                    match self
+                        .mappings
+                        .as_ref()
+                        .expect("configured mappings")
+                        .relative(self, &from_directory, specifier)?
+                    {
+                        Some(path) => return self.module_id(&path),
+                        None => found,
+                    }
+                }
+                other => other,
             }
             .map_err(|error| match error {
                 error @ (ResolveError::NotFound { .. } | ResolveError::JavaScriptOnly { .. }) => {
@@ -131,6 +150,13 @@ impl ModuleLoader for FileLoader {
             } else {
                 self.module_id(&found.path)
             };
+        }
+        if !self.imports.contains_key(specifier) && !self.matches_import_prefix(specifier) {
+            if let Some(mappings) = &self.mappings {
+                if let Some(path) = mappings.bare(self, specifier)? {
+                    return self.module_id(&path);
+                }
+            }
         }
         if let Some(packages) = &self.packages {
             let from_directory = self
@@ -261,19 +287,8 @@ impl FileLoader {
         Ok(path)
     }
 
-    fn module_id(&self, path: &Path) -> Result<String, String> {
-        if let Ok(relative) = path.strip_prefix(&self.root) {
-            return Ok(output_path(relative));
-        }
-        for (index, root) in self.extra_roots.iter().enumerate() {
-            if let Ok(relative) = path.strip_prefix(root) {
-                return Ok(format!("@external/{index}/{}", output_path(relative)));
-            }
-        }
-        Err(format!(
-            "module {} escapes the declared project root",
-            path.display()
-        ))
+    pub(super) fn module_id(&self, path: &Path) -> Result<String, String> {
+        authorized_module_id(&self.root, &self.extra_roots, path)
     }
 
     fn resolve_import_map(&self, specifier: &str) -> Result<PathBuf, String> {
@@ -292,4 +307,23 @@ impl FileLoader {
         };
         Ok(target.join(&specifier[prefix.len()..]))
     }
+}
+
+pub(super) fn authorized_module_id(
+    root: &Path,
+    extra_roots: &[PathBuf],
+    path: &Path,
+) -> Result<String, String> {
+    if let Ok(relative) = path.strip_prefix(root) {
+        return Ok(output_path(relative));
+    }
+    for (index, root) in extra_roots.iter().enumerate() {
+        if let Ok(relative) = path.strip_prefix(root) {
+            return Ok(format!("@external/{index}/{}", output_path(relative)));
+        }
+    }
+    Err(format!(
+        "module {} escapes the declared project root",
+        path.display()
+    ))
 }

@@ -106,6 +106,10 @@ fn main() -> ExitCode {
     let loader = FileLoader {
         root: invocation.root.clone(),
         imports: invocation.imports.clone(),
+        mappings: invocation
+            .project_config
+            .as_ref()
+            .and_then(|project| project.mappings.clone()),
         extra_roots: invocation
             .packages
             .as_ref()
@@ -142,7 +146,6 @@ fn main() -> ExitCode {
         },
     };
     let mut summary = compile_entries(
-        &invocation.root,
         &invocation.entries,
         &loader,
         invocation.options.clone(),
@@ -389,7 +392,6 @@ fn strict_artifact_inventory(
 }
 
 fn compile_entries(
-    root: &Path,
     entries: &[PathBuf],
     loader: &FileLoader,
     options: CompilerOptions,
@@ -403,7 +405,9 @@ fn compile_entries(
     let mut has_errors = false;
     let has_runtime_entries = entries.iter().any(|entry| !is_declaration_path(entry));
     for entry in entries {
-        let module = project_module_id(root, entry);
+        let module = loader
+            .module_id(entry)
+            .expect("entry has an authorized identity");
         let mut entry_options = options.clone();
         entry_options
             .ambient_declaration_modules

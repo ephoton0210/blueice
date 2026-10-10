@@ -8,7 +8,7 @@ const ts=require(path.join(support,'load_typescript.cjs'))(process.env.BLUEICE_B
 const acorn=require(path.join(support,'load_acorn.cjs'))();
 const corpus=path.join(repository,'backend/bluets/tests/fixtures/path_extras');const reference=JSON.parse(fs.readFileSync(path.join(corpus,'reference.json')));const library=path.dirname(ts.getDefaultLibFilePath({})),cache=new Map();
 assert.strictEqual(ts.version,'5.9.3');
-const temporary=fs.mkdtempSync(path.join(require('os').tmpdir(),'bluets-path-extras-'));
+const temporary=fs.realpathSync(fs.mkdtempSync(path.join(require('os').tmpdir(),'bluets-path-extras-')));
 async function main(){const cases=[];for(const item of reference.cases){
  const originalDirectory=path.join(corpus,item.id),directory=path.join(temporary,item.id);fs.mkdirSync(directory);
  for(const name of Object.keys(item.sources)){const to=path.join(directory,name);fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(path.join(originalDirectory,name),to);}

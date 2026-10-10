@@ -249,7 +249,12 @@ fn emitted_declarations_preserve_native_execution_declarations_and_target_syntax
         ) + ".js";
         assert!(expected.contains(&javascript));
         let observed = Command::new("node")
-            .arg(corpus().join("observe.cjs"))
+            .arg(
+                corpus()
+                    .parent()
+                    .unwrap()
+                    .join("package_extras/observe.cjs"),
+            )
             .arg(directory.join(&javascript))
             .arg(case["options"]["target"].as_str().unwrap())
             .arg(case["runtimeModule"].as_str().unwrap())
