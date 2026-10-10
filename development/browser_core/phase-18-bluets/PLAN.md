@@ -7970,3 +7970,22 @@ the complete K.0 gate. Evidence is
 `blueice-k72-helper-selection-second-{status,report}.json` and
 `blueice-k72-helper-manifest-red-status.json`, source hashes and exact logs
 under `/private/tmp/blueice-k14-linux`.
+
+
+### K.7.2 helper policy boundary replay (2026-10-10)
+
+The manifest regression uses the existing camelCase public contract:
+`importHelpers` and `noEmitHelpers`. The 7,403-file frozen third manifest
+gate passes format, three-crate all-target Clippy and all twelve public
+module/helper combinations, including provider revision identity and failed
+publication retention. Evidence: `blueice-k72-helper-manifest-third-report.json`.
+
+Before adding the helper ABI boundary, the accepted ES5 async function retains
+its selected ES2020 Promise library. The frozen second ABI replay passes
+format and Clippy and the manifest test, but its public compiler regression
+fails because an imported helper policy publishes an inline generated helper.
+The replay records one pass and one failure, exit 101. Commit this test before
+adding a precise unsupported-ABI diagnostic; keep default helper lowering and
+the measured inheritance ABI unchanged. Evidence:
+`blueice-k72-helper-abi-red-second-status.json` and its exact source hashes/logs.
+The complete module leaf and final-source K.0 gate remain open.

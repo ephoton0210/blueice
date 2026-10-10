@@ -66,8 +66,8 @@ fn owner_manifests_bind_helper_selection_and_provider_bytes() {
                 let bytes = fs::read(&manifest_path).unwrap();
                 let manifest: Value = serde_json::from_slice(&bytes).unwrap();
                 assert_eq!(manifest["module"], module);
-                assert_eq!(manifest["import_helpers"], imports);
-                assert_eq!(manifest["no_emit_helpers"], omit);
+                assert_eq!(manifest["importHelpers"], imports);
+                assert_eq!(manifest["noEmitHelpers"], omit);
                 assert!(fingerprints.insert(manifest["fingerprint"].as_str().unwrap().to_owned()));
                 if imports && !omit {
                     let provider = directory.join("node_modules/tslib/index.d.ts");
@@ -91,4 +91,47 @@ fn owner_manifests_bind_helper_selection_and_provider_bytes() {
     }
     assert_eq!(fingerprints.len(), 12);
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn helper_selection_refuses_unimplemented_generated_abis() {
+    use blueice_bluets::{
+        compile, CompilerOptions, EcmaTarget, MapLoader, ModuleKind, ModuleSource,
+    };
+    let id = "memory:///main.ts";
+    let loader = MapLoader::from([ModuleSource::new(
+        id,
+        "export async function answer(): Promise<number> { return 42; }",
+    )]);
+    let ordinary = CompilerOptions {
+        target: EcmaTarget::Es5,
+        libraries: Some(vec![EcmaTarget::Es2020]),
+        module_kind: ModuleKind::CommonJs,
+        ..CompilerOptions::default()
+    };
+    let accepted = compile(id, &loader, ordinary.clone());
+    assert!(!accepted.has_errors(), "{:?}", accepted.diagnostics);
+    assert!(accepted.output.is_some());
+    for (imports, omit) in [(true, false), (false, true), (true, true)] {
+        let compilation = compile(
+            id,
+            &loader,
+            CompilerOptions {
+                import_helpers: imports,
+                no_emit_helpers: omit,
+                ..ordinary.clone()
+            },
+        );
+        assert!(
+            compilation.output.is_none(),
+            "unselected helper was published"
+        );
+        assert!(
+            compilation.diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("helper selection does not support generated ABI")),
+            "{:?}",
+            compilation.diagnostics
+        );
+    }
 }
