@@ -8346,3 +8346,7 @@ failing replay separately before its production correction, keep it
 isolated/unpushed and leave K.7.3 open. Evidence:
 `k73-type-member-baseline.json`, `k73-type-member-native-proof.json` and the
 native `record_output_options.cjs` corpus.
+
+### K.7.3 type-alias member regression supplement
+
+Eight original exported object-type programs measure member documentation, internal-member stripping and empty-interface formatting with pinned TypeScript 5.9.3. All eight execute successfully in CommonJS and ESNext; six frozen public CLI declarations differ. The 128-case native recorder retains all previous 120 observations exactly. Keep this test-only failing supplement isolated before correcting the declaration renderer; production changes and the complete K.0/hosted CI gates remain pending.

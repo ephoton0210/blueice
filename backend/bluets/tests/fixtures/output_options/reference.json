@@ -5672,6 +5672,430 @@
           ]
         }
       }
+    },
+    {
+      "id": "emitopt-members-commonjs-a-0",
+      "form": "alias-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "removeComments": false,
+        "stripInternal": false,
+        "newLine": "LF"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "3e2d772ab7632ed6de73550bbfe5e85e34466d46da12dc3111373b911c2663c9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 8,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport type Shape = {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n};\nexport interface Empty {\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-members-commonjs-a-1",
+      "form": "alias-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "removeComments": true,
+        "stripInternal": false,
+        "newLine": "LF"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "3e2d772ab7632ed6de73550bbfe5e85e34466d46da12dc3111373b911c2663c9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 5,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export type Shape = {\n    hidden: number;\n    value: number;\n};\nexport interface Empty {\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-members-commonjs-a-2",
+      "form": "alias-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "removeComments": false,
+        "stripInternal": true,
+        "newLine": "LF"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "3e2d772ab7632ed6de73550bbfe5e85e34466d46da12dc3111373b911c2663c9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 8,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport type Shape = {\n    /** Public value. */\n    value: number;\n};\nexport interface Empty {\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-members-commonjs-a-3",
+      "form": "alias-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "removeComments": true,
+        "stripInternal": true,
+        "newLine": "LF"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "3e2d772ab7632ed6de73550bbfe5e85e34466d46da12dc3111373b911c2663c9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 5,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export type Shape = {\n    value: number;\n};\nexport interface Empty {\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-members-esnext-a-0",
+      "form": "alias-members",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "removeComments": false,
+        "stripInternal": false,
+        "newLine": "LF"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "3e2d772ab7632ed6de73550bbfe5e85e34466d46da12dc3111373b911c2663c9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 5,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport type Shape = {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n};\nexport interface Empty {\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-members-esnext-a-1",
+      "form": "alias-members",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "removeComments": true,
+        "stripInternal": false,
+        "newLine": "LF"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "3e2d772ab7632ed6de73550bbfe5e85e34466d46da12dc3111373b911c2663c9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 2,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export type Shape = {\n    hidden: number;\n    value: number;\n};\nexport interface Empty {\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-members-esnext-a-2",
+      "form": "alias-members",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "removeComments": false,
+        "stripInternal": true,
+        "newLine": "LF"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "3e2d772ab7632ed6de73550bbfe5e85e34466d46da12dc3111373b911c2663c9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 5,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport type Shape = {\n    /** Public value. */\n    value: number;\n};\nexport interface Empty {\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-members-esnext-a-3",
+      "form": "alias-members",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "removeComments": true,
+        "stripInternal": true,
+        "newLine": "LF"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "3e2d772ab7632ed6de73550bbfe5e85e34466d46da12dc3111373b911c2663c9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 2,
+          "ordinaryComment": false,
+          "publicComment": false,
+          "internalComment": false,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "export type Shape = {\n    value: number;\n};\nexport interface Empty {\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
     }
   ]
 }
