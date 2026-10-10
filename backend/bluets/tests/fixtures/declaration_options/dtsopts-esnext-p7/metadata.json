@@ -1,0 +1,16 @@
+{
+  "id": "dtsopts-esnext-p7",
+  "form": "p7",
+  "options": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "outDir": "out",
+    "declarationMap": true,
+    "inlineSources": true,
+    "sourceMap": true
+  }
+}

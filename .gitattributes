@@ -24,3 +24,5 @@ backend/bluets/tests/fixtures/decorator_residuals/** text eol=lf
 
 # Native inferred-declaration primary offsets and recorded source hashes use LF.
 backend/bluets/tests/fixtures/declaration_inference/** text eol=lf
+
+backend/bluets/tests/fixtures/declaration_options/** text eol=lf
