@@ -2583,6 +2583,142 @@
         "decorators": 0,
         "autoAccessors": 0
       }
+    },
+    {
+      "id": "dtsinfer-commonjs-e0",
+      "form": "e0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "d9cdd9fe8596ada0793643d6c67d89c716446b97ef8db838fbc5f0d723c5e903"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare enum Value {\n    Answer = 42\n}\nexport declare const result: Value[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Value = void 0;\nvar Value;\n(function (Value) {\n    Value[Value[\"Answer\"] = 42] = \"Answer\";\n})(Value || (exports.Value = Value = {}));\nexports.result = [Value.Answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-e0",
+      "form": "e0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "d9cdd9fe8596ada0793643d6c67d89c716446b97ef8db838fbc5f0d723c5e903"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare enum Value {\n    Answer = 42\n}\nexport declare const result: Value[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport var Value;\n(function (Value) {\n    Value[Value[\"Answer\"] = 42] = \"Answer\";\n})(Value || (Value = {}));\nexport const result = [Value.Answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-e1",
+      "form": "e1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "70caf2a247011d073d3717f183a3806b1be09aab7a848b5c3cc2b370bbf404e1"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare enum Value {\n    Answer = 42\n}\nexport declare const value: Value.Answer;\nexport declare const result: Value[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = exports.Value = void 0;\nvar Value;\n(function (Value) {\n    Value[Value[\"Answer\"] = 42] = \"Answer\";\n})(Value || (exports.Value = Value = {}));\nexports.value = Value.Answer;\nexports.result = [exports.value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-e1",
+      "form": "e1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "70caf2a247011d073d3717f183a3806b1be09aab7a848b5c3cc2b370bbf404e1"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare enum Value {\n    Answer = 42\n}\nexport declare const value: Value.Answer;\nexport declare const result: Value[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport var Value;\n(function (Value) {\n    Value[Value[\"Answer\"] = 42] = \"Answer\";\n})(Value || (Value = {}));\nexport const value = Value.Answer;\nexport const result = [value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
     }
   ]
 }
