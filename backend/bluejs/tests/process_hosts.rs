@@ -619,7 +619,10 @@ fn helper_process_reuses_cached_requests_and_exits_after_shutdown() {
 fn compilation_deadline_and_transport_limit_are_enforced() {
     let replies = adapter(
         &[
-            json!({"source":"new RegExp('a'.repeat(100000))", "mode":"sloppy", "regex_timeout_ms":1}),
+            // A literal run can compile within a millisecond on fast hosts.
+            // Repeated branches force uncached compilation work while keeping
+            // the request below the frame limit and the positive deadline intact.
+            json!({"source":"new RegExp('(a|b)'.repeat(100000))", "mode":"sloppy", "regex_timeout_ms":1}),
             json!({"source":"new RegExp('漢'.repeat(3000000))", "mode":"sloppy", "string_limit":8000000}),
             json!({"source":"assert(/a/.test('a'))", "mode":"sloppy"}),
         ],
