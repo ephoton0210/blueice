@@ -19,7 +19,11 @@ k91-public-native-baseline.json, including actual diagnostics and declaration pa
 The binary source snapshot is blueice-k82-options-fourth; its SHA-256 is
 605761b253d3e7b63fe9159d18fabba46d86784a87110c51db6f9b5e40d8e9fe.
 
-Commit this test-only baseline before production correction and keep it isolated
-and unpushed until the complete corrected K.0 gate passes. Rust focused baseline
-compilation/replay remains pending while the single shared Cargo target finishes
-K.8.2. Integrate verified K.8.2 before that replay. K.9.1 remains open.
+Test-only commit 213ac23a7 records the baseline before production correction.
+After integrating verified K.8.2, d9a2b6d46 fixes one Clippy-only inventory loop
+without changing Native fixture bytes or assertions. The immutable 12,243-file
+Linux replay passes format, three-crate all-target Clippy, completeness and the
+live Native recorder; the public verdict/output tests fail as expected (two
+passes, two failures). Evidence: blueice-k91-baseline-second-proof.json and
+retained source hashes/status/logs. Keep these commits isolated and unpushed
+until the complete corrected K.0 gate passes. K.9.1 remains open.

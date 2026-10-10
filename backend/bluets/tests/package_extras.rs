@@ -193,8 +193,8 @@ fn package_verdicts_selected_inputs_and_primary_origins_match_native_typescript(
             || actual["position"]["column"] != column
             || actual["position"]["length"] != expected["length"]
             || actual["span"]["module"].as_str().is_none_or(|m| {
-                !m.replace('\\', "/")
-                    .ends_with(&format!("/{expected_module}"))
+                let module = m.replace('\\', "/");
+                module != expected_module && !module.ends_with(&format!("/{expected_module}"))
             })
         {
             failures.push(format!("{id}: primary diagnostic differs: {actual}"));
