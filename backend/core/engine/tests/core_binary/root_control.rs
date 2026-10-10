@@ -79,22 +79,6 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
 
     let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
-    blueice_ipc::write_client_message(
-        &mut frontend,
-        &blueice_ipc::ClientMessage::Navigate {
-            url: format!("http://{address}"),
-        },
-    )
-    .unwrap();
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { .. }
-    ));
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
-    ));
-
     let mut debugger = connect_with_retry(&debugger_socket_path, Duration::from_secs(5)).unwrap();
     assert_eq!(
         debugger_request(
@@ -114,6 +98,32 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }
     );
+    // Reserve admission before navigation so scheduler timing cannot run the
+    // fixture while the peer discovers and rejects invalid breakpoint targets.
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::HoldNextDocument { tab_id: 1 },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::NextDocumentHoldAcquired { tab_id: 1 }
+    );
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{address}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+
     let realm = match debugger_request(
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::ListPageRealms,
@@ -243,6 +253,9 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
             ..
         }
     ));
+    // Cross idle scheduler turns deliberately: the invalid child arm must not
+    // release the negotiated document hold before a valid root arm arrives.
+    thread::sleep(Duration::from_millis(100));
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -338,6 +351,16 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
 
     // A replacement realm must make every old target stale before it can
     // affect the pending module declaration in the successor document.
+    // Reserve admission before navigation so scheduler timing cannot run the
+    // fixture while the peer discovers and rejects invalid breakpoint targets.
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::HoldNextDocument { tab_id: 1 },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::NextDocumentHoldAcquired { tab_id: 1 }
+    );
     blueice_ipc::write_client_message(
         &mut frontend,
         &blueice_ipc::ClientMessage::Navigate {
@@ -418,6 +441,14 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
             }
         ),
         "module root continuation must be refused: {module_root_reply:?}"
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ReleaseNextDocumentHold { tab_id: 1 },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::NextDocumentHoldReleased { tab_id: 1 }
     );
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)

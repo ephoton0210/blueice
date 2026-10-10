@@ -8409,3 +8409,21 @@ and run complete hosted CI on the final integrated source. K.7.4 through
 K.10 remain open. Evidence: `blueice-k73-final-k0-seventh-proof.json`, its
 status/source hashes and logs, and
 `blueice-k73-signature-members-focused-proof.json`.
+
+### K.7.2 hosted CI debugger fixture admission (2026-10-10)
+
+Complete CI on `6dd75b11a` passes all five Windows jobs and both full Native
+TypeScript oracle jobs. The macOS 26 x86_64 engine binary test observes
+`Completed` instead of `Pending` after rejecting a child breakpoint: its
+unreserved discovery sequence can cross an idle scheduler turn. Reserve the
+next document through the existing negotiated `HoldNextDocument` protocol
+before each navigation, and release the module reservation explicitly.
+Deliberately cross idle turns after the rejected child arm while retaining
+all state, stale-realm and secret-disclosure assertions. Production runtime,
+compiler code and authority are unchanged. The immutable 7,446-file red replay reproduces exactly the Completed/Pending
+assertion failure. The corrected snapshot passes format, warnings-denied
+all-target engine Clippy, five exact public-binary repeats and all 20 engine
+binary tests. All source hashes match. Evidence: `blueice-k72-debugger-idle-proof.json`, `blueice-k72-debugger-idle-source-proof.json` and retained logs.
+Commit and push this separately tested fixture repair; final-source complete
+hosted CI remains required. Two additional failures are crates.io transport errors during
+package download, before compilation or tests. K.7.3 through K.10 remain open.
