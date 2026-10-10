@@ -13,6 +13,7 @@ use crate::strict_boundaries;
 use crate::{Compilation, LANGUAGE_VERSION};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 mod fingerprint;
+mod isolated_declarations;
 mod json;
 mod native_emit;
 mod node_modules;
@@ -233,6 +234,12 @@ pub struct CompilerOptions {
     pub runtime_policy: RuntimePolicy,
     pub source_map: bool,
     pub declaration: bool,
+    /// Publish a map for declaration output within the measured mapping surface.
+    pub declaration_map: bool,
+    /// Generate declaration artifacts while omitting JavaScript and data publication.
+    pub emit_declaration_only: bool,
+    /// Require exported declarations to be inferable from their own admitted syntax.
+    pub isolated_declarations: bool,
     pub remove_comments: bool,
     pub new_line: NewLine,
     pub emit_bom: bool,
@@ -311,6 +318,9 @@ impl Default for CompilerOptions {
             runtime_policy: RuntimePolicy::Checked,
             source_map: false,
             declaration: false,
+            declaration_map: false,
+            emit_declaration_only: false,
+            isolated_declarations: false,
             remove_comments: false,
             new_line: NewLine::Lf,
             emit_bom: false,
@@ -719,9 +729,13 @@ fn compile_with_cache(
         options.limits.max_type_expansions,
     );
     diagnostics.extend(checker_diagnostics);
+    diagnostics.extend(isolated_declarations::validate_options(&options));
+    if options.isolated_declarations {
+        diagnostics.extend(isolated_declarations::check(&checked));
+    }
     let check_time = check_started.elapsed();
     diagnostics.extend(strict_boundaries::validate_descriptors(&project, &options));
-    if options.source_map {
+    if options.source_map && !options.emit_declaration_only {
         diagnostics.extend(emitter::validate_source_map_limits(&checked, &options));
     }
     diagnostics.sort_by(|left, right| {

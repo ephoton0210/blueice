@@ -101,7 +101,7 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
             for name in ["pretty", "listFiles", "listEmittedFiles"] {
                 options.remove(name);
             }
-            for name in ["outDir", "rootDir"] {
+            for name in ["outDir", "rootDir", "declarationDir"] {
                 if let Some(Value::String(path)) = options.get_mut(name) {
                     if path == "." {
                         *path = "./".to_string();

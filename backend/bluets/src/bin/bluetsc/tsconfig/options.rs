@@ -30,6 +30,9 @@ const BOOLEAN: &[&str] = &[
     "verbatimModuleSyntax",
     "sourceMap",
     "declaration",
+    "declarationMap",
+    "emitDeclarationOnly",
+    "isolatedDeclarations",
     "useDefineForClassFields",
     "preserveConstEnums",
     "isolatedModules",
@@ -89,6 +92,7 @@ pub(super) fn validate(
                     | "jsxFragmentFactory"
                     | "jsxImportSource"
                     | "outDir"
+                    | "declarationDir"
                     | "rootDir"
             )
         {
@@ -183,7 +187,7 @@ pub(super) fn validate(
                 "jsxFactory" | "jsxFragmentFactory" | "jsxImportSource" => {
                     Value::String(string.to_string())
                 }
-                "outDir" | "rootDir" => {
+                "outDir" | "rootDir" | "declarationDir" => {
                     let path = clean_path(&directory.join(string));
                     reader.authorize_future(&path, name, false)?;
                     Value::String(path.to_string_lossy().into_owned())
@@ -326,7 +330,7 @@ pub(super) fn effective(raw: &Map<String, Value>, directory: &Path) -> Map<Strin
             values.entry(name.to_string()).or_insert(json!(true));
         }
     }
-    for name in ["outDir", "rootDir"] {
+    for name in ["outDir", "rootDir", "declarationDir"] {
         if let Some(Value::String(path)) = values.get_mut(name) {
             *path = relative_text(directory, Path::new(path));
         }
@@ -353,6 +357,9 @@ pub(super) fn owner_options(
         "resolveJsonModule",
         "sourceMap",
         "declaration",
+        "declarationMap",
+        "emitDeclarationOnly",
+        "isolatedDeclarations",
         "removeComments",
         "newLine",
         "emitBOM",
@@ -375,11 +382,13 @@ pub(super) fn owner_options(
             owner.insert(name.to_string(), value.clone());
         }
     }
-    if let Some(Value::String(path)) = raw.get("outDir") {
-        let relative = Path::new(path)
-            .strip_prefix(root)
-            .map_err(|_| format!("outDir {path} is outside project root"))?;
-        owner.insert("outDir".to_string(), json!(output_path(relative)));
+    for name in ["outDir", "declarationDir"] {
+        if let Some(Value::String(path)) = raw.get(name) {
+            let relative = Path::new(path)
+                .strip_prefix(root)
+                .map_err(|_| format!("{name} {path} is outside project root"))?;
+            owner.insert(name.to_string(), json!(output_path(relative)));
+        }
     }
     if let Some(value) = computed.get("moduleResolution").and_then(Value::as_str) {
         if matches!(value, "node16" | "nodenext" | "bundler")

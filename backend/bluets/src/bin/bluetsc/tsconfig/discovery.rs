@@ -28,12 +28,11 @@ pub(super) fn select(document: &Document, reader: &Reader) -> Result<Vec<PathBuf
         } else {
             &default_include
         });
-    let default_exclude = document
-        .options
-        .get("outDir")
-        .and_then(Value::as_str)
-        .map(|value| vec![PathBuf::from(value)])
-        .unwrap_or_default();
+    let default_exclude: Vec<_> = ["outDir", "declarationDir"]
+        .iter()
+        .filter_map(|name| document.options.get(*name).and_then(Value::as_str))
+        .map(PathBuf::from)
+        .collect();
     let exclude = document.exclude.as_ref().unwrap_or(&default_exclude);
     let allow_js = document
         .options

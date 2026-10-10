@@ -49,6 +49,9 @@ impl Args {
                 | "--downlevelIteration"
                 | "--sourceMap"
                 | "--declaration"
+                | "--declarationMap"
+                | "--emitDeclarationOnly"
+                | "--isolatedDeclarations"
                 | "--preserveValueImports" => {
                     let value = match args.peek().map(String::as_str) {
                         Some("true") => {
@@ -64,6 +67,7 @@ impl Args {
                     flags.insert(arg[2..].to_string(), Value::Bool(value));
                 }
                 "--outDir"
+                | "--declarationDir"
                 | "--newLine"
                 | "--sourceRoot"
                 | "--mapRoot"

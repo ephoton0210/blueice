@@ -22,6 +22,9 @@ pub(in super::super) fn apply_output_flags(
         ("downlevelIteration", &mut options.downlevel_iteration),
         ("sourceMap", &mut options.source_map),
         ("declaration", &mut options.declaration),
+        ("declarationMap", &mut options.declaration_map),
+        ("emitDeclarationOnly", &mut options.emit_declaration_only),
+        ("isolatedDeclarations", &mut options.isolated_declarations),
     ] {
         if let Some(value) = flags.get(name).and_then(Value::as_bool) {
             *field = value;
@@ -45,6 +48,9 @@ pub(in super::super) fn apply_output_flags(
     if let Some(value) = flags.get("outDir").and_then(Value::as_str) {
         invocation.out_dir = Some(PathBuf::from(value));
     }
+    if let Some(value) = flags.get("declarationDir").and_then(Value::as_str) {
+        invocation.declaration_dir = Some(PathBuf::from(value));
+    }
     if let Some(project) = &mut invocation.project_config {
         project.options.extend(flags);
     }
@@ -59,6 +65,20 @@ pub(super) fn validate_dependencies(options: &Map<String, Value>) -> Result<(), 
             .and_then(Value::as_str)
             .is_some_and(|value| !value.is_empty())
     };
+    if !enabled("declaration") {
+        for name in [
+            "emitDeclarationOnly",
+            "declarationMap",
+            "declarationDir",
+            "isolatedDeclarations",
+        ] {
+            if enabled(name) || nonempty(name) {
+                return Err(format!(
+                    "compiler option `{name}` requires declaration or composite"
+                ));
+            }
+        }
+    }
     if !enabled("sourceMap") && !enabled("inlineSourceMap") {
         for name in ["inlineSources", "sourceRoot"] {
             if enabled(name) || nonempty(name) {
