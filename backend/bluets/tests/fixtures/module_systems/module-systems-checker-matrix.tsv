@@ -97,3 +97,4 @@ modemit-static-contexts-commonjs-alias-call-update/main.ts	accept
 modemit-static-contexts-amd-alias-call-update/main.ts	accept
 modemit-static-contexts-umd-alias-call-update/main.ts	accept
 modemit-static-contexts-system-alias-call-update/main.ts	accept
+modemit-static-contexts-system-cycle-import-call/main.ts	accept

@@ -2600,6 +2600,32 @@
           "before": 20
         }
       }
+    },
+    {
+      "id": "modemit-static-contexts-system-cycle-import-call",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-cycle-import-call",
+        "module": "System",
+        "form": "cycle-import-call",
+        "sources": {
+          "main.ts": "eb328d2531e12ea480c3eca8d471e53e0f3c333eb1407d3db92e4a5450a3c7b5",
+          "dep.ts": "c95bbf1a31ae3335010184165dcb33bce0e0b5ade5b5e85b5ad1a1853e503d75"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function read(): number;\nexport declare const result: number[];\n",
+          "dep.d.ts": "export declare const value: number;\nexport declare const seen: number;\n"
+        },
+        "observation": {
+          "result": [
+            20,
+            20
+          ]
+        }
+      }
     }
   ]
 }

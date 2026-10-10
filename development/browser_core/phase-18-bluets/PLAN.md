@@ -8139,3 +8139,18 @@ rechecking unchanged source after an owner changes ESM to CommonJS. Preserve
 these failing tests before changing observations or incremental invalidation.
 Evidence: `blueice-k72-node-owner-red-status.json` and exact logs/hashes.
 Production remains isolated and unpushed; K.7.2 is not complete.
+
+### K.7.2 System cycle imported-function failing replay (2026-10-10)
+
+The 99-case draft passes all 1,106 ordinary tests. A new independently recorded
+System cycle calls a hoisted export while its dependency executes, after that
+dependency publishes a value. Actual pinned TypeScript 5.9.3 and the original
+closed System loader produce `[20, 20]`. The frozen built BlueTSC CLI accepts
+the source but throws `TypeError` while reading the dependency namespace:
+its import assignment occurs only in execute, after the cycle's early call.
+Evidence: `blueice-k72-system-cycle-native-cases.json` and
+`blueice-k72-system-cycle-red-probe.json`. Add the owned sources and native
+reference to the corpus (100 configurations: 82 accept, 18 reject) and commit
+this failing replay before moving imported bindings into dependency setters.
+The complete earlier frozen-source ignored gate is still running; K.7.2 stays
+open and its production remains unpushed.

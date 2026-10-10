@@ -100,13 +100,13 @@ fn recorded_module_decisions_and_declarations_match_native_typescript() {
 #[test]
 fn module_matrix_retains_all_native_configurations() {
     let cases = cases();
-    assert_eq!(cases.len(), 99);
-    assert_eq!(cases.iter().filter(|case| accepts(case)).count(), 81);
+    assert_eq!(cases.len(), 100);
+    assert_eq!(cases.iter().filter(|case| accepts(case)).count(), 82);
     for (family, count) in [
         ("module", 3),
         ("per-file", 24),
         ("helper-options", 32),
-        ("static-contexts", 40),
+        ("static-contexts", 41),
     ] {
         assert_eq!(
             cases.iter().filter(|case| case["family"] == family).count(),
@@ -125,7 +125,7 @@ fn module_matrix_retains_all_native_configurations() {
         .map(|case| case["id"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(recorded, discovered);
-    assert_eq!(recorded.len(), 99);
+    assert_eq!(recorded.len(), 100);
     let matrix: String = cases
         .iter()
         .map(|case| {
