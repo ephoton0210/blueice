@@ -1,0 +1,19 @@
+{
+  "form": "p1",
+  "options": {
+    "target": "ES2019",
+    "module": "CommonJS",
+    "lib": [
+      "ES2020"
+    ],
+    "strict": true,
+    "noImplicitThis": false,
+    "declaration": true,
+    "noEmitOnError": true,
+    "useDefineForClassFields": true,
+    "newLine": "LF",
+    "outDir": "out",
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false
+  }
+}

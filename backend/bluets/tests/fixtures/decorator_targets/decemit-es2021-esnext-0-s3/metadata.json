@@ -1,0 +1,19 @@
+{
+  "form": "s3",
+  "options": {
+    "target": "ES2021",
+    "module": "ESNext",
+    "lib": [
+      "ES2020"
+    ],
+    "strict": true,
+    "noImplicitThis": false,
+    "declaration": true,
+    "noEmitOnError": true,
+    "useDefineForClassFields": false,
+    "newLine": "LF",
+    "outDir": "out",
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false
+  }
+}

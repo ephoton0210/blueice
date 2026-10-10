@@ -8427,3 +8427,44 @@ binary tests. All source hashes match. Evidence: `blueice-k72-debugger-idle-proo
 Commit and push this separately tested fixture repair; final-source complete
 hosted CI remains required. Two additional failures are crates.io transport errors during
 package download, before compilation or tests. K.7.3 through K.10 remain open.
+
+### K.7.4 pinned decorator target baseline (2026-10-10)
+
+The isolated worktree starts from final published `3dc87764e`, whose complete
+hosted CI is running as `38064620478`. The next leaf retains all 880 native
+configurations: twenty standard/legacy/member/auto-accessor/placement forms,
+eleven targets, two module modes and both class-field modes. TypeScript
+5.9.3 accepts 816 and rejects 64 with exact diagnostics and no emitted
+artifacts. Every native accepted output has exact declarations and actual
+execution evidence: 782 direct Node programs and 34 preserved ESNext proposal
+outputs executed through a pinned emitted-JavaScript-only ES2023 adapter.
+The raw outputs, syntax refusals and proposal inventories stay in the
+reference; adapting the original TypeScript input is never substituted for
+execution of actual emitted JavaScript.
+
+The portable native recorder and emitted-output observer reproduce all 880
+native configurations and all 816 executions. Fixture digests and diagnostic
+origins are protected by LF attributes. Revalidate the failing public replay
+against the final K.7.3 compiler and commit it before production changes.
+The prior public baseline accepts 148 configurations, differs in 668 native
+accepted decisions and 52 rejected primaries, and has ten ES5 syntax/runtime
+failures with no accepted declaration differences. The ten actual outputs
+all contain a duplicate named-class variable binding; an external diagnostic
+edit of that generated JavaScript preserves every native effect, identifying
+an expression/declaration lowering boundary without changing production.
+Evidence: `k74-full-native-proof.json`, `k74-portable-tools-proof.json`,
+`k74-portable-observer-native-proof.json` and
+`k74-es5-generated-witness-proof.json`. K.7.4 through K.10 remain open.
+
+### K.7.4 verified failing public replay (2026-10-10)
+
+The immutable 10,510-file snapshot on final K.7.3 source passes format and
+warnings-denied three-crate all-target Clippy. The complete decorator target
+command, including both ignored oracles, has exactly two passing tests
+(matrix completeness and the live 880-configuration native recorder) and
+two expected public replay failures. It reproduces all 668 verdict, 52
+primary-origin and ten emitted syntax/runtime differences with no accepted
+declaration differences. Every source hash matches. Commit this isolated
+failing replay before implementation; retain all 880 configurations and
+native executions. Evidence: `blueice-k74-baseline-first-proof.json`, its
+status/source hashes and complete log. Production source remains unchanged.

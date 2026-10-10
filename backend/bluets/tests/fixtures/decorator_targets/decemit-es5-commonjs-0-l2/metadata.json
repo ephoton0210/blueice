@@ -1,0 +1,19 @@
+{
+  "form": "l2",
+  "options": {
+    "target": "ES5",
+    "module": "CommonJS",
+    "lib": [
+      "ES2020"
+    ],
+    "strict": true,
+    "noImplicitThis": false,
+    "declaration": true,
+    "noEmitOnError": true,
+    "useDefineForClassFields": false,
+    "newLine": "LF",
+    "outDir": "out",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": false
+  }
+}

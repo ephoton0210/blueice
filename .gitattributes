@@ -16,3 +16,6 @@ backend/bluets/tests/fixtures/output_options/** text eol=lf
 # K.7.2 native diagnostic offsets and fixture observations use original LF bytes.
 backend/bluets/tests/fixtures/module_systems/** text eol=lf
 backend/bluets/tests/fixtures/output_validation/** text eol=lf
+
+# K.7.4 records native source digests and UTF-16 diagnostic origins.
+backend/bluets/tests/fixtures/decorator_targets/** text eol=lf
