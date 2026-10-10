@@ -8582,3 +8582,19 @@ unchanged. Evidence: `blueice-k81-baseline-second-proof.json`, frozen hashes,
 retained logs and `k81-public-declarations-baseline.json` actual/expected pairs.
 Commit this isolated failing replay before production correction; keep it
 unpushed until the complete K.0 gate passes. K.8.1 remains open.
+
+### K.8.1 literal freshness controls before array correction (2026-10-11)
+
+Sixteen additional pinned configurations preserve annotated/asserted literals,
+const generic parameters, asserted/explicit generic arguments, annotated
+literal return types, mixed fresh/regular array elements and explicit enum
+element types. The corpus now contains 68 configurations (65 accepts, three
+rejects); all 65 native emitted programs execute, and every original 52
+observation is unchanged. Before array inference correction, the complete
+focused replay passes format, three-crate all-target Clippy, completeness,
+public namespace-symbol facts and the native recorder. It records two const
+generic parser verdict/build refusals and thirteen exact declaration differences.
+Evidence: `blueice-k81-freshness-baseline-first-proof.json` and retained logs.
+Commit this test-only supplement before correcting array freshness, enum
+widening, const generic declarations and the remaining merged function member.
+All K.8.1 production work remains isolated/unpushed pending complete K.0.
