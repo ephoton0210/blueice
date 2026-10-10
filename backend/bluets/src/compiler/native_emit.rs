@@ -14,7 +14,8 @@ impl Compilation {
         &self,
         options: &CompilerOptions,
     ) -> Result<Option<emitter::BuildOutput>, Diagnostic> {
-        if options.runtime_policy != RuntimePolicy::Checked
+        if !super::isolated_declarations::validate_options(options).is_empty()
+            || options.runtime_policy != RuntimePolicy::Checked
             || fingerprint(&self.project, options) != self.project_fingerprint
             || self.diagnostics.iter().any(|diagnostic| {
                 diagnostic.typescript.is_none()

@@ -27,6 +27,7 @@ mod class_lowering;
 mod classes;
 mod commonjs;
 mod computed_fields;
+mod declaration_maps;
 mod declarations;
 mod decorators;
 mod enums;
@@ -65,6 +66,7 @@ pub struct BuildArtifact {
     pub javascript: String,
     pub source_map: Option<SourceMap>,
     pub declaration: Option<String>,
+    pub declaration_map: Option<SourceMap>,
     pub fingerprint: String,
     /// Present only when every admitted strict crossing has an emitted helper
     /// call. Publishers must verify these byte locations before release.
@@ -150,13 +152,24 @@ pub(crate) fn emit(
             let mut file_options = options.clone();
             file_options.module_kind = project.module_kind(id, options.module_kind);
             file_options.isolated_modules |= options.verbatim_module_syntax;
-            let (emitted, strict_runtime) = emit_javascript(
-                &checked_module.module,
-                project,
-                &exported_enums,
-                &file_options,
-            )?;
+            let (emitted, strict_runtime) = if options.emit_declaration_only {
+                (
+                    EmittedJavaScript {
+                        javascript: String::new(),
+                        provenance: Vec::new(),
+                    },
+                    None,
+                )
+            } else {
+                emit_javascript(
+                    &checked_module.module,
+                    project,
+                    &exported_enums,
+                    &file_options,
+                )?
+            };
             if options.source_map
+                && !options.emit_declaration_only
                 && emitted.provenance.len() > options.limits.max_source_map_segments
             {
                 return Err(Diagnostic::error(
@@ -165,8 +178,7 @@ pub(crate) fn emit(
                     "emitted source map exceeded the segment limit",
                 ));
             }
-            let source_map = options
-                .source_map
+            let source_map = (options.source_map && !options.emit_declaration_only)
                 .then(|| source_map(id, &checked_module.module.source, &emitted, options));
             let declaration = options
                 .declaration
@@ -181,6 +193,14 @@ pub(crate) fn emit(
                 })
                 .transpose()?;
             let declaration = declaration.map(|text| output_options::format_text(text, options));
+            let declaration_map = if options.declaration_map {
+                declaration
+                    .as_deref()
+                    .map(|text| declaration_maps::build(id, &checked_module.module, text, options))
+                    .transpose()?
+            } else {
+                None
+            };
             Ok((
                 id.clone(),
                 BuildArtifact {
@@ -188,6 +208,7 @@ pub(crate) fn emit(
                     javascript: emitted.javascript,
                     source_map,
                     declaration,
+                    declaration_map,
                     fingerprint: build_fingerprint.clone(),
                     strict_runtime,
                 },

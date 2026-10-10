@@ -39,6 +39,7 @@ pub(super) struct Invocation {
     pub(super) root: PathBuf,
     pub(super) entries: Vec<PathBuf>,
     pub(super) out_dir: Option<PathBuf>,
+    pub(super) declaration_dir: Option<PathBuf>,
     pub(super) options: CompilerOptions,
     pub(super) imports: BTreeMap<String, PathBuf>,
     pub(super) packages: Option<PackageSettings>,
@@ -84,6 +85,14 @@ pub(super) struct BlueTscConfig {
     pub(super) source_map: bool,
     #[serde(default)]
     pub(super) declaration: bool,
+    #[serde(default)]
+    pub(super) declaration_map: bool,
+    #[serde(default)]
+    pub(super) emit_declaration_only: bool,
+    #[serde(default)]
+    pub(super) isolated_declarations: bool,
+    #[serde(default)]
+    pub(super) declaration_dir: Option<String>,
     #[serde(default)]
     pub(super) remove_comments: bool,
     #[serde(default)]
@@ -359,6 +368,7 @@ pub(super) fn resolve_explicit_invocation(
         root,
         entries: vec![entry],
         out_dir,
+        declaration_dir: None,
         options,
         imports: BTreeMap::new(),
         packages: None,
@@ -524,6 +534,14 @@ pub(super) fn resolve_config_document(
     if let Some(out_dir) = &out_dir {
         ensure_existing_ancestor_within(out_dir, &root, "config outDir")?;
     }
+    let declaration_dir = config
+        .declaration_dir
+        .as_deref()
+        .map(|path| configured_output_path(&root, path))
+        .transpose()?;
+    if let Some(directory) = &declaration_dir {
+        ensure_existing_ancestor_within(directory, &root, "config declarationDir")?;
+    }
     let mut imports = BTreeMap::new();
     for (specifier, target) in config.imports {
         if specifier.is_empty() || specifier.starts_with('.') || specifier.starts_with('/') {
@@ -600,6 +618,9 @@ pub(super) fn resolve_config_document(
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map,
         declaration: config.declaration,
+        declaration_map: config.declaration_map,
+        emit_declaration_only: config.emit_declaration_only,
+        isolated_declarations: config.isolated_declarations,
         remove_comments: config.remove_comments,
         new_line: match config.new_line.as_deref() {
             None | Some("lf") => blueice_bluets::NewLine::Lf,
@@ -635,6 +656,7 @@ pub(super) fn resolve_config_document(
         root,
         entries,
         out_dir,
+        declaration_dir,
         options,
         imports,
         packages,

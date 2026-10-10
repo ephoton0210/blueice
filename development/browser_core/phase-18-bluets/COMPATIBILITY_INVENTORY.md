@@ -38,6 +38,7 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `standard_library_checker_matrix.rs` | selected ECMAScript types and methods, matching target/lib, owner/runtime policy and versioned manifest; exact inferred declarations and linked Node execution | 123 entries, 1 program, 5 declaration cases |
 | `inferred_return_checker_matrix.rs` | unannotated function/member return signatures, freshness, recursion and completion, async/generators, lexical/default/pattern scopes and importers; exact declarations and Node execution | 121 entries, 1 program, 23 exact declaration cases, 2 union type-equality cases |
 | `declaration_inference.rs` | exact inferred/generic/overload/accessor/merged-namespace/export-assignment/ambient declarations, literal freshness and const-parameter positions; exact rejected primaries and every actual emitted execution/syntax observation | 84 configurations (77 accept, 7 reject), public checked namespace-symbol regression |
+| `declaration_options.rs` and `declaration_option_boundaries.rs` | exact declaration-only/directory/map artifacts and isolated-declaration diagnostics; actual emitted execution/syntax, live Native recorder, CLI override and owner-root publication guards | 48 configurations (28 accept, 20 reject), three CLI boundary tests |
 | `project_config.rs` | JSONC inheritance, normalized compiler options and selected files; owner overlays and confinement; exact declarations and Node runtime, including strict-helper relocation | 69 configurations (59 accept, 10 reject), 2 linked programs |
 | `strictness_flags.rs`, `strictness_controls.rs` | independent parent/strict-family and additional diagnostics, lexical/return/call/index boundaries, unchanged valid JavaScript and cache policy identity; pinned Node execution and exact declarations | 32 configurations (16 accept, 16 reject), 39 boundary controls, 1 program in 2 policies |
 | `cli_surface.rs` | native project CLI flags and overrides, default project discovery, normalized configuration, source/emitted lists, noEmit and pretty/exit observations; input preservation, Node execution and exact declarations | 30 observations (24 accept, 6 reject), 2 emission layouts |
@@ -195,14 +196,14 @@ suite entry, then removing the row.
 | G-E2 | K.7.2 measures AMD/UMD/System and owner-selected Node16/NodeNext formats, verbatim policies and helper/script controls in 106 pinned configurations. Broader module/target/helper compositions remain unmeasured, including ESM Node import-equals lowering, helper ABI selection beyond the recorded forms and Node declaration-input contexts. |
 | G-E3 | K.7.4 measures 1,144 standard/legacy decorator configurations across every K.7.1 target, both module modes and both class-field modes. Complete K.0 replay passes all 1,056 native accepted emitted outputs (execution, target/proposal syntax and exact declarations), plus 88 rejected primary diagnostics. Private auto-accessors/setters, replacement-class static field/block/getter/setter super receivers supplement the original computed names, namespaces, default exports and class expressions. All 1,316 K.0 tests pass; final-source hosted CI remains pending. Literal decorated names, super in decorated private callables, static-initializer super writes/computed super keys, imported/unresolved metadata types and unmeasured compositions retain precise refusals. |
 | G-E4 | K.7.3 records comment removal, LF/CRLF, BOM, inline source content, source/map roots, declaration documentation/internal stripping and removed-option TS5102 diagnostics in 176 native configurations, plus 18 command/config validation controls. Class, namespace, interface, enum and exported record-alias member witnesses retain exact native declarations. Callable/indexed and empty alias controls reproduce 40 declaration differences before correction; all 176 configurations, 170 actual outputs and exact declarations pass focused verification. Strict helper sites preserve all eight target/newline/BOM controls. The final complete K.0 gate passes format, Clippy, all 1,111 ordinary tests and all 194 ignored oracles; final-source hosted CI is pending. Remaining: nested or inferred declaration-member compositions, `isolatedDeclarations`, field-mode interactions across the full target range (K.7.4), and other unmeasured option compositions. |
-| G-E5 | Source maps retain line-level provenance and measured `sourceRoot`, `mapRoot`, relative sources and optional `sourcesContent` metadata. Token-level names, complete mapping byte parity and declaration maps remain unmeasured. |
+| G-E5 | Source maps retain line-level provenance and measured `sourceRoot`, `mapRoot`, relative sources and optional `sourcesContent` metadata. K.8.2 measures exact declaration maps for annotated top-level scalar variables/functions. Token-level names, complete JavaScript mapping byte parity and broader declaration-map forms remain unmeasured. |
 
 ### 3.3 Declarations
 
 | ID | Gap |
 | --- | --- |
 | G-D1 | K.1.3 compares inferred imported variable declarations, including nested callable/tuple types and unnameable external types. K.1.5 adds 23 exact inferred-return declaration comparisons and two pinned type-equality printing comparisons. K.8.1 records 84 native configurations (77 accepts, seven rejects) covering inferred objects/readonly tuples/arrays, generic functions/classes, overloads, accessor pairs, merged/nested namespaces, export assignments and ambient type-only dependencies. Explicit/const generic and literal annotations retain measured freshness; mutable enum arrays widen to their owning enum. Const parameters on functions and constructor types are accepted; interface/generic alias parameters reject with exact TS1277. The corrected 84-configuration focused replay, live recorder, format and three-crate Clippy pass, including lexical callable and ordered-overload controls; the complete 1,321-test K.0 gate passes, including all 200 ignored oracles. Remaining: broader contextual/const inference, imported/local freshness and arbitrary anonymous object unions, overload compositions and declaration merging beyond these controls. |
-| G-D2 | Declaration output directories, declaration-only publication and declaration maps remain open for K.8.2. K.7.3 measures `stripInternal` for top-level and named class/namespace/interface/enum/exported record-alias members; broader nested and inferred declaration forms remain unmeasured. The 48 callable/indexed/empty alias controls pass focused correction verification; the complete corrected K.0 gate passes all 1,305 tests. |
+| G-D2 | K.8.2 records 48 configurations (28 accepts, 20 rejects) for declarationDir, declaration-only publication, measured scalar declaration maps and isolated-declaration diagnostics. Exact maps/declarations/artifact inventory and all actual output executions agree; three CLI override/escape/symlink guards pass. Format/Clippy and the complete 1,328-test K.0 gate pass, including all 202 ignored oracles. Broader class/generic/namespace/inferred declaration maps retain a precise refusal, and arbitrary isolated-declaration compositions remain unmeasured. K.7.3 measures `stripInternal` for top-level and named class/namespace/interface/enum/exported record-alias members; broader nested and inferred declaration forms remain unmeasured. The 48 callable/indexed/empty alias controls pass focused correction verification; the complete corrected K.0 gate passes all 1,305 tests. |
 
 ### 3.4 Modules, packages, projects
 
@@ -232,7 +233,7 @@ legacy decorators, preserved and automatic JSX are refused with a diagnostic nam
 
 Generated by `tools/inventory_refusals.py` from current production source.
 
-211 refusal sites in 11 areas
+213 refusal sites in 11 areas
 
 ### bin (1)
 
@@ -271,13 +272,13 @@ Generated by `tools/inventory_refusals.py` from current production source.
 - `backend/bluets/src/compiler/node_modules.rs:32` — module declaration is incompatible with the selected Node file format
 - `backend/bluets/src/compiler/project_builder.rs:213` — owner must select ESM or CommonJS for a Node file
 - `backend/bluets/src/compiler/project_builder/helper_providers.rs:97` — owner-resolved helper provider does not declare the supported __extends ABI
-- `backend/bluets/src/compiler.rs:685` — strict-runtime JSON assets require a supported runtime profile
+- `backend/bluets/src/compiler.rs:695` — strict-runtime JSON assets require a supported runtime profile
 
 ### diagnostic (1)
 
 - `backend/bluets/src/diagnostic/mapping.rs:123` — BlueTSC deliberately refuses a documented subset boundary.
 
-### emitter (78)
+### emitter (80)
 
 - `backend/bluets/src/emitter/targets/es5.rs:210` — ES5 lowering: {message}
 - `backend/bluets/src/emitter/targets/es5.rs:212` — ES5 lowering: {message}
@@ -313,6 +314,8 @@ Generated by `tools/inventory_refusals.py` from current production source.
 - `backend/bluets/src/emitter/decorators.rs:328` — computed or literal member names in decorator lowering are not supported yet
 - `backend/bluets/src/emitter/targets/es5/objects.rs:37` — computed property value was not retained
 - `backend/bluets/src/emitter/targets/es5/spreads.rs:61` — constructor spread requires retained construction semantics
+- `backend/bluets/src/emitter/declaration_maps.rs:259` — declaration maps currently require annotated top-level scalar variables and functions
+- `backend/bluets/src/emitter/declaration_maps.rs:261` — declaration maps currently require annotated top-level scalar variables and functions
 - `backend/bluets/src/emitter/classes.rs:111` — declaration output for this string literal field needs an annotation
 - `backend/bluets/src/emitter/classes.rs:403` — declaration output requires a class field type
 - `backend/bluets/src/emitter/classes.rs:286` — declaration output requires a parameter property type

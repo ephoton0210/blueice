@@ -16,6 +16,14 @@ pub(super) fn publish(
     let metadata = build_metadata(invocation, summary, package_manifest(invocation, loader));
     let project = invocation.project_config.as_ref().expect("native project");
     if invocation.options.runtime_policy == RuntimePolicy::StrictRuntime {
+        if invocation.options.emit_declaration_only
+            || invocation.options.declaration_map
+            || invocation.declaration_dir.is_some()
+        {
+            return Err(io::Error::other(
+                "declaration option publishing requires checked runtime policy",
+            ));
+        }
         let out = invocation
             .out_dir
             .as_ref()
@@ -74,35 +82,56 @@ pub(super) fn publish(
         );
         let mut javascript = artifact.javascript.clone();
         if let Some(map) = &artifact.source_map {
-            let (map, url) = source_maps::publication(
-                map,
-                invocation,
-                &source,
-                &relative,
-                &javascript_path,
-                extension,
-            )?;
-            let newline = match invocation.options.new_line {
-                blueice_bluets::NewLine::Lf => "\n",
-                blueice_bluets::NewLine::CrLf => "\r\n",
-            };
-            javascript.push_str(&format!("{newline}//# sourceMappingURL={url}{newline}"));
-            insert(
-                &mut writes,
-                javascript_path.with_extension(format!("{extension}.map")),
-                map.to_json().into_bytes(),
-            )?;
+            if !invocation.options.emit_declaration_only {
+                let (map, url) = source_maps::publication(
+                    map,
+                    invocation,
+                    &source,
+                    &relative,
+                    &javascript_path,
+                    extension,
+                )?;
+                let newline = match invocation.options.new_line {
+                    blueice_bluets::NewLine::Lf => "\n",
+                    blueice_bluets::NewLine::CrLf => "\r\n",
+                };
+                javascript.push_str(&format!("{newline}//# sourceMappingURL={url}{newline}"));
+                insert(
+                    &mut writes,
+                    javascript_path.with_extension(format!("{extension}.map")),
+                    map.to_json().into_bytes(),
+                )?;
+            }
         }
         if let Some(declaration) = &artifact.declaration {
-            insert(
-                &mut writes,
-                javascript_path.with_extension(node_modules::declaration_extension(extension)),
-                declaration.as_bytes().to_vec(),
-            )?;
+            let extension = node_modules::declaration_extension(extension);
+            let path = invocation.declaration_dir.as_ref().map_or_else(
+                || javascript_path.with_extension(extension),
+                |directory| directory.join(relative.with_extension(extension)),
+            );
+            let mut declaration = declaration.clone();
+            if let Some(map) = &artifact.declaration_map {
+                let (map, url) = source_maps::publication(
+                    map, invocation, &source, &relative, &path, extension,
+                )?;
+                declaration.push_str(&format!("//# sourceMappingURL={url}"));
+                insert(
+                    &mut writes,
+                    declaration_map_path(&path),
+                    map.to_json().into_bytes(),
+                )?;
+            }
+            insert(&mut writes, path, declaration.into_bytes())?;
         }
-        insert(&mut writes, javascript_path, javascript.into_bytes())?;
+        if !invocation.options.emit_declaration_only {
+            insert(&mut writes, javascript_path, javascript.into_bytes())?;
+        }
     }
-    for (module, source) in &summary.assets {
+    for (module, source) in summary
+        .assets
+        .iter()
+        .filter(|_| !invocation.options.emit_declaration_only)
+    {
         let relative = tsconfig::emitted_path(module, &metadata)?;
         let path = invocation
             .out_dir
@@ -191,4 +220,10 @@ fn atomic_write(path: &Path, contents: &[u8], root: &Path) -> io::Result<()> {
         let _ = fs::remove_file(stage);
     }
     result
+}
+
+fn declaration_map_path(declaration: &Path) -> PathBuf {
+    let mut path = declaration.as_os_str().to_os_string();
+    path.push(".map");
+    PathBuf::from(path)
 }

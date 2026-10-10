@@ -1,0 +1,13 @@
+{
+  "id": "dtsopts-esnext-p0",
+  "form": "p0",
+  "options": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "outDir": "out"
+  }
+}

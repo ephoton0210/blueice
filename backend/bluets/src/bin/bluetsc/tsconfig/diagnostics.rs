@@ -15,7 +15,9 @@ pub(crate) fn error(message: &str, path: &Path, bytes: Option<&[u8]>) -> Option<
         18002
     } else if message.starts_with("removed compiler option") {
         5102
-    } else if message == "compiler option `mapRoot` requires sourceMap or declarationMap" {
+    } else if message.ends_with("requires declaration or composite")
+        || message == "compiler option `mapRoot` requires sourceMap or declarationMap"
+    {
         5069
     } else if matches!(
         message,
@@ -39,7 +41,12 @@ pub(crate) fn error(message: &str, path: &Path, bytes: Option<&[u8]>) -> Option<
     } else {
         return None;
     };
-    let key = if code == 18002 {
+    let declaration_dependency = message.ends_with("requires declaration or composite");
+    let key = if declaration_dependency
+        && source.is_some_and(|source| property_range(source, "declaration", false).is_some())
+    {
+        "declaration"
+    } else if code == 18002 {
         "files"
     } else {
         name.unwrap_or("")
@@ -55,6 +62,11 @@ pub(crate) fn error(message: &str, path: &Path, bytes: Option<&[u8]>) -> Option<
         18002 => vec![path.display().to_string()],
         18003 => vec![path.display().to_string(), "[]".into(), "[]".into()],
         5023 | 5051 | 5102 => vec![key.into()],
+        5069 if declaration_dependency => vec![
+            name.unwrap_or("").into(),
+            "declaration".into(),
+            "composite".into(),
+        ],
         5069 => vec![key.into(), "sourceMap".into(), "declarationMap".into()],
         6046 => vec!["--newLine".into(), "'crlf', 'lf'".into()],
         5024 => vec![

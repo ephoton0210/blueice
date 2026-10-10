@@ -1,0 +1,1563 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "dtsopts-commonjs-p0",
+      "form": "p0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.value = value;\nexports.answer = 42;\nfunction value(input) { return input; }\nexports.result = [value(exports.answer)];\n",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-p0",
+      "form": "p0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\nexport function value(input) { return input; }\nexport const result = [value(answer)];\n",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-p1",
+      "form": "p1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationDir": "types"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.js",
+        "types/main.d.ts"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.value = value;\nexports.answer = 42;\nfunction value(input) { return input; }\nexports.result = [value(exports.answer)];\n",
+        "types/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-p1",
+      "form": "p1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationDir": "types"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.js",
+        "types/main.d.ts"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\nexport function value(input) { return input; }\nexport const result = [value(answer)];\n",
+        "types/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-p2",
+      "form": "p2",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "emitDeclarationOnly": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n"
+      },
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-p2",
+      "form": "p2",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "emitDeclarationOnly": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n"
+      },
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-p3",
+      "form": "p3",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.d.ts.map",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.value = value;\nexports.answer = 42;\nfunction value(input) { return input; }\nexports.result = [value(exports.answer)];\n",
+        "out/main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,EAAE,MAAW,CAAC;AAAC,wBAAgB,KAAK,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,CAAkB;AAAC,eAAO,MAAM,MAAM,EAAE,MAAM,EAAoB,CAAC\"}",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-p3",
+      "form": "p3",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.d.ts.map",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\nexport function value(input) { return input; }\nexport const result = [value(answer)];\n",
+        "out/main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,EAAE,MAAW,CAAC;AAAC,wBAAgB,KAAK,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,CAAkB;AAAC,eAAO,MAAM,MAAM,EAAE,MAAM,EAAoB,CAAC\"}",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-p4",
+      "form": "p4",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationDir": "types",
+        "emitDeclarationOnly": true,
+        "declarationMap": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "types/main.d.ts",
+        "types/main.d.ts.map"
+      ],
+      "outputs": {
+        "types/main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,EAAE,MAAW,CAAC;AAAC,wBAAgB,KAAK,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,CAAkB;AAAC,eAAO,MAAM,MAAM,EAAE,MAAM,EAAoB,CAAC\"}",
+        "types/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-p4",
+      "form": "p4",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationDir": "types",
+        "emitDeclarationOnly": true,
+        "declarationMap": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "types/main.d.ts",
+        "types/main.d.ts.map"
+      ],
+      "outputs": {
+        "types/main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,EAAE,MAAW,CAAC;AAAC,wBAAgB,KAAK,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,CAAkB;AAAC,eAAO,MAAM,MAAM,EAAE,MAAM,EAAoB,CAAC\"}",
+        "types/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-p5",
+      "form": "p5",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true,
+        "sourceRoot": "/original"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5051,
+          "file": "tsconfig.json",
+          "start": 221,
+          "length": 12,
+          "message": "Option 'sourceRoot can only be used when either option '--inlineSourceMap' or option '--sourceMap' is provided."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-p5",
+      "form": "p5",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true,
+        "sourceRoot": "/original"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5051,
+          "file": "tsconfig.json",
+          "start": 219,
+          "length": 12,
+          "message": "Option 'sourceRoot can only be used when either option '--inlineSourceMap' or option '--sourceMap' is provided."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-p6",
+      "form": "p6",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true,
+        "mapRoot": "maps"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.d.ts.map",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.value = value;\nexports.answer = 42;\nfunction value(input) { return input; }\nexports.result = [value(exports.answer)];\n",
+        "out/main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,EAAE,MAAW,CAAC;AAAC,wBAAgB,KAAK,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,CAAkB;AAAC,eAAO,MAAM,MAAM,EAAE,MAAM,EAAoB,CAAC\"}",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n//# sourceMappingURL=../maps/main.d.ts.map"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-p6",
+      "form": "p6",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true,
+        "mapRoot": "maps"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.d.ts.map",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\nexport function value(input) { return input; }\nexport const result = [value(answer)];\n",
+        "out/main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,EAAE,MAAW,CAAC;AAAC,wBAAgB,KAAK,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,CAAkB;AAAC,eAAO,MAAM,MAAM,EAAE,MAAM,EAAoB,CAAC\"}",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n//# sourceMappingURL=../maps/main.d.ts.map"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-p7",
+      "form": "p7",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true,
+        "inlineSources": true,
+        "sourceMap": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.d.ts.map",
+        "out/main.js",
+        "out/main.js.map"
+      ],
+      "outputs": {
+        "out/main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;;;AAE1B,sBAA8D;AAAnF,QAAA,MAAM,GAAW,EAAE,CAAC;AAAC,SAAgB,KAAK,CAAC,KAAa,IAAY,OAAO,KAAK,CAAC,CAAC,CAAC;AAAc,QAAA,MAAM,GAAa,CAAC,KAAK,CAAC,cAAM,CAAC,CAAC,CAAC\",\"sourcesContent\":[\"// This Source Code Form is subject to the terms of the Mozilla Public\\n// License, v. 2.0. If a copy of the MPL was not distributed with this\\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\\n\\nexport const answer: number = 42; export function value(input: number): number { return input; } export const result: number[] = [value(answer)];\\n\"]}",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.value = value;\nexports.answer = 42;\nfunction value(input) { return input; }\nexports.result = [value(exports.answer)];\n//# sourceMappingURL=main.js.map",
+        "out/main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,EAAE,MAAW,CAAC;AAAC,wBAAgB,KAAK,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,CAAkB;AAAC,eAAO,MAAM,MAAM,EAAE,MAAM,EAAoB,CAAC\"}",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-p7",
+      "form": "p7",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true,
+        "inlineSources": true,
+        "sourceMap": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.d.ts.map",
+        "out/main.js",
+        "out/main.js.map"
+      ],
+      "outputs": {
+        "out/main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAE5D,MAAM,CAAC,MAAM,MAAM,GAAW,EAAE,CAAC;AAAC,MAAM,UAAU,KAAK,CAAC,KAAa,IAAY,OAAO,KAAK,CAAC,CAAC,CAAC;AAAC,MAAM,CAAC,MAAM,MAAM,GAAa,CAAC,KAAK,CAAC,MAAM,CAAC,CAAC,CAAC\",\"sourcesContent\":[\"// This Source Code Form is subject to the terms of the Mozilla Public\\n// License, v. 2.0. If a copy of the MPL was not distributed with this\\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\\n\\nexport const answer: number = 42; export function value(input: number): number { return input; } export const result: number[] = [value(answer)];\\n\"]}",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\nexport function value(input) { return input; }\nexport const result = [value(answer)];\n//# sourceMappingURL=main.js.map",
+        "out/main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,EAAE,MAAW,CAAC;AAAC,wBAAgB,KAAK,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,CAAkB;AAAC,eAAO,MAAM,MAAM,EAAE,MAAM,EAAoB,CAAC\"}",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-q0",
+      "form": "q0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": false,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "emitDeclarationOnly": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 99,
+          "length": 13,
+          "message": "Option 'emitDeclarationOnly' cannot be specified without specifying option 'declaration' or option 'composite'."
+        },
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 194,
+          "length": 21,
+          "message": "Option 'emitDeclarationOnly' cannot be specified without specifying option 'declaration' or option 'composite'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-q0",
+      "form": "q0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": false,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "emitDeclarationOnly": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 97,
+          "length": 13,
+          "message": "Option 'emitDeclarationOnly' cannot be specified without specifying option 'declaration' or option 'composite'."
+        },
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 192,
+          "length": 21,
+          "message": "Option 'emitDeclarationOnly' cannot be specified without specifying option 'declaration' or option 'composite'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-q1",
+      "form": "q1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": false,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 99,
+          "length": 13,
+          "message": "Option 'declarationMap' cannot be specified without specifying option 'declaration' or option 'composite'."
+        },
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 194,
+          "length": 16,
+          "message": "Option 'declarationMap' cannot be specified without specifying option 'declaration' or option 'composite'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-q1",
+      "form": "q1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": false,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationMap": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 97,
+          "length": 13,
+          "message": "Option 'declarationMap' cannot be specified without specifying option 'declaration' or option 'composite'."
+        },
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 192,
+          "length": 16,
+          "message": "Option 'declarationMap' cannot be specified without specifying option 'declaration' or option 'composite'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-q2",
+      "form": "q2",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": false,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationDir": "types"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 99,
+          "length": 13,
+          "message": "Option 'declarationDir' cannot be specified without specifying option 'declaration' or option 'composite'."
+        },
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 194,
+          "length": 16,
+          "message": "Option 'declarationDir' cannot be specified without specifying option 'declaration' or option 'composite'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-q2",
+      "form": "q2",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": false,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "declarationDir": "types"
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 97,
+          "length": 13,
+          "message": "Option 'declarationDir' cannot be specified without specifying option 'declaration' or option 'composite'."
+        },
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 192,
+          "length": 16,
+          "message": "Option 'declarationDir' cannot be specified without specifying option 'declaration' or option 'composite'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-q3",
+      "form": "q3",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": false,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 99,
+          "length": 13,
+          "message": "Option 'isolatedDeclarations' cannot be specified without specifying option 'declaration' or option 'composite'."
+        },
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 194,
+          "length": 22,
+          "message": "Option 'isolatedDeclarations' cannot be specified without specifying option 'declaration' or option 'composite'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-q3",
+      "form": "q3",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": false,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 97,
+          "length": 13,
+          "message": "Option 'isolatedDeclarations' cannot be specified without specifying option 'declaration' or option 'composite'."
+        },
+        {
+          "code": 5069,
+          "file": "tsconfig.json",
+          "start": 192,
+          "length": 22,
+          "message": "Option 'isolatedDeclarations' cannot be specified without specifying option 'declaration' or option 'composite'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i0",
+      "form": "i0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.value = value;\nexports.answer = 42;\nfunction value(input) { return input; }\nexports.result = [value(exports.answer)];\n",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i0",
+      "form": "i0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "95f58309ca21ba1cec7fefd3840eaf7468ab84cbc48e336a177421ae056007bd"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\nexport function value(input) { return input; }\nexport const result = [value(answer)];\n",
+        "out/main.d.ts": "export declare const answer: number;\nexport declare function value(input: number): number;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i1",
+      "form": "i1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "b4537777c05cd522f4b6cfc6abc7e324d8f8fabf7c244fc3def672bb598caf60"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.answer = 42;\nexports.result = [exports.answer];\n",
+        "out/main.d.ts": "export declare const answer = 42;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i1",
+      "form": "i1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "b4537777c05cd522f4b6cfc6abc7e324d8f8fabf7c244fc3def672bb598caf60"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\nexport const result = [answer];\n",
+        "out/main.d.ts": "export declare const answer = 42;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i2",
+      "form": "i2",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "fba092d4c4fb693ebeac394b8f08ead049f3fff8e4a1355162ca781ea9192485"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.answer = 42;\nexports.result = [exports.answer];\n",
+        "out/main.d.ts": "export declare let answer: number;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i2",
+      "form": "i2",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "fba092d4c4fb693ebeac394b8f08ead049f3fff8e4a1355162ca781ea9192485"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport let answer = 42;\nexport const result = [answer];\n",
+        "out/main.d.ts": "export declare let answer: number;\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i3",
+      "form": "i3",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "44610dc46721063cbcc813d35d1ffd9faed1d199e963f0fce2b515cece44aff2"
+      },
+      "diagnostics": [
+        {
+          "code": 9007,
+          "file": "main.ts",
+          "start": 220,
+          "length": 5,
+          "message": "Function must have an explicit return type annotation with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i3",
+      "form": "i3",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "44610dc46721063cbcc813d35d1ffd9faed1d199e963f0fce2b515cece44aff2"
+      },
+      "diagnostics": [
+        {
+          "code": 9007,
+          "file": "main.ts",
+          "start": 220,
+          "length": 5,
+          "message": "Function must have an explicit return type annotation with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i4",
+      "form": "i4",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "70c5b36f0a89f57a0c8d987a53855767ab61ba5127848fedf1ba17f9da260a21"
+      },
+      "diagnostics": [
+        {
+          "code": 9007,
+          "file": "main.ts",
+          "start": 225,
+          "length": 24,
+          "message": "Function must have an explicit return type annotation with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i4",
+      "form": "i4",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "70c5b36f0a89f57a0c8d987a53855767ab61ba5127848fedf1ba17f9da260a21"
+      },
+      "diagnostics": [
+        {
+          "code": 9007,
+          "file": "main.ts",
+          "start": 225,
+          "length": 24,
+          "message": "Function must have an explicit return type annotation with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i5",
+      "form": "i5",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "f5e5625f866a89c9ce2619808664b5275ab9c9ade5d59fd329d449c4d6866996"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = { answer: 42 };\nexports.result = [exports.value.answer];\n",
+        "out/main.d.ts": "export declare const value: {\n    answer: number;\n};\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i5",
+      "form": "i5",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "f5e5625f866a89c9ce2619808664b5275ab9c9ade5d59fd329d449c4d6866996"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = { answer: 42 };\nexport const result = [value.answer];\n",
+        "out/main.d.ts": "export declare const value: {\n    answer: number;\n};\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i6",
+      "form": "i6",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "9af07d8de8b95f6592ef1cb88fea937e8ecf3ae7ee17eb86b9ad13b7286ac5cb"
+      },
+      "diagnostics": [
+        {
+          "code": 9017,
+          "file": "main.ts",
+          "start": 225,
+          "length": 4,
+          "message": "Only const arrays can be inferred with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i6",
+      "form": "i6",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "9af07d8de8b95f6592ef1cb88fea937e8ecf3ae7ee17eb86b9ad13b7286ac5cb"
+      },
+      "diagnostics": [
+        {
+          "code": 9017,
+          "file": "main.ts",
+          "start": 225,
+          "length": 4,
+          "message": "Only const arrays can be inferred with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i7",
+      "form": "i7",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "3e8cc3442594d102701926c92252ca5fee7eb3375533c2593125d1a493737716"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = [42];\nexports.result = [exports.value[0]];\n",
+        "out/main.d.ts": "export declare const value: readonly [42];\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i7",
+      "form": "i7",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "3e8cc3442594d102701926c92252ca5fee7eb3375533c2593125d1a493737716"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = [42];\nexport const result = [value[0]];\n",
+        "out/main.d.ts": "export declare const value: readonly [42];\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i8",
+      "form": "i8",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "c533218d28dc89589408de02aa56adf909be77b52e56eda13363e3ded78f4151"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Value = void 0;\nclass Value {\n    get answer() { return 42; }\n}\nexports.Value = Value;\nexports.result = [new Value().answer];\n",
+        "out/main.d.ts": "export declare class Value {\n    get answer(): number;\n}\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i8",
+      "form": "i8",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "c533218d28dc89589408de02aa56adf909be77b52e56eda13363e3ded78f4151"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport class Value {\n    get answer() { return 42; }\n}\nexport const result = [new Value().answer];\n",
+        "out/main.d.ts": "export declare class Value {\n    get answer(): number;\n}\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i9",
+      "form": "i9",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "05155cc1f94294eb506113a7228ddc6215a0379df3fae5557ddbd72b6b14ed69"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Value = void 0;\nclass Value {\n    answer = 42;\n}\nexports.Value = Value;\nexports.result = [new Value().answer];\n",
+        "out/main.d.ts": "export declare class Value {\n    answer: number;\n}\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i9",
+      "form": "i9",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "05155cc1f94294eb506113a7228ddc6215a0379df3fae5557ddbd72b6b14ed69"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport class Value {\n    answer = 42;\n}\nexport const result = [new Value().answer];\n",
+        "out/main.d.ts": "export declare class Value {\n    answer: number;\n}\nexport declare const result: number[];\n"
+      },
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i10",
+      "form": "i10",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "ff16877f43a8bb4e0c9330f6d369f98647b04d37956cda143e3bf0693f616eee"
+      },
+      "diagnostics": [
+        {
+          "code": 9010,
+          "file": "main.ts",
+          "start": 265,
+          "length": 6,
+          "message": "Variable must have an explicit type annotation with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i10",
+      "form": "i10",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "ff16877f43a8bb4e0c9330f6d369f98647b04d37956cda143e3bf0693f616eee"
+      },
+      "diagnostics": [
+        {
+          "code": 9010,
+          "file": "main.ts",
+          "start": 265,
+          "length": 6,
+          "message": "Variable must have an explicit type annotation with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-commonjs-i11",
+      "form": "i11",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "67cfe7288a35b4205105ece45cb46d97c0ddcaab6f7d4d844a4c93ebfbed86cb"
+      },
+      "diagnostics": [
+        {
+          "code": 9015,
+          "file": "main.ts",
+          "start": 238,
+          "length": 15,
+          "message": "Objects that contain spread assignments can't be inferred with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "dtsopts-esnext-i11",
+      "form": "i11",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "outDir": "out",
+        "isolatedDeclarations": true
+      },
+      "sources": {
+        "main.ts": "67cfe7288a35b4205105ece45cb46d97c0ddcaab6f7d4d844a4c93ebfbed86cb"
+      },
+      "diagnostics": [
+        {
+          "code": 9015,
+          "file": "main.ts",
+          "start": 238,
+          "length": 15,
+          "message": "Objects that contain spread assignments can't be inferred with --isolatedDeclarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "observation": null,
+      "syntaxError": null
+    }
+  ]
+}

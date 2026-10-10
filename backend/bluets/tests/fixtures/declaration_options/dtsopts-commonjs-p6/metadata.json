@@ -1,0 +1,15 @@
+{
+  "id": "dtsopts-commonjs-p6",
+  "form": "p6",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "outDir": "out",
+    "declarationMap": true,
+    "mapRoot": "maps"
+  }
+}

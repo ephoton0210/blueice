@@ -1,0 +1,14 @@
+{
+  "id": "dtsopts-commonjs-q0",
+  "form": "q0",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "strict": true,
+    "declaration": false,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "outDir": "out",
+    "emitDeclarationOnly": true
+  }
+}

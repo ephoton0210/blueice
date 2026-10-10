@@ -138,6 +138,10 @@ pub(super) fn resolve(
                 | "module"
                 | "sourceMap"
                 | "declaration"
+                | "declarationMap"
+                | "emitDeclarationOnly"
+                | "isolatedDeclarations"
+                | "declarationDir"
                 | "removeComments"
                 | "newLine"
                 | "emitBOM"
@@ -258,8 +262,12 @@ pub(super) fn resolve(
         }
     }
     if document.exclude.is_none() {
-        if let Some(out) = document.options.get("outDir").and_then(Value::as_str) {
-            selectors.insert("exclude".to_string(), json!([out]));
+        let outputs: Vec<_> = ["outDir", "declarationDir"]
+            .iter()
+            .filter_map(|name| document.options.get(*name).and_then(Value::as_str))
+            .collect();
+        if !outputs.is_empty() {
+            selectors.insert("exclude".to_string(), json!(outputs));
         }
     }
     let mut config_inputs = reader.inputs.keys().cloned().collect::<Vec<_>>();
