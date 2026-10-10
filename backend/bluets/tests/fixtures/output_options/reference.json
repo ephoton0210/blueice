@@ -4714,7 +4714,7 @@
           "file": "main.js",
           "sourceRoot": "",
           "sources": [
-            "../<case>/main.ts"
+            "..<case>/main.ts"
           ]
         }
       }
