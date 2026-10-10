@@ -7762,3 +7762,31 @@ all exact step logs, and `blueice-k71-final-source-size-audit.json` under
 commit and integration; complete hosted workspace/platform/oracle/coverage
 CI must run on the pushed final source. K.7.2 is the next implementation leaf;
 K.7.2 through K.10 remain open.
+
+### K.7.1 complete CI storage correction (2026-10-10)
+
+The final-source workflow on `411a1a41c` (run 38015722230) establishes actual
+RHEL UBI 10 workspace results: 6,902 passes, zero failures and 191 ignored
+tests in 530 groups, followed by all three Intl Node differentials, Clippy
+and Rustfmt. The completed macOS oracle job passes all 187 ignored BlueTS/
+bridge tests in 122 groups. Other platform jobs continue to pass.
+
+The coverage runner fails with disk exhaustion before publishing a coverage
+result. Its exact check annotations report `System.IO.IOException: No space
+left on device` while writing the runner diagnostic log. The job log is
+unavailable after that failure; no coverage percentage or inner test failure
+is inferred. Preserve the annotation evidence in
+`blueice-k71-coverage-{failed-job,annotations,check}.json` under
+`/private/tmp/blueice-k14-linux`.
+
+Disable Cargo incremental output and dev/test debug information in the CI
+workflow to reduce artifact storage across all-target, oracle and instrumented
+builds. This changes neither debug assertions nor the explicit LLVM coverage
+commands. The workspace 90% and independent BlueJS 88% line gates and the four
+existing process-wiring exclusions remain unchanged. All 6,939 backend/Cargo
+file hashes still match the verified K.7.1 snapshot.
+
+Commit and push this CI configuration change, then run every workflow job on
+its final SHA. The previous disk-exhausted run is superseded; its completed
+workspace/oracle evidence remains available. K.7.1's leaf K.0 remains green;
+complete final-source hosted CI and K.7.2 through K.10 remain open.
