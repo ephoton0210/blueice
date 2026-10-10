@@ -310,8 +310,6 @@ fn output_files(directory: &Path) -> BTreeSet<String> {
         }
     }
     let mut out = BTreeSet::new();
-    for name in ["out"] {
-        visit(directory, &directory.join(name), &mut out);
-    }
+    visit(directory, &directory.join("out"), &mut out);
     out
 }
