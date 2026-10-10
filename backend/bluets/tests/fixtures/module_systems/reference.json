@@ -2492,6 +2492,114 @@
           "main.d.ts": "import \"./side\";\nimport \"./side\";\nexport declare const result: number;\n"
         }
       }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-alias-call-update",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-alias-call-update",
+        "module": "CommonJS",
+        "form": "alias-call-update",
+        "sources": {
+          "dep.ts": "a266a02dd1aa9927fe0c1d6e5dc542ea62fd5bd6a906203e831e1b89a35398e0",
+          "main.ts": "93a635ef24a566b81c2518c1c2a915f5d352027b41f094f6fe67c576c7407ecd"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "dep.d.ts": "declare let value: number;\nexport { value as live };\nexport declare function bump(): number;\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number[];\n"
+        },
+        "observation": {
+          "result": [
+            42,
+            20
+          ],
+          "before": 20
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-alias-call-update",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-alias-call-update",
+        "module": "AMD",
+        "form": "alias-call-update",
+        "sources": {
+          "dep.ts": "a266a02dd1aa9927fe0c1d6e5dc542ea62fd5bd6a906203e831e1b89a35398e0",
+          "main.ts": "93a635ef24a566b81c2518c1c2a915f5d352027b41f094f6fe67c576c7407ecd"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "dep.d.ts": "declare let value: number;\nexport { value as live };\nexport declare function bump(): number;\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number[];\n"
+        },
+        "observation": {
+          "result": [
+            42,
+            20
+          ],
+          "before": 20
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-alias-call-update",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-alias-call-update",
+        "module": "UMD",
+        "form": "alias-call-update",
+        "sources": {
+          "dep.ts": "a266a02dd1aa9927fe0c1d6e5dc542ea62fd5bd6a906203e831e1b89a35398e0",
+          "main.ts": "93a635ef24a566b81c2518c1c2a915f5d352027b41f094f6fe67c576c7407ecd"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "dep.d.ts": "declare let value: number;\nexport { value as live };\nexport declare function bump(): number;\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number[];\n"
+        },
+        "observation": {
+          "result": [
+            42,
+            20
+          ],
+          "before": 20
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-alias-call-update",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-alias-call-update",
+        "module": "System",
+        "form": "alias-call-update",
+        "sources": {
+          "dep.ts": "a266a02dd1aa9927fe0c1d6e5dc542ea62fd5bd6a906203e831e1b89a35398e0",
+          "main.ts": "93a635ef24a566b81c2518c1c2a915f5d352027b41f094f6fe67c576c7407ecd"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "dep.d.ts": "declare let value: number;\nexport { value as live };\nexport declare function bump(): number;\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number[];\n"
+        },
+        "observation": {
+          "result": [
+            42,
+            20
+          ],
+          "before": 20
+        }
+      }
     }
   ]
 }

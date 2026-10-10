@@ -8086,3 +8086,30 @@ Record this result in a documentation-only commit; the tested backend and
 workflow remain exactly the validated source. K.7.2 through K.10 remain open.
 The isolated K.7.2 draft and its native failing replays are not integrated or
 claimed as a complete green leaf.
+
+
+### K.7.2 original System lowering and alias failing replay (2026-10-10)
+
+The first original System factory emits dependency setters, callback-backed
+live bindings and hoisted functions without acquiring a loader or runtime
+API grant. Helper implementation bytes participate in artifact fingerprints.
+Export assignment produces the exact native TS1218 span and message.
+The frozen 7,411-file gate passes format and three-crate all-target Clippy.
+All eighteen original System configurations match native decisions, including
+all fifteen accepted execution/declaration observations. The complete corpus
+retains only twenty-four Node-mode decisions and fifteen emitted differences.
+Evidence: `blueice-k72-system-first-status.json` and exact hashes/logs.
+
+Four further independently recorded CommonJS/AMD/UMD/System controls add a
+private local exported through an alias. A function performs postfix increment
+and compound assignment, returns the old value, and its caller reads the
+updated alias. All native observations are `[42, 20]` with initial value 20.
+The corpus is now 99 configurations (81 accept, 18 reject). The frozen
+7,423-file replay passes format, Clippy and the live native recorder. Only
+System's new emitted observation is wrong (`[20, 20]`); the other three modes
+match. There are twenty-four existing Node decisions and sixteen emitted
+differences. Commit this test-only replay before adding immediate publication.
+Function source-map relocation also remains to be verified before closure.
+Evidence: `blueice-k72-system-alias-red-status.json` and exact hashes/logs.
+The production draft remains isolated, uncommitted and unpushed; the entire
+K.7.2 leaf and K.7.3 through K.10 remain open.

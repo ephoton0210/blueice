@@ -93,3 +93,7 @@ modemit-static-contexts-system-type-elision/main.ts	accept
 modemit-static-contexts-system-require-assignment/main.ts	reject
 modemit-static-contexts-system-cycle/main.ts	accept
 modemit-static-contexts-system-side-effect-order/main.ts	accept
+modemit-static-contexts-commonjs-alias-call-update/main.ts	accept
+modemit-static-contexts-amd-alias-call-update/main.ts	accept
+modemit-static-contexts-umd-alias-call-update/main.ts	accept
+modemit-static-contexts-system-alias-call-update/main.ts	accept

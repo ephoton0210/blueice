@@ -28,6 +28,48 @@ fn accepts(case: &Value) -> bool {
         .is_empty()
 }
 
+#[test]
+fn module_wrappers_keep_source_maps_and_distinct_artifact_identities() {
+    use blueice_bluets::{compile, CompilerOptions, MapLoader, ModuleKind, ModuleSource};
+    let id = "memory:///main.ts";
+    let source =
+        "export let answer: number = 20;\nexport function bump(): void { answer += 22; }\n";
+    let loader = MapLoader::from([ModuleSource::new(id, source)]);
+    let mut identities = BTreeSet::new();
+    for kind in [
+        ModuleKind::Esm,
+        ModuleKind::CommonJs,
+        ModuleKind::Amd,
+        ModuleKind::Umd,
+    ] {
+        let options = CompilerOptions {
+            module_kind: kind,
+            source_map: true,
+            declaration: true,
+            ..CompilerOptions::default()
+        };
+        let compilation = compile(id, &loader, options.clone());
+        assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
+        let output = compilation.output.unwrap();
+        assert!(identities.insert(output.fingerprint.clone()));
+        let artifact = &output.artifacts[id];
+        assert_eq!(artifact.fingerprint, output.fingerprint);
+        let map = artifact.source_map.as_ref().unwrap();
+        assert_eq!(map.sources, [id]);
+        assert_eq!(map.sources_content, [source]);
+        if matches!(kind, ModuleKind::Amd | ModuleKind::Umd) {
+            assert!(map.mappings.starts_with(';'), "{}", map.mappings);
+        }
+        assert_eq!(
+            artifact.declaration.as_deref(),
+            Some("export declare let answer: number;\nexport declare function bump(): void;\n")
+        );
+        let repeated = compile(id, &loader, options).output.unwrap();
+        assert_eq!(repeated, output);
+    }
+    assert_eq!(identities.len(), 4);
+}
+
 fn copy_project(source: &Path, destination: &Path) {
     fs::create_dir_all(destination).unwrap();
     for entry in fs::read_dir(source).unwrap() {
@@ -58,13 +100,13 @@ fn recorded_module_decisions_and_declarations_match_native_typescript() {
 #[test]
 fn module_matrix_retains_all_native_configurations() {
     let cases = cases();
-    assert_eq!(cases.len(), 95);
-    assert_eq!(cases.iter().filter(|case| accepts(case)).count(), 77);
+    assert_eq!(cases.len(), 99);
+    assert_eq!(cases.iter().filter(|case| accepts(case)).count(), 81);
     for (family, count) in [
         ("module", 3),
         ("per-file", 24),
         ("helper-options", 32),
-        ("static-contexts", 36),
+        ("static-contexts", 40),
     ] {
         assert_eq!(
             cases.iter().filter(|case| case["family"] == family).count(),
@@ -83,7 +125,7 @@ fn module_matrix_retains_all_native_configurations() {
         .map(|case| case["id"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(recorded, discovered);
-    assert_eq!(recorded.len(), 95);
+    assert_eq!(recorded.len(), 99);
     let matrix: String = cases
         .iter()
         .map(|case| {
