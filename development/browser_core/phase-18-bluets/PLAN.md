@@ -7845,3 +7845,36 @@ and independent BlueJS is 99.30% (81,838 lines; 572 missed). Preserve the
 existing 90%/88% floors and exclusions. Commit and push this verified fix,
 then run the entire workflow on its final source; complete green hosted CI
 is still pending. K.7.2 through K.10 remain open.
+
+
+### K.7.1 complete hosted CI verified (2026-10-10)
+
+The corrected source `93622d64f56c38d12a6c6cf58ffe37c8f1fb04af`
+passes complete hosted run [38027752712](https://github.com/ephoton0210/blueice/actions/runs/38027752712):
+all 29 jobs succeed, comprising 25 operating-system/architecture/toolchain
+build-test-lint legs, both pinned TypeScript oracle platforms, coverage and
+the aggregate CI gate. Every platform passes all-target workspace build,
+workspace tests, all three Node differentials, warnings-denied workspace
+Clippy and its complete format check, including per-package Windows checks.
+
+The Ubuntu 24.04 x86_64 log proves 6,903 workspace passes in 530 groups and
+zero failures. The Windows Server 2022 and Windows 11 arm64 logs each prove
+6,106 workspace passes in 530 groups with zero failures; their zero-budget,
+RegExp classification and BMP timeout regressions pass. Linux and macOS each
+execute all 187 ignored pinned TypeScript/bridge oracles in 122 groups with
+zero failures. No tests or thresholds were removed to obtain this result.
+
+Final-source workspace line coverage is 94.68% (206,517 lines; 10,987 missed).
+Independent BlueJS line coverage is 99.30% (81,848 lines; 572 missed), with no
+BlueJS filename exclusions. The existing 90%/88% floors and four workspace
+process-wiring exclusions remain unchanged. All 6,939 validated backend/Cargo
+file hashes match the integration worktree. Exact hosted step logs and proofs
+are `blueice-k71-windows-fixed-{workspace,windows2022,windows11-arm,
+linux-oracle,macos-oracle,coverage}-proof.json` and
+`blueice-k71-windows-fixed-ci-final-report.json` under
+`/private/tmp/blueice-k14-linux`.
+
+Record this result in a documentation-only commit; the tested backend and
+workflow remain exactly the validated source. K.7.2 through K.10 remain open.
+The isolated K.7.2 draft and its native failing replays are not integrated or
+claimed as a complete green leaf.
