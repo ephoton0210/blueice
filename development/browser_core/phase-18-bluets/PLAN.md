@@ -7800,3 +7800,27 @@ exact source hashes/logs, the four `blueice-k72-*-native-probe.json` records and
 K.7.2 implementation and repository emit-and-run/manifest/fingerprint checks
 remain open. No production source or authority changes; the baseline stays
 isolated and unpushed until the entire leaf passes K.0.
+
+### K.7.2 native module execution failing supplement (2026-10-10)
+
+The repository's original closed loaders reproduce all 77 accepted native
+execution observations. AMD and System cache modules and preserve the measured
+cycle/setter behavior; the basic UMD wrapper controls execute both CommonJS
+and AMD paths. Per-file cases run their actual `.js`/`.mjs`/`.cjs` output in
+Node. Helper observations execute the original declared provider and separately
+record missing-global behavior when helper emission is omitted. No reference
+result or helper bytes are substituted for executing emitted JavaScript.
+
+The frozen 7,400-file `blueice-k72-execution-baseline-first` gate passes format,
+three-crate all-target Clippy, fixture completeness and the live pinned native
+recorder including all declarations and execution. Both public BlueTSC tests
+fail: 86 decision differences and 69 emitted differences. The emit differences
+are 68 unsupported configurations plus one CommonJS side-effect-import
+declaration difference; eight existing CommonJS contexts match execution and
+declarations. Existing backend/Cargo source hashes remain identical to the
+verified K.7.1 snapshot.
+
+Evidence: `blueice-k72-execution-baseline-first-{status,source-hashes}.json` and
+exact logs under `/private/tmp/blueice-k14-linux`. Commit this failing test-only
+supplement before implementation. K.7.2 remains open, isolated and unpushed;
+manifest/fingerprint comparisons and the complete K.0 gate remain required.

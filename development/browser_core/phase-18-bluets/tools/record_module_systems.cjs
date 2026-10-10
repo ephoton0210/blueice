@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
+const os = require('os');
 const root = path.resolve(__dirname, '../../../..');
 const fixtures = path.join(root, 'backend/bluets/tests/fixtures');
 const corpus = path.join(fixtures, 'module_systems');
@@ -13,12 +14,14 @@ const ts = require(path.join(fixtures, 'oracle_support/load_typescript.cjs'))(
     process.env.BLUEICE_BLUETSC_ORACLE || 'tsc',
 );
 const reference = JSON.parse(fs.readFileSync(path.join(corpus, 'reference.json'), 'utf8'));
+const observe = require(path.join(corpus, 'observe.cjs'));
 assert.strictEqual(ts.version, '5.9.3');
 assert.strictEqual(reference.typescript, ts.version);
 const libraries = path.dirname(ts.getDefaultLibFilePath({}));
 const parsedLibraries = new Map();
 const verdicts = [];
 let accepts = 0;
+async function replay(temporary) {
 for (const item of reference.cases) {
     const directory = path.join(corpus, item.id);
     const file = path.join(directory, 'tsconfig.json');
@@ -70,6 +73,17 @@ for (const item of reference.cases) {
     if (item.family === 'helper-options') {
         assert.strictEqual(outputs.get('main.js').includes('"tslib"'), item.reference.importsRuntime, item.id);
     }
+    const copied = path.join(temporary, item.id);
+    fs.cpSync(directory, copied, {recursive:true});
+    const out = path.join(copied, 'out');
+    fs.mkdirSync(out);
+    for (const [name, text] of outputs) fs.writeFileSync(path.join(out, name), text);
+    const actual = JSON.parse(JSON.stringify(await observe(out, item)));
+    const expectedObservation = item.family === 'module' ? {observations:item.reference.observations}
+        : item.family === 'per-file' ? {stdout:item.reference.stdout}
+        : item.family === 'helper-options' ? {observation:item.reference.observation, missingGlobal:item.reference.missingGlobal}
+        : {observation:item.reference.observation};
+    assert.deepStrictEqual(actual, expectedObservation, `${item.id}: execution`);
 }
 assert.strictEqual(reference.cases.length, 95);
 assert.strictEqual(accepts, 77);
@@ -81,3 +95,7 @@ if (process.env.BLUEICE_WRITE_MODULE_SYSTEMS_MATRIX === '1') {
     assert.strictEqual(fs.readFileSync(matrixFile, 'utf8').replaceAll('\r\n', '\n'), matrix);
 }
 process.stdout.write(JSON.stringify({typescript: ts.version, cases:95, accepts, rejects:18}) + '\n');
+}
+const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'bluets-native-modules-'));
+replay(temporary).catch(error => {console.error(error); process.exitCode = 1;})
+    .finally(() => fs.rmSync(temporary, {recursive:true, force:true}));

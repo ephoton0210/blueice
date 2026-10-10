@@ -195,3 +195,103 @@ fn module_verdicts_and_primary_diagnostics_match_pinned_typescript() {
         failures.join("\n")
     );
 }
+
+fn declarations(directory: &Path) -> std::collections::BTreeMap<String, String> {
+    fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap())
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            [".d.ts", ".d.mts", ".d.cts"]
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
+                .then(|| (name, fs::read_to_string(entry.path()).unwrap()))
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "requires Node and the pinned native observations"]
+fn emitted_modules_preserve_native_execution_and_declarations() {
+    let root = fs::canonicalize(env::temp_dir())
+        .unwrap()
+        .join(format!("bluets-module-execution-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let mut failures = Vec::new();
+    for case in cases().into_iter().filter(accepts) {
+        let id = case["id"].as_str().unwrap();
+        let directory = root.join(id);
+        copy_project(&fixtures().join(id), &directory);
+        let config = directory.join("tsconfig.json");
+        let mut options: Value =
+            serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+        options["compilerOptions"]["outDir"] = "blue".into();
+        fs::write(&config, options.to_string()).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .arg("--project")
+            .arg(&config)
+            .output()
+            .unwrap();
+        if !output.status.success() {
+            failures.push(format!(
+                "{id}: build failed: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ));
+            continue;
+        }
+        let out = directory.join("blue");
+        let actual = serde_json::to_value(declarations(&out)).unwrap();
+        let expected = if case["family"] == "helper-options" {
+            serde_json::json!({"main.d.ts":case["reference"]["declaration"]})
+        } else {
+            case["reference"]["declarations"].clone()
+        };
+        if actual != expected {
+            failures.push(format!("{id}: declarations differ: {actual}"));
+        }
+        if case["family"] == "per-file" {
+            let mut names = fs::read_dir(&out)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+            names.sort();
+            if serde_json::to_value(names).unwrap() != case["reference"]["files"] {
+                failures.push(format!("{id}: output suffixes differ"));
+            }
+        }
+        let observation = Command::new("node")
+            .arg(fixtures().join("observe.cjs"))
+            .arg(&out)
+            .arg(case.to_string())
+            .output()
+            .unwrap();
+        if !observation.status.success() {
+            failures.push(format!(
+                "{id}: execution failed: {}",
+                String::from_utf8_lossy(&observation.stderr)
+            ));
+            continue;
+        }
+        let actual: Value = serde_json::from_slice(&observation.stdout).unwrap();
+        let record = &case["reference"];
+        let expected = match case["family"].as_str().unwrap() {
+            "module" => serde_json::json!({"observations":record["observations"]}),
+            "per-file" => serde_json::json!({"stdout":record["stdout"]}),
+            "helper-options" => {
+                serde_json::json!({"observation":record["observation"],"missingGlobal":record["missingGlobal"]})
+            }
+            _ => serde_json::json!({"observation":record["observation"]}),
+        };
+        if actual != expected {
+            failures.push(format!("{id}: expected {expected}, received {actual}"));
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+    assert!(
+        failures.is_empty(),
+        "{} emitted module differences:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
