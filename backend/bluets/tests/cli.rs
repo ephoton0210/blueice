@@ -445,9 +445,15 @@ fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
     let source_file = root.join("src/main.ts");
     let config_file = root.join("bluetsc.json");
     let good_source = "export function echo(value: string): string { return value; }";
-    for target in ["es2020", "es2022"] {
+    for (target, new_line, emit_bom) in ["es2020", "es2022"].into_iter().flat_map(|target| {
+        ["lf", "crlf"].into_iter().flat_map(move |new_line| {
+            [false, true]
+                .into_iter()
+                .map(move |emit_bom| (target, new_line, emit_bom))
+        })
+    }) {
         fs::write(&source_file, good_source).unwrap();
-        let out_dir = format!("dist-{target}");
+        let out_dir = format!("dist-{target}-{new_line}-{emit_bom}");
         let mut config = serde_json::json!({
             "entries": ["src/main.ts"],
             "outDir": out_dir,
@@ -455,6 +461,10 @@ fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
             "runtimePolicy": "strict-runtime",
             "sourceMap": true,
             "declaration": true,
+            "removeComments": true,
+            "newLine": new_line,
+            "emitBOM": emit_bom,
+            "inlineSources": false,
             "strictBoundaries": [{
                 "contractId": "echo-string-v1",
                 "module": "src/main.ts",
@@ -477,6 +487,12 @@ fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
         );
         let output = root.join(&out_dir);
         let javascript = fs::read_to_string(output.join("src/main.js")).unwrap();
+        assert_eq!(javascript.starts_with('\u{feff}'), emit_bom);
+        if new_line == "crlf" {
+            assert!(!javascript.replace("\r\n", "").contains('\n'));
+        } else {
+            assert!(!javascript.contains('\r'));
+        }
         let manifest_bytes = fs::read(output.join("bluetsc.manifest.json")).unwrap();
         let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
         assert_eq!(manifest["runtimePolicy"], "strict-runtime");
