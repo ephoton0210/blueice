@@ -8560,3 +8560,25 @@ unmeasured compositions, literal decorated names, private-callable super and
 static-initializer super writes/computed keys. No runtime or loader authority
 is added. Commit and push this leaf; final-source hosted workspace, platform
 and coverage verification remains open. K.8.1 is the next leaf.
+
+### K.8.1 inferred declaration native failing baseline (2026-10-11)
+
+The pinned TypeScript 5.9.3 corpus records 26 forms in both module modes:
+52 configurations, 49 accepts and three exact export-assignment rejections.
+All accepted actual emitted JavaScript executes under Node. Source hashes,
+exact declarations, primary diagnostics and execution/syntax observations
+remain native golden data. Ambient external-module controls include explicit
+owner `ambient.d.ts` inputs and type-only imports.
+
+On final K.7.4 production `92e423811`, all public verdicts/primaries and all
+49 actual executions/syntax observations agree, while 22 exact declarations
+differ. The failing forms expose array literal freshness and enum widening,
+readonly literal quote printing, optional absent object-array properties,
+generic arrow return formatting, and inferred merged/nested namespace members.
+The immutable 11,479-file baseline passes format and three-crate all-target
+Clippy. Completeness, public decisions and the live native recorder pass;
+the exact emitted declaration replay fails as expected. Production remains
+unchanged. Evidence: `blueice-k81-baseline-second-proof.json`, frozen hashes,
+retained logs and `k81-public-declarations-baseline.json` actual/expected pairs.
+Commit this isolated failing replay before production correction; keep it
+unpushed until the complete K.0 gate passes. K.8.1 remains open.

@@ -1,0 +1,1774 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "dtsinfer-commonjs-p0",
+      "form": "p0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "4897b8b1d0fcb698db93b34790840ca1b6cb67b12ce1dd89c248a41e278ce31f"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value = 42;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = 42;\nexports.result = [exports.value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-p0",
+      "form": "p0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "4897b8b1d0fcb698db93b34790840ca1b6cb67b12ce1dd89c248a41e278ce31f"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value = 42;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = 42;\nexport const result = [value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-p1",
+      "form": "p1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "79143210da945779a64e8451612b50ff4afbe3ddfdc429aec38cf73650422969"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare let value: number;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = 42;\nexports.result = [exports.value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-p1",
+      "form": "p1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "79143210da945779a64e8451612b50ff4afbe3ddfdc429aec38cf73650422969"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare let value: number;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport let value = 42;\nexport const result = [value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-o0",
+      "form": "o0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f11ffc9e16bf37ffefd87d900ab9263905feaaf510c9c40f0e5d55597dab5bb7"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: {\n    answer: number;\n    nested: {\n        text: string;\n    };\n    items: number[];\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = { answer: 42, nested: { text: 'ok' }, items: [1, 2] };\nexports.result = [exports.value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-o0",
+      "form": "o0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f11ffc9e16bf37ffefd87d900ab9263905feaaf510c9c40f0e5d55597dab5bb7"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: {\n    answer: number;\n    nested: {\n        text: string;\n    };\n    items: number[];\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = { answer: 42, nested: { text: 'ok' }, items: [1, 2] };\nexport const result = [value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-o1",
+      "form": "o1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "5475bf4a834dbb062d90976075a3a6cbf1c639c4dd097cb0e24bbc849f7788f9"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: {\n    readonly answer: 42;\n    readonly nested: {\n        readonly text: \"ok\";\n    };\n};\nexport declare const result: 42[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = { answer: 42, nested: { text: 'ok' } };\nexports.result = [exports.value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-o1",
+      "form": "o1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "5475bf4a834dbb062d90976075a3a6cbf1c639c4dd097cb0e24bbc849f7788f9"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: {\n    readonly answer: 42;\n    readonly nested: {\n        readonly text: \"ok\";\n    };\n};\nexport declare const result: 42[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = { answer: 42, nested: { text: 'ok' } };\nexport const result = [value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-o2",
+      "form": "o2",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "de33cd256fde3169b6925dd7f13db628b6eb6a1bb9fd74a5d7a28ac9c4c47c61"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: ({\n    answer: number;\n    text?: undefined;\n} | {\n    answer: number;\n    text: string;\n})[];\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = [{ answer: 42 }, { answer: 42, text: 'ok' }];\nexports.result = [exports.value[0].answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-o2",
+      "form": "o2",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "de33cd256fde3169b6925dd7f13db628b6eb6a1bb9fd74a5d7a28ac9c4c47c61"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: ({\n    answer: number;\n    text?: undefined;\n} | {\n    answer: number;\n    text: string;\n})[];\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = [{ answer: 42 }, { answer: 42, text: 'ok' }];\nexport const result = [value[0].answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-o3",
+      "form": "o3",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "1e93992f59454a72ae579126c549f1782833976feda93efc9e8a837c56225e20"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: readonly [42, \"ok\"];\nexport declare const result: 42[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = [42, 'ok'];\nexports.result = [exports.value[0]];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-o3",
+      "form": "o3",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "1e93992f59454a72ae579126c549f1782833976feda93efc9e8a837c56225e20"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: readonly [42, \"ok\"];\nexport declare const result: 42[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = [42, 'ok'];\nexport const result = [value[0]];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-f0",
+      "form": "f0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "bd0734cc9a6dc299b80d0c648eee3d9c284e9be7de24863d18b81fdeaf8164fe"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: (answer: number) => {\n    answer: number;\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nconst value = (answer) => ({ answer });\nexports.value = value;\nexports.result = [(0, exports.value)(42).answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-f0",
+      "form": "f0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "bd0734cc9a6dc299b80d0c648eee3d9c284e9be7de24863d18b81fdeaf8164fe"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: (answer: number) => {\n    answer: number;\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = (answer) => ({ answer });\nexport const result = [value(42).answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-f1",
+      "form": "f1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "804bd562a790e36037d103f61f8fb68e92cee654b22f2462f2bf176b4a564f7c"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: <T>(answer: T) => {\n    answer: T;\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nconst value = (answer) => ({ answer });\nexports.value = value;\nexports.result = [(0, exports.value)(42).answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-f1",
+      "form": "f1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "804bd562a790e36037d103f61f8fb68e92cee654b22f2462f2bf176b4a564f7c"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare const value: <T>(answer: T) => {\n    answer: T;\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = (answer) => ({ answer });\nexport const result = [value(42).answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-f2",
+      "form": "f2",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "25a1c2158f26dee0db52c80b83fce340bf878ff114578c26050232cf949838b1"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare function value<T>(answer: T): {\n    answer: T;\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.value = value;\nfunction value(answer) { return { answer }; }\nexports.result = [value(42).answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-f2",
+      "form": "f2",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "25a1c2158f26dee0db52c80b83fce340bf878ff114578c26050232cf949838b1"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare function value<T>(answer: T): {\n    answer: T;\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport function value(answer) { return { answer }; }\nexport const result = [value(42).answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-f3",
+      "form": "f3",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "af44103a3ebefe40847c84155d0f2a75df43f4ae2e4d71ac0e52433f4314e4ee"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare function value(answer: number): number;\nexport declare function value(answer: string): string;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.value = value;\nfunction value(answer) { return answer; }\nexports.result = [value(42)];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-f3",
+      "form": "f3",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "af44103a3ebefe40847c84155d0f2a75df43f4ae2e4d71ac0e52433f4314e4ee"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare function value(answer: number): number;\nexport declare function value(answer: string): string;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport function value(answer) { return answer; }\nexport const result = [value(42)];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-f4",
+      "form": "f4",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "e2bce6b81dcce2313eb8dccad0dae2ec0fd1faf5637528c9bfbe935a4591dd3d"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare function value<T>(answer: T): T;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.value = value;\nfunction value(answer) { return answer; }\nexports.result = [value(42)];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-f4",
+      "form": "f4",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "e2bce6b81dcce2313eb8dccad0dae2ec0fd1faf5637528c9bfbe935a4591dd3d"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare function value<T>(answer: T): T;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport function value(answer) { return answer; }\nexport const result = [value(42)];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-g0",
+      "form": "g0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "94917b3a467835ff45b3adbcc1a4aaacf847f49448142e027e1159e0bf04a44b"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box<T> {\n    answer: T;\n    constructor(answer: T);\n    get(): T;\n}\nexport declare const value: Box<number>;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = exports.Box = void 0;\nclass Box {\n    answer;\n    constructor(answer) {\n        this.answer = answer;\n    }\n    get() { return this.answer; }\n}\nexports.Box = Box;\nexports.value = new Box(42);\nexports.result = [exports.value.get()];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-g0",
+      "form": "g0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "94917b3a467835ff45b3adbcc1a4aaacf847f49448142e027e1159e0bf04a44b"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box<T> {\n    answer: T;\n    constructor(answer: T);\n    get(): T;\n}\nexport declare const value: Box<number>;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport class Box {\n    answer;\n    constructor(answer) {\n        this.answer = answer;\n    }\n    get() { return this.answer; }\n}\nexport const value = new Box(42);\nexport const result = [value.get()];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-g1",
+      "form": "g1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "11069b783ee0e72dfedde1ba1f629b3cec5132d3e60a4c0230bbd4f611cbf9e3"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare abstract class Base<T> {\n    abstract get(): T;\n}\nexport declare class Box extends Base<number> {\n    get(): number;\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Box = exports.Base = void 0;\nclass Base {\n}\nexports.Base = Base;\nclass Box extends Base {\n    get() { return 42; }\n}\nexports.Box = Box;\nexports.result = [new Box().get()];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-g1",
+      "form": "g1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "11069b783ee0e72dfedde1ba1f629b3cec5132d3e60a4c0230bbd4f611cbf9e3"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare abstract class Base<T> {\n    abstract get(): T;\n}\nexport declare class Box extends Base<number> {\n    get(): number;\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport class Base {\n}\nexport class Box extends Base {\n    get() { return 42; }\n}\nexport const result = [new Box().get()];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-g2",
+      "form": "g2",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "bb218bef0c4ba47df560466aa703c51e4de520a9d7bf175b9e4372e6820650f9"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box {\n    value(answer: number): number;\n    value(answer: string): string;\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Box = void 0;\nclass Box {\n    value(answer) { return answer; }\n}\nexports.Box = Box;\nexports.result = [new Box().value(42)];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-g2",
+      "form": "g2",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "bb218bef0c4ba47df560466aa703c51e4de520a9d7bf175b9e4372e6820650f9"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box {\n    value(answer: number): number;\n    value(answer: string): string;\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport class Box {\n    value(answer) { return answer; }\n}\nexport const result = [new Box().value(42)];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-a0",
+      "form": "a0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "1190e1b6ca40197a6cbd211d40521de3b1feec9a22f98eb4c7a45548e4bed974"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box {\n    private saved;\n    get value(): number;\n    set value(answer: number);\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Box = void 0;\nclass Box {\n    saved = 42;\n    get value() { return this.saved; }\n    set value(answer) { this.saved = answer; }\n}\nexports.Box = Box;\nexports.result = [new Box().value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-a0",
+      "form": "a0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "1190e1b6ca40197a6cbd211d40521de3b1feec9a22f98eb4c7a45548e4bed974"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box {\n    private saved;\n    get value(): number;\n    set value(answer: number);\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport class Box {\n    saved = 42;\n    get value() { return this.saved; }\n    set value(answer) { this.saved = answer; }\n}\nexport const result = [new Box().value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-a1",
+      "form": "a1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "77ba828893dca72562daf9e07784fe77eb6e4b464a91226da98308597d911b0d"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box {\n    get value(): number;\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Box = void 0;\nclass Box {\n    get value() { return 42; }\n}\nexports.Box = Box;\nexports.result = [new Box().value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-a1",
+      "form": "a1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "77ba828893dca72562daf9e07784fe77eb6e4b464a91226da98308597d911b0d"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box {\n    get value(): number;\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport class Box {\n    get value() { return 42; }\n}\nexport const result = [new Box().value];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-m0",
+      "form": "m0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "dd1335fc5c852a6d58f8c364399d20d998cb28351c47629d22f82b3cb6a83fea"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare function value(answer: number): number;\nexport declare namespace value {\n    const answer = 42;\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.value = value;\nfunction value(answer) { return answer; }\n(function (value) {\n    value.answer = 42;\n})(value || (exports.value = value = {}));\nexports.result = [value(value.answer)];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-m0",
+      "form": "m0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "dd1335fc5c852a6d58f8c364399d20d998cb28351c47629d22f82b3cb6a83fea"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare function value(answer: number): number;\nexport declare namespace value {\n    const answer = 42;\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport function value(answer) { return answer; }\n(function (value) {\n    value.answer = 42;\n})(value || (value = {}));\nexport const result = [value(value.answer)];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-m1",
+      "form": "m1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f0d0e2c15ac17b4fdaaf9f3dc577832b29916a6c3b20b66360dfefb4cc7ef106"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box {\n    answer: number;\n}\nexport declare namespace Box {\n    const label = \"ok\";\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Box = void 0;\nclass Box {\n    answer = 42;\n}\nexports.Box = Box;\n(function (Box) {\n    Box.label = 'ok';\n})(Box || (exports.Box = Box = {}));\nexports.result = [new Box().answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-m1",
+      "form": "m1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f0d0e2c15ac17b4fdaaf9f3dc577832b29916a6c3b20b66360dfefb4cc7ef106"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare class Box {\n    answer: number;\n}\nexport declare namespace Box {\n    const label = \"ok\";\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport class Box {\n    answer = 42;\n}\n(function (Box) {\n    Box.label = 'ok';\n})(Box || (Box = {}));\nexport const result = [new Box().answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-m2",
+      "form": "m2",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "9e851533f6f7e225219f0ce264e0d096fa37cf1ac0fc450b9d6070224ce8a9e2"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare enum Value {\n    Answer = 42\n}\nexport declare namespace Value {\n    const label = \"ok\";\n}\nexport declare const result: Value[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Value = void 0;\nvar Value;\n(function (Value) {\n    Value[Value[\"Answer\"] = 42] = \"Answer\";\n})(Value || (exports.Value = Value = {}));\n(function (Value) {\n    Value.label = 'ok';\n})(Value || (exports.Value = Value = {}));\nexports.result = [Value.Answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-m2",
+      "form": "m2",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "9e851533f6f7e225219f0ce264e0d096fa37cf1ac0fc450b9d6070224ce8a9e2"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare enum Value {\n    Answer = 42\n}\nexport declare namespace Value {\n    const label = \"ok\";\n}\nexport declare const result: Value[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport var Value;\n(function (Value) {\n    Value[Value[\"Answer\"] = 42] = \"Answer\";\n})(Value || (Value = {}));\n(function (Value) {\n    Value.label = 'ok';\n})(Value || (Value = {}));\nexport const result = [Value.Answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-m3",
+      "form": "m3",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "fed0bdbdd855d619d15cdb51e8c67e43c3d238b1f2517ec85d65a147604602c6"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare namespace Outer {\n    namespace Inner {\n        const value: {\n            answer: number;\n        };\n        function get(): {\n            answer: number;\n        };\n    }\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.Outer = void 0;\nvar Outer;\n(function (Outer) {\n    let Inner;\n    (function (Inner) {\n        Inner.value = { answer: 42 };\n        function get() { return Inner.value; }\n        Inner.get = get;\n    })(Inner = Outer.Inner || (Outer.Inner = {}));\n})(Outer || (exports.Outer = Outer = {}));\nexports.result = [Outer.Inner.get().answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-m3",
+      "form": "m3",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "fed0bdbdd855d619d15cdb51e8c67e43c3d238b1f2517ec85d65a147604602c6"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export declare namespace Outer {\n    namespace Inner {\n        const value: {\n            answer: number;\n        };\n        function get(): {\n            answer: number;\n        };\n    }\n}\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport var Outer;\n(function (Outer) {\n    let Inner;\n    (function (Inner) {\n        Inner.value = { answer: 42 };\n        function get() { return Inner.value; }\n        Inner.get = get;\n    })(Inner = Outer.Inner || (Outer.Inner = {}));\n})(Outer || (Outer = {}));\nexport const result = [Outer.Inner.get().answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-x0",
+      "form": "x0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "67fda454fefb0616566ee1419f1248b601521307f1cebe8e9bfda4d8c1e527f4"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "declare function value(answer: number): number;\ndeclare namespace value {\n    const result: number[];\n}\nexport = value;\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction value(answer) { return answer; }\n(function (value) {\n    value.result = [value(42)];\n})(value || (value = {}));\nmodule.exports = value;\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-x0",
+      "form": "x0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "67fda454fefb0616566ee1419f1248b601521307f1cebe8e9bfda4d8c1e527f4"
+      },
+      "diagnostics": [
+        {
+          "code": 1203,
+          "file": "main.ts",
+          "start": 309,
+          "length": 15,
+          "message": "Export assignment cannot be used when targeting ECMAScript modules. Consider using 'export default' or another module format instead."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "declaration": null,
+      "observation": null,
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": null,
+      "typescriptParseErrors": []
+    },
+    {
+      "id": "dtsinfer-commonjs-x1",
+      "form": "x1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "3bf3ae9911c68b459465470f62c4681d977a78b8244153d9cef6a78203556319"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "declare const value: {\n    answer: number;\n    result: number[];\n};\nexport = value;\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nconst value = { answer: 42, result: [42] };\nmodule.exports = value;\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-x1",
+      "form": "x1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "3bf3ae9911c68b459465470f62c4681d977a78b8244153d9cef6a78203556319"
+      },
+      "diagnostics": [
+        {
+          "code": 1203,
+          "file": "main.ts",
+          "start": 246,
+          "length": 15,
+          "message": "Export assignment cannot be used when targeting ECMAScript modules. Consider using 'export default' or another module format instead."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "declaration": null,
+      "observation": null,
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": null,
+      "typescriptParseErrors": []
+    },
+    {
+      "id": "dtsinfer-commonjs-x2",
+      "form": "x2",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "4ac2f663b00ba05fa6534e58440f1c92ea75261b1e948818232a3439d509f303"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "declare class Box {\n    answer: number;\n}\ndeclare namespace Box {\n    const result: number[];\n}\nexport = Box;\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nclass Box {\n    answer = 42;\n}\n(function (Box) {\n    Box.result = [new Box().answer];\n})(Box || (Box = {}));\nmodule.exports = Box;\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-x2",
+      "form": "x2",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "4ac2f663b00ba05fa6534e58440f1c92ea75261b1e948818232a3439d509f303"
+      },
+      "diagnostics": [
+        {
+          "code": 1203,
+          "file": "main.ts",
+          "start": 291,
+          "length": 13,
+          "message": "Export assignment cannot be used when targeting ECMAScript modules. Consider using 'export default' or another module format instead."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "declaration": null,
+      "observation": null,
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": null,
+      "typescriptParseErrors": []
+    },
+    {
+      "id": "dtsinfer-commonjs-l0",
+      "form": "l0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "b2eda2a81e1f759d88dbc856b78235bdcaba339f7387a8ac88b93b19fa10b2d3"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "type Payload = {\n    answer: number;\n};\nexport declare const value: Payload;\nexport declare const result: number[];\nexport {};\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = { answer: 42 };\nexports.result = [exports.value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-l0",
+      "form": "l0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "b2eda2a81e1f759d88dbc856b78235bdcaba339f7387a8ac88b93b19fa10b2d3"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "type Payload = {\n    answer: number;\n};\nexport declare const value: Payload;\nexport declare const result: number[];\nexport {};\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = { answer: 42 };\nexport const result = [value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-d0",
+      "form": "d0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "00c3619278c96162fbee99567861be7ca45b5bfb699cc780c197bcc8fd0ea105",
+        "ambient.d.ts": "58e8fbfbc63c73385ccdf888c6737607463c90892c38af8f47d44686a5888a86"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "import type { Payload } from 'typed-host';\nexport declare const value: Payload;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = { answer: 42 };\nexports.result = [exports.value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-d0",
+      "form": "d0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "00c3619278c96162fbee99567861be7ca45b5bfb699cc780c197bcc8fd0ea105",
+        "ambient.d.ts": "58e8fbfbc63c73385ccdf888c6737607463c90892c38af8f47d44686a5888a86"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "import type { Payload } from 'typed-host';\nexport declare const value: Payload;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = { answer: 42 };\nexport const result = [value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-d1",
+      "form": "d1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "7a569d5d951eb59c1ebee5bdaf363085c86c617e3f5c677827dac3a16896ec28",
+        "ambient.d.ts": "2e9a5cbdce424dfd34a3996a61aa8c1b8c2f28d1363c75734b10ffbf57c58fb8"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "import type { Box } from 'typed-host';\nexport declare const value: Box<number>;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.value = void 0;\nexports.value = { answer: 42 };\nexports.result = [exports.value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-d1",
+      "form": "d1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "7a569d5d951eb59c1ebee5bdaf363085c86c617e3f5c677827dac3a16896ec28",
+        "ambient.d.ts": "2e9a5cbdce424dfd34a3996a61aa8c1b8c2f28d1363c75734b10ffbf57c58fb8"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "import type { Box } from 'typed-host';\nexport declare const value: Box<number>;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const value = { answer: 42 };\nexport const result = [value.answer];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    }
+  ]
+}

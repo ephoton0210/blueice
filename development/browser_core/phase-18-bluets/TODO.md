@@ -563,6 +563,7 @@ coverage/required-step proofs. K.7 through K.10 remain open.
 
 - [ ] **K.8.1 Inferred `.d.ts` (L; needs K.1.5).** Declaration output from inferred types, generic
   declarations, overloads of any shape, merged namespaces, `export =`, `declare module`, accessor pairs.
+  - *Native failing baseline (2026-10-11):* 52 configurations (49 accept, three reject) across 26 forms and both module modes record exact inferred/generic/overload/accessor/merged namespace/export-assignment/ambient-module declarations. All actual native outputs execute. On unchanged K.7.4 production, all decisions/primaries and all 49 execution/syntax observations agree; 22 exact declarations differ. Format, three-crate all-target Clippy, completeness and the live recorder pass. The isolated test-only replay must be committed before correction and remains unpushed until complete K.0 passes. Evidence: `blueice-k81-baseline-second-proof.json` and actual declaration pairs. K.8.1 remains open.
 - [ ] **K.8.2 Declaration options (S).** `declarationDir`, `emitDeclarationOnly`, `declarationMap`,
   `isolatedDeclarations` (with its own diagnostics).
 

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "outDir": "out"
+  },
+  "files": [
+    "main.ts",
+    "ambient.d.ts"
+  ]
+}
