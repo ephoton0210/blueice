@@ -7907,3 +7907,66 @@ Evidence: `blueice-k72-execution-baseline-first-{status,source-hashes}.json` and
 exact logs under `/private/tmp/blueice-k14-linux`. Commit this failing test-only
 supplement before implementation. K.7.2 remains open, isolated and unpushed;
 manifest/fingerprint comparisons and the complete K.0 gate remain required.
+
+### K.7.2 AMD/UMD lowering checkpoint (2026-10-10)
+
+Merge the verified K.7.1 CI/storage/regex corrections into this isolated branch
+without changing the integration commit under full hosted CI (`93622d64f`,
+run 38027752712). Preserve both test-first K.7.2 commits and all CI evidence.
+
+Original AMD and UMD factories reuse the existing CommonJS live-binding
+lowering. Runtime dependencies are ordered from retained module declarations,
+type-only edges remain absent, and the UMD factory executes under either its
+CommonJS or AMD host. Wrapper selection and its version participate in the
+artifact fingerprint; adding the wrapper line relocates generated source-map
+coordinates without changing original source positions. The direct bridge
+refuses both wrappers and names the required host-provided loader.
+
+The first frozen replay reduces 86 decision differences to 66 and 69 emitted
+differences to 53. Fix two measured declaration issues at their shared owners:
+array inference retains each element type once, and declaration emission
+retains genuine side-effect imports, including repeated imports. Account for
+the lexer's explicit EOF token when identifying the bare import prefix.
+The third 7,401-file replay passes format, three-crate all-target Clippy,
+fixture completeness and live native replay; all 20 AMD/UMD non-helper contexts
+and nine existing CommonJS contexts now match their native decisions,
+execution and declarations. There remain 66 decision and 48 emitted differences
+for System, per-file Node16/NodeNext and helper selection; the leaf stays open.
+
+The separate frozen public-boundary gate passes format, Clippy, a four-mode
+artifact identity/source-map/determinism test and both CommonJS and AMD/UMD
+direct-loader refusal tests. Evidence is
+`blueice-k72-amd-umd-{first,second,third}-{status,report}.json` and
+`blueice-k72-wrapper-boundaries-first-status.json`, exact hashes and step logs
+under `/private/tmp/blueice-k14-linux`. This checkpoint is uncommitted,
+unpushed and isolated. Finish remaining lowering, manifest checks, inventory
+regeneration and the complete K.0 gate before integrating K.7.2.
+
+### K.7.2 helper selection and manifest failing replay (2026-10-10)
+
+The uncommitted first helper lowering selects the original `__extends` ABI
+for omitted/imported inheritance helpers and keeps base construction inline.
+Imported provider declarations pass through the owner's existing resolver and
+bounded graph loader, participate in source/resolution fingerprints, and
+produce native TS2354 at the original heritage when absent. Explicit node10
+helper resolution retains the owner's configured root; it grants no external
+root or network access.
+
+The 7,402-file second frozen replay passes format, three-crate all-target
+Clippy, live native observations and public artifact identity controls. All
+24 CommonJS/AMD/UMD helper configurations match their native decisions and
+accepted execution/declarations, including missing-global observations.
+There remain 42 decisions and 30 emitted differences for System and per-file
+Node16/NodeNext. No production source is committed or pushed.
+
+Add a public owner-build regression for twelve module/helper policies,
+provider-byte identity and retention of previous published output after a
+provider becomes unavailable. Before adding manifest fields, the frozen
+7,403-file replay passes format and Clippy but fails this test: the successful
+build's `import_helpers` field is null instead of false (zero passes, one
+failure, exit 101). Commit the failing policy specification separately;
+finish metadata, bounded helper selection and the remaining lowering before
+the complete K.0 gate. Evidence is
+`blueice-k72-helper-selection-second-{status,report}.json` and
+`blueice-k72-helper-manifest-red-status.json`, source hashes and exact logs
+under `/private/tmp/blueice-k14-linux`.
