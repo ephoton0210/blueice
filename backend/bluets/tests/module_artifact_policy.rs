@@ -135,3 +135,53 @@ fn helper_selection_refuses_unimplemented_generated_abis() {
         );
     }
 }
+
+#[test]
+fn repeated_inheritance_uses_one_authorized_helper_edge() {
+    use blueice_bluets::{
+        compile, CompilerOptions, EcmaTarget, MapLoader, ModuleKind, ModuleLoader, ModuleSource,
+    };
+    struct Owner(MapLoader);
+    impl ModuleLoader for Owner {
+        fn load(&self, id: &str) -> Result<ModuleSource, String> {
+            self.0.load(id)
+        }
+        fn resolve(&self, _: &str, specifier: &str) -> Result<String, String> {
+            if specifier == "tslib" {
+                Ok("memory:///node_modules/tslib/index.d.ts".to_string())
+            } else {
+                Err("owner exposes only its helper provider".to_string())
+            }
+        }
+    }
+    let id = "memory:///main.ts";
+    let source =
+        "class Base {} export class First extends Base {} export class Second extends Base {}";
+    let owner = Owner(MapLoader::from([
+        ModuleSource::new(id, source),
+        ModuleSource::new(
+            "memory:///node_modules/tslib/index.d.ts",
+            "export declare function __extends(child: Function, parent: Function): void;",
+        ),
+    ]));
+    let mut options = CompilerOptions {
+        target: EcmaTarget::Es5,
+        libraries: Some(vec![EcmaTarget::Es2020]),
+        module_kind: ModuleKind::CommonJs,
+        import_helpers: true,
+        ..CompilerOptions::default()
+    };
+    let ordinary = compile(id, &owner, options.clone());
+    assert!(!ordinary.has_errors(), "{:?}", ordinary.diagnostics);
+    options.limits.max_module_edges = 1;
+    let bounded = compile(id, &owner, options.clone());
+    assert!(!bounded.has_errors(), "{:?}", bounded.diagnostics);
+    assert!(bounded.output.is_some());
+    options.limits.max_module_edges = 0;
+    let refused = compile(id, &owner, options);
+    assert!(refused.output.is_none());
+    assert!(refused
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("edge limit")));
+}

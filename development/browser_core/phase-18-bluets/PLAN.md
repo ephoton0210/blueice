@@ -7989,3 +7989,24 @@ adding a precise unsupported-ABI diagnostic; keep default helper lowering and
 the measured inheritance ABI unchanged. Evidence:
 `blueice-k72-helper-abi-red-second-status.json` and its exact source hashes/logs.
 The complete module leaf and final-source K.0 gate remain open.
+
+
+### K.7.2 shared helper edge budget failing replay (2026-10-10)
+
+The original helper ABI guard passes format, three-crate Clippy and both
+public policy tests in `blueice-k72-helper-abi-first-status.json`. Replaying
+all 95 native module configurations retains exactly the previous 42 decision
+and 30 emission gaps, all System/Node modes; the native recorder and artifact
+identity checks pass. The ordinary full two-crate gate identifies two obsolete
+AMD-rejection assertions in addition to the known module-mode failure. Update
+those assertions to accept measured AMD/UMD and retain invalid-kind controls.
+
+The new closed-owner resource regression supplies two inherited classes and
+one authorized helper provider. Default limits accept the project; one edge
+incorrectly rejects the second use of that same provider. The frozen
+7,404-file edge replay passes format and Clippy and both existing policy tests,
+and fails only this edge regression (two passes, one failure, exit 101).
+Commit the regression before charging only new unique resolution edges;
+retain the test requiring zero edge allowance to refuse publication. Evidence:
+`blueice-k72-helper-edge-red-status.json` and its exact log/source hashes.
+Production remains uncommitted and the whole module leaf remains open.
