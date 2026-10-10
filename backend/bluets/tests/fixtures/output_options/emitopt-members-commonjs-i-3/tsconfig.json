@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES2020"
+    ],
+    "strict": true,
+    "sourceMap": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "outDir": "out",
+    "removeComments": true,
+    "stripInternal": true,
+    "newLine": "LF"
+  },
+  "files": [
+    "main.ts"
+  ]
+}

@@ -8329,3 +8329,20 @@ uncommitted implementation changes out of this baseline commit. Evidence:
 `k73-output-validation-blue-baseline.json` and the reproducible
 `record_output_validation.cjs` with its pinned corpus. The earlier full
 K.0 gate and final-source parent hosted CI remain running.
+
+### K.7.3 interface/enum output boundary supplement (2026-10-10)
+
+Sixteen original native controls extend member documentation and internal
+declaration removal to interfaces and enums in CommonJS/ESNext, across all
+four `removeComments`/`stripInternal` combinations. All sixteen programs
+execute successfully under pinned TypeScript 5.9.3. The current public CLI
+builds every case, but twelve exact declaration comparisons differ. Enum
+values following internal members retain their original evaluated values.
+
+The full native recorder now verifies 120 configurations (114 accept, six
+reject), every accepted actual Node execution and exact declaration/output
+observation. All previous 104 observations remain unchanged. Commit this
+failing replay separately before its production correction, keep it
+isolated/unpushed and leave K.7.3 open. Evidence:
+`k73-type-member-baseline.json`, `k73-type-member-native-proof.json` and the
+native `record_output_options.cjs` corpus.

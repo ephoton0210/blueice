@@ -63,9 +63,14 @@ async function record() {
         }
         cases.push({id: item.id, form: item.form, options: item.options, reference});
     }
-    assert.deepStrictEqual({typescript: ts.version, cases}, reference);
     const matrix = cases.map(item => item.id + '/main.ts\t' + (item.reference.diagnostics.length ? 'reject' : 'accept') + '\n').join('');
-    assert.strictEqual(fs.readFileSync(path.join(corpus, 'output-options-checker-matrix.tsv'), 'utf8').replaceAll('\r\n', '\n'), matrix);
+    if (process.env.BLUEICE_WRITE_OUTPUT_OPTIONS_MATRIX === '1') {
+        fs.writeFileSync(path.join(corpus, 'reference.json'), JSON.stringify({typescript: ts.version, cases}, null, 2) + '\n');
+        fs.writeFileSync(path.join(corpus, 'output-options-checker-matrix.tsv'), matrix);
+    } else {
+        assert.deepStrictEqual({typescript: ts.version, cases}, reference);
+        assert.strictEqual(fs.readFileSync(path.join(corpus, 'output-options-checker-matrix.tsv'), 'utf8').replaceAll('\r\n', '\n'), matrix);
+    }
     console.log(JSON.stringify({typescript: ts.version, cases: cases.length, accepts: cases.filter(x => !x.reference.diagnostics.length).length, rejects: cases.filter(x => x.reference.diagnostics.length).length, executed: cases.filter(x => x.reference.observation).length}));
 }
 record().catch(error => {console.error(error); process.exitCode = 1;}).finally(() => fs.rmSync(root, {recursive: true, force: true}));
