@@ -57,7 +57,8 @@ async function record() {
             assert.deepStrictEqual(reference.observation, {result: 42, text: '// literal /* retained */'}, item.id);
             reference.javascript = {bom: javascript.startsWith('\ufeff'), crlf: (javascript.match(/\r\n/g) || []).length, bareLF: (javascript.replaceAll('\r\n', '').match(/\n/g) || []).length, ordinaryComment: javascript.includes('retained ordinary comment'), publicComment: javascript.includes('Public answer.'), internalComment: javascript.includes('@internal'), literalRetained: javascript.includes('// literal /* retained */'), sourceMappingURL: javascript.split(/\r?\n/).find(x => x.includes('sourceMappingURL'))};
             reference.declaration = outputs['main.d.ts'];
-            reference.sourceMap = {file: map.file, sourceRoot: map.sourceRoot, sources: map.sources};
+            const casePath = directory.replaceAll('\\', '/');
+            reference.sourceMap = {file: map.file, sourceRoot: map.sourceRoot, sources: map.sources.map(source => source.replace(casePath, '<case>').replace(casePath.replace(/^\//, ''), '<case>'))};
             if (map.sourcesContent !== undefined) reference.sourceMap.sourcesContent = map.sourcesContent;
         }
         cases.push({id: item.id, form: item.form, options: item.options, reference});

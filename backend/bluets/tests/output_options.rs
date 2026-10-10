@@ -50,8 +50,8 @@ fn copy_case(case: &Value, root: &Path) -> PathBuf {
 #[test]
 fn output_matrix_retains_every_native_configuration() {
     let cases = cases();
-    assert_eq!(cases.len(), 94);
-    assert_eq!(cases.iter().filter(|case| accepted(case)).count(), 88);
+    assert_eq!(cases.len(), 104);
+    assert_eq!(cases.iter().filter(|case| accepted(case)).count(), 98);
     let recorded: BTreeSet<_> = cases
         .iter()
         .map(|case| case["id"].as_str().unwrap().to_string())
@@ -63,7 +63,7 @@ fn output_matrix_retains_every_native_configuration() {
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
     assert_eq!(recorded, discovered);
-    assert_eq!(recorded.len(), 94);
+    assert_eq!(recorded.len(), 104);
     let matrix: String = cases
         .iter()
         .map(|case| {
@@ -219,8 +219,18 @@ fn emitted_output_options_preserve_runtime_declarations_and_maps() {
         {
             failures.push(format!("{id}: newline bytes differ"));
         }
-        let map: Value =
+        let mut map: Value =
             serde_json::from_str(&fs::read_to_string(out.join("main.js.map")).unwrap()).unwrap();
+        let case_path = directory.to_string_lossy().replace('\\', "/");
+        for source in map["sources"].as_array_mut().unwrap() {
+            *source = Value::String(
+                source
+                    .as_str()
+                    .unwrap()
+                    .replace(&case_path, "<case>")
+                    .replace(case_path.trim_start_matches('/'), "<case>"),
+            );
+        }
         for name in ["file", "sourceRoot", "sources", "sourcesContent"] {
             if map[name] != case["reference"]["sourceMap"][name] {
                 failures.push(format!("{id}: source map {name} differs"));

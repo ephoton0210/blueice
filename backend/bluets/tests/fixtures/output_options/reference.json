@@ -4294,6 +4294,536 @@
           ]
         }
       }
+    },
+    {
+      "id": "root-sourceroot-0",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "sourceRoot": "roots"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "roots/",
+          "sources": [
+            "main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-sourceroot-1",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "sourceRoot": "../roots"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "../roots/",
+          "sources": [
+            "main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-sourceroot-2",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "sourceRoot": "/roots"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "/roots/",
+          "sources": [
+            "main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-sourceroot-3",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "sourceRoot": "https://example.invalid/roots"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "https://example.invalid/roots/",
+          "sources": [
+            "main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-sourceroot-4",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "sourceRoot": ""
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-maproot-5",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "mapRoot": "roots"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=../roots/main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-maproot-6",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "mapRoot": "../roots"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=../../roots/main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../root-maproot-6/main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-maproot-7",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "mapRoot": "/roots"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=/roots/main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../<case>/main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-maproot-8",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "mapRoot": "https://example.invalid/roots"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=https://example.invalid/roots/main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "file://<case>/main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-maproot-9",
+      "form": "class-members",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2020"
+        ],
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "newLine": "LF",
+        "removeComments": false,
+        "mapRoot": ""
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "1893fd48cd4cebfdc3ee6a65708851536b4e0d5b33ceaf28565d15e260daf6d9"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 21,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** Public answer. */\nexport declare class Box {\n    /** @internal */\n    hidden: number;\n    /** Public value. */\n    value: number;\n    /** @internal */\n    secret(): number;\n    /** Public method. */\n    answer(): number;\n}\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
     }
   ]
 }
