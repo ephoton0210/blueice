@@ -12,14 +12,20 @@ pub(super) fn render(
 ) -> String {
     if fields.is_empty() && signatures.len() == 1 && signatures[0].constructor_arrow {
         let signature = &signatures[0];
+        let mut binders = String::new();
+        emit_type_parameters(&mut binders, &signature.type_parameters);
+        let result = match &signature.result {
+            Type::Record(fields) => render_with_indent(fields, &[], &[], 0),
+            other => type_to_ts(other),
+        };
         return format!(
-            "{}new {}",
+            "{}new {binders}{} => {result}",
             if signature.abstract_constructor {
                 "abstract "
             } else {
                 ""
             },
-            type_to_ts(&signature.function_type())
+            method_parameters_to_ts(&signature.parameters),
         );
     }
     render_with_indices(fields, signatures, &[])

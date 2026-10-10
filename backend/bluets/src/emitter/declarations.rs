@@ -122,7 +122,7 @@ pub(super) fn emit_declaration(
                 output.push_str(&variable.name);
                 if variable.annotation.is_none() {
                     if let Some((text, initializer)) =
-                        inferred.and_then(|context| context.variable(&variable.name))
+                        inferred.and_then(|context| context.variable(variable))
                     {
                         output.push_str(if *initializer { " = " } else { ": " });
                         output.push_str(text);
@@ -241,7 +241,7 @@ pub(super) fn emit_declaration(
                     "declare "
                 };
                 output.push_str(&namespaces::emit_namespace_declaration(
-                    module, namespace, prefix, options,
+                    module, namespace, prefix, symbols, inferred, options,
                 )?);
             }
             Declaration::Class(class)
@@ -423,6 +423,9 @@ pub(super) fn emit_type_parameters(output: &mut String, parameters: &[TypeParame
         for (index, parameter) in parameters.iter().enumerate() {
             if index > 0 {
                 output.push_str(", ");
+            }
+            if parameter.is_const {
+                output.push_str("const ");
             }
             output.push_str(parameter.variance.map_or("", |value| value.prefix()));
             output.push_str(&parameter.name);

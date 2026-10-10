@@ -222,6 +222,15 @@ impl ModuleChecker<'_> {
             .borrow_mut()
             .extend(run.inferred_parameters);
         self.diagnostics.extend(run.diagnostics);
+        for symbol in run.symbols {
+            if let Some(bound) = self
+                .symbols
+                .iter_mut()
+                .find(|bound| bound.kind == symbol.kind && bound.span == symbol.span)
+            {
+                bound.value_type = symbol.value_type;
+            }
+        }
         self.publish_namespace(namespace, &path, run.published);
     }
 
@@ -308,12 +317,39 @@ impl ModuleChecker<'_> {
             sub.check_types();
         }
         let mut diagnostics = std::mem::take(&mut sub.diagnostics);
-        let symbols = if check {
+        if check {
             diagnostics = diagnostics.split_off(skip);
-            Vec::new()
-        } else {
-            std::mem::take(&mut sub.symbols)
-        };
+        }
+        let mut symbols = std::mem::take(&mut sub.symbols);
+        // Earlier namespace blocks can provide a binding before this block is
+        // rebound. Retain this declaration's checked value even when insertion
+        // reused that binding and therefore produced no new symbol.
+        for declaration in &body_module.declarations {
+            let Declaration::Variable(variable) = declaration else {
+                continue;
+            };
+            if variable.pattern.is_none()
+                && !symbols.iter().any(|symbol| {
+                    symbol.kind == SymbolKind::Variable && symbol.span == variable.span
+                })
+            {
+                symbols.push(Symbol {
+                    name: variable.name.clone(),
+                    kind: SymbolKind::Variable,
+                    module: self.module.id.clone(),
+                    span: variable.span.clone(),
+                    exported: variable.exported,
+                    value_type: sub.values.get(&variable.name).cloned(),
+                });
+            }
+        }
+        for symbol in &mut symbols {
+            if symbol.kind == SymbolKind::Variable {
+                if let Some(value) = sub.values.get(&symbol.name) {
+                    symbol.value_type = Some(value.clone());
+                }
+            }
+        }
         let published = sub.published_from(namespace, path, &declared);
         BodyRun {
             diagnostics,

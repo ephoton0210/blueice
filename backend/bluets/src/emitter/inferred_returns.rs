@@ -99,6 +99,7 @@ pub(super) fn canonical(value: &Type) -> Type {
         }
         Type::Union(parts) => Type::Union(parts.iter().map(canonical).collect()),
         Type::Array(element) => Type::Array(Box::new(canonical(element))),
+        Type::Readonly(element) => Type::Readonly(Box::new(canonical(element))),
         Type::Record(fields) => Type::Record(
             fields
                 .iter()
