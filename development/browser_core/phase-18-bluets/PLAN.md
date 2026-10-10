@@ -8126,3 +8126,16 @@ at generated line 42 has no source mapping. Preserve this failing test before
 relocating source provenance. Node16/NodeNext still account for the remaining
 24 decision and 15 accepted-output differences. Production remains isolated
 and unpushed; K.7.2 is open.
+
+### K.7.2 Node ownership/cache failing replay (2026-10-10)
+
+The first Node-format draft passes format, three-crate all-target Clippy and
+the LF/CRLF System relocation regression. The corpus narrows to twelve
+decision and nine emitted-output differences, caused by missing `.mjs`/`.cjs`
+source substitution and verbatim diagnostic binding spans. A separate frozen
+7,430-file owner replay passes absent/changed nearest-manifest revalidation
+but deterministically fails same-byte manifest symlink replacement and
+rechecking unchanged source after an owner changes ESM to CommonJS. Preserve
+these failing tests before changing observations or incremental invalidation.
+Evidence: `blueice-k72-node-owner-red-status.json` and exact logs/hashes.
+Production remains isolated and unpushed; K.7.2 is not complete.

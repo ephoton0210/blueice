@@ -6,6 +6,43 @@ use std::rc::Rc;
 
 use super::*;
 
+#[test]
+fn node_scope_revalidates_absent_and_changed_nearest_manifests() {
+    let fs = MemoryFs::with(&[("/project/package.json", r#"{"type":"module"}"#)]);
+    let resolver = resolver(&fs, ModuleResolution::Node16);
+    assert!(resolver
+        .is_es_module_scope(Path::new("/project/src"))
+        .unwrap());
+    assert!(resolver.revalidate());
+    let first = resolver.fingerprint();
+    fs.write("/project/src/package.json", r#"{"type":"commonjs"}"#);
+    assert!(!resolver.revalidate());
+    assert!(!resolver
+        .is_es_module_scope(Path::new("/project/src"))
+        .unwrap());
+    assert_ne!(first, resolver.fingerprint());
+    assert!(resolver.revalidate());
+    fs.write("/project/src/package.json", r#"{"type":"module"}"#);
+    assert!(!resolver.revalidate());
+}
+
+#[test]
+fn node_scope_revalidates_same_byte_manifest_symlink_replacement() {
+    let fs = MemoryFs::with(&[
+        ("/project/package.json", r#"{"type":"module"}"#),
+        ("/outside/package.json", r#"{"type":"module"}"#),
+    ]);
+    let resolver = resolver(&fs, ModuleResolution::Node16);
+    assert!(resolver.is_es_module_scope(Path::new("/project")).unwrap());
+    assert!(resolver.revalidate());
+    fs.link("/project/package.json", "/outside/package.json");
+    assert!(!resolver.revalidate());
+    assert!(matches!(
+        resolver.is_es_module_scope(Path::new("/project")),
+        Err(ResolveError::OutsideRoots { .. })
+    ));
+}
+
 /// An in-memory tree with symlinks, so every resolution rule runs without a disk.
 #[derive(Clone, Default)]
 struct MemoryFs {
