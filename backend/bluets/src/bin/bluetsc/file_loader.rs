@@ -24,6 +24,15 @@ pub(super) struct FileLoader {
 }
 
 impl ModuleLoader for FileLoader {
+    fn resolution_error_typescript_code(&self, message: &str) -> Option<u32> {
+        (message.starts_with("cannot resolve ")
+            && self
+                .packages
+                .as_ref()
+                .is_some_and(|packages| packages.config().resolution != ModuleResolution::Classic))
+        .then_some(2307)
+    }
+
     fn implied_module_kind(&self, module_id: &str) -> Result<ModuleKind, String> {
         node_modules::implied_kind(self, module_id)
     }
@@ -135,7 +144,17 @@ impl ModuleLoader for FileLoader {
                     specifier,
                     mode.unwrap_or(self.import_mode),
                 ) {
-                    Ok(found) => self.package_module_id(&found.path),
+                    Ok(found) => {
+                        let internal = found
+                            .package
+                            .as_ref()
+                            .is_none_or(|package| from_directory.starts_with(&package.root));
+                        if internal && !blueice_bluets::is_external_library_module(from_module) {
+                            self.module_id(&found.path)
+                        } else {
+                            self.package_module_id(&found.path)
+                        }
+                    }
                     Err(
                         error @ (ResolveError::NotFound { .. }
                         | ResolveError::JavaScriptOnly { .. }),

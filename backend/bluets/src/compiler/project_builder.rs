@@ -370,11 +370,13 @@ impl<'a> ProjectBuilder<'a> {
                         specifier.clone(),
                         mode,
                     ));
-                    self.diagnostics.push(Diagnostic::error(
-                        DiagnosticCode::ModuleNotFound,
-                        span.clone(),
-                        message,
-                    ));
+                    let code = self.loader.resolution_error_typescript_code(&message);
+                    let mut diagnostic =
+                        Diagnostic::error(DiagnosticCode::ModuleNotFound, span.clone(), message);
+                    if let Some(code) = code {
+                        diagnostic = diagnostic.with_typescript(code, vec![specifier.clone()]);
+                    }
+                    self.diagnostics.push(diagnostic);
                 }
             }
         }

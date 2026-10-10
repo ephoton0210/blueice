@@ -30,14 +30,18 @@ use std::sync::Mutex;
 use ring::digest::{digest, SHA256};
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 
+mod features;
 mod module_scope;
+mod version_ranges;
 
 /// The TypeScript release whose resolution this follows.
-pub const RESOLUTION_VERSION: &str = "typescript-5.9.3-resolution-v2";
+pub const RESOLUTION_VERSION: &str = "typescript-5.9.3-resolution-v3";
 
 /// TypeScript's `moduleResolution` for a bare specifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModuleResolution {
+    /// File lookup in the importing directory and its authorized ancestors.
+    Classic,
     /// `main`/`types`/`typings`, then `index`; no `exports`.
     Node10,
     /// `exports` and `imports` with the conditions `types`, `node` and the
@@ -50,6 +54,7 @@ pub enum ModuleResolution {
 impl ModuleResolution {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Classic => "classic",
             Self::Node10 => "node10",
             Self::Node16 => "node16",
             Self::Bundler => "bundler",
@@ -58,6 +63,7 @@ impl ModuleResolution {
 
     pub fn parse(value: &str) -> Option<Self> {
         match value.to_ascii_lowercase().as_str() {
+            "classic" => Some(Self::Classic),
             "node10" | "node" => Some(Self::Node10),
             "node16" | "nodenext" => Some(Self::Node16),
             "bundler" => Some(Self::Bundler),
@@ -227,7 +233,7 @@ impl std::error::Error for ResolveError {}
 enum Observation {
     /// A candidate that was probed and was not a file.
     Absent,
-    /// A file whose content was read, and its SHA-256.
+    /// An authorized asset whose content was read, and its SHA-256.
     Content(String),
     /// A directory resolved through symlinks to this canonical path.
     Canonical(PathBuf),
@@ -393,14 +399,20 @@ impl<F: PackageFs> PackageResolver<F> {
             self.observe(&path, Observation::Absent);
             return Ok(None);
         }
-        let text =
-            self.fs
-                .read_to_string(&path)
-                .map_err(|error| ResolveError::InvalidPackageJson {
-                    path: path.clone(),
-                    message: error.to_string(),
-                })?;
-        self.observe(&path, Observation::Content(sha256_hex(text.as_bytes())));
+        let canonical = self.confine("package.json", &path)?;
+        let text = self.fs.read_to_string(&canonical).map_err(|error| {
+            ResolveError::InvalidPackageJson {
+                path: path.clone(),
+                message: error.to_string(),
+            }
+        })?;
+        self.observe(
+            &path,
+            Observation::Manifest {
+                canonical,
+                hash: sha256_hex(text.as_bytes()),
+            },
+        );
         serde_json::from_str::<Value>(&text)
             .map(Some)
             .map_err(|error| ResolveError::InvalidPackageJson {
@@ -423,11 +435,19 @@ impl<F: PackageFs> PackageResolver<F> {
                 path: from_dir.to_path_buf(),
             });
         }
+        if self.config.resolution == ModuleResolution::Classic {
+            split_package_specifier(specifier)
+                .ok_or_else(|| ResolveError::InvalidSpecifier(specifier.into()))?;
+            return self.resolve_classic(from_dir, specifier);
+        }
         if specifier.starts_with('#') {
             return self.resolve_package_imports(from_dir, specifier, mode);
         }
         let (name, subpath) = split_package_specifier(specifier)
             .ok_or_else(|| ResolveError::InvalidSpecifier(specifier.to_string()))?;
+        if let Some(found) = self.resolve_self_name(from_dir, specifier, name, &subpath, mode)? {
+            return Ok(found);
+        }
         let mut searched = Vec::new();
         let mut javascript_only = None;
         for directory in from_dir.ancestors() {
@@ -555,11 +575,8 @@ impl<F: PackageFs> PackageResolver<F> {
                 }
                 None => None,
             }
-        } else if subpath.is_empty() {
-            self.load_package_main(package_dir, manifest.as_ref())?
         } else {
-            let relative = &subpath[1..];
-            self.load_as_file_or_directory(&package_dir.join(relative))?
+            self.load_legacy_package_entry(package_dir, manifest.as_ref(), subpath, mode)?
         };
         let Some(path) = path else {
             return self.javascript_only_or_none(specifier, package_dir, subpath);
@@ -570,7 +587,7 @@ impl<F: PackageFs> PackageResolver<F> {
             .expect("package lock")
             .insert(identity.root.clone(), identity.clone());
         Ok(Some(ResolvedPackageFile {
-            declaration: path.to_string_lossy().ends_with(".d.ts"),
+            declaration: features::declaration_file(&path),
             path,
             package: Some(identity),
         }))
@@ -739,7 +756,7 @@ impl<F: PackageFs> PackageResolver<F> {
                     {
                         let path = self.confine(specifier, &found)?;
                         return Ok(ResolvedPackageFile {
-                            declaration: path.to_string_lossy().ends_with(".d.ts"),
+                            declaration: features::declaration_file(&path),
                             path,
                             package: None,
                         });
@@ -770,15 +787,18 @@ impl<F: PackageFs> PackageResolver<F> {
             });
         }
         let joined = normalize(&from_dir.join(specifier));
-        let found =
+        let candidate = if self.config.resolution == ModuleResolution::Classic {
+            self.load_as_file(&joined)
+        } else {
             self.load_as_file_or_directory(&joined)?
-                .ok_or_else(|| ResolveError::NotFound {
-                    specifier: specifier.to_string(),
-                    searched: vec![joined.clone()],
-                })?;
+        };
+        let found = candidate.ok_or_else(|| ResolveError::NotFound {
+            specifier: specifier.to_string(),
+            searched: vec![joined.clone()],
+        })?;
         let path = self.confine(specifier, &found)?;
         Ok(ResolvedPackageFile {
-            declaration: path.to_string_lossy().ends_with(".d.ts"),
+            declaration: features::declaration_file(&path),
             path,
             package: None,
         })

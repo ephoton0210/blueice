@@ -392,6 +392,7 @@ pub(super) fn owner_options(
     }
     if let Some(value) = computed.get("moduleResolution").and_then(Value::as_str) {
         if matches!(value, "node16" | "nodenext" | "bundler")
+            || raw.contains_key("moduleResolution")
             || value == "node10" && raw.get("importHelpers").and_then(Value::as_bool) == Some(true)
         {
             owner.insert("moduleResolution".to_string(), json!(value));

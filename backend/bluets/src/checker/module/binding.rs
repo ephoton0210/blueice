@@ -6,6 +6,7 @@
 
 use super::*;
 
+mod array_diagnostics;
 mod checking_flags;
 mod classes;
 mod diagnostics;
@@ -749,6 +750,14 @@ impl<'a> ModuleChecker<'a> {
         }
         let inferred = self.infer_in_context(&variable.initializer, scope, annotation);
         if !self.is_assignable_bounded(&inferred, annotation, &variable.span) {
+            if self.check_array_element_assignment(
+                &variable.initializer,
+                annotation,
+                &inferred,
+                scope,
+            ) {
+                return;
+            }
             self.assignment_error(
                 &variable.span,
                 format!(

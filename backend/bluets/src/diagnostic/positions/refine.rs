@@ -27,7 +27,7 @@ pub(super) fn refine(diagnostic: &Diagnostic, tokens: &[Token]) -> SourceSpan {
         2540 | 2339 | 2576 | 2550 | 2551 | 2341 | 2445 | 2446 | 18013 => {
             property_name(tokens, begin, selected, counterpart.arguments.first())
         }
-        2792 => selected
+        2307 | 2792 => selected
             .iter()
             .find(|token| token.kind == TokenKind::String)
             .map(|token| (token.start, token.end)),

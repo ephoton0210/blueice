@@ -259,7 +259,7 @@ fn a_hoisted_dependency_tree_needs_its_root_authorized() {
 }
 
 #[test]
-fn bundler_and_node10_strategies_and_conditions_are_selectable() {
+fn bundler_node10_and_classic_strategies_and_conditions_are_selectable() {
     let project = Project::new("strategies");
     project.write(
         "app/node_modules/dual/package.json",
@@ -314,6 +314,20 @@ fn bundler_and_node10_strategies_and_conditions_are_selectable() {
         }
     }
     project.config(serde_json::json!({"moduleResolution": "classic"}));
+    let missing = project.run("check");
+    assert!(!missing.status.success());
+    assert!(stderr(&missing).contains("cannot resolve `dual`"));
+    project.write(
+        "app/src/dual.ts",
+        "export interface Which { classic: number }\n",
+    );
+    project.write(
+        "app/src/main.ts",
+        "import type { Which } from \"dual\";\nexport const w: Which = { classic: 1 };\n",
+    );
+    let checked = project.run("check");
+    assert!(checked.status.success(), "{}", stderr(&checked));
+    project.config(serde_json::json!({"moduleResolution": "unknown-strategy"}));
     assert!(stderr(&project.run("check")).contains("unsupported moduleResolution"));
     project.config(serde_json::json!({"moduleResolution": null, "packageRoots": ["."]}));
     assert!(stderr(&project.run("check")).contains("need a moduleResolution"));

@@ -869,7 +869,10 @@ fn module_resolution_names_round_trip() {
         ModuleResolution::parse("NodeNext"),
         Some(ModuleResolution::Node16)
     );
-    assert_eq!(ModuleResolution::parse("classic"), None);
+    assert_eq!(
+        ModuleResolution::parse("classic"),
+        Some(ModuleResolution::Classic)
+    );
 }
 
 #[test]

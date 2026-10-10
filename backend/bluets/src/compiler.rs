@@ -386,6 +386,12 @@ pub trait ModuleLoader {
         self.resolve(from_module, specifier)
     }
 
+    /// Supplies the owner's missing-module diagnostic mode without performing
+    /// a lookup or changing an authorized source identity.
+    fn resolution_error_typescript_code(&self, _message: &str) -> Option<u32> {
+        None
+    }
+
     /// Resolves a static path directive under the owner's ordinary root policy.
     fn resolve_reference_path(&self, from_module: &str, path: &str) -> Result<String, String> {
         let relative = if path.starts_with('.') || path.starts_with('/') || path.contains("://") {
