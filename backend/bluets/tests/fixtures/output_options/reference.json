@@ -3236,6 +3236,216 @@
         "emitSkipped": true,
         "files": []
       }
+    },
+    {
+      "id": "emitopt-commonjs-72",
+      "form": "removed-false",
+      "options": {
+        "preserveValueImports": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-73",
+      "form": "removed-remove",
+      "options": {
+        "importsNotUsedAsValues": "remove"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 13,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-commonjs-74",
+      "form": "removed-error",
+      "options": {
+        "importsNotUsedAsValues": "error"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [
+          {
+            "code": 5102,
+            "file": "tsconfig.json",
+            "start": 256,
+            "length": 24,
+            "message": "Option 'importsNotUsedAsValues' has been removed. Please remove it from your configuration.\n  Use 'verbatimModuleSyntax' instead."
+          }
+        ],
+        "emitSkipped": true,
+        "files": []
+      }
+    },
+    {
+      "id": "emitopt-esnext-75",
+      "form": "removed-false",
+      "options": {
+        "preserveValueImports": false
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-76",
+      "form": "removed-remove",
+      "options": {
+        "importsNotUsedAsValues": "remove"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "observation": {
+          "result": 42,
+          "text": "// literal /* retained */"
+        },
+        "javascript": {
+          "bom": false,
+          "crlf": 0,
+          "bareLF": 9,
+          "ordinaryComment": true,
+          "publicComment": true,
+          "internalComment": true,
+          "literalRetained": true,
+          "sourceMappingURL": "//# sourceMappingURL=main.js.map"
+        },
+        "declaration": "/** @internal */\nexport declare function hidden(): number;\n/** Public answer. */\nexport declare const result: number;\nexport declare const text: string;\n",
+        "sourceMap": {
+          "file": "main.js",
+          "sourceRoot": "",
+          "sources": [
+            "../main.ts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "emitopt-esnext-77",
+      "form": "removed-error",
+      "options": {
+        "importsNotUsedAsValues": "error"
+      },
+      "reference": {
+        "sources": {
+          "main.ts": "bb0dd52c3aec0d566a8a92a33d227bca9b8e8c3f5aad2c748151e8b144b45fc6"
+        },
+        "diagnostics": [
+          {
+            "code": 5102,
+            "file": "tsconfig.json",
+            "start": 254,
+            "length": 24,
+            "message": "Option 'importsNotUsedAsValues' has been removed. Please remove it from your configuration.\n  Use 'verbatimModuleSyntax' instead."
+          }
+        ],
+        "emitSkipped": true,
+        "files": []
+      }
     }
   ]
 }

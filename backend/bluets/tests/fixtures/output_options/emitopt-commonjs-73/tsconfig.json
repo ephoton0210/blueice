@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "strict": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "outDir": "out",
+    "lib": [
+      "ES2020"
+    ],
+    "importsNotUsedAsValues": "remove"
+  },
+  "files": [
+    "main.ts"
+  ]
+}

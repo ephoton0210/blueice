@@ -8289,3 +8289,18 @@ format and three-crate all-target Clippy. Completeness and the live native
 recorder pass; both public replays retain their expected failures (two
 pass/two fail). Production is unchanged. Evidence:
 `blueice-k73-baseline-third-{status,source-hashes}.json` and its logs.
+
+### K.7.3 removed-option value controls (2026-10-10)
+
+Pinned TypeScript accepts `preserveValueImports: false` and
+`importsNotUsedAsValues: "remove"`; true/preserve/error select TS5102.
+Six further CommonJS/ESNext controls expand the corpus to 78 configurations
+(72 accept, six reject), with all four additional accepted actual Node
+executions and exact declarations recorded before implementation.
+The immutable 7,607-file snapshot passes format, three-crate all-target
+Clippy, completeness and the live recorder. Both public replays retain
+the expected failures: 72 accepted configurations refused and six primary
+diagnostic differences. Production is unchanged; keep this supplement
+isolated and unpushed. Evidence: `blueice-k73-values-baseline-first-
+{status,source-hashes}.json`, exact logs and
+`blueice-k73-removed-option-values-native.json`. K.7.3 remains open.

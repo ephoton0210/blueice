@@ -70,3 +70,9 @@ emitopt-esnext-68/main.ts	accept
 emitopt-esnext-69/main.ts	accept
 emitopt-esnext-70/main.ts	reject
 emitopt-esnext-71/main.ts	reject
+emitopt-commonjs-72/main.ts	accept
+emitopt-commonjs-73/main.ts	accept
+emitopt-commonjs-74/main.ts	reject
+emitopt-esnext-75/main.ts	accept
+emitopt-esnext-76/main.ts	accept
+emitopt-esnext-77/main.ts	reject

@@ -50,8 +50,8 @@ fn copy_case(case: &Value, root: &Path) -> PathBuf {
 #[test]
 fn output_matrix_retains_every_native_configuration() {
     let cases = cases();
-    assert_eq!(cases.len(), 72);
-    assert_eq!(cases.iter().filter(|case| accepted(case)).count(), 68);
+    assert_eq!(cases.len(), 78);
+    assert_eq!(cases.iter().filter(|case| accepted(case)).count(), 72);
     let recorded: BTreeSet<_> = cases
         .iter()
         .map(|case| case["id"].as_str().unwrap().to_string())
@@ -63,7 +63,7 @@ fn output_matrix_retains_every_native_configuration() {
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
     assert_eq!(recorded, discovered);
-    assert_eq!(recorded.len(), 72);
+    assert_eq!(recorded.len(), 78);
     let matrix: String = cases
         .iter()
         .map(|case| {
