@@ -136,9 +136,9 @@ fn output_verdicts_and_removed_option_origins_match_typescript() {
             || actual["position"]["line"] != line
             || actual["position"]["column"] != column
             || actual["position"]["length"] != expected["length"]
-            || !actual["span"]["module"]
+            || actual["span"]["module"]
                 .as_str()
-                .is_some_and(|module| module.ends_with("/tsconfig.json"))
+                .is_none_or(|module| module.rsplit('/').next() != Some("tsconfig.json"))
         {
             failures.push(format!("{id}: primary diagnostic differs: {actual}"));
         }

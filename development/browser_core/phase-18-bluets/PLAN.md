@@ -8279,3 +8279,13 @@ Evidence: `blueice-k73-baseline-first-{status,source-hashes}.json`, its logs
 and `blueice-k73-blue-failing-baseline.json`. Commit this test-first
 baseline on the isolated branch, keep it unpushed, and wait for complete
 parent hosted CI before production implementation. K.7.3 remains open.
+
+### K.7.3 baseline origin normalization (2026-10-10)
+
+The public diagnostic API names config modules by basename, so the output
+option replay compares the normalized `tsconfig.json` name rather than
+requiring an absolute path. The third immutable 7,595-file baseline passes
+format and three-crate all-target Clippy. Completeness and the live native
+recorder pass; both public replays retain their expected failures (two
+pass/two fail). Production is unchanged. Evidence:
+`blueice-k73-baseline-third-{status,source-hashes}.json` and its logs.
