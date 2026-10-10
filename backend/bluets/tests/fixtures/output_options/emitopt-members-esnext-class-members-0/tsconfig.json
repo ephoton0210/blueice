@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": [
+      "ES2020"
+    ],
+    "strict": true,
+    "sourceMap": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "outDir": "out",
+    "newLine": "LF",
+    "removeComments": false,
+    "stripInternal": false
+  },
+  "files": [
+    "main.ts"
+  ]
+}
