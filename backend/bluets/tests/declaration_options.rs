@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! K.8.1 native declaration-option decisions and actual emitted-program observations.
+//! K.8.2 native declaration-option decisions and actual emitted-program observations.
 
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -99,7 +99,7 @@ fn declaration_options_matrix_retains_all_cartesian_configurations() {
         })
         .collect();
     assert_eq!(
-        fs::read_to_string(corpus().join("declaration-inference-checker-matrix.tsv"))
+        fs::read_to_string(corpus().join("declaration-options-checker-matrix.tsv"))
             .unwrap()
             .replace("\r\n", "\n"),
         matrix
