@@ -1,7 +1,7 @@
 # K.8.1 inferred declaration native references
 
-TypeScript 5.9.3 records 40 forms in CommonJS and ESNext: 80 configurations,
-73 accepts and seven exact export-assignment/const-position rejections. Every accepted actual
+TypeScript 5.9.3 records 42 forms in CommonJS and ESNext: 84 configurations,
+77 accepts and seven exact export-assignment/const-position rejections. Every accepted actual
 emitted JavaScript executes under Node. The corpus retains exact declarations,
 source hashes, primary diagnostics and execution observations without allowances.
 
@@ -27,3 +27,5 @@ aliases. Native rejects the latter with TS1277. Original 68 observations are
 unchanged; this supplement precedes parser support.
 
 Four explicit enum member assertion/annotation controls confirm that mutable arrays widen to the owning enum even when a member type is explicit. Original 76 native observations remain unchanged.
+
+Four lexical callable and ordered-overload controls retain regular literal returns. Original 80 native observations are unchanged; the public CLI reproduces four declaration differences before selection-aware correction.

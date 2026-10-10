@@ -78,3 +78,7 @@ dtsinfer-commonjs-e0/main.ts	accept
 dtsinfer-esnext-e0/main.ts	accept
 dtsinfer-commonjs-e1/main.ts	accept
 dtsinfer-esnext-e1/main.ts	accept
+dtsinfer-commonjs-s0/main.ts	accept
+dtsinfer-esnext-s0/main.ts	accept
+dtsinfer-commonjs-s1/main.ts	accept
+dtsinfer-esnext-s1/main.ts	accept
