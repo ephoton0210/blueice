@@ -282,6 +282,9 @@ impl Worker {
     }
 
     fn transact(&mut self, bytes: Vec<u8>, timeout: Duration) -> Result<Vec<u8>, RuntimeError> {
+        if timeout.is_zero() {
+            return Err(RuntimeError::RegexTimeout);
+        }
         ROUND_TRIPS.fetch_add(1, Ordering::Relaxed);
         self.requests
             .as_ref()
@@ -954,6 +957,19 @@ mod transport_failure_tests {
             input: None,
         };
         (worker, requests)
+    }
+
+    #[test]
+    fn zero_deadline_refuses_a_queued_reply_without_sending_work() {
+        let (mut worker, requests) = worker_replying(encode_reply(&Reply::Validated(Vec::new())));
+        assert_eq!(
+            worker.validate(Vec::new(), Duration::ZERO).unwrap_err(),
+            RuntimeError::RegexTimeout
+        );
+        assert!(matches!(
+            requests.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
     }
 
     #[test]

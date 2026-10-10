@@ -7763,6 +7763,89 @@ commit and integration; complete hosted workspace/platform/oracle/coverage
 CI must run on the pushed final source. K.7.2 is the next implementation leaf;
 K.7.2 through K.10 remain open.
 
+### K.7.1 complete CI storage correction (2026-10-10)
+
+The final-source workflow on `411a1a41c` (run 38015722230) establishes actual
+RHEL UBI 10 workspace results: 6,902 passes, zero failures and 191 ignored
+tests in 530 groups, followed by all three Intl Node differentials, Clippy
+and Rustfmt. The completed macOS oracle job passes all 187 ignored BlueTS/
+bridge tests in 122 groups. Other platform jobs continue to pass.
+
+The coverage runner fails with disk exhaustion before publishing a coverage
+result. Its exact check annotations report `System.IO.IOException: No space
+left on device` while writing the runner diagnostic log. The job log is
+unavailable after that failure; no coverage percentage or inner test failure
+is inferred. Preserve the annotation evidence in
+`blueice-k71-coverage-{failed-job,annotations,check}.json` under
+`/private/tmp/blueice-k14-linux`.
+
+Disable Cargo incremental output and dev/test debug information in the CI
+workflow to reduce artifact storage across all-target, oracle and instrumented
+builds. This changes neither debug assertions nor the explicit LLVM coverage
+commands. The workspace 90% and independent BlueJS 88% line gates and the four
+existing process-wiring exclusions remain unchanged. All 6,939 backend/Cargo
+file hashes still match the verified K.7.1 snapshot.
+
+Commit and push this CI configuration change, then run every workflow job on
+its final SHA. The previous disk-exhausted run is superseded; its completed
+workspace/oracle evidence remains available. K.7.1's leaf K.0 remains green;
+complete final-source hosted CI and K.7.2 through K.10 remain open.
+
+### K.7.1 Windows regex deadline failing replay (2026-10-10)
+
+The storage-corrected full workflow on `bfe6caeeb` (run 38019846154)
+passes both 187-test pinned oracle jobs and the Ubuntu 26.04 ARM64 workspace
+gate (6,902 passes, zero failures). Its Windows Server 2022 library tests
+expose two regex deadline failures: a zero-budget BMP matcher can accept an
+already queued response, and the classification fixture's literal parser
+can exceed the default operation budget during regex initialization.
+
+A deterministic transport regression queues a genuine encoded validation
+response before calling the worker with `Duration::ZERO`. The unchanged
+implementation wrongly returns that successful response; Linux replay fails
+with exit 101, zero passes and one failure. The regression also requires that
+zero-budget calls send no work. Commit this failing test separately before
+adding the transport guard. Keep the production default budget and all
+existing literal/getter classification checks; use an explicit finite budget
+for the fixture's real constructor initialization. Complete hosted CI remains
+pending; neither this failure nor the coverage job is reported as green.
+
+The frozen 7,071-file replay and its exact log are
+`blueice-k71-windows-red-first-{source-hashes,status}.json` and
+`blueice-k71-windows-red-first-zero-deadline-red.log` under
+`/private/tmp/blueice-k14-linux`. K.7.2 through K.10 remain open.
+
+### K.7.1 Windows regex deadline correction verified (2026-10-10)
+
+The isolated failing regression is committed as `88e54ac49`. Reject a zero
+transport deadline before incrementing the request counter or sending work;
+an already queued reply cannot turn an absent operation budget into success.
+Existing positive-budget transport and regex tests remain unchanged.
+
+The classification fixture constructs its real `RegExp('pattern')` through
+the public VM with an explicit five-second fixture budget before parsing the
+same pattern's literals. This validates and caches the real pattern, retains
+all primitive, literal, `Symbol.match` getter and throwing-getter assertions,
+and leaves the production 250 ms default and dedicated deadline tests intact.
+
+The frozen 7,071-file Linux gate passes Rustfmt, three-crate all-target Clippy
+with warnings denied, 4,111 ordinary BlueJS tests, all four ignored Node
+differentials, all three emitted-edition tests, 1,093 ordinary BlueTS/bridge
+tests and all 187 ignored pinned oracles. There are 5,395 unique passing
+tests and zero failures. All 6,939 backend/Cargo hashes match the validated
+snapshot; the worker is 1,011 lines, below the 1,200-line review threshold.
+Evidence is `blueice-k71-windows-fix-first-{source-hashes,status}.json`,
+the seven exact step logs and `blueice-k71-windows-fix-final-report.json`
+under `/private/tmp/blueice-k14-linux`.
+
+The previous full workflow on `bfe6caeeb` completes with 27 successful jobs
+and the known Windows Server 2022 failure plus its aggregate-gate failure.
+Its actual workspace line coverage is 94.68% (206,507 lines; 10,987 missed),
+and independent BlueJS is 99.30% (81,838 lines; 572 missed). Preserve the
+existing 90%/88% floors and exclusions. Commit and push this verified fix,
+then run the entire workflow on its final source; complete green hosted CI
+is still pending. K.7.2 through K.10 remain open.
+
 ### K.7.2 isolated module decision baseline (2026-10-10)
 
 Keep the complete K.7.1 hosted CI on unchanged `411a1a41c`. In the separate
