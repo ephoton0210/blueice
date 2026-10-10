@@ -7814,3 +7814,34 @@ The frozen 7,071-file replay and its exact log are
 `blueice-k71-windows-red-first-{source-hashes,status}.json` and
 `blueice-k71-windows-red-first-zero-deadline-red.log` under
 `/private/tmp/blueice-k14-linux`. K.7.2 through K.10 remain open.
+
+### K.7.1 Windows regex deadline correction verified (2026-10-10)
+
+The isolated failing regression is committed as `88e54ac49`. Reject a zero
+transport deadline before incrementing the request counter or sending work;
+an already queued reply cannot turn an absent operation budget into success.
+Existing positive-budget transport and regex tests remain unchanged.
+
+The classification fixture constructs its real `RegExp('pattern')` through
+the public VM with an explicit five-second fixture budget before parsing the
+same pattern's literals. This validates and caches the real pattern, retains
+all primitive, literal, `Symbol.match` getter and throwing-getter assertions,
+and leaves the production 250 ms default and dedicated deadline tests intact.
+
+The frozen 7,071-file Linux gate passes Rustfmt, three-crate all-target Clippy
+with warnings denied, 4,111 ordinary BlueJS tests, all four ignored Node
+differentials, all three emitted-edition tests, 1,093 ordinary BlueTS/bridge
+tests and all 187 ignored pinned oracles. There are 5,395 unique passing
+tests and zero failures. All 6,939 backend/Cargo hashes match the validated
+snapshot; the worker is 1,011 lines, below the 1,200-line review threshold.
+Evidence is `blueice-k71-windows-fix-first-{source-hashes,status}.json`,
+the seven exact step logs and `blueice-k71-windows-fix-final-report.json`
+under `/private/tmp/blueice-k14-linux`.
+
+The previous full workflow on `bfe6caeeb` completes with 27 successful jobs
+and the known Windows Server 2022 failure plus its aggregate-gate failure.
+Its actual workspace line coverage is 94.68% (206,507 lines; 10,987 missed),
+and independent BlueJS is 99.30% (81,838 lines; 572 missed). Preserve the
+existing 90%/88% floors and exclusions. Commit and push this verified fix,
+then run the entire workflow on its final source; complete green hosted CI
+is still pending. K.7.2 through K.10 remain open.

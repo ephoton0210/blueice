@@ -396,7 +396,15 @@ fn private_declarations_share_missing_name_errors_after_brand_validation() {
 
 #[cfg_attr(test, test)]
 fn regexp_classification_preserves_match_getters_and_primitive_results() {
-    let mut vm = Vm::default();
+    let mut vm = Vm::new(VmConfig {
+        regex_timeout: std::time::Duration::from_secs(5),
+        ..VmConfig::default()
+    })
+    .unwrap();
+    // Validate through the public constructor with the fixture's explicit
+    // budget before parsing the same pattern's literals below.
+    let constructed = execute(&mut vm, "new RegExp('pattern')");
+    assert_eq!(vm.is_regexp(&constructed), Ok(true));
     for source in [
         "undefined",
         "null",

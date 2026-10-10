@@ -18,8 +18,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: K.7.2 module systems (M9). K.7.1 completes its full K.0 gate;
-new final-source hosted CI is next. M8 workspace and complete hosted CI
+**Current leaf: K.7.2 module systems (M9). K.7.1 and its Windows regex
+deadline correction pass the full K.0 gate; corrected final-source hosted
+CI is next. M8 workspace and complete hosted CI
 are verified on `1f76ff28c`.** Sections A to J are complete (summarized below); J.6 closed in its
 measured form (`COMPATIBILITY_INVENTORY.md`). Section K closes the gaps that inventory lists.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit

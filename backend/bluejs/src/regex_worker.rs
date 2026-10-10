@@ -282,6 +282,9 @@ impl Worker {
     }
 
     fn transact(&mut self, bytes: Vec<u8>, timeout: Duration) -> Result<Vec<u8>, RuntimeError> {
+        if timeout.is_zero() {
+            return Err(RuntimeError::RegexTimeout);
+        }
         ROUND_TRIPS.fetch_add(1, Ordering::Relaxed);
         self.requests
             .as_ref()
