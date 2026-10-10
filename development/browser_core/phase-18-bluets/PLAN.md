@@ -8310,3 +8310,22 @@ isolated and unpushed. Evidence: `blueice-k73-values-baseline-first-
 Windows Git CRLF checkout changes the source offsets of the pinned module-system observations. Full CI on `ec5823ed4` finds 24 primary-origin differences; a Linux CRLF replay reproduces those same case IDs. Pin `tests/fixtures/module_systems/**` to LF, retaining compiler positions for the original input bytes. A forced `core.autocrlf=true` checkout preserves all 354 fixture byte sequences.
 
 The LF snapshot passes format, three-crate all-target Clippy and all six public module-system tests, including the complete pinned TypeScript recorder and Node/declaration replay. All 106 native configurations agree. The 7,314 backend/Cargo/workflow hashes match the complete CLI-split K.0 snapshot; no compiler code, fixture body, diagnostic expectation or coverage exclusion changes. Fresh final-source complete hosted CI remains required. Evidence is retained in `blueice-k72-windows-ci-green-{status,source-proof}.json` and `blueice-k72-windows-checkout-proof.json`.
+
+### K.7.3 option-validation failing supplement (2026-10-10)
+
+Eighteen original output-option controls measure missing-map dependencies,
+invalid option values, empty/false values, native command field-iteration
+flags and source-map command overrides. Pinned TypeScript 5.9.3 accepts
+eight configurations and rejects ten; native CLI exits and file inventories,
+primary diagnostic origins, and accepted actual Node executions and exact
+declarations are recorded. Configuration-type errors can publish native
+files despite `noEmitOnError`; the recorder retains this observed behavior.
+
+The current frozen public implementation differs in six cases: both native
+`downlevelIteration` command values, the three source-map dependencies,
+and the invalid `newLine` diagnostic counterpart. Commit this failing
+public replay separately before correcting production. Keep all existing
+uncommitted implementation changes out of this baseline commit. Evidence:
+`k73-output-validation-blue-baseline.json` and the reproducible
+`record_output_validation.cjs` with its pinned corpus. The earlier full
+K.0 gate and final-source parent hosted CI remain running.

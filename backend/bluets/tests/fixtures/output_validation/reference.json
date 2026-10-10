@@ -1,0 +1,500 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "emitvalid-downlevel-off",
+      "flags": [
+        "--downlevelIteration",
+        "false"
+      ],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "35d2b62c71528a46bcfca8ca5a34632b6533aad0a0b80cb641b2d73905ef2c03",
+          "flags.json": "71fa5860fa0e6f5a558c7b24a31add94b94ed4fd9cf7585d432081c8bbe54834"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 0,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "result": 42,
+        "declaration": "export declare const result: number;\n"
+      }
+    },
+    {
+      "id": "emitvalid-downlevel-on",
+      "flags": [
+        "--downlevelIteration",
+        "true"
+      ],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "35d2b62c71528a46bcfca8ca5a34632b6533aad0a0b80cb641b2d73905ef2c03",
+          "flags.json": "25b7c28abf9c01d1a442d5e1672ba0a729d70c60b069c778caa127cdc3a4dc1f"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 0,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "result": 42,
+        "declaration": "export declare const result: number;\n"
+      }
+    },
+    {
+      "id": "emitvalid-empty-map-root",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "8bd4e85e7df30d5bc8e4865c50fa3270a592e0a2cb6a11933df9182b9607bcdd",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 0,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "result": 42,
+        "declaration": "export declare const result: number;\n"
+      }
+    },
+    {
+      "id": "emitvalid-empty-source-root",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "dc191e4cafb9adcb318a613b89d510e2a2daef0475a4d6071bb230e871a61f0f",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 0,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "result": 42,
+        "declaration": "export declare const result: number;\n"
+      }
+    },
+    {
+      "id": "emitvalid-inline-map-override",
+      "flags": [
+        "--sourceMap",
+        "true"
+      ],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "b570e6be4d34b5b9308c4ccf5c75c1fccd1143789d359ba28f4d035cbf4a527b",
+          "flags.json": "64e916bea915fc52b50c5c281b68c9fd447be3fa1066a7ce85ed1bb40af1b1bc"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "cliExit": 0,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "result": 42,
+        "declaration": "export declare const result: number;\n"
+      }
+    },
+    {
+      "id": "emitvalid-inline-no-map",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "e596399a3732f1d008199ae7a4d55cfa0e0f1ccac431b35aa4951ac68bbbf04e",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 5051,
+            "file": "tsconfig.json",
+            "start": 207,
+            "length": 15,
+            "message": "Option 'inlineSources can only be used when either option '--inlineSourceMap' or option '--sourceMap' is provided."
+          }
+        ],
+        "emitSkipped": true,
+        "files": [],
+        "cliExit": 1,
+        "cliFiles": []
+      }
+    },
+    {
+      "id": "emitvalid-inline-off",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "c53d6811b87c15276fdf71bf139123ee318ab8216c9a876c5057bb3e911c2bde",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 0,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "result": 42,
+        "declaration": "export declare const result: number;\n"
+      }
+    },
+    {
+      "id": "emitvalid-invalid-bom",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "d687a04d5e574ee0bfaf761c646bddd48478c9f85c68eb945580578f97e3ac31",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 5024,
+            "file": "tsconfig.json",
+            "start": 218,
+            "length": 6,
+            "message": "Compiler option 'emitBOM' requires a value of type boolean."
+          }
+        ],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 2,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ]
+      }
+    },
+    {
+      "id": "emitvalid-invalid-comments",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "3be4aecf571db862847a1bdce1ecf9648e2b43dbef3560e564d50aa09c11e9e3",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 5024,
+            "file": "tsconfig.json",
+            "start": 225,
+            "length": 1,
+            "message": "Compiler option 'removeComments' requires a value of type boolean."
+          }
+        ],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 2,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ]
+      }
+    },
+    {
+      "id": "emitvalid-invalid-inline",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "7a16bde327da18f2649ca8c6e1b478584754af223ddc0315fddd0d26494ddf44",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 5024,
+            "file": "tsconfig.json",
+            "start": 224,
+            "length": 6,
+            "message": "Compiler option 'inlineSources' requires a value of type boolean."
+          }
+        ],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 2,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ]
+      }
+    },
+    {
+      "id": "emitvalid-invalid-map",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "ab03359a5253e8a41c01733364a00c56ffef76b62ff09aa31b7343d5ee760ab5",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 5024,
+            "file": "tsconfig.json",
+            "start": 218,
+            "length": 1,
+            "message": "Compiler option 'mapRoot' requires a value of type string."
+          }
+        ],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 2,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ]
+      }
+    },
+    {
+      "id": "emitvalid-invalid-newline",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "4f796bc04ab43d2e54e88db245299249f10bd526ef2c5910cceba9ef7185523a",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 6046,
+            "file": "tsconfig.json",
+            "start": 197,
+            "length": 7,
+            "message": "Argument for '--newLine' option must be: 'crlf', 'lf'."
+          }
+        ],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 2,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ]
+      }
+    },
+    {
+      "id": "emitvalid-invalid-root",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "10ee82180e009514743caaf997e42a21c9bfb47e2cbb1cbcf30366c0faf403ce",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 5024,
+            "file": "tsconfig.json",
+            "start": 221,
+            "length": 1,
+            "message": "Compiler option 'sourceRoot' requires a value of type string."
+          }
+        ],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 2,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ]
+      }
+    },
+    {
+      "id": "emitvalid-invalid-strip",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "c1e41344feca6bd355347d8407f7cf6447ca270ddf7ced4af82a1e18bb99fd3b",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 5024,
+            "file": "tsconfig.json",
+            "start": 224,
+            "length": 1,
+            "message": "Compiler option 'stripInternal' requires a value of type boolean."
+          }
+        ],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js"
+        ],
+        "cliExit": 2,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js"
+        ]
+      }
+    },
+    {
+      "id": "emitvalid-map-root-map-override",
+      "flags": [
+        "--sourceMap",
+        "true"
+      ],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "69f93f4f0f0c6cd3def8411f3bf7acc28eb478e6e018297864a2cefbd69c7014",
+          "flags.json": "64e916bea915fc52b50c5c281b68c9fd447be3fa1066a7ce85ed1bb40af1b1bc"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "cliExit": 0,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "result": 42,
+        "declaration": "export declare const result: number;\n"
+      }
+    },
+    {
+      "id": "emitvalid-map-root-no-map",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "b94603c4b2cdbd559c81b0424286b0f6876c22ca47da6352b650acd67c49cbc4",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 5069,
+            "file": "tsconfig.json",
+            "start": 207,
+            "length": 9,
+            "message": "Option 'mapRoot' cannot be specified without specifying option 'sourceMap' or option 'declarationMap'."
+          }
+        ],
+        "emitSkipped": true,
+        "files": [],
+        "cliExit": 1,
+        "cliFiles": []
+      }
+    },
+    {
+      "id": "emitvalid-source-root-map-override",
+      "flags": [
+        "--sourceMap",
+        "true"
+      ],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "9176ece6ec144b70ac8161ab158073cb24d5c6657b57decc40e9fc2d370a2d11",
+          "flags.json": "64e916bea915fc52b50c5c281b68c9fd447be3fa1066a7ce85ed1bb40af1b1bc"
+        },
+        "diagnostics": [],
+        "emitSkipped": false,
+        "files": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "cliExit": 0,
+        "cliFiles": [
+          "main.d.ts",
+          "main.js",
+          "main.js.map"
+        ],
+        "result": 42,
+        "declaration": "export declare const result: number;\n"
+      }
+    },
+    {
+      "id": "emitvalid-source-root-no-map",
+      "flags": [],
+      "reference": {
+        "sources": {
+          "main.ts": "ce1cf3a5a08e1fb3bea3733d45206d87d12071f8289b0376f95cb84453b66b1d",
+          "tsconfig.json": "8d8a27641cd14a03a9bc5e3cec2b67110bb86ef75e1a90a8dc5a8b4d4f25dd3a",
+          "flags.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        "diagnostics": [
+          {
+            "code": 5051,
+            "file": "tsconfig.json",
+            "start": 207,
+            "length": 12,
+            "message": "Option 'sourceRoot can only be used when either option '--inlineSourceMap' or option '--sourceMap' is provided."
+          }
+        ],
+        "emitSkipped": true,
+        "files": [],
+        "cliExit": 1,
+        "cliFiles": []
+      }
+    }
+  ]
+}
