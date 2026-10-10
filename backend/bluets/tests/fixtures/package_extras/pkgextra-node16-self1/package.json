@@ -1,0 +1,1 @@
+{"name": "@ice/self", "type": "module", "types": "self.d.ts", "exports": {"./feature": {"types": "./feature.d.ts", "default": "./feature.js"}}}
