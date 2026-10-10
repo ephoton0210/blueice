@@ -70,6 +70,42 @@ fn module_wrappers_keep_source_maps_and_distinct_artifact_identities() {
     assert_eq!(identities.len(), 4);
 }
 
+#[test]
+fn system_interop_policy_preserves_native_import_bindings() {
+    use blueice_bluets::{compile, CompilerOptions, MapLoader, ModuleKind, ModuleSource};
+    let id = "memory:///main.ts";
+    let loader = MapLoader::from([
+        ModuleSource::new(
+            id,
+            "import read from './dep.ts'; export const result: number = read();",
+        ),
+        ModuleSource::new(
+            "memory:///dep.ts",
+            "export default function read(): number { return 42; }",
+        ),
+    ]);
+    let outputs = [false, true].map(|interop| {
+        let compilation = compile(
+            id,
+            &loader,
+            CompilerOptions {
+                module_kind: ModuleKind::System,
+                es_module_interop: interop,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
+        compilation.output.unwrap()
+    });
+    assert_ne!(outputs[0].fingerprint, outputs[1].fingerprint);
+    for module in [id, "memory:///dep.ts"] {
+        assert_eq!(
+            outputs[0].artifacts[module].javascript,
+            outputs[1].artifacts[module].javascript
+        );
+    }
+}
+
 fn copy_project(source: &Path, destination: &Path) {
     fs::create_dir_all(destination).unwrap();
     for entry in fs::read_dir(source).unwrap() {
@@ -100,13 +136,14 @@ fn recorded_module_decisions_and_declarations_match_native_typescript() {
 #[test]
 fn module_matrix_retains_all_native_configurations() {
     let cases = cases();
-    assert_eq!(cases.len(), 100);
+    assert_eq!(cases.len(), 106);
     assert_eq!(cases.iter().filter(|case| accepts(case)).count(), 82);
     for (family, count) in [
         ("module", 3),
         ("per-file", 24),
         ("helper-options", 32),
         ("static-contexts", 41),
+        ("implicit-format", 6),
     ] {
         assert_eq!(
             cases.iter().filter(|case| case["family"] == family).count(),
@@ -125,7 +162,7 @@ fn module_matrix_retains_all_native_configurations() {
         .map(|case| case["id"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(recorded, discovered);
-    assert_eq!(recorded.len(), 100);
+    assert_eq!(recorded.len(), 106);
     let matrix: String = cases
         .iter()
         .map(|case| {

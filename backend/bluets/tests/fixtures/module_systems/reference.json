@@ -2626,6 +2626,126 @@
           ]
         }
       }
+    },
+    {
+      "id": "modemit-implicit-format-node16-ts-missing-helper",
+      "family": "implicit-format",
+      "entry": "main.ts",
+      "reference": {
+        "module": "Node16",
+        "sources": {
+          "main.ts": "dc5e4605b15899be147383252a668ce08661e9e7d6a43717060422008e8df78b"
+        },
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 232,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "modemit-implicit-format-node16-mts-missing-helper",
+      "family": "implicit-format",
+      "entry": "main.mts",
+      "reference": {
+        "module": "Node16",
+        "sources": {
+          "main.mts": "dc5e4605b15899be147383252a668ce08661e9e7d6a43717060422008e8df78b"
+        },
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 232,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.mts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "modemit-implicit-format-node16-cts-missing-helper",
+      "family": "implicit-format",
+      "entry": "main.cts",
+      "reference": {
+        "module": "Node16",
+        "sources": {
+          "main.cts": "dc5e4605b15899be147383252a668ce08661e9e7d6a43717060422008e8df78b"
+        },
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 232,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.cts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "modemit-implicit-format-nodenext-ts-missing-helper",
+      "family": "implicit-format",
+      "entry": "main.ts",
+      "reference": {
+        "module": "NodeNext",
+        "sources": {
+          "main.ts": "dc5e4605b15899be147383252a668ce08661e9e7d6a43717060422008e8df78b"
+        },
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 232,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "modemit-implicit-format-nodenext-mts-missing-helper",
+      "family": "implicit-format",
+      "entry": "main.mts",
+      "reference": {
+        "module": "NodeNext",
+        "sources": {
+          "main.mts": "dc5e4605b15899be147383252a668ce08661e9e7d6a43717060422008e8df78b"
+        },
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 232,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.mts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "modemit-implicit-format-nodenext-cts-missing-helper",
+      "family": "implicit-format",
+      "entry": "main.cts",
+      "reference": {
+        "module": "NodeNext",
+        "sources": {
+          "main.cts": "dc5e4605b15899be147383252a668ce08661e9e7d6a43717060422008e8df78b"
+        },
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 232,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.cts"
+          }
+        ]
+      }
     }
   ]
 }

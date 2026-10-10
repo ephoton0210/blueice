@@ -85,7 +85,7 @@ for (const item of reference.cases) {
         : {observation:item.reference.observation};
     assert.deepStrictEqual(actual, expectedObservation, `${item.id}: execution`);
 }
-assert.strictEqual(reference.cases.length, 100);
+assert.strictEqual(reference.cases.length, 106);
 assert.strictEqual(accepts, 82);
 const matrix = verdicts.join('');
 const matrixFile = path.join(corpus, 'module-systems-checker-matrix.tsv');
@@ -94,7 +94,7 @@ if (process.env.BLUEICE_WRITE_MODULE_SYSTEMS_MATRIX === '1') {
 } else {
     assert.strictEqual(fs.readFileSync(matrixFile, 'utf8').replaceAll('\r\n', '\n'), matrix);
 }
-process.stdout.write(JSON.stringify({typescript: ts.version, cases:100, accepts, rejects:18}) + '\n');
+process.stdout.write(JSON.stringify({typescript: ts.version, cases:106, accepts, rejects:24}) + '\n');
 }
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'bluets-native-modules-'));
 replay(temporary).catch(error => {console.error(error); process.exitCode = 1;})
