@@ -8010,3 +8010,25 @@ Commit the regression before charging only new unique resolution edges;
 retain the test requiring zero edge allowance to refuse publication. Evidence:
 `blueice-k72-helper-edge-red-status.json` and its exact log/source hashes.
 Production remains uncommitted and the whole module leaf remains open.
+
+
+### K.7.2 source-owned helper name failing replay (2026-10-10)
+
+Unique-edge accounting and the updated module CLI controls pass format,
+three-crate Clippy, all three helper policy tests, all sixteen CLI unit tests
+and all eleven CLI integration tests in the frozen 7,404-file first edge gate.
+The second complete ordinary two-crate replay passes 1,099 tests in 124 groups,
+with one failure confined to the recorded System/Node module decision gaps;
+all 189 ignored tests remain for the final full leaf gate. Evidence:
+`blueice-k72-helper-edge-first-report.json` and
+`blueice-k72-helper-ordinary-second-status.json`.
+
+A new source-name boundary control declares an ordinary function named
+`__blueice_target_owned`. The initial ABI audit misidentifies its definition
+as a generated helper. The frozen owned-name replay passes format and Clippy,
+then records three policy tests passing and this control failing, exit 101.
+Commit the control before retaining the source-owned definition names in the
+audit. Generated target helpers use fresh names absent from the source, so
+this distinction preserves the unsupported-ABI refusal. Evidence:
+`blueice-k72-helper-owned-red-status.json` and its exact source hashes/logs.
+The production draft remains isolated and uncommitted.

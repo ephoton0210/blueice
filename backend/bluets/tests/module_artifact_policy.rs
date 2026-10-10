@@ -185,3 +185,30 @@ fn repeated_inheritance_uses_one_authorized_helper_edge() {
         .iter()
         .any(|diagnostic| diagnostic.message.contains("edge limit")));
 }
+
+#[test]
+fn helper_policy_preserves_source_owned_function_names() {
+    use blueice_bluets::{
+        compile, CompilerOptions, EcmaTarget, MapLoader, ModuleKind, ModuleSource,
+    };
+    let id = "memory:///main.ts";
+    let loader = MapLoader::from([ModuleSource::new(
+        id,
+        "export function __blueice_target_owned(): number { return 42; }",
+    )]);
+    for (imports, omit) in [(true, false), (false, true), (true, true)] {
+        let result = compile(
+            id,
+            &loader,
+            CompilerOptions {
+                target: EcmaTarget::Es5,
+                module_kind: ModuleKind::CommonJs,
+                import_helpers: imports,
+                no_emit_helpers: omit,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!result.has_errors(), "{:?}", result.diagnostics);
+        assert!(result.output.is_some());
+    }
+}
