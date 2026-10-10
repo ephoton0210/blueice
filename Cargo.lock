@@ -179,6 +179,7 @@ version = "0.1.0"
 dependencies = [
  "blueice-bluejs",
  "blueice-bluets",
+ "serde_json",
 ]
 
 [[package]]
