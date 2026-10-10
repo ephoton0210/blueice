@@ -66,8 +66,8 @@ impl Drop for Temporary {
 #[test]
 fn declaration_inference_matrix_retains_all_cartesian_configurations() {
     let cases = cases();
-    assert_eq!(cases.len(), 68);
-    assert_eq!(cases.iter().filter(|case| accepted(case)).count(), 65);
+    assert_eq!(cases.len(), 76);
+    assert_eq!(cases.iter().filter(|case| accepted(case)).count(), 69);
     let recorded: BTreeSet<_> = cases
         .iter()
         .map(|case| case["id"].as_str().unwrap().to_string())
@@ -79,7 +79,7 @@ fn declaration_inference_matrix_retains_all_cartesian_configurations() {
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
     assert_eq!(recorded, discovered);
-    assert_eq!(recorded.len(), 68);
+    assert_eq!(recorded.len(), 76);
     let tuples: BTreeSet<_> = cases
         .iter()
         .map(|case| {
@@ -90,7 +90,7 @@ fn declaration_inference_matrix_retains_all_cartesian_configurations() {
             )
         })
         .collect();
-    assert_eq!(tuples.len(), 68);
+    assert_eq!(tuples.len(), 76);
     let matrix: String = cases
         .iter()
         .map(|case| {

@@ -8598,3 +8598,7 @@ Evidence: `blueice-k81-freshness-baseline-first-proof.json` and retained logs.
 Commit this test-only supplement before correcting array freshness, enum
 widening, const generic declarations and the remaining merged function member.
 All K.8.1 production work remains isolated/unpushed pending complete K.0.
+
+### K.8.1 const type-parameter position baseline (2026-10-11)
+
+Eight Native TypeScript controls distinguish legal const parameters on generic function and constructor types from illegal interface/generic alias parameters (exact TS1277). All 76 configurations retain 69 native actual executions and seven rejected primaries; original 68 observations remain unchanged. Before parser correction, format and three-crate all-target Clippy pass; the five-test public replay records three passes and two expected failures. Namespace symbols and merged export-assignment declarations now agree. Evidence: `blueice-k81-const-positions-baseline-proof.json`. Commit the test-only controls before parser correction. K.8.1 remains open pending full K.0.

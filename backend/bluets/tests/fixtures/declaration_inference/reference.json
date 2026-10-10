@@ -2315,6 +2315,274 @@
         "decorators": 0,
         "autoAccessors": 0
       }
+    },
+    {
+      "id": "dtsinfer-commonjs-c0",
+      "form": "c0",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "a8cdc7dcbde766f765c2985f467e35493b7ce4170cea254cd38fdb000bd1ba16"
+      },
+      "diagnostics": [
+        {
+          "code": 1277,
+          "file": "main.ts",
+          "start": 225,
+          "length": 5,
+          "message": "'const' modifier can only appear on a type parameter of a function, method or class"
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "declaration": null,
+      "observation": null,
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": null,
+      "typescriptParseErrors": []
+    },
+    {
+      "id": "dtsinfer-esnext-c0",
+      "form": "c0",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "a8cdc7dcbde766f765c2985f467e35493b7ce4170cea254cd38fdb000bd1ba16"
+      },
+      "diagnostics": [
+        {
+          "code": 1277,
+          "file": "main.ts",
+          "start": 225,
+          "length": 5,
+          "message": "'const' modifier can only appear on a type parameter of a function, method or class"
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "declaration": null,
+      "observation": null,
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": null,
+      "typescriptParseErrors": []
+    },
+    {
+      "id": "dtsinfer-commonjs-c1",
+      "form": "c1",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "63324ecfbb4f2dc3e07e561880d036fab80c3b53de45f55a074c74261eb02a81"
+      },
+      "diagnostics": [
+        {
+          "code": 1277,
+          "file": "main.ts",
+          "start": 220,
+          "length": 5,
+          "message": "'const' modifier can only appear on a type parameter of a function, method or class"
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "declaration": null,
+      "observation": null,
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": null,
+      "typescriptParseErrors": []
+    },
+    {
+      "id": "dtsinfer-esnext-c1",
+      "form": "c1",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "63324ecfbb4f2dc3e07e561880d036fab80c3b53de45f55a074c74261eb02a81"
+      },
+      "diagnostics": [
+        {
+          "code": 1277,
+          "file": "main.ts",
+          "start": 220,
+          "length": 5,
+          "message": "'const' modifier can only appear on a type parameter of a function, method or class"
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "declaration": null,
+      "observation": null,
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": null,
+      "typescriptParseErrors": []
+    },
+    {
+      "id": "dtsinfer-commonjs-c2",
+      "form": "c2",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "e18cc1d89625995b1525333a9c194c0a82202ad888e9f64306e7835eb012d235"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export type Fn = <const T>(answer: T) => T;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-c2",
+      "form": "c2",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "e18cc1d89625995b1525333a9c194c0a82202ad888e9f64306e7835eb012d235"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export type Fn = <const T>(answer: T) => T;\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-commonjs-c3",
+      "form": "c3",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "61d4fe0dc43e2a982313ee1e44eefb9487cdf156d0e0dbb8ab6daf3f5bb8c422"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export type Ctor = new <const T>(answer: T) => {\n    answer: T;\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
+    },
+    {
+      "id": "dtsinfer-esnext-c3",
+      "form": "c3",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "61d4fe0dc43e2a982313ee1e44eefb9487cdf156d0e0dbb8ab6daf3f5bb8c422"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "main.d.ts",
+        "main.js"
+      ],
+      "declaration": "export type Ctor = new <const T>(answer: T) => {\n    answer: T;\n};\nexport declare const result: number[];\n",
+      "observation": [
+        42
+      ],
+      "runtimeError": null,
+      "syntaxError": null,
+      "javascript": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+      "typescriptParseErrors": [],
+      "proposalFeatures": {
+        "decorators": 0,
+        "autoAccessors": 0
+      }
     }
   ]
 }

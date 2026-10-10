@@ -66,3 +66,11 @@ dtsinfer-commonjs-r6/main.ts	accept
 dtsinfer-esnext-r6/main.ts	accept
 dtsinfer-commonjs-r7/main.ts	accept
 dtsinfer-esnext-r7/main.ts	accept
+dtsinfer-commonjs-c0/main.ts	reject
+dtsinfer-esnext-c0/main.ts	reject
+dtsinfer-commonjs-c1/main.ts	reject
+dtsinfer-esnext-c1/main.ts	reject
+dtsinfer-commonjs-c2/main.ts	accept
+dtsinfer-esnext-c2/main.ts	accept
+dtsinfer-commonjs-c3/main.ts	accept
+dtsinfer-esnext-c3/main.ts	accept
