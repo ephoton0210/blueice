@@ -15,6 +15,20 @@ impl ModuleChecker<'_> {
         alias: bool,
     ) {
         for parameter in parameters {
+            if parameter.is_const {
+                let span = SourceSpan::new(
+                    &parameter.span.module,
+                    parameter.span.start,
+                    parameter.span.start + "const".len(),
+                );
+                self.typescript_type_error(
+                    &span,
+                    "const type parameters require a function, method or class".into(),
+                    DiagnosticCode::TypeMismatch,
+                    1277,
+                    vec!["const".into()],
+                );
+            }
             let Some(variance) = parameter.variance else {
                 continue;
             };

@@ -887,6 +887,7 @@ pub enum FunctionElseBranch {
 /// from emitted JavaScript together with the parameter list itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeParameter {
+    pub is_const: bool,
     pub variance: Option<Variance>,
     pub name: String,
     pub constraint: Option<Type>,

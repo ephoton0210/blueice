@@ -6,6 +6,8 @@
 
 use super::*;
 
+mod elements;
+
 impl<'a> ModuleChecker<'a> {
     /// The type of `tokens` where an expression of type `expected` is
     /// required. A tuple literal takes its element positions from a tuple
@@ -297,24 +299,17 @@ impl<'a> ModuleChecker<'a> {
     }
 
     pub(super) fn infer_array(&self, tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
-        let mut values = Vec::new();
-        let mut start = 1usize;
-        let mut depth = 0usize;
-        for index in 1..tokens.len() {
-            match tokens[index].text.as_str() {
-                "[" | "(" | "{" => depth += 1,
-                "]" | ")" | "}" if depth > 0 => depth -= 1,
-                "," if depth == 0 => {
-                    if start < index {
-                        values.push(self.infer_array_element(&tokens[start..index], scope));
-                    }
-                    start = index + 1;
-                }
-                _ => {}
-            }
-        }
-        if start + 1 < tokens.len() {
-            values.push(self.infer_array_element(&tokens[start..tokens.len() - 1], scope));
+        let pieces = Self::literal_elements(tokens).unwrap_or_default();
+        let mut values: Vec<_> = pieces
+            .iter()
+            .filter(|piece| !piece.is_empty())
+            .map(|piece| self.infer_array_element(piece, scope))
+            .collect();
+        if pieces.iter().all(|piece| {
+            piece.first().is_some_and(|token| token.is("{"))
+                && piece.last().is_some_and(|token| token.is("}"))
+        }) {
+            elements::complete_object_union(&mut values);
         }
         let mut unique = Vec::new();
         for value in values {
@@ -322,6 +317,13 @@ impl<'a> ModuleChecker<'a> {
                 unique.push(value);
             }
         }
+        let broad = unique.clone();
+        unique.retain(|value| {
+            !matches!(value, Type::Literal(_))
+                || !broad.contains(&crate::checker::module::return_inference::widen(
+                    value.clone(),
+                ))
+        });
         let values = unique;
         let Some(first) = values.first().cloned() else {
             return Type::Array(Box::new(Type::Unknown));
@@ -345,6 +347,7 @@ impl<'a> ModuleChecker<'a> {
                 &mut budget,
             );
         }
-        self.infer_expression(tokens, scope)
+        let value = self.infer_expression(tokens, scope);
+        self.array_element_type(tokens, scope, value)
     }
 }

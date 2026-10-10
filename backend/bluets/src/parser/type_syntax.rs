@@ -97,6 +97,7 @@ impl Parser {
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(">") {
             let start = self.current().start;
+            let is_const = self.consume("const");
             let variance = if self.consume("in") {
                 Some(if self.consume("out") {
                     Variance::InOut
@@ -117,6 +118,7 @@ impl Parser {
                 .then(|| self.parse_type_until(&[",", ">"]));
             let end = self.previous().end;
             parameters.push(TypeParameter {
+                is_const,
                 variance,
                 name,
                 constraint,

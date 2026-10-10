@@ -13,7 +13,7 @@ pub(super) struct Context<'a> {
     module: &'a Module,
     project: &'a Project,
     used_imports: BTreeSet<String>,
-    variables: BTreeMap<String, (String, bool)>,
+    variables: BTreeMap<usize, (String, bool)>,
     value_types: BTreeMap<String, Type>,
     return_types: BTreeMap<usize, String>,
     parameter_types: BTreeMap<usize, String>,
@@ -49,7 +49,7 @@ impl<'a> Context<'a> {
             parameter_types: BTreeMap::new(),
             private_aliases: BTreeMap::new(),
         };
-        for declaration in &module.declarations {
+        for (declaration, _) in super::runtime_declarations(&module.declarations) {
             let Declaration::Variable(variable) = declaration else {
                 continue;
             };
@@ -69,7 +69,6 @@ impl<'a> Context<'a> {
                 .iter()
                 .find(|symbol| {
                     symbol.kind == crate::checker::SymbolKind::Variable
-                        && symbol.name == variable.name
                         && symbol.span == variable.span
                 })
                 .and_then(|symbol| symbol.value_type.as_ref())
@@ -79,6 +78,7 @@ impl<'a> Context<'a> {
                 &checked.class_expression_surfaces,
                 &variable.span,
             )?;
+            let expanded = super::inferred_returns::canonical(&expanded);
             let value = &expanded;
             let value = if variable.kind == VariableKind::Const
                 && matches!(value, Type::Named { name, arguments } if name == "symbol" && arguments.is_empty())
@@ -95,11 +95,11 @@ impl<'a> Context<'a> {
                 checked
                     .symbols
                     .iter()
-                    .find(|symbol| symbol.name == variable.name)
+                    .find(|symbol| symbol.span == variable.span)
                     .and_then(|symbol| symbol.value_type.as_ref()),
                 Some(Type::Literal(_))
             );
-            let primitive = matches!(checked.symbols.iter().find(|symbol| symbol.name == variable.name)
+            let primitive = matches!(checked.symbols.iter().find(|symbol| symbol.span == variable.span)
                 .and_then(|symbol| symbol.value_type.as_ref()), Some(Type::Literal(text))
                     if text.starts_with(['\'', '"', '`']) || text.parse::<f64>().is_ok() || matches!(text.as_str(), "true" | "false"));
             let initializer = variable.kind == VariableKind::Const
@@ -110,10 +110,10 @@ impl<'a> Context<'a> {
                     || fresh_variable(module, variable, project, &mut BTreeSet::new(), 0));
             context
                 .variables
-                .insert(variable.name.clone(), (value, initializer));
+                .insert(variable.span.start, (value, initializer));
         }
         // Value imports also appear in annotations, class heritage and signatures.
-        for declaration in &module.declarations {
+        for (declaration, _) in super::runtime_declarations(&module.declarations) {
             match declaration {
                 Declaration::TypeAlias(alias) if alias.exported => {
                     context.references(&alias.value);
@@ -262,8 +262,8 @@ impl<'a> Context<'a> {
         self.private_aliases.get(name).map(String::as_str)
     }
 
-    pub(super) fn variable(&self, name: &str) -> Option<&(String, bool)> {
-        self.variables.get(name)
+    pub(super) fn variable(&self, variable: &VariableDeclaration) -> Option<&(String, bool)> {
+        self.variables.get(&variable.span.start)
     }
 
     /// A broad computed method name is represented as a function-valued property.
@@ -615,6 +615,7 @@ impl<'a> Context<'a> {
                     }
                 )
             }
+            Type::Readonly(inner) => format!("readonly {}", self.render(inner, indent, span)?),
             Type::Tuple(elements) => {
                 let mut members = Vec::new();
                 for element in elements {
@@ -635,7 +636,17 @@ impl<'a> Context<'a> {
                 }
                 format!("[{}]", members.join(", "))
             }
-            Type::Function { parameters, result } => {
+            Type::Function { parameters, result }
+            | Type::GenericFunction {
+                parameters, result, ..
+            } => {
+                let mut binders = String::new();
+                if let Type::GenericFunction {
+                    type_parameters, ..
+                } = value
+                {
+                    emit_type_parameters(&mut binders, type_parameters);
+                }
                 let mut members = Vec::new();
                 for parameter in parameters {
                     let annotation = self.render(
@@ -651,7 +662,7 @@ impl<'a> Context<'a> {
                     ));
                 }
                 format!(
-                    "({}) => {}",
+                    "{binders}({}) => {}",
                     members.join(", "),
                     self.render(result, indent, span)?
                 )

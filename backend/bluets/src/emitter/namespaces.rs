@@ -32,6 +32,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::enums::{enum_statement, spread_lines, template_substitutions, EnumPlacement};
+use super::inferred_declarations;
 use super::{Module, TextEdit};
 use crate::compiler::CompilerOptions;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
@@ -554,6 +555,8 @@ pub(super) fn emit_namespace_declaration(
     module: &Module,
     namespace: &NamespaceDeclaration,
     prefix: &str,
+    symbols: &[crate::checker::Symbol],
+    inferred: Option<&inferred_declarations::Context<'_>>,
     options: &CompilerOptions,
 ) -> Result<String, Diagnostic> {
     // `A.B.C` is one declaration with a dotted name.
@@ -567,7 +570,7 @@ pub(super) fn emit_namespace_declaration(
         name.push_str(&inner.name);
         current = inner;
     }
-    let body = render_namespace_body(module, current, options)?;
+    let body = render_namespace_body(module, current, symbols, inferred, options)?;
     let mut output = format!("{prefix}namespace {name} {{");
     if body.is_empty() {
         output.push_str(" }\n");
@@ -640,6 +643,8 @@ fn words(text: &str) -> BTreeSet<String> {
 fn render_namespace_body(
     module: &Module,
     namespace: &NamespaceDeclaration,
+    symbols: &[crate::checker::Symbol],
+    inferred: Option<&inferred_declarations::Context<'_>>,
     options: &CompilerOptions,
 ) -> Result<String, Diagnostic> {
     let body = &namespace.body;
@@ -650,7 +655,15 @@ fn render_namespace_body(
     let mut hidden: BTreeSet<usize> = BTreeSet::new();
     // A member that is not exported is printed when a printed member names it.
     loop {
-        let text = render_members(module, namespace, &included, &hidden, false, options)?;
+        let text = render_members(
+            module,
+            namespace,
+            &included,
+            &hidden,
+            false,
+            (symbols, inferred),
+            options,
+        )?;
         let mentioned = words(&text);
         let mut changed = false;
         for (index, declaration) in body.iter().enumerate() {
@@ -677,7 +690,15 @@ fn render_namespace_body(
         }
     }
     let explicit = !hidden.is_empty();
-    let mut text = render_members(module, namespace, &included, &hidden, explicit, options)?;
+    let mut text = render_members(
+        module,
+        namespace,
+        &included,
+        &hidden,
+        explicit,
+        (symbols, inferred),
+        options,
+    )?;
     if explicit {
         text.push_str("    export {};\n");
     }
@@ -692,6 +713,10 @@ fn render_members(
     included: &[bool],
     hidden: &BTreeSet<usize>,
     explicit: bool,
+    facts: (
+        &[crate::checker::Symbol],
+        Option<&inferred_declarations::Context<'_>>,
+    ),
     options: &CompilerOptions,
 ) -> Result<String, Diagnostic> {
     let mut output = String::new();
@@ -716,7 +741,7 @@ fn render_members(
                 expression_variable_types: BTreeMap::new(),
                 type_assertions: BTreeMap::new(),
             };
-            let text = super::emit_declaration(&synthetic, &[], None, options)?;
+            let text = super::emit_declaration(&synthetic, facts.0, facts.1, options)?;
             let hidden_names: BTreeSet<&str> = chunk
                 .iter()
                 .filter(|(index, _)| hidden.contains(index))
@@ -772,7 +797,8 @@ fn render_members(
                 } else {
                     ""
                 };
-                let text = emit_namespace_declaration(module, inner, prefix, options)?;
+                let text =
+                    emit_namespace_declaration(module, inner, prefix, facts.0, facts.1, options)?;
                 for line in text.lines() {
                     output.push_str(&format!("    {line}\n"));
                 }
