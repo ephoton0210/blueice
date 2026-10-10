@@ -8032,3 +8032,24 @@ audit. Generated target helpers use fresh names absent from the source, so
 this distinction preserves the unsupported-ABI refusal. Evidence:
 `blueice-k72-helper-owned-red-status.json` and its exact source hashes/logs.
 The production draft remains isolated and uncommitted.
+
+
+### K.7.2 script/module helper distinction failing replay (2026-10-10)
+
+The original-name ABI correction passes format, Clippy, all four helper
+policy regressions and all 27 CLI tests in the frozen 7,404-file gate.
+The native script probe adds twelve independently recorded CommonJS/AMD/UMD
+helper configurations. TypeScript 5.9.3 accepts all twelve, ignores imported
+helper selection in a script, emits no module wrapper or provider edge, and
+preserves the observable global result. Exact native declarations and all
+checker verdicts are retained beside the reproducible recorder.
+
+The frozen 7,408-file script replay passes format, three-crate Clippy and
+the live native recorder. Its public compiler test fails with TS2354 because
+script inheritance wrongly attempts to resolve `tslib`: one pass, one failure,
+exit 101. Commit this native/failing replay before distinguishing retained
+external modules from scripts in helper resolution and wrapper emission.
+Non-exported script declaration breadth remains a separately recorded K.8
+concern; this replay asserts actual JavaScript/global observations. Evidence:
+`blueice-k72-script-helper-red-second-status.json` and its exact hashes/logs.
+The complete module leaf remains open and production remains isolated.

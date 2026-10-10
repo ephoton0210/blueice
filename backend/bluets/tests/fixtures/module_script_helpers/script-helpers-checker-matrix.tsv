@@ -1,0 +1,12 @@
+modscript-commonjs-inline-emit/main.ts	accept
+modscript-commonjs-inline-omit/main.ts	accept
+modscript-commonjs-import-emit/main.ts	accept
+modscript-commonjs-import-omit/main.ts	accept
+modscript-amd-inline-emit/main.ts	accept
+modscript-amd-inline-omit/main.ts	accept
+modscript-amd-import-emit/main.ts	accept
+modscript-amd-import-omit/main.ts	accept
+modscript-umd-inline-emit/main.ts	accept
+modscript-umd-inline-omit/main.ts	accept
+modscript-umd-import-emit/main.ts	accept
+modscript-umd-import-omit/main.ts	accept
