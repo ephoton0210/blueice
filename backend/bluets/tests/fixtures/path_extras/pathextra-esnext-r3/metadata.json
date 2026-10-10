@@ -1,0 +1,24 @@
+{
+  "id": "pathextra-esnext-r3",
+  "form": "r3",
+  "entry": "src/main.ts",
+  "rootFiles": [
+    "src/main.ts"
+  ],
+  "runtimeModule": "ESNext",
+  "options": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "rootDirs": [
+      "src",
+      "generated"
+    ]
+  }
+}

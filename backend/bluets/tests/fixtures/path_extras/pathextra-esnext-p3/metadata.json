@@ -1,0 +1,29 @@
+{
+  "id": "pathextra-esnext-p3",
+  "form": "p3",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "ESNext",
+  "options": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "baseUrl": ".",
+    "paths": {
+      "*": [
+        "wrong/*.d.ts"
+      ],
+      "answer": [
+        "types/answer.d.ts"
+      ]
+    }
+  }
+}
