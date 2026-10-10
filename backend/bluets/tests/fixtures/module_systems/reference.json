@@ -1,0 +1,2497 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "modemit-module-amd",
+      "family": "module",
+      "entry": "main.ts",
+      "reference": {
+        "module": "AMD",
+        "diagnostics": [],
+        "observations": [
+          {
+            "before": 20,
+            "result": [
+              42,
+              42,
+              42,
+              20,
+              true
+            ]
+          }
+        ],
+        "declarations": {
+          "dep.d.ts": "export declare let current: number;\nexport declare function bump(): void;\nexport declare function unbound(this: unknown): boolean;\nexport default function base(): number;\n",
+          "barrel.d.ts": "export { current as forwarded } from \"./dep\";\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: (number | boolean)[];\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-module-umd",
+      "family": "module",
+      "entry": "main.ts",
+      "reference": {
+        "module": "UMD",
+        "diagnostics": [],
+        "observations": [
+          {
+            "before": 20,
+            "result": [
+              42,
+              42,
+              42,
+              20,
+              true
+            ]
+          },
+          {
+            "before": 20,
+            "result": [
+              42,
+              42,
+              42,
+              20,
+              true
+            ]
+          }
+        ],
+        "declarations": {
+          "dep.d.ts": "export declare let current: number;\nexport declare function bump(): void;\nexport declare function unbound(this: unknown): boolean;\nexport default function base(): number;\n",
+          "barrel.d.ts": "export { current as forwarded } from \"./dep\";\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: (number | boolean)[];\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-module-system",
+      "family": "module",
+      "entry": "main.ts",
+      "reference": {
+        "module": "System",
+        "diagnostics": [],
+        "observations": [
+          {
+            "before": 20,
+            "result": [
+              42,
+              42,
+              42,
+              20,
+              false
+            ]
+          }
+        ],
+        "declarations": {
+          "dep.d.ts": "export declare let current: number;\nexport declare function bump(): void;\nexport declare function unbound(this: unknown): boolean;\nexport default function base(): number;\n",
+          "barrel.d.ts": "export { current as forwarded } from \"./dep\";\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: (number | boolean)[];\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-ts-ts-commonjs-rewrite",
+      "family": "per-file",
+      "entry": "main.ts",
+      "reference": {
+        "id": "Node16-ts-ts-commonjs-rewrite",
+        "module": "Node16",
+        "mainExtension": "ts",
+        "dependencyExtension": "ts",
+        "packageType": "commonjs",
+        "verbatim": false,
+        "sources": {
+          "dep.ts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.ts": "378af27a6bb0ec4bcef0acd63cecacd4e4e8a87f5430b67643101f2e1112bb6e"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.ts",
+          "dep.js",
+          "main.d.ts",
+          "main.js"
+        ],
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\n",
+          "main.d.ts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-ts-ts-commonjs-verbatim",
+      "family": "per-file",
+      "entry": "main.ts",
+      "reference": {
+        "id": "Node16-ts-ts-commonjs-verbatim",
+        "module": "Node16",
+        "mainExtension": "ts",
+        "dependencyExtension": "ts",
+        "packageType": "commonjs",
+        "verbatim": true,
+        "sources": {
+          "dep.ts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.ts": "378af27a6bb0ec4bcef0acd63cecacd4e4e8a87f5430b67643101f2e1112bb6e"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1287,
+            "file": "dep.ts",
+            "start": 204,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          },
+          {
+            "code": 1295,
+            "file": "main.ts",
+            "start": 264,
+            "length": 5,
+            "message": "ECMAScript imports and exports cannot be written in a CommonJS file under 'verbatimModuleSyntax'. Adjust the 'type' field in the nearest 'package.json' to make this file an ECMAScript module, or adjust your 'verbatimModuleSyntax', 'module', and 'moduleResolution' settings in TypeScript."
+          },
+          {
+            "code": 1287,
+            "file": "main.ts",
+            "start": 288,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          }
+        ],
+        "stdout": null,
+        "files": [],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-ts-ts-module-rewrite",
+      "family": "per-file",
+      "entry": "main.ts",
+      "reference": {
+        "id": "Node16-ts-ts-module-rewrite",
+        "module": "Node16",
+        "mainExtension": "ts",
+        "dependencyExtension": "ts",
+        "packageType": "module",
+        "verbatim": false,
+        "sources": {
+          "dep.ts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.ts": "378af27a6bb0ec4bcef0acd63cecacd4e4e8a87f5430b67643101f2e1112bb6e"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.ts",
+          "dep.js",
+          "main.d.ts",
+          "main.js"
+        ],
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\n",
+          "main.d.ts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-ts-ts-module-verbatim",
+      "family": "per-file",
+      "entry": "main.ts",
+      "reference": {
+        "id": "Node16-ts-ts-module-verbatim",
+        "module": "Node16",
+        "mainExtension": "ts",
+        "dependencyExtension": "ts",
+        "packageType": "module",
+        "verbatim": true,
+        "sources": {
+          "dep.ts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.ts": "378af27a6bb0ec4bcef0acd63cecacd4e4e8a87f5430b67643101f2e1112bb6e"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.ts",
+          "dep.js",
+          "main.d.ts",
+          "main.js"
+        ],
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\n",
+          "main.d.ts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-mts-mts-commonjs-rewrite",
+      "family": "per-file",
+      "entry": "main.mts",
+      "reference": {
+        "id": "Node16-mts-mts-commonjs-rewrite",
+        "module": "Node16",
+        "mainExtension": "mts",
+        "dependencyExtension": "mts",
+        "packageType": "commonjs",
+        "verbatim": false,
+        "sources": {
+          "dep.mts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.mts": "d2673cd635ca12e00f8c71eef3041e98d08c8881f44a756b8d1e1845508a7dab"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.mts",
+          "dep.mjs",
+          "main.d.mts",
+          "main.mjs"
+        ],
+        "declarations": {
+          "dep.d.mts": "export declare const value = 42;\n",
+          "main.d.mts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-mts-mts-commonjs-verbatim",
+      "family": "per-file",
+      "entry": "main.mts",
+      "reference": {
+        "id": "Node16-mts-mts-commonjs-verbatim",
+        "module": "Node16",
+        "mainExtension": "mts",
+        "dependencyExtension": "mts",
+        "packageType": "commonjs",
+        "verbatim": true,
+        "sources": {
+          "dep.mts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.mts": "d2673cd635ca12e00f8c71eef3041e98d08c8881f44a756b8d1e1845508a7dab"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.mts",
+          "dep.mjs",
+          "main.d.mts",
+          "main.mjs"
+        ],
+        "declarations": {
+          "dep.d.mts": "export declare const value = 42;\n",
+          "main.d.mts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-cts-cts-module-rewrite",
+      "family": "per-file",
+      "entry": "main.cts",
+      "reference": {
+        "id": "Node16-cts-cts-module-rewrite",
+        "module": "Node16",
+        "mainExtension": "cts",
+        "dependencyExtension": "cts",
+        "packageType": "module",
+        "verbatim": false,
+        "sources": {
+          "dep.cts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.cts": "48791f27665603932cd5a252d1d6c869b53eb7f7aabda305995b0b26a7911ab9"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.cjs",
+          "dep.d.cts",
+          "main.cjs",
+          "main.d.cts"
+        ],
+        "declarations": {
+          "dep.d.cts": "export declare const value = 42;\n",
+          "main.d.cts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-cts-cts-module-verbatim",
+      "family": "per-file",
+      "entry": "main.cts",
+      "reference": {
+        "id": "Node16-cts-cts-module-verbatim",
+        "module": "Node16",
+        "mainExtension": "cts",
+        "dependencyExtension": "cts",
+        "packageType": "module",
+        "verbatim": true,
+        "sources": {
+          "dep.cts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.cts": "48791f27665603932cd5a252d1d6c869b53eb7f7aabda305995b0b26a7911ab9"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1287,
+            "file": "dep.cts",
+            "start": 204,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          },
+          {
+            "code": 1286,
+            "file": "main.cts",
+            "start": 264,
+            "length": 5,
+            "message": "ECMAScript imports and exports cannot be written in a CommonJS file under 'verbatimModuleSyntax'."
+          },
+          {
+            "code": 1287,
+            "file": "main.cts",
+            "start": 289,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          }
+        ],
+        "stdout": null,
+        "files": [],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-mts-cts-module-rewrite",
+      "family": "per-file",
+      "entry": "main.mts",
+      "reference": {
+        "id": "Node16-mts-cts-module-rewrite",
+        "module": "Node16",
+        "mainExtension": "mts",
+        "dependencyExtension": "cts",
+        "packageType": "module",
+        "verbatim": false,
+        "sources": {
+          "dep.cts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.mts": "48791f27665603932cd5a252d1d6c869b53eb7f7aabda305995b0b26a7911ab9"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.cjs",
+          "dep.d.cts",
+          "main.d.mts",
+          "main.mjs"
+        ],
+        "declarations": {
+          "dep.d.cts": "export declare const value = 42;\n",
+          "main.d.mts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-mts-cts-module-verbatim",
+      "family": "per-file",
+      "entry": "main.mts",
+      "reference": {
+        "id": "Node16-mts-cts-module-verbatim",
+        "module": "Node16",
+        "mainExtension": "mts",
+        "dependencyExtension": "cts",
+        "packageType": "module",
+        "verbatim": true,
+        "sources": {
+          "dep.cts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.mts": "48791f27665603932cd5a252d1d6c869b53eb7f7aabda305995b0b26a7911ab9"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1287,
+            "file": "dep.cts",
+            "start": 204,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          }
+        ],
+        "stdout": null,
+        "files": [],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-cts-mts-commonjs-rewrite",
+      "family": "per-file",
+      "entry": "main.cts",
+      "reference": {
+        "id": "Node16-cts-mts-commonjs-rewrite",
+        "module": "Node16",
+        "mainExtension": "cts",
+        "dependencyExtension": "mts",
+        "packageType": "commonjs",
+        "verbatim": false,
+        "sources": {
+          "dep.mts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.cts": "d2673cd635ca12e00f8c71eef3041e98d08c8881f44a756b8d1e1845508a7dab"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1479,
+            "file": "main.cts",
+            "start": 276,
+            "length": 11,
+            "message": "The current file is a CommonJS module whose imports will produce 'require' calls; however, the referenced file is an ECMAScript module and cannot be imported with 'require'. Consider writing a dynamic 'import(\"./dep.mjs\")' call instead."
+          }
+        ],
+        "stdout": null,
+        "files": [],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-per-file-node16-cts-mts-commonjs-verbatim",
+      "family": "per-file",
+      "entry": "main.cts",
+      "reference": {
+        "id": "Node16-cts-mts-commonjs-verbatim",
+        "module": "Node16",
+        "mainExtension": "cts",
+        "dependencyExtension": "mts",
+        "packageType": "commonjs",
+        "verbatim": true,
+        "sources": {
+          "dep.mts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.cts": "d2673cd635ca12e00f8c71eef3041e98d08c8881f44a756b8d1e1845508a7dab"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1286,
+            "file": "main.cts",
+            "start": 264,
+            "length": 5,
+            "message": "ECMAScript imports and exports cannot be written in a CommonJS file under 'verbatimModuleSyntax'."
+          },
+          {
+            "code": 1479,
+            "file": "main.cts",
+            "start": 276,
+            "length": 11,
+            "message": "The current file is a CommonJS module whose imports will produce 'require' calls; however, the referenced file is an ECMAScript module and cannot be imported with 'require'. Consider writing a dynamic 'import(\"./dep.mjs\")' call instead."
+          },
+          {
+            "code": 1287,
+            "file": "main.cts",
+            "start": 289,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          }
+        ],
+        "stdout": null,
+        "files": [],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-ts-ts-commonjs-rewrite",
+      "family": "per-file",
+      "entry": "main.ts",
+      "reference": {
+        "id": "NodeNext-ts-ts-commonjs-rewrite",
+        "module": "NodeNext",
+        "mainExtension": "ts",
+        "dependencyExtension": "ts",
+        "packageType": "commonjs",
+        "verbatim": false,
+        "sources": {
+          "dep.ts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.ts": "378af27a6bb0ec4bcef0acd63cecacd4e4e8a87f5430b67643101f2e1112bb6e"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.ts",
+          "dep.js",
+          "main.d.ts",
+          "main.js"
+        ],
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\n",
+          "main.d.ts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-ts-ts-commonjs-verbatim",
+      "family": "per-file",
+      "entry": "main.ts",
+      "reference": {
+        "id": "NodeNext-ts-ts-commonjs-verbatim",
+        "module": "NodeNext",
+        "mainExtension": "ts",
+        "dependencyExtension": "ts",
+        "packageType": "commonjs",
+        "verbatim": true,
+        "sources": {
+          "dep.ts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.ts": "378af27a6bb0ec4bcef0acd63cecacd4e4e8a87f5430b67643101f2e1112bb6e"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1287,
+            "file": "dep.ts",
+            "start": 204,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          },
+          {
+            "code": 1295,
+            "file": "main.ts",
+            "start": 264,
+            "length": 5,
+            "message": "ECMAScript imports and exports cannot be written in a CommonJS file under 'verbatimModuleSyntax'. Adjust the 'type' field in the nearest 'package.json' to make this file an ECMAScript module, or adjust your 'verbatimModuleSyntax', 'module', and 'moduleResolution' settings in TypeScript."
+          },
+          {
+            "code": 1287,
+            "file": "main.ts",
+            "start": 288,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          }
+        ],
+        "stdout": null,
+        "files": [],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-ts-ts-module-rewrite",
+      "family": "per-file",
+      "entry": "main.ts",
+      "reference": {
+        "id": "NodeNext-ts-ts-module-rewrite",
+        "module": "NodeNext",
+        "mainExtension": "ts",
+        "dependencyExtension": "ts",
+        "packageType": "module",
+        "verbatim": false,
+        "sources": {
+          "dep.ts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.ts": "378af27a6bb0ec4bcef0acd63cecacd4e4e8a87f5430b67643101f2e1112bb6e"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.ts",
+          "dep.js",
+          "main.d.ts",
+          "main.js"
+        ],
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\n",
+          "main.d.ts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-ts-ts-module-verbatim",
+      "family": "per-file",
+      "entry": "main.ts",
+      "reference": {
+        "id": "NodeNext-ts-ts-module-verbatim",
+        "module": "NodeNext",
+        "mainExtension": "ts",
+        "dependencyExtension": "ts",
+        "packageType": "module",
+        "verbatim": true,
+        "sources": {
+          "dep.ts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.ts": "378af27a6bb0ec4bcef0acd63cecacd4e4e8a87f5430b67643101f2e1112bb6e"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.ts",
+          "dep.js",
+          "main.d.ts",
+          "main.js"
+        ],
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\n",
+          "main.d.ts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-mts-mts-commonjs-rewrite",
+      "family": "per-file",
+      "entry": "main.mts",
+      "reference": {
+        "id": "NodeNext-mts-mts-commonjs-rewrite",
+        "module": "NodeNext",
+        "mainExtension": "mts",
+        "dependencyExtension": "mts",
+        "packageType": "commonjs",
+        "verbatim": false,
+        "sources": {
+          "dep.mts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.mts": "d2673cd635ca12e00f8c71eef3041e98d08c8881f44a756b8d1e1845508a7dab"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.mts",
+          "dep.mjs",
+          "main.d.mts",
+          "main.mjs"
+        ],
+        "declarations": {
+          "dep.d.mts": "export declare const value = 42;\n",
+          "main.d.mts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-mts-mts-commonjs-verbatim",
+      "family": "per-file",
+      "entry": "main.mts",
+      "reference": {
+        "id": "NodeNext-mts-mts-commonjs-verbatim",
+        "module": "NodeNext",
+        "mainExtension": "mts",
+        "dependencyExtension": "mts",
+        "packageType": "commonjs",
+        "verbatim": true,
+        "sources": {
+          "dep.mts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.mts": "d2673cd635ca12e00f8c71eef3041e98d08c8881f44a756b8d1e1845508a7dab"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.mts",
+          "dep.mjs",
+          "main.d.mts",
+          "main.mjs"
+        ],
+        "declarations": {
+          "dep.d.mts": "export declare const value = 42;\n",
+          "main.d.mts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-cts-cts-module-rewrite",
+      "family": "per-file",
+      "entry": "main.cts",
+      "reference": {
+        "id": "NodeNext-cts-cts-module-rewrite",
+        "module": "NodeNext",
+        "mainExtension": "cts",
+        "dependencyExtension": "cts",
+        "packageType": "module",
+        "verbatim": false,
+        "sources": {
+          "dep.cts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.cts": "48791f27665603932cd5a252d1d6c869b53eb7f7aabda305995b0b26a7911ab9"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.cjs",
+          "dep.d.cts",
+          "main.cjs",
+          "main.d.cts"
+        ],
+        "declarations": {
+          "dep.d.cts": "export declare const value = 42;\n",
+          "main.d.cts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-cts-cts-module-verbatim",
+      "family": "per-file",
+      "entry": "main.cts",
+      "reference": {
+        "id": "NodeNext-cts-cts-module-verbatim",
+        "module": "NodeNext",
+        "mainExtension": "cts",
+        "dependencyExtension": "cts",
+        "packageType": "module",
+        "verbatim": true,
+        "sources": {
+          "dep.cts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.cts": "48791f27665603932cd5a252d1d6c869b53eb7f7aabda305995b0b26a7911ab9"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1287,
+            "file": "dep.cts",
+            "start": 204,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          },
+          {
+            "code": 1286,
+            "file": "main.cts",
+            "start": 264,
+            "length": 5,
+            "message": "ECMAScript imports and exports cannot be written in a CommonJS file under 'verbatimModuleSyntax'."
+          },
+          {
+            "code": 1287,
+            "file": "main.cts",
+            "start": 289,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          }
+        ],
+        "stdout": null,
+        "files": [],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-mts-cts-module-rewrite",
+      "family": "per-file",
+      "entry": "main.mts",
+      "reference": {
+        "id": "NodeNext-mts-cts-module-rewrite",
+        "module": "NodeNext",
+        "mainExtension": "mts",
+        "dependencyExtension": "cts",
+        "packageType": "module",
+        "verbatim": false,
+        "sources": {
+          "dep.cts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.mts": "48791f27665603932cd5a252d1d6c869b53eb7f7aabda305995b0b26a7911ab9"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.cjs",
+          "dep.d.cts",
+          "main.d.mts",
+          "main.mjs"
+        ],
+        "declarations": {
+          "dep.d.cts": "export declare const value = 42;\n",
+          "main.d.mts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-mts-cts-module-verbatim",
+      "family": "per-file",
+      "entry": "main.mts",
+      "reference": {
+        "id": "NodeNext-mts-cts-module-verbatim",
+        "module": "NodeNext",
+        "mainExtension": "mts",
+        "dependencyExtension": "cts",
+        "packageType": "module",
+        "verbatim": true,
+        "sources": {
+          "dep.cts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.mts": "48791f27665603932cd5a252d1d6c869b53eb7f7aabda305995b0b26a7911ab9"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1287,
+            "file": "dep.cts",
+            "start": 204,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          }
+        ],
+        "stdout": null,
+        "files": [],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-cts-mts-commonjs-rewrite",
+      "family": "per-file",
+      "entry": "main.cts",
+      "reference": {
+        "id": "NodeNext-cts-mts-commonjs-rewrite",
+        "module": "NodeNext",
+        "mainExtension": "cts",
+        "dependencyExtension": "mts",
+        "packageType": "commonjs",
+        "verbatim": false,
+        "sources": {
+          "dep.mts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.cts": "d2673cd635ca12e00f8c71eef3041e98d08c8881f44a756b8d1e1845508a7dab"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "stdout": "42\n",
+        "files": [
+          "dep.d.mts",
+          "dep.mjs",
+          "main.cjs",
+          "main.d.cts"
+        ],
+        "declarations": {
+          "dep.d.mts": "export declare const value = 42;\n",
+          "main.d.cts": "export declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-per-file-nodenext-cts-mts-commonjs-verbatim",
+      "family": "per-file",
+      "entry": "main.cts",
+      "reference": {
+        "id": "NodeNext-cts-mts-commonjs-verbatim",
+        "module": "NodeNext",
+        "mainExtension": "cts",
+        "dependencyExtension": "mts",
+        "packageType": "commonjs",
+        "verbatim": true,
+        "sources": {
+          "dep.mts": "dc3af217bec038c3692ea944d9cc008bc3562d57befa82dc32a7c9791425d246",
+          "main.cts": "d2673cd635ca12e00f8c71eef3041e98d08c8881f44a756b8d1e1845508a7dab"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1286,
+            "file": "main.cts",
+            "start": 264,
+            "length": 5,
+            "message": "ECMAScript imports and exports cannot be written in a CommonJS file under 'verbatimModuleSyntax'."
+          },
+          {
+            "code": 1287,
+            "file": "main.cts",
+            "start": 289,
+            "length": 6,
+            "message": "A top-level 'export' modifier cannot be used on value declarations in a CommonJS module when 'verbatimModuleSyntax' is enabled."
+          }
+        ],
+        "stdout": null,
+        "files": [],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-helper-options-commonjs-inline-emit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-inline-emit-absent",
+        "module": "CommonJS",
+        "importHelpers": false,
+        "noEmitHelpers": false,
+        "provider": false,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-commonjs-inline-emit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-inline-emit-provider",
+        "module": "CommonJS",
+        "importHelpers": false,
+        "noEmitHelpers": false,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-commonjs-inline-omit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-inline-omit-absent",
+        "module": "CommonJS",
+        "importHelpers": false,
+        "noEmitHelpers": true,
+        "provider": false,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": {
+          "name": "ReferenceError",
+          "message": "__extends is not defined"
+        },
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-commonjs-inline-omit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-inline-omit-provider",
+        "module": "CommonJS",
+        "importHelpers": false,
+        "noEmitHelpers": true,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": {
+          "name": "ReferenceError",
+          "message": "__extends is not defined"
+        },
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-commonjs-import-emit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-import-emit-absent",
+        "module": "CommonJS",
+        "importHelpers": true,
+        "noEmitHelpers": false,
+        "provider": false,
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 306,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found."
+          }
+        ],
+        "observation": null,
+        "missingGlobal": null,
+        "importsRuntime": null,
+        "declaration": null
+      }
+    },
+    {
+      "id": "modemit-helper-options-commonjs-import-emit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-import-emit-provider",
+        "module": "CommonJS",
+        "importHelpers": true,
+        "noEmitHelpers": false,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": true,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-commonjs-import-omit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-import-omit-absent",
+        "module": "CommonJS",
+        "importHelpers": true,
+        "noEmitHelpers": true,
+        "provider": false,
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 306,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found."
+          }
+        ],
+        "observation": null,
+        "missingGlobal": null,
+        "importsRuntime": null,
+        "declaration": null
+      }
+    },
+    {
+      "id": "modemit-helper-options-commonjs-import-omit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-import-omit-provider",
+        "module": "CommonJS",
+        "importHelpers": true,
+        "noEmitHelpers": true,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": true,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-amd-inline-emit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-inline-emit-absent",
+        "module": "AMD",
+        "importHelpers": false,
+        "noEmitHelpers": false,
+        "provider": false,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-amd-inline-emit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-inline-emit-provider",
+        "module": "AMD",
+        "importHelpers": false,
+        "noEmitHelpers": false,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-amd-inline-omit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-inline-omit-absent",
+        "module": "AMD",
+        "importHelpers": false,
+        "noEmitHelpers": true,
+        "provider": false,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": {
+          "name": "ReferenceError",
+          "message": "__extends is not defined"
+        },
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-amd-inline-omit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-inline-omit-provider",
+        "module": "AMD",
+        "importHelpers": false,
+        "noEmitHelpers": true,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": {
+          "name": "ReferenceError",
+          "message": "__extends is not defined"
+        },
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-amd-import-emit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-import-emit-absent",
+        "module": "AMD",
+        "importHelpers": true,
+        "noEmitHelpers": false,
+        "provider": false,
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 306,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found."
+          }
+        ],
+        "observation": null,
+        "missingGlobal": null,
+        "importsRuntime": null,
+        "declaration": null
+      }
+    },
+    {
+      "id": "modemit-helper-options-amd-import-emit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-import-emit-provider",
+        "module": "AMD",
+        "importHelpers": true,
+        "noEmitHelpers": false,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": true,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-amd-import-omit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-import-omit-absent",
+        "module": "AMD",
+        "importHelpers": true,
+        "noEmitHelpers": true,
+        "provider": false,
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 306,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found."
+          }
+        ],
+        "observation": null,
+        "missingGlobal": null,
+        "importsRuntime": null,
+        "declaration": null
+      }
+    },
+    {
+      "id": "modemit-helper-options-amd-import-omit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-import-omit-provider",
+        "module": "AMD",
+        "importHelpers": true,
+        "noEmitHelpers": true,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": true,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-umd-inline-emit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-inline-emit-absent",
+        "module": "UMD",
+        "importHelpers": false,
+        "noEmitHelpers": false,
+        "provider": false,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-umd-inline-emit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-inline-emit-provider",
+        "module": "UMD",
+        "importHelpers": false,
+        "noEmitHelpers": false,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-umd-inline-omit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-inline-omit-absent",
+        "module": "UMD",
+        "importHelpers": false,
+        "noEmitHelpers": true,
+        "provider": false,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": {
+          "name": "ReferenceError",
+          "message": "__extends is not defined"
+        },
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-umd-inline-omit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-inline-omit-provider",
+        "module": "UMD",
+        "importHelpers": false,
+        "noEmitHelpers": true,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": {
+          "name": "ReferenceError",
+          "message": "__extends is not defined"
+        },
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-umd-import-emit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-import-emit-absent",
+        "module": "UMD",
+        "importHelpers": true,
+        "noEmitHelpers": false,
+        "provider": false,
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 306,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found."
+          }
+        ],
+        "observation": null,
+        "missingGlobal": null,
+        "importsRuntime": null,
+        "declaration": null
+      }
+    },
+    {
+      "id": "modemit-helper-options-umd-import-emit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-import-emit-provider",
+        "module": "UMD",
+        "importHelpers": true,
+        "noEmitHelpers": false,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": true,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-umd-import-omit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-import-omit-absent",
+        "module": "UMD",
+        "importHelpers": true,
+        "noEmitHelpers": true,
+        "provider": false,
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 306,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found."
+          }
+        ],
+        "observation": null,
+        "missingGlobal": null,
+        "importsRuntime": null,
+        "declaration": null
+      }
+    },
+    {
+      "id": "modemit-helper-options-umd-import-omit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-import-omit-provider",
+        "module": "UMD",
+        "importHelpers": true,
+        "noEmitHelpers": true,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": true,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-system-inline-emit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-inline-emit-absent",
+        "module": "System",
+        "importHelpers": false,
+        "noEmitHelpers": false,
+        "provider": false,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-system-inline-emit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-inline-emit-provider",
+        "module": "System",
+        "importHelpers": false,
+        "noEmitHelpers": false,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-system-inline-omit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-inline-omit-absent",
+        "module": "System",
+        "importHelpers": false,
+        "noEmitHelpers": true,
+        "provider": false,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": {
+          "name": "ReferenceError",
+          "message": "__extends is not defined"
+        },
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-system-inline-omit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-inline-omit-provider",
+        "module": "System",
+        "importHelpers": false,
+        "noEmitHelpers": true,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": {
+          "name": "ReferenceError",
+          "message": "__extends is not defined"
+        },
+        "importsRuntime": false,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-system-import-emit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-import-emit-absent",
+        "module": "System",
+        "importHelpers": true,
+        "noEmitHelpers": false,
+        "provider": false,
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 306,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found."
+          }
+        ],
+        "observation": null,
+        "missingGlobal": null,
+        "importsRuntime": null,
+        "declaration": null
+      }
+    },
+    {
+      "id": "modemit-helper-options-system-import-emit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-import-emit-provider",
+        "module": "System",
+        "importHelpers": true,
+        "noEmitHelpers": false,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": true,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-helper-options-system-import-omit-absent",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-import-omit-absent",
+        "module": "System",
+        "importHelpers": true,
+        "noEmitHelpers": true,
+        "provider": false,
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "start": 306,
+            "length": 12,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found."
+          }
+        ],
+        "observation": null,
+        "missingGlobal": null,
+        "importsRuntime": null,
+        "declaration": null
+      }
+    },
+    {
+      "id": "modemit-helper-options-system-import-omit-provider",
+      "family": "helper-options",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-import-omit-provider",
+        "module": "System",
+        "importHelpers": true,
+        "noEmitHelpers": true,
+        "provider": true,
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "instanceValue": 42,
+          "constructorIdentity": true
+        },
+        "missingGlobal": null,
+        "importsRuntime": true,
+        "declaration": "declare class Base {\n    value: number;\n    constructor(value: number);\n}\nexport declare class Derived extends Base {\n    constructor();\n}\nexport declare const result: number;\nexport {};\n"
+      }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-live-import",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-live-import",
+        "module": "CommonJS",
+        "form": "live-import",
+        "sources": {
+          "dep.ts": "674eb2d73146c6ad5589a27451c48160f21e5eeb8945cb69074f500bd414a21a",
+          "main.ts": "851afb1c0a719bfb779e7f5fbd2b07a8d92aacf13c5a4ec1584048bc5132a154"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "before": 20
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-snapshot-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-snapshot-default",
+        "module": "CommonJS",
+        "form": "snapshot-default",
+        "sources": {
+          "main.ts": "955be4e505812d8fc728fa96a24319c907e93e72e2f10881da2ccd4fc7bbdd64"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": 20
+        },
+        "declarations": {
+          "main.d.ts": "declare let value: number;\nexport default value;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-live-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-live-default",
+        "module": "CommonJS",
+        "form": "live-default",
+        "sources": {
+          "main.ts": "258e208aa67f2dadecd3410e14731d0602d6023b5846f0303a05720a3c6d57d6"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": 42
+        },
+        "declarations": {
+          "main.d.ts": "declare let value: number;\nexport { value as default };\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-anonymous-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-anonymous-default",
+        "module": "CommonJS",
+        "form": "anonymous-default",
+        "sources": {
+          "main.ts": "7ad22456b22f24f88b3b0016c3e30d23914a13638efea30a0bb64a4f4af96801"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": {
+            "name": "default_1",
+            "value": 42
+          }
+        },
+        "declarations": {
+          "main.d.ts": "export default function (): number;\nexport declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-star-reexport",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-star-reexport",
+        "module": "CommonJS",
+        "form": "star-reexport",
+        "sources": {
+          "dep.ts": "674eb2d73146c6ad5589a27451c48160f21e5eeb8945cb69074f500bd414a21a",
+          "barrel.ts": "bf687ca0e44b0bf567f43c22b2ec7542b10fb2f57fa7f08b7fcd84620f7d3bd6",
+          "main.ts": "abb3e507053d12d2fbf2bb86f07642679894ac8ec386cf9611830e71e1276559"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "before": 20
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\n",
+          "barrel.d.ts": "export * from \"./dep\";\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-type-elision",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-type-elision",
+        "module": "CommonJS",
+        "form": "type-elision",
+        "sources": {
+          "dep.ts": "b6a0184afcc172bd1d753d4740cc1a5ef739c4e5ebcfb4e2e7eb33fea83d4149",
+          "main.ts": "c4201fb585aa0a2f5ef61d13563bd60b22790c1d9cee2a1369b9858106dca1ee"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export interface Box {\n    value: number;\n}\nexport declare const value = 42;\n",
+          "main.d.ts": "import type { Box } from \"./dep\";\nexport declare const boxed: Box;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-require-assignment",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-require-assignment",
+        "module": "CommonJS",
+        "form": "require-assignment",
+        "sources": {
+          "dep.ts": "88412b10b869ea11b2c978f384ae218a73751cbdbcaa8b7bb02b36c4b84081c7",
+          "main.ts": "738a76670146fcaf4ccde508c195f27f1ac60998d6002e27ecfc53b2899d04d5"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "declare function read(): number;\nexport = read;\n",
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-cycle",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-cycle",
+        "module": "CommonJS",
+        "form": "cycle",
+        "sources": {
+          "dep.ts": "e5b579512936776ab80441995d88951dd2e14bac54b5d04d8a84568be0ff09ff",
+          "main.ts": "3617028f6ea4e52426639e79f7201be48ccbf358ab9550170df46f99c36697ea"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\nexport declare function read(): number;\n",
+          "main.d.ts": "export declare function own(): number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-commonjs-side-effect-order",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "CommonJS-side-effect-order",
+        "module": "CommonJS",
+        "form": "side-effect-order",
+        "sources": {
+          "dep.ts": "5d14019d6c5e428d243edd9767d920d75903050a220bbc217f87a4fb5669c6e4",
+          "side.ts": "6573c54013ca1cdc187f37e36fa59f2ad715388d5094cf70a50637ef30d3f305",
+          "main.ts": "d433700bdd89ca916146a2a11015ae84b2d9d506d9e6692fe4772b5b4166796c"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\nexport declare function read(): number;\n",
+          "side.d.ts": "export {};\n",
+          "main.d.ts": "import \"./side\";\nimport \"./side\";\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-live-import",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-live-import",
+        "module": "AMD",
+        "form": "live-import",
+        "sources": {
+          "dep.ts": "674eb2d73146c6ad5589a27451c48160f21e5eeb8945cb69074f500bd414a21a",
+          "main.ts": "851afb1c0a719bfb779e7f5fbd2b07a8d92aacf13c5a4ec1584048bc5132a154"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "before": 20
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-snapshot-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-snapshot-default",
+        "module": "AMD",
+        "form": "snapshot-default",
+        "sources": {
+          "main.ts": "955be4e505812d8fc728fa96a24319c907e93e72e2f10881da2ccd4fc7bbdd64"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": 20
+        },
+        "declarations": {
+          "main.d.ts": "declare let value: number;\nexport default value;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-live-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-live-default",
+        "module": "AMD",
+        "form": "live-default",
+        "sources": {
+          "main.ts": "258e208aa67f2dadecd3410e14731d0602d6023b5846f0303a05720a3c6d57d6"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": 42
+        },
+        "declarations": {
+          "main.d.ts": "declare let value: number;\nexport { value as default };\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-anonymous-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-anonymous-default",
+        "module": "AMD",
+        "form": "anonymous-default",
+        "sources": {
+          "main.ts": "7ad22456b22f24f88b3b0016c3e30d23914a13638efea30a0bb64a4f4af96801"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": {
+            "name": "default_1",
+            "value": 42
+          }
+        },
+        "declarations": {
+          "main.d.ts": "export default function (): number;\nexport declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-star-reexport",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-star-reexport",
+        "module": "AMD",
+        "form": "star-reexport",
+        "sources": {
+          "dep.ts": "674eb2d73146c6ad5589a27451c48160f21e5eeb8945cb69074f500bd414a21a",
+          "barrel.ts": "bf687ca0e44b0bf567f43c22b2ec7542b10fb2f57fa7f08b7fcd84620f7d3bd6",
+          "main.ts": "abb3e507053d12d2fbf2bb86f07642679894ac8ec386cf9611830e71e1276559"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "before": 20
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\n",
+          "barrel.d.ts": "export * from \"./dep\";\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-type-elision",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-type-elision",
+        "module": "AMD",
+        "form": "type-elision",
+        "sources": {
+          "dep.ts": "b6a0184afcc172bd1d753d4740cc1a5ef739c4e5ebcfb4e2e7eb33fea83d4149",
+          "main.ts": "c4201fb585aa0a2f5ef61d13563bd60b22790c1d9cee2a1369b9858106dca1ee"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export interface Box {\n    value: number;\n}\nexport declare const value = 42;\n",
+          "main.d.ts": "import type { Box } from \"./dep\";\nexport declare const boxed: Box;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-require-assignment",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-require-assignment",
+        "module": "AMD",
+        "form": "require-assignment",
+        "sources": {
+          "dep.ts": "88412b10b869ea11b2c978f384ae218a73751cbdbcaa8b7bb02b36c4b84081c7",
+          "main.ts": "738a76670146fcaf4ccde508c195f27f1ac60998d6002e27ecfc53b2899d04d5"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "declare function read(): number;\nexport = read;\n",
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-cycle",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-cycle",
+        "module": "AMD",
+        "form": "cycle",
+        "sources": {
+          "dep.ts": "e5b579512936776ab80441995d88951dd2e14bac54b5d04d8a84568be0ff09ff",
+          "main.ts": "3617028f6ea4e52426639e79f7201be48ccbf358ab9550170df46f99c36697ea"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\nexport declare function read(): number;\n",
+          "main.d.ts": "export declare function own(): number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-amd-side-effect-order",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "AMD-side-effect-order",
+        "module": "AMD",
+        "form": "side-effect-order",
+        "sources": {
+          "dep.ts": "5d14019d6c5e428d243edd9767d920d75903050a220bbc217f87a4fb5669c6e4",
+          "side.ts": "6573c54013ca1cdc187f37e36fa59f2ad715388d5094cf70a50637ef30d3f305",
+          "main.ts": "d433700bdd89ca916146a2a11015ae84b2d9d506d9e6692fe4772b5b4166796c"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\nexport declare function read(): number;\n",
+          "side.d.ts": "export {};\n",
+          "main.d.ts": "import \"./side\";\nimport \"./side\";\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-live-import",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-live-import",
+        "module": "UMD",
+        "form": "live-import",
+        "sources": {
+          "dep.ts": "674eb2d73146c6ad5589a27451c48160f21e5eeb8945cb69074f500bd414a21a",
+          "main.ts": "851afb1c0a719bfb779e7f5fbd2b07a8d92aacf13c5a4ec1584048bc5132a154"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "before": 20
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-snapshot-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-snapshot-default",
+        "module": "UMD",
+        "form": "snapshot-default",
+        "sources": {
+          "main.ts": "955be4e505812d8fc728fa96a24319c907e93e72e2f10881da2ccd4fc7bbdd64"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": 20
+        },
+        "declarations": {
+          "main.d.ts": "declare let value: number;\nexport default value;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-live-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-live-default",
+        "module": "UMD",
+        "form": "live-default",
+        "sources": {
+          "main.ts": "258e208aa67f2dadecd3410e14731d0602d6023b5846f0303a05720a3c6d57d6"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": 42
+        },
+        "declarations": {
+          "main.d.ts": "declare let value: number;\nexport { value as default };\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-anonymous-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-anonymous-default",
+        "module": "UMD",
+        "form": "anonymous-default",
+        "sources": {
+          "main.ts": "7ad22456b22f24f88b3b0016c3e30d23914a13638efea30a0bb64a4f4af96801"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": {
+            "name": "default_1",
+            "value": 42
+          }
+        },
+        "declarations": {
+          "main.d.ts": "export default function (): number;\nexport declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-star-reexport",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-star-reexport",
+        "module": "UMD",
+        "form": "star-reexport",
+        "sources": {
+          "dep.ts": "674eb2d73146c6ad5589a27451c48160f21e5eeb8945cb69074f500bd414a21a",
+          "barrel.ts": "bf687ca0e44b0bf567f43c22b2ec7542b10fb2f57fa7f08b7fcd84620f7d3bd6",
+          "main.ts": "abb3e507053d12d2fbf2bb86f07642679894ac8ec386cf9611830e71e1276559"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "before": 20
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\n",
+          "barrel.d.ts": "export * from \"./dep\";\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-type-elision",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-type-elision",
+        "module": "UMD",
+        "form": "type-elision",
+        "sources": {
+          "dep.ts": "b6a0184afcc172bd1d753d4740cc1a5ef739c4e5ebcfb4e2e7eb33fea83d4149",
+          "main.ts": "c4201fb585aa0a2f5ef61d13563bd60b22790c1d9cee2a1369b9858106dca1ee"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export interface Box {\n    value: number;\n}\nexport declare const value = 42;\n",
+          "main.d.ts": "import type { Box } from \"./dep\";\nexport declare const boxed: Box;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-require-assignment",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-require-assignment",
+        "module": "UMD",
+        "form": "require-assignment",
+        "sources": {
+          "dep.ts": "88412b10b869ea11b2c978f384ae218a73751cbdbcaa8b7bb02b36c4b84081c7",
+          "main.ts": "738a76670146fcaf4ccde508c195f27f1ac60998d6002e27ecfc53b2899d04d5"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "declare function read(): number;\nexport = read;\n",
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-cycle",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-cycle",
+        "module": "UMD",
+        "form": "cycle",
+        "sources": {
+          "dep.ts": "e5b579512936776ab80441995d88951dd2e14bac54b5d04d8a84568be0ff09ff",
+          "main.ts": "3617028f6ea4e52426639e79f7201be48ccbf358ab9550170df46f99c36697ea"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\nexport declare function read(): number;\n",
+          "main.d.ts": "export declare function own(): number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-umd-side-effect-order",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "UMD-side-effect-order",
+        "module": "UMD",
+        "form": "side-effect-order",
+        "sources": {
+          "dep.ts": "5d14019d6c5e428d243edd9767d920d75903050a220bbc217f87a4fb5669c6e4",
+          "side.ts": "6573c54013ca1cdc187f37e36fa59f2ad715388d5094cf70a50637ef30d3f305",
+          "main.ts": "d433700bdd89ca916146a2a11015ae84b2d9d506d9e6692fe4772b5b4166796c"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\nexport declare function read(): number;\n",
+          "side.d.ts": "export {};\n",
+          "main.d.ts": "import \"./side\";\nimport \"./side\";\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-live-import",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-live-import",
+        "module": "System",
+        "form": "live-import",
+        "sources": {
+          "dep.ts": "674eb2d73146c6ad5589a27451c48160f21e5eeb8945cb69074f500bd414a21a",
+          "main.ts": "851afb1c0a719bfb779e7f5fbd2b07a8d92aacf13c5a4ec1584048bc5132a154"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "before": 20
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-snapshot-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-snapshot-default",
+        "module": "System",
+        "form": "snapshot-default",
+        "sources": {
+          "main.ts": "955be4e505812d8fc728fa96a24319c907e93e72e2f10881da2ccd4fc7bbdd64"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": 20
+        },
+        "declarations": {
+          "main.d.ts": "declare let value: number;\nexport default value;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-live-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-live-default",
+        "module": "System",
+        "form": "live-default",
+        "sources": {
+          "main.ts": "258e208aa67f2dadecd3410e14731d0602d6023b5846f0303a05720a3c6d57d6"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": 42
+        },
+        "declarations": {
+          "main.d.ts": "declare let value: number;\nexport { value as default };\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-anonymous-default",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-anonymous-default",
+        "module": "System",
+        "form": "anonymous-default",
+        "sources": {
+          "main.ts": "7ad22456b22f24f88b3b0016c3e30d23914a13638efea30a0bb64a4f4af96801"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "default": {
+            "name": "default_1",
+            "value": 42
+          }
+        },
+        "declarations": {
+          "main.d.ts": "export default function (): number;\nexport declare const result = 42;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-star-reexport",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-star-reexport",
+        "module": "System",
+        "form": "star-reexport",
+        "sources": {
+          "dep.ts": "674eb2d73146c6ad5589a27451c48160f21e5eeb8945cb69074f500bd414a21a",
+          "barrel.ts": "bf687ca0e44b0bf567f43c22b2ec7542b10fb2f57fa7f08b7fcd84620f7d3bd6",
+          "main.ts": "abb3e507053d12d2fbf2bb86f07642679894ac8ec386cf9611830e71e1276559"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42,
+          "before": 20
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\n",
+          "barrel.d.ts": "export * from \"./dep\";\n",
+          "main.d.ts": "export declare const before: number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-type-elision",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-type-elision",
+        "module": "System",
+        "form": "type-elision",
+        "sources": {
+          "dep.ts": "b6a0184afcc172bd1d753d4740cc1a5ef739c4e5ebcfb4e2e7eb33fea83d4149",
+          "main.ts": "c4201fb585aa0a2f5ef61d13563bd60b22790c1d9cee2a1369b9858106dca1ee"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export interface Box {\n    value: number;\n}\nexport declare const value = 42;\n",
+          "main.d.ts": "import type { Box } from \"./dep\";\nexport declare const boxed: Box;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-require-assignment",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-require-assignment",
+        "module": "System",
+        "form": "require-assignment",
+        "sources": {
+          "dep.ts": "88412b10b869ea11b2c978f384ae218a73751cbdbcaa8b7bb02b36c4b84081c7",
+          "main.ts": "738a76670146fcaf4ccde508c195f27f1ac60998d6002e27ecfc53b2899d04d5"
+        },
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1218,
+            "file": "dep.ts",
+            "start": 243,
+            "length": 14,
+            "message": "Export assignment is not supported when '--module' flag is 'system'."
+          }
+        ],
+        "observation": null,
+        "declarations": {}
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-cycle",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-cycle",
+        "module": "System",
+        "form": "cycle",
+        "sources": {
+          "dep.ts": "e5b579512936776ab80441995d88951dd2e14bac54b5d04d8a84568be0ff09ff",
+          "main.ts": "3617028f6ea4e52426639e79f7201be48ccbf358ab9550170df46f99c36697ea"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export declare const value = 42;\nexport declare function read(): number;\n",
+          "main.d.ts": "export declare function own(): number;\nexport declare const result: number;\n"
+        }
+      }
+    },
+    {
+      "id": "modemit-static-contexts-system-side-effect-order",
+      "family": "static-contexts",
+      "entry": "main.ts",
+      "reference": {
+        "id": "System-side-effect-order",
+        "module": "System",
+        "form": "side-effect-order",
+        "sources": {
+          "dep.ts": "5d14019d6c5e428d243edd9767d920d75903050a220bbc217f87a4fb5669c6e4",
+          "side.ts": "6573c54013ca1cdc187f37e36fa59f2ad715388d5094cf70a50637ef30d3f305",
+          "main.ts": "d433700bdd89ca916146a2a11015ae84b2d9d506d9e6692fe4772b5b4166796c"
+        },
+        "accepts": true,
+        "diagnostics": [],
+        "observation": {
+          "result": 42
+        },
+        "declarations": {
+          "dep.d.ts": "export declare let value: number;\nexport declare function bump(): void;\nexport declare function read(): number;\n",
+          "side.d.ts": "export {};\n",
+          "main.d.ts": "import \"./side\";\nimport \"./side\";\nexport declare const result: number;\n"
+        }
+      }
+    }
+  ]
+}
