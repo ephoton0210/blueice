@@ -259,6 +259,13 @@ struct BuildMetadata {
     strict_artifacts: Vec<StrictArtifactIdentity>,
     source_map: bool,
     declaration: bool,
+    remove_comments: bool,
+    new_line: &'static str,
+    emit_bom: bool,
+    inline_sources: bool,
+    strip_internal: bool,
+    source_root: Option<String>,
+    map_root: Option<String>,
     entries: Vec<String>,
     declaration_modules: Vec<String>,
     imports: BTreeMap<String, String>,
@@ -560,6 +567,13 @@ fn build_metadata(
         },
         source_map: invocation.options.source_map,
         declaration: invocation.options.declaration,
+        remove_comments: invocation.options.remove_comments,
+        new_line: invocation.options.new_line.as_str(),
+        emit_bom: invocation.options.emit_bom,
+        inline_sources: invocation.options.inline_sources,
+        strip_internal: invocation.options.strip_internal,
+        source_root: invocation.options.source_root.clone(),
+        map_root: invocation.options.map_root.clone(),
         entries,
         declaration_modules,
         imports,
@@ -797,7 +811,20 @@ fn publish_build(
                     .and_then(|name| name.to_str())
                     .map(|name| format!("{name}.map"))
                     .ok_or_else(|| io::Error::other("artifact filename is not UTF-8"))?;
-                javascript.push_str(&format!("\n//# sourceMappingURL={map_name}\n"));
+                let url = metadata
+                    .map_root
+                    .as_deref()
+                    .filter(|root| !root.is_empty())
+                    .map_or_else(
+                        || map_name.clone(),
+                        |root| format!("{}/{map_name}", root.trim_end_matches('/')),
+                    );
+                let newline = if metadata.new_line == "crlf" {
+                    "\r\n"
+                } else {
+                    "\n"
+                };
+                javascript.push_str(&format!("{newline}//# sourceMappingURL={url}{newline}"));
             }
             fs::write(&js_path, javascript)?;
             if let Some(source_map) = &artifact.source_map {

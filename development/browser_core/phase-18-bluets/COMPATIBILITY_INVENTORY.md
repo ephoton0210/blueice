@@ -191,17 +191,17 @@ suite entry, then removing the row.
 | ID | Gap |
 | --- | --- |
 | G-E1 | K.7.1 compares all eleven ECMAScript targets in CommonJS and ESM: 638 pinned verdicts, 600 accepted Node/declaration/Acorn observations and 600 actual outputs parsed through BlueJS at the selected edition. Explicit `lib` and `downlevelIteration` are recorded in artifact/cache identity; original versioned helpers implement the measured lexical/default/rest/template/pattern/iteration/spread/class/generator/async forms. Broader computed heritage and `super` use, nested binding patterns, constructor spreads, async arrows/methods, template-contained suspension, complex suspension graphs and other combinations remain unmeasured. Unsupported named ES5 suspension graphs are explicit refusals. K.7.1 complete hosted CI passes all 29 jobs. K.7.2 adds measured AMD/UMD/System bindings, 24 Node16/NodeNext per-file/verbatim configurations and helper/script policies. All 106 native configurations (82 accept, 24 reject), including early System cyclic imported-function calls and default Node module detection without imports/exports, pass execution, declarations, suffixes and primary diagnostics. The final complete leaf gate passes all 1,297 tests, including all 190 ignored oracles; additional module/helper/target combinations remain unmeasured, including ESM Node import-equals lowering and broader helper ABI selection. |
-| G-E2 | Module systems other than ES modules and CommonJS (`AMD`, `UMD`, `System`, `node16`/`nodenext` per-file module kind and `.mts`/`.cts`), `esModuleInterop` helper forms beyond default/namespace import, `verbatimModuleSyntax`, `importHelpers`, `noEmitHelpers`. |
+| G-E2 | K.7.2 measures AMD/UMD/System and owner-selected Node16/NodeNext formats, verbatim policies and helper/script controls in 106 pinned configurations. Broader module/target/helper compositions remain unmeasured, including ESM Node import-equals lowering, helper ABI selection beyond the recorded forms and Node declaration-input contexts. |
 | G-E3 | Decorators and auto-accessors for targets other than ES2022 with class fields defined; decorated private members, computed names, classes in namespaces and `export default @d class`; decorator metadata for imported/unresolved class types and unannotated methods (section 4). |
-| G-E4 | `removeComments`, `preserveValueImports`, `importsNotUsedAsValues`, `stripInternal`, `newLine`, BOM/`emitBOM`, `inlineSources`, `sourceRoot`/`mapRoot`, `downlevelIteration`, `useDefineForClassFields` interactions beyond the two supported targets, `isolatedDeclarations`. |
-| G-E5 | Source maps: line-level provenance only; no token-level names, `sourcesContent` parity or declaration maps. |
+| G-E4 | K.7.3 records comment removal, LF/CRLF, BOM, inline source content, source/map roots, declaration documentation/internal stripping and removed-option TS5102 diagnostics in 176 native configurations, plus 18 command/config validation controls. Class, namespace, interface, enum and exported record-alias member witnesses retain exact native declarations. Callable/indexed and empty alias controls reproduce 40 declaration differences before correction; all 176 configurations, 170 actual outputs and exact declarations pass focused verification. Strict helper sites preserve all eight target/newline/BOM controls. The final complete K.0 gate passes format, Clippy, all 1,111 ordinary tests and all 194 ignored oracles; final-source hosted CI is pending. Remaining: nested or inferred declaration-member compositions, `isolatedDeclarations`, field-mode interactions across the full target range (K.7.4), and other unmeasured option compositions. |
+| G-E5 | Source maps retain line-level provenance and measured `sourceRoot`, `mapRoot`, relative sources and optional `sourcesContent` metadata. Token-level names, complete mapping byte parity and declaration maps remain unmeasured. |
 
 ### 3.3 Declarations
 
 | ID | Gap |
 | --- | --- |
 | G-D1 | K.1.3 compares inferred imported variable declarations, including nested callable/tuple types and unnameable external types. K.1.5 adds 23 exact inferred-return declaration comparisons and two pinned type-equality comparisons for union member printing order; that order can differ even when the types agree. Wider inferred declarations still need explicit types where `tsc` infers them (section 4, `emitter`); generic declarations, overloads of arbitrary shape, `declare module`, namespaces with merged symbols in every shape, `export =` of non-trivial forms. |
-| G-D2 | Declaration emit options (`declarationDir`, `emitDeclarationOnly`, `declarationMap`, `stripInternal`). |
+| G-D2 | Declaration output directories, declaration-only publication and declaration maps remain open for K.8.2. K.7.3 measures `stripInternal` for top-level and named class/namespace/interface/enum/exported record-alias members; broader nested and inferred declaration forms remain unmeasured. The 48 callable/indexed/empty alias controls pass focused correction verification; the complete corrected K.0 gate passes all 1,305 tests. |
 
 ### 3.4 Modules, packages, projects
 
@@ -236,7 +236,7 @@ excluded). A refusal is never silent: the program is rejected with this text.
 
 ### bin (1)
 
-- `backend/bluets/src/bin/bluetsc/native_cli/mod.rs:187` — BlueTSC configuration or an explicit owner policy refused this input.
+- `backend/bluets/src/bin/bluetsc/native_cli/mod.rs:200` — BlueTSC configuration or an explicit owner policy refused this input.
 
 ### checker (22)
 
@@ -269,7 +269,7 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/compiler/node_modules.rs:32` — module declaration is incompatible with the selected Node file format
 - `backend/bluets/src/compiler/project_builder.rs:213` — owner must select ESM or CommonJS for a Node file
 - `backend/bluets/src/compiler/project_builder/helper_providers.rs:97` — owner-resolved helper provider does not declare the supported __extends ABI
-- `backend/bluets/src/compiler.rs:652` — strict-runtime JSON assets require a supported runtime profile
+- `backend/bluets/src/compiler.rs:685` — strict-runtime JSON assets require a supported runtime profile
 
 ### diagnostic (1)
 
@@ -314,10 +314,10 @@ excluded). A refusal is never silent: the program is rejected with this text.
 - `backend/bluets/src/emitter/targets/es5/objects.rs:37` — computed property value was not retained
 - `backend/bluets/src/emitter/targets/es5/spreads.rs:61` — constructor spread requires retained construction semantics
 - `backend/bluets/src/emitter/classes.rs:111` — declaration output for this string literal field needs an annotation
-- `backend/bluets/src/emitter/classes.rs:371` — declaration output requires a class field type
-- `backend/bluets/src/emitter/classes.rs:284` — declaration output requires a parameter property type
-- `backend/bluets/src/emitter/classes.rs:498` — declaration output requires an explicit class method return type
-- `backend/bluets/src/emitter/classes.rs:448` — declaration output requires an explicit getter return type
+- `backend/bluets/src/emitter/classes.rs:403` — declaration output requires a class field type
+- `backend/bluets/src/emitter/classes.rs:286` — declaration output requires a parameter property type
+- `backend/bluets/src/emitter/classes.rs:546` — declaration output requires an explicit class method return type
+- `backend/bluets/src/emitter/classes.rs:487` — declaration output requires an explicit getter return type
 - `backend/bluets/src/emitter/legacy_decorators.rs:581` — decorator metadata cannot serialize `{name}`: only types declared in this module are supported
 - `backend/bluets/src/emitter/legacy_decorators.rs:430` — decorator metadata needs this accessor's type annotation
 - `backend/bluets/src/emitter/legacy_decorators.rs:378` — decorator metadata needs this field's type

@@ -223,6 +223,8 @@ pub(super) fn emit_class_declaration(
     prefix: &str,
     output: &mut String,
     context: Option<&super::inferred_declarations::Context<'_>>,
+    source: &str,
+    options: &super::CompilerOptions,
 ) -> Result<(), Diagnostic> {
     output.push_str(prefix);
     if class.abstract_modifier.is_some() {
@@ -308,7 +310,21 @@ pub(super) fn emit_class_declaration(
         })
         .collect();
     for (index, member) in class.members.iter().enumerate() {
+        if options.strip_internal
+            && super::output_options::leading_jsdoc(source, member.span.start)
+                .iter()
+                .any(|comment| super::output_options::is_internal(comment))
+        {
+            continue;
+        }
         if let Some((is_static, signature)) = &member.index {
+            super::output_options::declaration_comments(
+                source,
+                member.span.start,
+                "    ",
+                output,
+                options,
+            );
             output.push_str("    ");
             if *is_static {
                 output.push_str("static ");
@@ -352,6 +368,15 @@ pub(super) fn emit_class_declaration(
                     .is_some_and(|constructor| constructor.body.is_some())
             });
             for shell in visible(class, &constructor_signatures, implementation) {
+                if !super::output_options::declaration_comments(
+                    source,
+                    shell.span.start,
+                    "    ",
+                    output,
+                    options,
+                ) {
+                    continue;
+                }
                 let constructor = shell.constructor.as_ref().expect("constructor member");
                 output.push_str("    ");
                 output.push_str(visibility_prefix(constructor.visibility));
@@ -366,6 +391,13 @@ pub(super) fn emit_class_declaration(
                 output.push_str(";\n");
             }
         } else if let Some(field) = &member.field {
+            super::output_options::declaration_comments(
+                source,
+                member.span.start,
+                "    ",
+                output,
+                options,
+            );
             let Some(value) = field.declared_type() else {
                 return Err(Diagnostic::error(
                     DiagnosticCode::UnsupportedSyntax,
@@ -409,6 +441,13 @@ pub(super) fn emit_class_declaration(
             }
             output.push_str(";\n");
         } else if let Some(accessor) = &member.accessor {
+            super::output_options::declaration_comments(
+                source,
+                member.span.start,
+                "    ",
+                output,
+                options,
+            );
             output.push_str("    ");
             output.push_str(visibility_prefix(accessor.visibility));
             if member.abstract_modifier.is_some() {
@@ -482,6 +521,15 @@ pub(super) fn emit_class_declaration(
                 &group.signature_member_indices,
                 group.implementation_member_index,
             ) {
+                if !super::output_options::declaration_comments(
+                    source,
+                    shell.span.start,
+                    "    ",
+                    output,
+                    options,
+                ) {
+                    continue;
+                }
                 let method = shell.method.as_ref().expect("method member");
                 if method.visibility == Visibility::Private {
                     // A private method is declared by name only, once.

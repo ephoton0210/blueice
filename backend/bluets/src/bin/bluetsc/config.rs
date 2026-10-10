@@ -85,6 +85,20 @@ pub(super) struct BlueTscConfig {
     #[serde(default)]
     pub(super) declaration: bool,
     #[serde(default)]
+    pub(super) remove_comments: bool,
+    #[serde(default)]
+    pub(super) new_line: Option<String>,
+    #[serde(default, rename = "emitBOM")]
+    pub(super) emit_bom: bool,
+    #[serde(default)]
+    pub(super) inline_sources: Option<bool>,
+    #[serde(default)]
+    pub(super) strip_internal: bool,
+    #[serde(default)]
+    pub(super) source_root: Option<String>,
+    #[serde(default)]
+    pub(super) map_root: Option<String>,
+    #[serde(default)]
     pub(super) target: Option<String>,
     #[serde(default)]
     pub(super) lib: Option<Vec<String>>,
@@ -210,6 +224,17 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--out-dir" => out_dir = Some(PathBuf::from(value()?)),
             "--source-map" => options.source_map = true,
             "--declaration" => options.declaration = true,
+            "--remove-comments" => options.remove_comments = true,
+            "--emit-bom" => options.emit_bom = true,
+            "--inline-sources" => options.inline_sources = true,
+            "--strip-internal" => options.strip_internal = true,
+            "--source-root" => options.source_root = Some(value()?),
+            "--map-root" => options.map_root = Some(value()?),
+            "--new-line" => options.new_line = match value()?.as_str() {
+                "lf" => blueice_bluets::NewLine::Lf,
+                "crlf" => blueice_bluets::NewLine::CrLf,
+                _ => return Err("--new-line requires lf or crlf".to_string()),
+            },
             "--target" => {
                 options.target = parse_target(Some(&value()?))?;
             }
@@ -575,6 +600,17 @@ pub(super) fn resolve_config_document(
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map,
         declaration: config.declaration,
+        remove_comments: config.remove_comments,
+        new_line: match config.new_line.as_deref() {
+            None | Some("lf") => blueice_bluets::NewLine::Lf,
+            Some("crlf") => blueice_bluets::NewLine::CrLf,
+            Some(value) => return Err(format!("unsupported newLine `{value}`; expected lf or crlf")),
+        },
+        emit_bom: config.emit_bom,
+        inline_sources: config.inline_sources.unwrap_or(true),
+        strip_internal: config.strip_internal,
+        source_root: config.source_root,
+        map_root: config.map_root,
         resolver_fingerprint: format!(
             "{}{}{}",
             import_map_fingerprint(&root, &imports),

@@ -54,6 +54,14 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "object-const-enums"
     });
     add(options.module_kind.as_str());
+    add("bluets-output-options/1");
+    add(&options.remove_comments.to_string());
+    add(options.new_line.as_str());
+    add(&options.emit_bom.to_string());
+    add(&options.inline_sources.to_string());
+    add(&options.strip_internal.to_string());
+    add(options.source_root.as_deref().unwrap_or(""));
+    add(options.map_root.as_deref().unwrap_or(""));
     add("bluets-node-file-formats/1");
     add(&options.verbatim_module_syntax.to_string());
     add(crate::emitter::MODULE_WRAPPERS_VERSION);

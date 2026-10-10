@@ -14,6 +14,8 @@ mod inheritance;
 mod jsonc;
 mod options;
 mod output_layout;
+mod output_options;
+pub(super) use output_options::apply_output_flags;
 
 #[derive(Debug)]
 pub(super) struct ProjectConfig {
@@ -119,6 +121,14 @@ pub(super) fn resolve(
             return Err(error);
         }
     };
+    for (path, bytes) in &reader.inputs {
+        if let (Some(name), Ok(source)) = (
+            path.file_name().and_then(|name| name.to_str()),
+            std::str::from_utf8(bytes),
+        ) {
+            sources.insert(name.into(), source.into());
+        }
+    }
     // Owner fields replace only explicitly supplied compiler settings.
     let mut owner_compiler = Map::new();
     for (key, value) in owner {
@@ -128,6 +138,14 @@ pub(super) fn resolve(
                 | "module"
                 | "sourceMap"
                 | "declaration"
+                | "removeComments"
+                | "newLine"
+                | "emitBOM"
+                | "inlineSources"
+                | "stripInternal"
+                | "downlevelIteration"
+                | "sourceRoot"
+                | "mapRoot"
                 | "outDir"
                 | "useDefineForClassFields"
                 | "preserveConstEnums"
@@ -287,6 +305,7 @@ pub(super) fn prepare(invocation: &mut Invocation) -> Result<(), String> {
     let Some(project) = &invocation.project_config else {
         return Ok(());
     };
+    output_options::validate_dependencies(&project.options)?;
     invocation.options.checking = Some(options::checking(&project.options)?);
     for entry in &mut invocation.entries {
         let canonical = absolute_existing_path(entry).map_err(|error| {

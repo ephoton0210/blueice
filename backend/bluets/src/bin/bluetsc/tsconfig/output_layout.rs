@@ -70,8 +70,18 @@ pub(super) fn prepare(
         } else {
             format!("{}{RUNTIME_HELPER_V1_FILE}", "../".repeat(depth))
         };
+        let newline = if invocation.options.new_line == blueice_bluets::NewLine::CrLf {
+            "\r\n"
+        } else {
+            "\n"
+        };
+        let bom = if invocation.options.emit_bom {
+            "\u{feff}"
+        } else {
+            ""
+        };
         let replacement =
-            format!("import {{ validateStringV1 as __bluetsValidateStringV1 }} from '{helper}';\n");
+            format!("{bom}import {{ validateStringV1 as __bluetsValidateStringV1 }} from '{helper}';{newline}");
         let old_length = original.len();
         let new_length = replacement.len();
         artifact

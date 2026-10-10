@@ -107,8 +107,15 @@ pub(super) fn verify(
         } else {
             format!("./{RUNTIME_HELPER_V1_FILE}")
         };
-        let expected_import =
-            format!("import {{ validateStringV1 as {HELPER_ALIAS} }} from '{helper_path}';\n");
+        let newline = if metadata.new_line == "crlf" {
+            "\r\n"
+        } else {
+            "\n"
+        };
+        let bom = if metadata.emit_bom { "\u{feff}" } else { "" };
+        let expected_import = format!(
+            "{bom}import {{ validateStringV1 as {HELPER_ALIAS} }} from '{helper_path}';{newline}"
+        );
         if record.helper_import.expected_text != expected_import
             || !artifact.javascript.starts_with(&expected_import)
         {

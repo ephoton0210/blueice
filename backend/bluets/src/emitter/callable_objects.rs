@@ -33,12 +33,11 @@ pub(super) fn render_with_indices(
     render_with_indent(fields, signatures, indices, 0)
 }
 
-pub(super) fn render_with_indent(
+fn ordered_members(
     fields: &[crate::parser::TypeField],
     signatures: &[crate::parser::TypeSignature],
     indices: &[crate::parser::IndexSignature],
-    indent: usize,
-) -> String {
+) -> Vec<(usize, String)> {
     let mut members = Vec::new();
     for index in indices {
         members.push((
@@ -92,6 +91,84 @@ pub(super) fn render_with_indent(
         members.push((signature.span.start, text));
     }
     members.sort_by_key(|(start, _)| *start);
+    members
+}
+
+pub(super) fn render_interface(
+    interface: &crate::parser::InterfaceDeclaration,
+    source: &str,
+    options: &CompilerOptions,
+) -> String {
+    render_documented_members(
+        &interface.fields,
+        &interface.signatures,
+        &interface.indices,
+        source,
+        options,
+        true,
+    )
+}
+
+pub(super) fn render_alias(
+    value: &Type,
+    source: &str,
+    options: &CompilerOptions,
+) -> Option<String> {
+    let (object, indices) = match value {
+        Type::IndexedRecord { object, indices } => (object.as_ref(), indices.as_slice()),
+        object => (object, &[][..]),
+    };
+    let (fields, signatures) = record_members(object)?;
+    Some(render_documented_members(
+        fields, signatures, indices, source, options, false,
+    ))
+}
+
+fn record_members(
+    value: &Type,
+) -> Option<(&[crate::parser::TypeField], &[crate::parser::TypeSignature])> {
+    match value {
+        Type::Record(fields) => Some((fields, &[])),
+        Type::CallableRecord { fields, signatures }
+            if !(fields.is_empty() && signatures.len() == 1 && signatures[0].constructor_arrow) =>
+        {
+            Some((fields, signatures))
+        }
+        _ => None,
+    }
+}
+
+fn render_documented_members(
+    fields: &[crate::parser::TypeField],
+    signatures: &[crate::parser::TypeSignature],
+    indices: &[crate::parser::IndexSignature],
+    source: &str,
+    options: &CompilerOptions,
+    empty_multiline: bool,
+) -> String {
+    let members = ordered_members(fields, signatures, indices);
+    let mut output = String::new();
+    for (start, text) in members {
+        if output_options::declaration_comments(source, start, "    ", &mut output, options) {
+            output.push_str("    ");
+            output.push_str(&text);
+            output.push_str(";\n");
+        }
+    }
+    if output.is_empty() && !empty_multiline {
+        "{}".to_string()
+    } else {
+        format!("{{\n{output}}}")
+    }
+}
+
+pub(super) fn render_with_indent(
+    fields: &[crate::parser::TypeField],
+    signatures: &[crate::parser::TypeSignature],
+    indices: &[crate::parser::IndexSignature],
+    indent: usize,
+) -> String {
+    let members = ordered_members(fields, signatures, indices);
     if members.is_empty() {
         return "{}".into();
     }

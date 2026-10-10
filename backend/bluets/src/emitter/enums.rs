@@ -338,6 +338,9 @@ pub(super) fn enum_statement(
     }
     parts.push(format!("(function ({name}) {{"));
     for (member, evaluated) in declaration.members.iter().zip(&evaluation.members) {
+        for comment in super::output_options::leading_jsdoc(&module.source, member.span.start) {
+            parts.push(format!("    {comment}"));
+        }
         let key = json_string(&member.name);
         parts.push(match &evaluated.value {
             Some(EnumValue::Number(number)) => format!(
@@ -423,6 +426,8 @@ fn json_string(text: &str) -> String {
 pub(super) fn emit_enum_declaration(
     declaration: &EnumDeclaration,
     evaluation: &crate::enum_eval::EvaluatedEnum,
+    source: &str,
+    options: &CompilerOptions,
 ) -> String {
     let mut output = format!(
         "{}declare {}enum {} {{\n",
@@ -434,19 +439,30 @@ pub(super) fn emit_enum_declaration(
         .members
         .iter()
         .zip(&evaluation.members)
-        .map(|(member, evaluated)| {
+        .filter_map(|(member, evaluated)| {
+            let mut text = String::new();
+            if !super::output_options::declaration_comments(
+                source,
+                member.span.start,
+                "    ",
+                &mut text,
+                options,
+            ) {
+                return None;
+            }
             let name = if is_identifier_name(&member.name) {
                 member.name.clone()
             } else {
                 json_string(&member.name)
             };
-            match &evaluated.value {
+            text.push_str(&match &evaluated.value {
                 Some(EnumValue::Number(number)) => {
                     format!("    {name} = {}", js_number_text(*number))
                 }
                 Some(EnumValue::Text(text)) => format!("    {name} = {}", json_string(text)),
                 None => format!("    {name}"),
-            }
+            });
+            Some(text)
         })
         .collect();
     output.push_str(&members.join(",\n"));

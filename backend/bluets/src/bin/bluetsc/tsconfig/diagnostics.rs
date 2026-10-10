@@ -6,17 +6,25 @@
 use super::*;
 use blueice_bluets::{Diagnostic, DiagnosticCode, TypeScriptDiagnostic};
 
-pub(in crate::tsconfig) fn error(
-    message: &str,
-    path: &Path,
-    bytes: Option<&[u8]>,
-) -> Option<Diagnostic> {
+pub(crate) fn error(message: &str, path: &Path, bytes: Option<&[u8]>) -> Option<Diagnostic> {
     let source = bytes.and_then(|bytes| std::str::from_utf8(bytes).ok());
     let name = message.split('`').nth(1);
     let code = if message == "no inputs were found in the tsconfig file" {
         18003
     } else if message == "config `files` must not be an empty array" {
         18002
+    } else if message.starts_with("removed compiler option") {
+        5102
+    } else if message == "compiler option `mapRoot` requires sourceMap or declarationMap" {
+        5069
+    } else if matches!(
+        message,
+        "compiler option `inlineSources` requires sourceMap"
+            | "compiler option `sourceRoot` requires sourceMap"
+    ) {
+        5051
+    } else if message.starts_with("unsupported compiler option `newLine` value") {
+        6046
     } else if message.starts_with("unknown or unsupported compiler option") {
         if TypeScriptDiagnostic::is_known_compiler_option(name?) {
             return None;
@@ -36,7 +44,8 @@ pub(in crate::tsconfig) fn error(
     } else {
         name.unwrap_or("")
     };
-    let range = source.and_then(|source| property_range(source, key, code != 5023));
+    let range = source
+        .and_then(|source| property_range(source, key, !matches!(code, 5023 | 5051 | 5069 | 5102)));
     let module = path.file_name()?.to_string_lossy().into_owned();
     let span = range.map_or_else(
         || SourceSpan::new(&module, 0, 0),
@@ -45,7 +54,9 @@ pub(in crate::tsconfig) fn error(
     let arguments = match code {
         18002 => vec![path.display().to_string()],
         18003 => vec![path.display().to_string(), "[]".into(), "[]".into()],
-        5023 => vec![key.into()],
+        5023 | 5051 | 5102 => vec![key.into()],
+        5069 => vec![key.into(), "sourceMap".into(), "declarationMap".into()],
+        6046 => vec!["--newLine".into(), "'crlf', 'lf'".into()],
         5024 => vec![
             key.into(),
             if message.ends_with("boolean") {
@@ -66,6 +77,13 @@ pub(in crate::tsconfig) fn error(
     };
     let mut diagnostic = Diagnostic::error(DiagnosticCode::ParseError, span, message)
         .with_typescript(code, arguments);
+    if code == 5102 {
+        if let Some(counterpart) = &mut diagnostic.typescript {
+            counterpart
+                .message
+                .push_str("\n  Use 'verbatimModuleSyntax' instead.");
+        }
+    }
     if let (Some(source), Some(_)) = (source, range) {
         diagnostic = diagnostic.with_source_position(source);
     }

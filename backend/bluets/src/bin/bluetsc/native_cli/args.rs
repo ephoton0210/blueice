@@ -40,7 +40,16 @@ impl Args {
                     };
                     flags.insert(arg[2..].to_string(), Value::Bool(value));
                 }
-                "--noEmitOnError" | "--diagnostics" => {
+                "--noEmitOnError"
+                | "--diagnostics"
+                | "--removeComments"
+                | "--emitBOM"
+                | "--inlineSources"
+                | "--stripInternal"
+                | "--downlevelIteration"
+                | "--sourceMap"
+                | "--declaration"
+                | "--preserveValueImports" => {
                     let value = match args.peek().map(String::as_str) {
                         Some("true") => {
                             args.next();
@@ -53,6 +62,16 @@ impl Args {
                         _ => true,
                     };
                     flags.insert(arg[2..].to_string(), Value::Bool(value));
+                }
+                "--outDir"
+                | "--newLine"
+                | "--sourceRoot"
+                | "--mapRoot"
+                | "--importsNotUsedAsValues" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| format!("{arg} requires a value"))?;
+                    flags.insert(arg[2..].to_string(), Value::String(value));
                 }
                 _ if arg.starts_with('-') => {
                     return Err(format!("unknown compiler option `{arg}`"))

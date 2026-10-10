@@ -45,7 +45,7 @@ pub use checking_options::CheckingOptions;
 pub use compiler::{
     compile, is_external_library_module, CompilerLimits, CompilerOptions, EcmaTarget,
     IncrementalCompiler, IncrementalResult, JsxMode, MapLoader, ModuleKind, ModuleLoader,
-    ModuleSource, Project, RuntimePolicy, StrictRuntimeBoundary,
+    ModuleSource, NewLine, Project, RuntimePolicy, StrictRuntimeBoundary,
 };
 pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,

@@ -210,10 +210,10 @@ fn build(root: &Path, index: usize, combination: &Combination) -> PathBuf {
                 .unwrap();
                 assert_eq!(map["version"], 3);
                 assert_eq!(map["sources"].as_array().unwrap().len(), 1);
-                assert_eq!(
-                    map["sourcesContent"][0],
-                    if stem == "main" { MAIN } else { LIB }
-                );
+                // Native project emission embeds sources only for inlineSources.
+                assert!(map.get("sourcesContent").is_none());
+                assert_eq!(map["sourceRoot"], "");
+                assert_eq!(map["sources"][0], format!("../src/{stem}.ts"));
                 assert!(!map["mappings"].as_str().unwrap().is_empty());
             }
         }

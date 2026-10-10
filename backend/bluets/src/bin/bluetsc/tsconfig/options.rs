@@ -19,6 +19,11 @@ pub(super) const STRICT: &[&str] = &[
 ];
 
 const BOOLEAN: &[&str] = &[
+    "removeComments",
+    "emitBOM",
+    "inlineSources",
+    "stripInternal",
+    "preserveValueImports",
     "downlevelIteration",
     "importHelpers",
     "noEmitHelpers",
@@ -72,6 +77,10 @@ pub(super) fn validate(
             && !matches!(
                 name.as_str(),
                 "target"
+                    | "newLine"
+                    | "sourceRoot"
+                    | "mapRoot"
+                    | "importsNotUsedAsValues"
                     | "lib"
                     | "module"
                     | "moduleResolution"
@@ -118,6 +127,11 @@ pub(super) fn validate(
                 .as_str()
                 .ok_or_else(|| format!("compiler option `{name}` requires a string"))?;
             match name.as_str() {
+                "newLine" => enumeration(name, string, &["lf", "crlf"])?,
+                "sourceRoot" | "mapRoot" => Value::String(string.to_string()),
+                "importsNotUsedAsValues" => {
+                    enumeration(name, string, &["remove", "preserve", "error"])?
+                }
                 "target" => {
                     let target = EcmaTarget::parse(string).ok_or_else(|| {
                         format!("unsupported compiler option `{name}` value `{string}`")
@@ -177,6 +191,11 @@ pub(super) fn validate(
                 _ => return Err(format!("unknown or unsupported compiler option `{name}`")),
             }
         };
+        if name == "preserveValueImports" && checked == true
+            || name == "importsNotUsedAsValues" && checked != "remove"
+        {
+            return Err(format!("removed compiler option `{name}`"));
+        }
         result.insert(name.clone(), checked);
     }
     Ok(result)
@@ -322,6 +341,7 @@ pub(super) fn owner_options(
     let mut owner = Map::new();
     let computed = effective(raw, root);
     owner.insert("target".to_string(), json!("es5"));
+    owner.insert("inlineSources".to_string(), json!(false));
     for name in [
         "target",
         "lib",
@@ -333,6 +353,13 @@ pub(super) fn owner_options(
         "resolveJsonModule",
         "sourceMap",
         "declaration",
+        "removeComments",
+        "newLine",
+        "emitBOM",
+        "inlineSources",
+        "stripInternal",
+        "sourceRoot",
+        "mapRoot",
         "useDefineForClassFields",
         "preserveConstEnums",
         "isolatedModules",

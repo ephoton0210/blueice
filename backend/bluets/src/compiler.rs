@@ -154,6 +154,23 @@ impl RuntimePolicy {
     }
 }
 
+/// Line terminators used for generated JavaScript and declarations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NewLine {
+    #[default]
+    Lf,
+    CrLf,
+}
+
+impl NewLine {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Lf => "lf",
+            Self::CrLf => "crlf",
+        }
+    }
+}
+
 /// All values that affect checking and output are explicit, so callers can
 /// persist this alongside build artifacts and cache keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,6 +233,15 @@ pub struct CompilerOptions {
     pub runtime_policy: RuntimePolicy,
     pub source_map: bool,
     pub declaration: bool,
+    pub remove_comments: bool,
+    pub new_line: NewLine,
+    pub emit_bom: bool,
+    /// Include source bytes in serialized maps. Legacy API callers retain
+    /// their existing embedded-source default; native config selects false.
+    pub inline_sources: bool,
+    pub strip_internal: bool,
+    pub source_root: Option<String>,
+    pub map_root: Option<String>,
     /// Host-supplied identity for resolution inputs such as an import map.
     /// This prevents an artifact/cache key from being reused under a resolver
     /// policy different from the one that selected its module graph.
@@ -285,6 +311,13 @@ impl Default for CompilerOptions {
             runtime_policy: RuntimePolicy::Checked,
             source_map: false,
             declaration: false,
+            remove_comments: false,
+            new_line: NewLine::Lf,
+            emit_bom: false,
+            inline_sources: true,
+            strip_internal: false,
+            source_root: None,
+            map_root: None,
             resolver_fingerprint: "relative-v1".to_string(),
             ambient_declaration_modules: Vec::new(),
             require_declared_global_calls: false,

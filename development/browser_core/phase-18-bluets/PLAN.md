@@ -8358,3 +8358,54 @@ The frozen interface/enum implementation passes format, three-crate all-target C
 ### K.7.3 callable/indexed and empty alias regression supplement
 
 Forty-eight original controls measure call/construct/index signature documentation and internal stripping, combined signatures, entirely internal record members and empty records. All native and public builds succeed and all native outputs execute; forty exact declarations differ before correction. The pinned recorder verifies 176 configurations with all previous 128 observations unchanged. Commit this failing supplement separately before extending member rendering. The inferred-variable and constructor-arrow printers retain their behavior; complete K.0 and hosted CI verification remain pending.
+
+### K.7.3 callable/indexed correction focused verification
+
+The 128-configuration source passes its complete frozen K.0 gate (1,111 ordinary tests, all 194 ignored oracles, format and three-crate all-target Clippy). The separate callable/indexed/empty supplement reproduces exactly forty declaration mismatches before correction. Its shared ordered-member renderer preserves call, construct, index and field documentation/internal policy, prints native empty aliases and retains inferred-variable/constructor-arrow behavior. All 176 configurations, 170 actual accepted output observations, exact declarations, output metadata and strict-format controls pass the focused gate. The final corrected complete K.0 gate remains running; no hosted CI completion is claimed.
+
+### K.7.3 final-source hosted CI dependency (2026-10-10)
+
+The K.7.2 LF-preservation CI run `38051695307` on `6dd75b11a` is complete:
+25 jobs pass, including all five Windows jobs and both complete 190-oracle
+jobs. Workspace coverage is 94.70% and independent BlueJS coverage 99.30%.
+The remaining failures are a macOS 26 engine debugger fixture admission race,
+two crates.io download transport errors, and the aggregate CI gate. An
+isolated correction uses the existing next-document hold and preserves every
+state and secret-disclosure assertion; its red/green Linux validation waits
+for the current immutable K.7.3 gate. Complete hosted CI must run on the final
+integrated source after both tested changes are published. The old coverage
+and successful jobs are evidence for their exact source, not a claim that
+the current K.7.3 implementation has completed hosted CI.
+
+### K.7.3 verified output options (2026-10-10)
+
+The final immutable 7,864-file snapshot passes format, warnings-denied
+three-crate all-target Clippy, all 1,111 ordinary tests and all 194 ignored
+oracles in 129 target/doctest groups per test command. All 7,730 backend,
+Cargo and workflow hashes match the implementation being published; only
+status documents change after the snapshot. The pinned corpus includes
+176 output configurations (170 accepted and six removed-option refusals)
+and 18 command/config validation controls. Actual Node effects, exact
+accepted declarations, output metadata, strict helper sites and primary
+option diagnostics agree with the reference. The 48 callable/indexed/empty
+alias witnesses eliminate all 40 recorded declaration differences while
+preserving inferred-variable and constructor-arrow printing.
+
+Output options share compiler/cache identity and CLI/config validation.
+Comment and newline edits compose with source provenance; BOM formatting
+preserves strict helper sites. Logical source/map URLs keep authorized
+publication paths unchanged. Declaration documentation and internal-member
+stripping cover the measured top-level, class, namespace, interface, enum
+and exported record-alias boundaries. API inline-source compatibility is
+retained while the native CLI uses the measured TypeScript default.
+
+The largest changed source is 986 lines; the largest BlueTS source is
+1,186 lines, below the 1,200-line review threshold. The regenerated inventory
+contains 206 precise refusals in 11 areas. Broader nested/inferred declaration
+compositions, complete mapping byte parity, later declaration layouts and
+unmeasured option combinations remain recorded. Commit and push this
+verified leaf, integrate the independently tested debugger fixture repair,
+and run complete hosted CI on the final integrated source. K.7.4 through
+K.10 remain open. Evidence: `blueice-k73-final-k0-seventh-proof.json`, its
+status/source hashes and logs, and
+`blueice-k73-signature-members-focused-proof.json`.

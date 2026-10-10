@@ -10,6 +10,7 @@ use serde_json::Value;
 mod args;
 mod output;
 mod presentation;
+mod source_maps;
 mod statistics;
 use args::Args;
 
@@ -39,6 +40,7 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     };
     let mut config_diagnostic = None;
     let mut config_sources = BTreeMap::new();
+    let project_path = args.project.clone();
     let mut invocation = match resolve_config_with_sources(
         args.project,
         &mut config_diagnostic,
@@ -68,16 +70,18 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
             return failure(&error, pretty, diagnostics_json, config_diagnostic);
         }
     };
-    let Some(project) = &mut invocation.project_config else {
-        return fail("--project requires a TypeScript configuration", pretty);
-    };
     let show_config = args
         .flags
         .remove("showConfig")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     args.flags.remove("diagnostics-json");
-    project.options.extend(args.flags);
+    if let Err(error) = tsconfig::apply_output_flags(&mut invocation, args.flags) {
+        return fail(&error, pretty);
+    }
+    let Some(project) = &mut invocation.project_config else {
+        return fail("--project requires a TypeScript configuration", pretty);
+    };
     let enabled = |name: &str| {
         project
             .options
@@ -114,7 +118,16 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if let Err(error) = tsconfig::prepare(&mut invocation) {
-        return fail(&error, pretty);
+        let source = project_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| config_sources.get(name));
+        let diagnostic = tsconfig::diagnostics::error(
+            &error,
+            &project_path,
+            source.map(|source| source.as_bytes()),
+        );
+        return failure(&error, pretty, diagnostics_json, diagnostic);
     }
     let loader = match loader(&invocation) {
         Ok(loader) => loader,

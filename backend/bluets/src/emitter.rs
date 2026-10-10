@@ -37,6 +37,7 @@ mod jsx;
 mod legacy_decorators;
 mod module_wrappers;
 mod namespaces;
+mod output_options;
 mod private_lowering;
 mod reexports;
 mod system;
@@ -102,24 +103,29 @@ pub struct SourceMap {
     pub file: String,
     pub sources: Vec<String>,
     pub sources_content: Vec<String>,
+    pub inline_sources: bool,
+    pub source_root: String,
     pub mappings: String,
 }
 
 impl SourceMap {
     pub fn to_json(&self) -> String {
         format!(
-            "{{\"version\":3,\"file\":\"{}\",\"sources\":[{}],\"sourcesContent\":[{}],\"names\":[],\"mappings\":\"{}\"}}",
+            "{{\"version\":3,\"file\":\"{}\",\"sourceRoot\":\"{}\",\"sources\":[{}]{},\"names\":[],\"mappings\":\"{}\"}}",
             json_escape(&self.file),
+            json_escape(&self.source_root),
             self.sources
                 .iter()
                 .map(|source| format!("\"{}\"", json_escape(source)))
                 .collect::<Vec<_>>()
                 .join(","),
-            self.sources_content
-                .iter()
-                .map(|source| format!("\"{}\"", json_escape(source)))
-                .collect::<Vec<_>>()
-                .join(","),
+            if self.inline_sources {
+                format!(",\"sourcesContent\":[{}]", self.sources_content
+                    .iter()
+                    .map(|source| format!("\"{}\"", json_escape(source)))
+                    .collect::<Vec<_>>()
+                    .join(","))
+            } else { String::new() },
             json_escape(&self.mappings),
         )
     }
@@ -161,7 +167,7 @@ pub(crate) fn emit(
             }
             let source_map = options
                 .source_map
-                .then(|| source_map(id, &checked_module.module.source, &emitted));
+                .then(|| source_map(id, &checked_module.module.source, &emitted, options));
             let declaration = options
                 .declaration
                 .then(|| {
@@ -170,9 +176,11 @@ pub(crate) fn emit(
                         &inferred_returns::declaration_module(checked_module),
                         &checked_module.symbols,
                         Some(&context),
+                        options,
                     )
                 })
                 .transpose()?;
+            let declaration = declaration.map(|text| output_options::format_text(text, options));
             Ok((
                 id.clone(),
                 BuildArtifact {
@@ -332,6 +340,7 @@ fn emit_javascript(
     };
     let module = emitting_module.as_ref();
     let mut edits = module.edits.clone();
+    output_options::erase_type_comments(module, &mut edits);
     if wrapper == crate::ModuleKind::System {
         system::validate(module)?;
     }
@@ -420,7 +429,10 @@ fn emit_javascript(
         emitted
     };
     let emitted = module_wrappers::wrap(emitted, module, options, wrapper);
+    let emitted = output_options::format_javascript(emitted, module, options)?;
     if let Some(record) = &mut strict_runtime {
+        record.helper_import.expected_text =
+            output_options::format_text(record.helper_import.expected_text.clone(), options);
         strict_boundaries::locate_emitted_calls(module, &emitted.javascript, record)?;
     }
     Ok((emitted, strict_runtime))
@@ -834,11 +846,28 @@ fn source_line_column(source: &str, offset: usize) -> (usize, usize) {
     (line, column)
 }
 
-fn source_map(module_id: &str, source: &str, emitted: &EmittedJavaScript) -> SourceMap {
+fn source_map(
+    module_id: &str,
+    source: &str,
+    emitted: &EmittedJavaScript,
+    options: &CompilerOptions,
+) -> SourceMap {
     SourceMap {
         file: output_file_name(module_id),
         sources: vec![module_id.to_string()],
         sources_content: vec![source.to_string()],
+        inline_sources: options.inline_sources,
+        source_root: options
+            .source_root
+            .as_deref()
+            .filter(|root| !root.is_empty())
+            .map_or_else(String::new, |root| {
+                if root.ends_with('/') {
+                    root.to_string()
+                } else {
+                    format!("{root}/")
+                }
+            }),
         mappings: encode_mappings(&emitted.provenance),
     }
 }

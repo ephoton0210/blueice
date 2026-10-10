@@ -74,11 +74,19 @@ pub(super) fn publish(
         );
         let mut javascript = artifact.javascript.clone();
         if let Some(map) = &artifact.source_map {
-            let name = javascript_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .ok_or_else(|| io::Error::other("output filename is not UTF-8"))?;
-            javascript.push_str(&format!("\n//# sourceMappingURL={name}.map\n"));
+            let (map, url) = source_maps::publication(
+                map,
+                invocation,
+                &source,
+                &relative,
+                &javascript_path,
+                extension,
+            )?;
+            let newline = match invocation.options.new_line {
+                blueice_bluets::NewLine::Lf => "\n",
+                blueice_bluets::NewLine::CrLf => "\r\n",
+            };
+            javascript.push_str(&format!("{newline}//# sourceMappingURL={url}{newline}"));
             insert(
                 &mut writes,
                 javascript_path.with_extension(format!("{extension}.map")),

@@ -10,6 +10,7 @@ pub(super) fn emit_declaration(
     module: &Module,
     symbols: &[crate::checker::Symbol],
     inferred: Option<&inferred_declarations::Context<'_>>,
+    options: &CompilerOptions,
 ) -> Result<String, Diagnostic> {
     let mut output = String::new();
     let enum_evaluations = crate::enum_eval::evaluate_enums(module);
@@ -21,6 +22,22 @@ pub(super) fn emit_declaration(
         if matches!(declaration, Declaration::Enum(_)) {
             enum_position += 1;
         }
+        let comments = output_options::leading_jsdoc(&module.source, declaration.span().start);
+        if options.strip_internal
+            && comments
+                .iter()
+                .any(|comment| output_options::is_internal(comment))
+        {
+            continue;
+        }
+        let start = output.len();
+        if !options.remove_comments {
+            for comment in &comments {
+                output.push_str(comment);
+                output.push('\n');
+            }
+        }
+        let body_start = output.len();
         match declaration {
             Declaration::Import(import) => {
                 if let Some(text) = inferred.and_then(|context| context.import(import)) {
@@ -46,7 +63,9 @@ pub(super) fn emit_declaration(
                     &inferred
                         .and_then(|context| context.private_alias(&alias.name))
                         .map(str::to_string)
-                        .unwrap_or_else(|| declaration_type_to_ts(&alias.value)),
+                        .unwrap_or_else(|| {
+                            declaration_alias_to_ts(&alias.value, &module.source, options)
+                        }),
                 );
                 output.push_str(";\n");
             }
@@ -77,10 +96,10 @@ pub(super) fn emit_declaration(
                     );
                 }
                 output.push(' ');
-                output.push_str(&callable_objects::render_with_indices(
-                    &interface.fields,
-                    &interface.signatures,
-                    &interface.indices,
+                output.push_str(&callable_objects::render_interface(
+                    interface,
+                    &module.source,
+                    options,
                 ));
                 output.push('\n');
             }
@@ -206,7 +225,12 @@ pub(super) fn emit_declaration(
                 let evaluation = enum_evaluations
                     .get(enum_index)
                     .expect("every enum was evaluated");
-                output.push_str(&enums::emit_enum_declaration(declaration, evaluation));
+                output.push_str(&enums::emit_enum_declaration(
+                    declaration,
+                    evaluation,
+                    &module.source,
+                    options,
+                ));
             }
             Declaration::Namespace(namespace)
                 if namespace.exported || is_value_export_name(module, &namespace.name) =>
@@ -217,7 +241,7 @@ pub(super) fn emit_declaration(
                     "declare "
                 };
                 output.push_str(&namespaces::emit_namespace_declaration(
-                    module, namespace, prefix,
+                    module, namespace, prefix, options,
                 )?);
             }
             Declaration::Class(class)
@@ -238,7 +262,14 @@ pub(super) fn emit_declaration(
                 } else {
                     "declare "
                 };
-                classes::emit_class_declaration(class, prefix, &mut output, inferred)?;
+                classes::emit_class_declaration(
+                    class,
+                    prefix,
+                    &mut output,
+                    inferred,
+                    &module.source,
+                    options,
+                )?;
             }
             Declaration::UmdExport(export) => {
                 output.push_str(&format!("export as namespace {};\n", export.name));
@@ -302,6 +333,9 @@ pub(super) fn emit_declaration(
                 output.push_str(";\n");
             }
             _ => {}
+        }
+        if output.len() == body_start {
+            output.truncate(start);
         }
     }
     if private_alias
@@ -410,4 +444,9 @@ fn declaration_type_to_ts(value: &Type) -> String {
         Type::Record(fields) if !fields.is_empty() => callable_objects::render(fields, &[]),
         _ => type_to_ts(value),
     }
+}
+
+fn declaration_alias_to_ts(value: &Type, source: &str, options: &CompilerOptions) -> String {
+    callable_objects::render_alias(value, source, options)
+        .unwrap_or_else(|| declaration_type_to_ts(value))
 }

@@ -544,6 +544,7 @@ pub(super) fn emit_namespace_declaration(
     module: &Module,
     namespace: &NamespaceDeclaration,
     prefix: &str,
+    options: &CompilerOptions,
 ) -> Result<String, Diagnostic> {
     // `A.B.C` is one declaration with a dotted name.
     let mut name = namespace.name.clone();
@@ -556,7 +557,7 @@ pub(super) fn emit_namespace_declaration(
         name.push_str(&inner.name);
         current = inner;
     }
-    let body = render_namespace_body(module, current)?;
+    let body = render_namespace_body(module, current, options)?;
     let mut output = format!("{prefix}namespace {name} {{");
     if body.is_empty() {
         output.push_str(" }\n");
@@ -629,6 +630,7 @@ fn words(text: &str) -> BTreeSet<String> {
 fn render_namespace_body(
     module: &Module,
     namespace: &NamespaceDeclaration,
+    options: &CompilerOptions,
 ) -> Result<String, Diagnostic> {
     let body = &namespace.body;
     let mut included: Vec<bool> = body
@@ -638,7 +640,7 @@ fn render_namespace_body(
     let mut hidden: BTreeSet<usize> = BTreeSet::new();
     // A member that is not exported is printed when a printed member names it.
     loop {
-        let text = render_members(module, namespace, &included, &hidden, false)?;
+        let text = render_members(module, namespace, &included, &hidden, false, options)?;
         let mentioned = words(&text);
         let mut changed = false;
         for (index, declaration) in body.iter().enumerate() {
@@ -665,7 +667,7 @@ fn render_namespace_body(
         }
     }
     let explicit = !hidden.is_empty();
-    let mut text = render_members(module, namespace, &included, &hidden, explicit)?;
+    let mut text = render_members(module, namespace, &included, &hidden, explicit, options)?;
     if explicit {
         text.push_str("    export {};\n");
     }
@@ -680,6 +682,7 @@ fn render_members(
     included: &[bool],
     hidden: &BTreeSet<usize>,
     explicit: bool,
+    options: &CompilerOptions,
 ) -> Result<String, Diagnostic> {
     let mut output = String::new();
     let mut chunk: Vec<(usize, Declaration)> = Vec::new();
@@ -703,7 +706,7 @@ fn render_members(
                 expression_variable_types: BTreeMap::new(),
                 type_assertions: BTreeMap::new(),
             };
-            let text = super::emit_declaration(&synthetic, &[], None)?;
+            let text = super::emit_declaration(&synthetic, &[], None, options)?;
             let hidden_names: BTreeSet<&str> = chunk
                 .iter()
                 .filter(|(index, _)| hidden.contains(index))
@@ -759,7 +762,7 @@ fn render_members(
                 } else {
                     ""
                 };
-                let text = emit_namespace_declaration(module, inner, prefix)?;
+                let text = emit_namespace_declaration(module, inner, prefix, options)?;
                 for line in text.lines() {
                     output.push_str(&format!("    {line}\n"));
                 }
