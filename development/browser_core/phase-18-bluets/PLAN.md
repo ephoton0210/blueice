@@ -8304,3 +8304,9 @@ diagnostic differences. Production is unchanged; keep this supplement
 isolated and unpushed. Evidence: `blueice-k73-values-baseline-first-
 {status,source-hashes}.json`, exact logs and
 `blueice-k73-removed-option-values-native.json`. K.7.3 remains open.
+
+### K.7.2 Windows fixture byte preservation (2026-10-10)
+
+Windows Git CRLF checkout changes the source offsets of the pinned module-system observations. Full CI on `ec5823ed4` finds 24 primary-origin differences; a Linux CRLF replay reproduces those same case IDs. Pin `tests/fixtures/module_systems/**` to LF, retaining compiler positions for the original input bytes. A forced `core.autocrlf=true` checkout preserves all 354 fixture byte sequences.
+
+The LF snapshot passes format, three-crate all-target Clippy and all six public module-system tests, including the complete pinned TypeScript recorder and Node/declaration replay. All 106 native configurations agree. The 7,314 backend/Cargo/workflow hashes match the complete CLI-split K.0 snapshot; no compiler code, fixture body, diagnostic expectation or coverage exclusion changes. Fresh final-source complete hosted CI remains required. Evidence is retained in `blueice-k72-windows-ci-green-{status,source-proof}.json` and `blueice-k72-windows-checkout-proof.json`.

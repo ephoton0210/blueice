@@ -12,3 +12,6 @@ backend/bluets/tests/fixtures/typescript_oracle/lib-loop-following-error/main.ts
 
 # K.7.3 native diagnostics and source-content digests depend on fixture bytes.
 backend/bluets/tests/fixtures/output_options/** text eol=lf
+
+# K.7.2 native diagnostic offsets and fixture observations use original LF bytes.
+backend/bluets/tests/fixtures/module_systems/** text eol=lf
