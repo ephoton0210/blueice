@@ -1,0 +1,23 @@
+{
+  "id": "sourceextra-commonjs-j1",
+  "form": "j1",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "CommonJS",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "esModuleInterop": true,
+    "allowJs": true,
+    "checkJs": true
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "sourceextra-commonjs-q3",
+  "form": "q3",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "CommonJS",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "esModuleInterop": true,
+    "resolveJsonModule": true
+  }
+}
