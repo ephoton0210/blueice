@@ -83,6 +83,26 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) -> bool {
+        let operand = strip_outer_parentheses(erased_assertion_operand(tokens).unwrap_or(tokens));
+        let literal = match operand {
+            [sign, literal, ..] if sign.is("-") || sign.is("+") => Some(literal),
+            [literal, ..] => Some(literal),
+            [] => None,
+        };
+        if self.target < crate::EcmaTarget::Es2020 {
+            if let Some(literal) =
+                literal.filter(|token| token.kind == TokenKind::Number && token.text.ends_with('n'))
+            {
+                self.typescript_type_error(
+                    &literal.span(&self.module.id),
+                    "BigInt literals are not available when targeting lower than ES2020."
+                        .to_string(),
+                    DiagnosticCode::UnsupportedSyntax,
+                    2737,
+                    Vec::new(),
+                );
+            }
+        }
         if let Some(operand) = erased_assertion_operand(tokens) {
             let marker = &tokens[operand.len()];
             if let Some(annotation) = self.module.type_assertions.get(&marker.start).cloned() {

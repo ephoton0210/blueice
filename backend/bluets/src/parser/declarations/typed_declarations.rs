@@ -112,7 +112,36 @@ impl Parser {
         declared: bool,
         kind: VariableKind,
     ) -> VariableDeclaration {
-        let name = self.require_identifier("expected a variable name");
+        let (name, pattern) = if self.peek("{") || self.peek("[") {
+            let open = self.index;
+            match patterns::parse_variable_pattern(&self.tokens, open, &self.id) {
+                Some((pattern, close)) => {
+                    let name =
+                        self.source[self.tokens[open].start..self.tokens[close].end].to_string();
+                    self.index = close + 1;
+                    if exported || declared {
+                        self.unsupported(
+                            SourceSpan::new(
+                                &self.id,
+                                self.tokens[open].start,
+                                self.tokens[close].end,
+                            ),
+                            "exported or ambient variable binding patterns are not supported yet",
+                        );
+                    }
+                    (name, Some(pattern))
+                }
+                None => {
+                    self.unsupported(
+                        self.current().span(&self.id),
+                        "this variable binding pattern is not supported yet",
+                    );
+                    (self.require_identifier("expected a variable name"), None)
+                }
+            }
+        } else {
+            (self.require_identifier("expected a variable name"), None)
+        };
         if self.consume("?") {
             self.unsupported(
                 self.previous().span(&self.id),
@@ -170,6 +199,7 @@ impl Parser {
         }
         VariableDeclaration {
             name,
+            pattern,
             kind,
             annotation,
             initializer,
@@ -188,13 +218,8 @@ impl Parser {
         async_start: bool,
     ) {
         // `function* name`: a generator.
+        let generator_span = self.current().span(&self.id);
         let generator = self.consume("*");
-        if generator && async_start {
-            self.unsupported(
-                self.previous().span(&self.id),
-                "an async generator is not supported yet",
-            );
-        }
         let name = self.require_identifier("expected a function name");
         let type_parameter_start = self.current().start;
         let type_parameters = self.parse_type_parameters();
@@ -219,6 +244,22 @@ impl Parser {
         } else {
             None
         };
+
+        if generator && async_start && return_type.is_none() && !self.emitted_runtime {
+            self.unsupported(
+                generator_span.clone(),
+                "an async generator without an explicit return annotation is not supported yet",
+            );
+        }
+        if generator
+            && async_start
+            && matches!(return_type.as_ref(), Some(Type::Named { name, .. }) if matches!(name.as_str(), "Generator" | "Iterator" | "IterableIterator" | "Iterable"))
+        {
+            self.unsupported(
+                generator_span,
+                "an async generator with a synchronous iterator annotation is not supported yet",
+            );
+        }
 
         let mut body = Vec::new();
         let mut returns = Vec::new();
@@ -386,20 +427,11 @@ impl Parser {
                     }
                 }
             } else {
-                let this_parameter = self.peek("this");
-                let name = self.require_identifier("expected a parameter name");
-                if this_parameter {
-                    if let Some(diagnostic) = self.diagnostics.last_mut() {
-                        *diagnostic = diagnostic.clone().blue_only(
-                            "BlueTSC's named parameter subset does not parse TypeScript this parameters.",
-                        );
-                    }
-                }
-                name
+                self.parse_parameter_name("expected a parameter name")
             };
             let optional_start = self.current().start;
             let mut optional = self.consume("?");
-            if optional {
+            if optional && parameter_name != "this" {
                 self.edits.push(TextEdit {
                     start: optional_start,
                     end: self.current().start,
@@ -410,11 +442,13 @@ impl Parser {
             let annotation = if self.consume(":") {
                 let value = self.parse_type_until(&["=", ",", ")"]);
                 let annotation_end = self.current().start;
-                self.edits.push(TextEdit {
-                    start: annotation_start,
-                    end: annotation_end,
-                    replacement: String::new(),
-                });
+                if parameter_name != "this" {
+                    self.edits.push(TextEdit {
+                        start: annotation_start,
+                        end: annotation_end,
+                        replacement: String::new(),
+                    });
+                }
                 Some(value)
             } else {
                 None
@@ -440,6 +474,27 @@ impl Parser {
                 None
             };
             let parameter_end = self.previous().end;
+            if parameter_name == "this" {
+                if rest || optional || default.is_some() {
+                    self.unsupported(
+                        SourceSpan::new(&self.id, parameter_start, parameter_end),
+                        "optional, defaulted and rest this parameters are not supported",
+                    );
+                }
+                self.check_receiver_parameter_position(
+                    parameters.len(),
+                    SourceSpan::new(&self.id, parameter_start, parameter_end),
+                );
+                self.edits.push(TextEdit {
+                    start: parameter_start,
+                    end: if self.peek(",") {
+                        self.current().end
+                    } else {
+                        self.current().start
+                    },
+                    replacement: String::new(),
+                });
+            }
             if let Some((visibility, readonly, override_modifier, modifiers_start)) =
                 property_modifiers
             {

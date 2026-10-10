@@ -824,7 +824,9 @@ fn fresh_variable(
     };
     if matches!(
         value.kind,
-        crate::syntax::TokenKind::Number | crate::syntax::TokenKind::String
+        crate::syntax::TokenKind::Number
+            | crate::syntax::TokenKind::String
+            | crate::syntax::TokenKind::Template
     ) || value.is("true")
         || value.is("false")
     {

@@ -90,7 +90,9 @@ pub use page_runtime::{
     BLUEJS_PAGE_RUNTIME_ABI_V1,
 };
 pub(crate) use parser::parse_eval;
-pub use parser::{parse, parse_module, ParseError};
+pub use parser::{
+    parse, parse_module, parse_module_with_edition, parse_with_edition, ParseError, SyntaxEdition,
+};
 pub use program_abi::{BlueJsProgramV1, BLUEJS_PROGRAM_ABI_V1};
 pub use program_debug::{
     BlueJsAstNodeId, BlueJsAstNodeInfo, BlueJsAstNodeKind, BlueJsCodeUnitId, BlueJsCodeUnitInfo,

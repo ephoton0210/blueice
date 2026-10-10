@@ -67,6 +67,7 @@ impl Parser {
             let span = SourceSpan::new(&self.id, start, self.previous().end);
             self.declarations
                 .push(Declaration::Variable(VariableDeclaration {
+                    pattern: None,
                     name: name.clone(),
                     kind: VariableKind::Const,
                     annotation: None,

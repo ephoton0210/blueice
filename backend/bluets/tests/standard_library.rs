@@ -98,6 +98,43 @@ fn target_controls_new_members_and_fingerprints() {
 }
 
 #[test]
+fn explicit_libraries_preserve_owner_types_and_page_authority() {
+    let mut options = CompilerOptions {
+        target: EcmaTarget::Es5,
+        libraries: Some(vec![EcmaTarget::Es2020]),
+        ambient_declaration_modules: vec![ModuleSource::new(
+            "memory:///owner.d.ts",
+            "interface Map<K, V> { owner(key: K): V; }",
+        )],
+        ..CompilerOptions::default()
+    };
+    let source =
+        "declare const entries: Map<number, string>; const value: string = entries.owner(1);";
+    assert!(!checked(source, options.clone()).has_errors());
+    assert!(checked(
+        "declare const entries: Map<number, string>; entries.get(1);",
+        options.clone()
+    )
+    .has_errors());
+    options.require_declared_global_calls = true;
+    assert!(checked("Math.sqrt(9);", options).has_errors());
+}
+
+#[test]
+fn empty_library_selection_accepts_owner_supplied_intrinsic_types() {
+    let options = CompilerOptions {
+        libraries: Some(Vec::new()),
+        ambient_declaration_modules: vec![ModuleSource::new(
+            "memory:///intrinsics.d.ts",
+            "interface Array<T> { length: number; } interface Boolean {} interface Function {} interface IArguments {} interface Number {} interface Object {} interface RegExp {} interface String {}",
+        )],
+        ..CompilerOptions::default()
+    };
+    let result = checked("export function answer(): number { return 42; }", options);
+    assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+}
+
+#[test]
 fn implicit_library_constants_do_not_pollute_opaque_readonly_checks() {
     let pick = "declare function pick(value: unknown): unknown;";
     for source in [

@@ -209,6 +209,7 @@ struct BuildMetadata {
     language_version: &'static str,
     fingerprint: String,
     target: &'static str,
+    downlevel_iteration: bool,
     /// Whether class fields are defined rather than assigned, with the
     /// target's default applied.
     use_define_for_class_fields: bool,
@@ -232,6 +233,8 @@ struct BuildMetadata {
     remote_declarations: Vec<RemoteDeclarationManifest>,
     /// The version of the private-name helper text an artifact may embed.
     class_helper_version: &'static str,
+    #[serde(rename = "target_helper_version")]
+    target_helper_version: &'static str,
     /// The version of the decorator helper text an artifact may embed.
     decorator_helper_version: &'static str,
     legacy_decorator_helper_version: &'static str,
@@ -494,10 +497,14 @@ fn build_metadata(
             .project_config
             .as_ref()
             .map(|project| tsconfig::relative_text(&invocation.root, &project.emit_root)),
-        standard_library: blueice_bluets::standard_library::identity(invocation.options.target),
+        standard_library: blueice_bluets::standard_library::identity_with_libraries(
+            invocation.options.target,
+            invocation.options.libraries.as_deref(),
+        ),
         language_version: blueice_bluets::LANGUAGE_VERSION,
         fingerprint: summary.fingerprint.clone(),
         target: invocation.options.target.as_str(),
+        downlevel_iteration: invocation.options.downlevel_iteration,
         use_define_for_class_fields: invocation.options.defines_class_fields(),
         preserve_const_enums: invocation.options.preserve_const_enums,
         inline_const_enums: invocation.options.inlines_const_enums(),
@@ -519,6 +526,7 @@ fn build_metadata(
             })
             .collect(),
         class_helper_version: blueice_bluets::CLASS_HELPER_V1_VERSION,
+        target_helper_version: blueice_bluets::TARGET_HELPER_V1_VERSION,
         decorator_helper_version: blueice_bluets::DECORATOR_HELPER_V1_VERSION,
         legacy_decorator_helper_version: blueice_bluets::LEGACY_DECORATOR_HELPER_V1_VERSION,
         experimental_decorators: invocation.options.experimental_decorators,

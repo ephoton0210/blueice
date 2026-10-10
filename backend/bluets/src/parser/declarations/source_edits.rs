@@ -12,6 +12,18 @@ impl Parser {
         start: usize,
         end: usize,
     ) {
+        self.collect_runtime_type_edits(start, end, false);
+    }
+
+    pub(in crate::parser::implementation) fn collect_statement_type_edits(
+        &mut self,
+        start: usize,
+        end: usize,
+    ) {
+        self.collect_runtime_type_edits(start, end, true);
+    }
+
+    fn collect_runtime_type_edits(&mut self, start: usize, end: usize, statement_range: bool) {
         let mut index = start;
         while index < end {
             if let Some(next) = self.try_parse_class_expression(index, end) {
@@ -46,7 +58,7 @@ impl Parser {
                 self.index = saved;
                 continue;
             }
-            if let Some(next) = self.try_parse_nested_function(start, index, end) {
+            if let Some(next) = self.try_parse_nested_function(start, index, end, statement_range) {
                 index = next;
                 continue;
             }

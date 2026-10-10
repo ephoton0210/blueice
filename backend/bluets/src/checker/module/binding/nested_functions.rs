@@ -128,6 +128,31 @@ impl ModuleChecker<'_> {
     }
 
     fn check_nested_function(&mut self, arrow: &NestedFunction, scope: &BTreeMap<String, Type>) {
+        if self.target == crate::EcmaTarget::Es5
+            && arrow.kind == crate::parser::NestedFunctionKind::Arrow
+        {
+            let reads = self
+                .scopes
+                .as_ref()
+                .map(|scopes| scopes.arguments_reads_at(arrow.span.start).to_vec())
+                .unwrap_or_default();
+            for span in reads {
+                self.typescript_type_error(
+                    &span,
+                    "The 'arguments' object cannot be referenced in an arrow function in ES5. Consider using a standard function expression.".to_string(),
+                    DiagnosticCode::UnsupportedSyntax,
+                    2496,
+                    Vec::new(),
+                );
+            }
+        }
+        if let (Some(first), Some(last)) = (arrow.computed_key.first(), arrow.computed_key.last()) {
+            self.check_direct_runtime_expression(
+                &arrow.computed_key,
+                scope,
+                &SourceSpan::new(&self.module.id, first.start, last.end),
+            );
+        }
         // A nested function is not the constructor: it may not assign readonly
         // fields even when it is written inside one.
         let constructor_readonly = self.constructor_readonly_fields.take();
@@ -174,6 +199,11 @@ impl ModuleChecker<'_> {
             span: arrow.span.clone(),
         };
         let mut body_scope = scope.clone();
+        if arrow.contextual_this {
+            body_scope.insert("this".to_string(), Type::Unknown);
+        } else if arrow.kind != crate::parser::NestedFunctionKind::Arrow {
+            body_scope.remove("this");
+        }
         if let Some(name) = &arrow.name {
             // A named function expression is visible inside its own body.
             body_scope.insert(

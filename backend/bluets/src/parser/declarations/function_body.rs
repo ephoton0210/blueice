@@ -17,7 +17,10 @@ impl Parser {
         let mut depth = 1usize;
         let mut parentheses = 0usize;
         let mut brackets = 0usize;
-        while !self.at_eof() && depth > 0 {
+        while !self.at_eof()
+            && depth > 0
+            && self.emitted_body_end.is_none_or(|end| self.index < end)
+        {
             self.diagnose_unsupported_opaque_syntax(
                 self.index,
                 self.index.saturating_add(2).min(self.tokens.len()),
@@ -180,7 +183,7 @@ impl Parser {
             }
             self.bump();
         }
-        if depth != 0 {
+        if depth != 0 && self.emitted_body_end.is_none_or(|end| self.index < end) {
             self.error_at(
                 SourceSpan::new(&self.id, body_start, self.source.len()),
                 DiagnosticCode::ParseError,

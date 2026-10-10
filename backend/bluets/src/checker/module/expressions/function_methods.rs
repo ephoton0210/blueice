@@ -65,11 +65,12 @@ impl ModuleChecker<'_> {
     pub(super) fn check_function_method(
         &mut self,
         receiver: &[Token],
-        member: &str,
+        member_token: &Token,
         arguments: &[Token],
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) -> bool {
+        let member = member_token.text.as_str();
         let Some(signature) = self.method_signature(receiver, member, scope) else {
             return false;
         };
@@ -87,6 +88,7 @@ impl ModuleChecker<'_> {
                 2555,
                 vec!["1".into(), "0".into()],
             );
+            self.point_last_typescript(std::slice::from_ref(member_token));
             return true;
         };
         if let Some(parameter) = signature.parameters.iter().find(|p| p.name == "this") {
@@ -96,17 +98,25 @@ impl ModuleChecker<'_> {
                 .as_ref()
                 .is_some_and(|expected| !self.is_assignable_bounded(&actual, expected, span))
             {
-                self.typescript_type_error(
+                self.call_argument_error(
                     span,
                     "this argument has an incompatible type".to_string(),
-                    DiagnosticCode::TypeMismatch,
-                    2345,
-                    vec![
-                        type_label(&actual),
-                        type_label(parameter.annotation.as_ref().unwrap()),
-                    ],
+                    &actual,
+                    parameter.annotation.as_ref().unwrap(),
+                    this_arg,
+                    false,
                 );
-                self.point_last_typescript(this_arg);
+                let detail = self
+                    .receiver_compatibility_detail(&actual, parameter.annotation.as_ref().unwrap());
+                if let Some(counterpart) = self
+                    .diagnostics
+                    .last_mut()
+                    .and_then(|d| d.typescript.as_mut())
+                {
+                    if counterpart.code == 2345 && !counterpart.message.contains('\n') {
+                        counterpart.message.push_str(&detail);
+                    }
+                }
             }
         }
         let parameters = signature

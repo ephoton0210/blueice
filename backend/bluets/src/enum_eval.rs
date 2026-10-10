@@ -180,6 +180,39 @@ fn evaluate_tokens(tokens: &[Token], context: &mut Context<'_>) -> Option<EnumVa
     value
 }
 
+/// Reuses the original arithmetic evaluator for known literal operands only.
+/// Callers supply bounded tokens; unknown identifiers never acquire values
+/// from a host or from the enum evaluator's Infinity/NaN conveniences.
+pub(crate) fn evaluate_literal_expression(
+    tokens: &[Token],
+    literals: &BTreeMap<String, EnumValue>,
+) -> Option<EnumValue> {
+    if tokens.iter().any(|token| {
+        matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+            && !literals.contains_key(&token.text)
+    }) {
+        return None;
+    }
+    let mut errors = Vec::new();
+    let all = BTreeMap::new();
+    let mut context = Context {
+        enum_name: "",
+        own: literals
+            .iter()
+            .map(|(name, value)| EvaluatedMember {
+                name: name.clone(),
+                value: Some(value.clone()),
+            })
+            .collect(),
+        later: Vec::new(),
+        all: &all,
+        errors: &mut errors,
+        span: SourceSpan::new("literal-expression", 0, 0),
+    };
+    let result = evaluate_tokens(tokens, &mut context);
+    errors.is_empty().then_some(result).flatten()
+}
+
 struct Evaluator<'a, 'b> {
     tokens: &'a [Token],
     index: usize,

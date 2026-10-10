@@ -10,6 +10,12 @@ use super::*;
 pub(super) struct BindingId(pub(super) ScopeId, pub(super) String);
 
 impl ScopeModel<'_> {
+    pub(in crate::checker) fn arguments_reads_at(&self, creation: usize) -> &[SourceSpan] {
+        self.arguments_reads
+            .get(&self.flow_execution(creation))
+            .map_or(&[], Vec::as_slice)
+    }
+
     pub(in crate::checker) fn flow_explicit_unknown(&self, token: &Token) -> bool {
         self.flow_binding(&token.text, token.start)
             .is_some_and(|id| {
@@ -19,10 +25,11 @@ impl ScopeModel<'_> {
     }
 
     pub(super) fn flow_annotated(&self, id: &BindingId) -> bool {
-        self.scopes[id.0]
-            .values
-            .get(&id.1)
-            .is_some_and(|binding| binding.annotated)
+        self.catch_bindings.contains_key(&(id.0, id.1.clone()))
+            || self.scopes[id.0]
+                .values
+                .get(&id.1)
+                .is_some_and(|binding| binding.annotated)
     }
     pub(super) fn flow_shadowed(&self, id: &BindingId) -> bool {
         if id.1 == "this"
@@ -82,6 +89,7 @@ impl ScopeModel<'_> {
         let tokens = &self.tokens[index + 2..end];
         let equal = targets::top_level(tokens, "=")?;
         Some(VariableDeclaration {
+            pattern: None,
             name: name.text.clone(),
             kind,
             annotation: Some(annotation),

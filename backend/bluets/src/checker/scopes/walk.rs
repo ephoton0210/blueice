@@ -305,7 +305,7 @@ impl ScopeModel<'_> {
 
     pub(super) fn parameters(&mut self, parameters: &[Parameter], scope: ScopeId) {
         for parameter in parameters {
-            if parameter.pattern.is_none() {
+            if parameter.pattern.is_none() && parameter.name != "this" {
                 self.parameters
                     .insert((scope, parameter.name.clone()), parameter.span.clone());
             }

@@ -74,6 +74,32 @@
           "message": "Type 'string' is not assignable to type 'number'."
         }
       ]
+    },
+    {
+      "name": "missing-source",
+      "accepts": false,
+      "source": "const { a } = obj;",
+      "diagnostics": [
+        {
+          "code": 2304,
+          "start": 14,
+          "length": 3,
+          "message": "Cannot find name 'obj'."
+        }
+      ]
+    },
+    {
+      "name": "missing-array-source",
+      "accepts": false,
+      "source": "const [a] = arr;",
+      "diagnostics": [
+        {
+          "code": 2304,
+          "start": 12,
+          "length": 3,
+          "message": "Cannot find name 'arr'."
+        }
+      ]
     }
   ]
 }

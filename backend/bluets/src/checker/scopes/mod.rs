@@ -11,6 +11,7 @@ use crate::parser::{NestedFunctionBody, VariableDeclaration, VariableKind};
 
 mod checking_flags;
 mod diagnostics;
+pub(super) mod emission;
 mod expressions;
 pub(super) mod flow;
 mod flow_bindings;
@@ -92,6 +93,7 @@ pub(super) struct ScopeModel<'a> {
     project: &'a Project,
     scopes: Vec<Scope>,
     references: Vec<Reference>,
+    arguments_reads: BTreeMap<ScopeId, Vec<SourceSpan>>,
     /// Existing, bound qualified types (including imported namespace members).
     qualified_types: BTreeSet<String>,
     type_definitions: BTreeMap<String, TypeDefinition>,
@@ -130,7 +132,7 @@ impl<'a> ScopeModel<'a> {
         values: &BTreeMap<String, Type>,
         types: &BTreeMap<String, TypeDefinition>,
         ambient: Option<&AmbientDeclarations>,
-        target: crate::compiler::EcmaTarget,
+        library_target: Option<crate::compiler::EcmaTarget>,
         max_type_expansions: usize,
     ) -> Self {
         let tokens = crate::syntax::lex_with_limits(
@@ -146,6 +148,7 @@ impl<'a> ScopeModel<'a> {
             project,
             scopes: Vec::new(),
             references: Vec::new(),
+            arguments_reads: BTreeMap::new(),
             qualified_types: types.keys().cloned().collect(),
             type_definitions: types.clone(),
             max_type_expansions,
@@ -177,7 +180,10 @@ impl<'a> ScopeModel<'a> {
         // compatibility name; DOM and other host names require owner declarations.
         model.value(0, "console", 0, false, false, Type::Unknown);
         model.value(0, "undefined", 0, false, false, Type::Undefined);
-        for module in crate::standard_library::modules(target) {
+        for module in library_target
+            .into_iter()
+            .flat_map(crate::standard_library::modules)
+        {
             for declaration in &module.declarations {
                 let name = match declaration {
                     Declaration::Variable(value) => &value.name,
@@ -553,11 +559,18 @@ impl<'a> ScopeModel<'a> {
     }
 
     fn reference(&mut self, scope: ScopeId, token: &Token) {
+        let span = token.span(&self.module.id);
+        if token.is("arguments") {
+            self.arguments_reads
+                .entry(self.scopes[scope].execution)
+                .or_default()
+                .push(span.clone());
+        }
         self.references.push(Reference {
             scope,
             name: token.text.clone(),
             meaning: Meaning::Value,
-            span: token.span(&self.module.id),
+            span,
         });
     }
 }

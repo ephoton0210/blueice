@@ -172,6 +172,7 @@ impl ModuleChecker<'_> {
         CheckerPolicy {
             checking: self.explicit_checking.then_some(self.checking),
             target: self.target,
+            library_target: self.library_target,
             enforce_types: self.enforce_types,
             require_declared_global_calls: self.require_declared_global_calls,
             define_class_fields: self.define_class_fields,

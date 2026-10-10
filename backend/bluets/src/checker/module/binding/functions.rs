@@ -131,6 +131,10 @@ impl<'a> ModuleChecker<'a> {
                 self.annotated_names.remove(&local.name);
             }
             self.check_variable_in_scope(local, &scope);
+            if local.pattern.is_some() {
+                scope.extend(self.variable_pattern_bindings(local, &scope));
+                continue;
+            }
             let inferred = local
                 .annotation
                 .clone()
@@ -149,6 +153,10 @@ impl<'a> ModuleChecker<'a> {
         }
         // An `async` function's body returns the type inside its `Promise<T>`.
         let body_return_type = match (&function.return_type, function.async_function) {
+            (Some(_), _) if function.generator => self
+                .generator_context
+                .as_ref()
+                .and_then(|context| context.return_type.clone()),
             (Some(return_type), true) => match promise_value_type(return_type) {
                 Some(value) => Some(value),
                 None => {
@@ -161,10 +169,6 @@ impl<'a> ModuleChecker<'a> {
                     None
                 }
             },
-            (Some(_), false) if function.generator => self
-                .generator_context
-                .as_ref()
-                .and_then(|context| context.return_type.clone()),
             (Some(return_type), false) => Some(return_type.runtime_result()),
             (return_type, _) => return_type.clone(),
         };
@@ -234,7 +238,7 @@ impl<'a> ModuleChecker<'a> {
     /// type: an object pattern reads the property of the same key (an absent
     /// one is an error, an optional one may be `undefined` unless defaulted),
     /// and an array pattern reads the tuple element at its position.
-    fn bind_pattern(
+    pub(super) fn bind_pattern(
         &mut self,
         pattern: &BindingPattern,
         value: &Type,
@@ -263,15 +267,7 @@ impl<'a> ModuleChecker<'a> {
                     let bound = match found {
                         PropertyType::Found { value, .. } => value,
                         PropertyType::Missing if matches!(resolved, Type::Record(_)) => {
-                            self.type_error(
-                                &binding.span,
-                                format!(
-                                    "property `{}` does not exist on type `{}`",
-                                    binding.key,
-                                    type_label(value)
-                                ),
-                                DiagnosticCode::TypeMismatch,
-                            );
+                            self.missing_property_error(&binding.span, value, &binding.key, None);
                             Type::Unknown
                         }
                         _ => Type::Unknown,
@@ -649,6 +645,19 @@ impl<'a> ModuleChecker<'a> {
                 .and_then(|scopes| scopes.flow_return_token(returned[0].start))
             {
                 self.point_last_typescript(&[token]);
+            } else if self
+                .module
+                .nested_functions
+                .get(&function_span.start)
+                .is_some_and(|function| {
+                    function.kind == crate::parser::NestedFunctionKind::Arrow
+                        && matches!(
+                            function.body,
+                            crate::parser::NestedFunctionBody::Expression(_)
+                        )
+                })
+            {
+                self.point_last_typescript(returned);
             }
         }
     }
@@ -682,7 +691,9 @@ impl<'a> ModuleChecker<'a> {
                 | FunctionBodyItem::Throw { tokens, span } => (tokens, span),
                 FunctionBodyItem::Variable(_) => continue,
                 FunctionBodyItem::Function(function) => {
-                    self.check_function_in_scope(function, current_scope.clone());
+                    let mut function_scope = current_scope.clone();
+                    function_scope.remove("this");
+                    self.check_function_in_scope(function, function_scope);
                     continue;
                 }
                 FunctionBodyItem::If(statement) => {

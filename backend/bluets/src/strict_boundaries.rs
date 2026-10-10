@@ -198,7 +198,8 @@ fn supported_function(function: &FunctionDeclaration) -> bool {
     }
     let mut parameter_names = BTreeSet::new();
     for parameter in &function.parameters {
-        if parameter.rest
+        if parameter.name == "this"
+            || parameter.rest
             || parameter.optional
             || parameter.default.is_some()
             || parameter.annotation != Some(Type::String)

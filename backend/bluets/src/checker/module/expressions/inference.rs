@@ -8,6 +8,7 @@ use super::*;
 
 mod arrays;
 mod records;
+mod template_constants;
 
 impl<'a> ModuleChecker<'a> {
     /// The type of a top-level chain of `+`/`-` or of `*`/`/`/`%`, folded from the
@@ -237,6 +238,9 @@ impl<'a> ModuleChecker<'a> {
                 .is_some_and(|token| token.is("++") || token.is("--"))
         {
             return Type::Number;
+        }
+        if let Some(value) = self.infer_indexed_call(tokens, scope) {
+            return value;
         }
         if let Some(call) = member_call_parts(tokens, |start| {
             self.module.generic_call_type_arguments.contains_key(&start)

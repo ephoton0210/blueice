@@ -361,6 +361,9 @@ impl ModuleChecker<'_> {
             return literal;
         }
         if variable.kind == crate::parser::VariableKind::Const {
+            if let Some(literal) = self.constant_template_type(&variable.initializer, scope) {
+                return literal;
+            }
             if matches!(inferred, Type::Symbol | Type::UniqueSymbol(_)) {
                 return if self.fresh_symbol_call(&variable.initializer, scope) {
                     Type::UniqueSymbol(variable.span.clone())

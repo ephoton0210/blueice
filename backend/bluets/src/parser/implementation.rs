@@ -35,13 +35,69 @@ pub(super) struct Parser {
     namespace_export_markers: usize,
     /// Decorators read before a declaration, for the class that follows them.
     pending_decorators: Vec<Decorator>,
+    /// Internal emitter input has already passed TypeScript subset checks.
+    emitted_runtime: bool,
+    /// Exclusive token bound when the emitter parses one owned statement.
+    emitted_body_end: Option<usize>,
 }
 
 #[path = "declarations.rs"]
 mod declarations;
+pub(crate) use declarations::parse_variable_pattern;
 #[path = "import_attributes.rs"]
 mod import_attributes;
 #[path = "runtime_syntax.rs"]
 mod runtime_syntax;
 #[path = "type_syntax.rs"]
 mod type_syntax;
+
+pub(crate) fn parse_emitted_module(
+    id: &str,
+    source: &str,
+    limits: &ParserLimits,
+) -> Result<Module, Vec<Diagnostic>> {
+    let tokens = lex_with_limits(id, source, limits.max_source_bytes, limits.max_tokens)?;
+    let mut parser = Parser::new(id.into(), source.into(), tokens, limits.max_type_depth);
+    parser.emitted_runtime = true;
+    parser.parse_module()
+}
+
+/// Reuses the ordinary function-body parser for an already lexed, braced
+/// emitted block. Source offsets stay in the owning module's coordinate space.
+pub(crate) fn parse_emitted_block(
+    module: &Module,
+    tokens: Vec<Token>,
+    open: usize,
+    depth: usize,
+) -> Option<Vec<FunctionBodyItem>> {
+    if !tokens.get(open).is_some_and(|token| token.is("{")) {
+        return None;
+    }
+    let start = tokens[open].start;
+    let mut parser = Parser::new(module.id.clone(), module.source.clone(), tokens, depth);
+    parser.emitted_runtime = true;
+    parser.index = open + 1;
+    let mut body = Vec::new();
+    parser.parse_function_body(start, &mut body, &mut Vec::new(), &mut Vec::new());
+    parser.diagnostics.is_empty().then_some(body)
+}
+
+pub(crate) fn parse_emitted_statement(
+    module: &Module,
+    tokens: Vec<Token>,
+    start: usize,
+    end: usize,
+    depth: usize,
+) -> Option<Vec<FunctionBodyItem>> {
+    if start >= end || end >= tokens.len() {
+        return None;
+    }
+    let offset = tokens[start].start;
+    let mut parser = Parser::new(module.id.clone(), module.source.clone(), tokens, depth);
+    parser.emitted_runtime = true;
+    parser.emitted_body_end = Some(end);
+    parser.index = start;
+    let mut body = Vec::new();
+    parser.parse_function_body(offset, &mut body, &mut Vec::new(), &mut Vec::new());
+    parser.diagnostics.is_empty().then_some(body)
+}

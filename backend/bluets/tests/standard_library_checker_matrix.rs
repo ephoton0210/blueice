@@ -182,7 +182,12 @@ fn manifest_records_library_identity_without_publishing_declarations() {
         let manifest: serde_json::Value =
             serde_json::from_slice(&fs::read(out.join("bluetsc.manifest.json")).unwrap()).unwrap();
         let library = &manifest["standardLibrary"];
-        assert_eq!(library["version"], "blue-ts-ecma-lib-v1");
+        assert_eq!(library["version"], "blue-ts-ecma-lib-v2");
+        assert!(library["sources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|source| source == "ecma-additions.v2.d.ts"));
         assert_eq!(library["target"], target);
         assert!(!library["sources"].as_array().unwrap().is_empty());
         assert!(!library["sourceFingerprint"].as_str().unwrap().is_empty());

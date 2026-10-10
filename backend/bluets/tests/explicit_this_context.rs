@@ -41,7 +41,7 @@ fn explicit_this_parameters_match_pinned_diagnostics() {
                     counterpart.map(|counterpart| counterpart.code),
                     span.start,
                     span.end - span.start,
-                    counterpart.map(|counterpart| counterpart.message.clone()),
+                    counterpart.map(|counterpart| counterpart.message.replace('\n', " ")),
                 )
             })
             .collect();

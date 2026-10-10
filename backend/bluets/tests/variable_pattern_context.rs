@@ -15,7 +15,7 @@ fn variable_patterns_match_pinned_diagnostics() {
     ))
     .unwrap();
     assert_eq!(reference["version"], "5.9.3");
-    assert_eq!(reference["cases"].as_array().unwrap().len(), 8);
+    assert_eq!(reference["cases"].as_array().unwrap().len(), 10);
     let mut failures = Vec::new();
     for case in reference["cases"].as_array().unwrap() {
         let source = case["source"].as_str().unwrap();
@@ -29,6 +29,19 @@ fn variable_patterns_match_pinned_diagnostics() {
                 }),
                 ..CompilerOptions::default()
             },
+        );
+        assert_eq!(
+            result.has_errors(),
+            !case["accepts"].as_bool().unwrap(),
+            "{}: {:#?}",
+            case["name"],
+            result.diagnostics
+        );
+        assert_eq!(
+            result.output.is_some(),
+            case["accepts"].as_bool().unwrap(),
+            "{}",
+            case["name"]
         );
         let diagnostics: Vec<_> = result
             .diagnostics

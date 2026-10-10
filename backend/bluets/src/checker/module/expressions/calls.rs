@@ -74,16 +74,10 @@ impl<'a> ModuleChecker<'a> {
             qualified.extend_from_slice(call.arguments);
             // The qualified binding retains generic parameters and every overload.
             debug_assert!(!signatures.is_empty());
-            self.check_function_call(&qualified, scope, span);
+            self.check_function_call_with_receiver(&qualified, scope, span, Some(call.receiver));
             return;
         }
-        if self.check_function_method(
-            call.receiver,
-            &call.member.text,
-            call.arguments,
-            scope,
-            span,
-        ) {
+        if self.check_function_method(call.receiver, call.member, call.arguments, scope, span) {
             return;
         }
 
@@ -176,7 +170,12 @@ impl<'a> ModuleChecker<'a> {
                 tokens[0].start,
                 tokens.last().expect("member call has tokens").end,
             );
-            self.check_function_call(&qualified, &local, &call_span);
+            self.check_function_call_with_receiver(
+                &qualified,
+                &local,
+                &call_span,
+                Some(call.receiver),
+            );
             return;
         }
         let Some(arguments) = split_call_arguments(call.arguments) else {
@@ -204,17 +203,34 @@ impl<'a> ModuleChecker<'a> {
             }
             _ => Vec::new(),
         };
+        if let Some(signature) = context_signatures.first() {
+            self.check_call_receiver(
+                &signature.parameters,
+                Some(call.receiver),
+                scope,
+                span,
+                call.receiver,
+            );
+        }
         let Ok(actuals) =
             self.expanded_call_argument_types_for(&arguments, scope, &context_signatures)
         else {
-            self.type_error(
+            self.typescript_type_error(
                 span,
                 format!(
                     "a spread argument for method {} must have a fixed-length tuple type",
                     call.member.text
                 ),
                 DiagnosticCode::TypeMismatch,
+                2556,
+                Vec::new(),
             );
+            if let Some(argument) = arguments
+                .iter()
+                .find(|argument| argument.first().is_some_and(|t| t.is("...")))
+            {
+                self.point_last_typescript(argument);
+            }
             return;
         };
         let call_span = SourceSpan::new(
@@ -225,7 +241,13 @@ impl<'a> ModuleChecker<'a> {
         let bound_class_member = self.is_bound_class_instance_type(&base)
             || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope));
         let (parameters, selected_overload) = match member_type {
-            Type::Function { parameters, .. } => (parameters, false),
+            Type::Function { parameters, .. } => (
+                parameters
+                    .into_iter()
+                    .filter(|p| p.name != "this")
+                    .collect::<Vec<_>>(),
+                false,
+            ),
             Type::Intersection(overloads) => {
                 let Some(signatures) = method_overload_signatures(&overloads) else {
                     return;
@@ -283,11 +305,13 @@ impl<'a> ModuleChecker<'a> {
         } else {
             span
         };
-        let required = parameters
-            .iter()
-            .filter(|parameter| !parameter.optional)
-            .count();
-        if actuals.len() < required || actuals.len() > parameters.len() {
+        let signature = FunctionSignature {
+            parameters: parameters.clone(),
+            type_parameters: Vec::new(),
+            return_type: Type::Unknown,
+        };
+        let required = function_signature_required_arguments(&signature);
+        if !function_signature_accepts_argument_count(&signature, actuals.len()) {
             self.type_error(
                 argument_span,
                 format!(
@@ -306,10 +330,14 @@ impl<'a> ModuleChecker<'a> {
                 // including equivalent single and double quote spellings.
                 continue;
             }
-            let expected = parameters[index]
-                .annotation
-                .as_ref()
-                .expect("method signature parameters have annotations");
+            let parameter = function_parameter_for_argument(&signature, index)
+                .expect("an accepted method call has a parameter for every argument");
+            let expected = if parameter.rest {
+                rest_parameter_element_annotation(parameter)
+            } else {
+                parameter.annotation.as_ref()
+            }
+            .expect("method signature parameters have annotations");
             if let Some(argument) = arguments.get(index) {
                 if self.check_fresh_properties(argument, expected, scope, argument_span) {
                     continue;
@@ -317,7 +345,7 @@ impl<'a> ModuleChecker<'a> {
             }
             if !self.is_assignable_bounded(actual, expected, argument_span) {
                 let displayed_expected =
-                    crate::diagnostic::type_text::default_parameter(expected, &parameters[index]);
+                    crate::diagnostic::type_text::default_parameter(expected, parameter);
                 let library_receiver = match &base {
                     Type::Array(_) => Some("Array".to_string()),
                     Type::String => Some("String".to_string()),
@@ -334,7 +362,7 @@ impl<'a> ModuleChecker<'a> {
                         "argument {} has type `{}`, which is not assignable to method parameter `{}` of type `{}`",
                         index + 1,
                         type_label(actual),
-                        parameters[index].name,
+                        parameter.name,
                         type_label(expected)
                     ),
                     actual,

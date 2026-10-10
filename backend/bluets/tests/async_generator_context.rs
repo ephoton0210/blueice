@@ -35,13 +35,13 @@ fn async_generator_yields_and_returns_match_pinned_diagnostics() {
             .iter()
             .filter(|diagnostic| diagnostic.severity == blueice_bluets::Severity::Error)
             .map(|diagnostic| {
+                let counterpart = diagnostic.typescript.as_ref();
+                let span = counterpart.map_or(&diagnostic.span, |counterpart| &counterpart.span);
                 (
-                    diagnostic
-                        .typescript
-                        .as_ref()
-                        .map(|counterpart| counterpart.code),
-                    diagnostic.span.start,
-                    diagnostic.span.end - diagnostic.span.start,
+                    counterpart.map(|counterpart| counterpart.code),
+                    span.start,
+                    span.end - span.start,
+                    counterpart.map(|counterpart| counterpart.message.clone()),
                 )
             })
             .collect();
@@ -54,6 +54,7 @@ fn async_generator_yields_and_returns_match_pinned_diagnostics() {
                     Some(diagnostic["code"].as_u64().unwrap() as u32),
                     diagnostic["start"].as_u64().unwrap() as usize,
                     diagnostic["length"].as_u64().unwrap() as usize,
+                    Some(diagnostic["message"].as_str().unwrap().to_string()),
                 )
             })
             .collect();

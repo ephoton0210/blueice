@@ -17,6 +17,25 @@ pub(in crate::parser::implementation) fn parse_binding_pattern(
     start: usize,
     module: &str,
 ) -> Option<(BindingPattern, usize)> {
+    parse(tokens, start, module, false).map(|(pattern, _, close)| (pattern, close))
+}
+
+pub(crate) fn parse_variable_pattern(
+    tokens: &[Token],
+    start: usize,
+    module: &str,
+) -> Option<(VariableBindingPattern, usize)> {
+    parse(tokens, start, module, true)
+        .map(|(pattern, rest, close)| (VariableBindingPattern { pattern, rest }, close))
+}
+
+fn parse(
+    tokens: &[Token],
+    start: usize,
+    module: &str,
+    allow_rest: bool,
+) -> Option<(BindingPattern, Option<ElementBinding>, usize)> {
+    let mut rest = None;
     let object = tokens.get(start)?.is("{");
     let closing = if object { "}" } else { "]" };
     let mut objects = Vec::new();
@@ -31,8 +50,22 @@ pub(in crate::parser::implementation) fn parse_binding_pattern(
                 } else {
                     BindingPattern::Array(elements)
                 },
+                rest,
                 index,
             ));
+        }
+        if allow_rest && token.is("...") {
+            let name = tokens.get(index + 1)?;
+            if name.kind != TokenKind::Identifier || !tokens.get(index + 2)?.is(closing) {
+                return None;
+            }
+            rest = Some(ElementBinding {
+                name: name.text.clone(),
+                default: None,
+                span: SourceSpan::new(module, token.start, name.end),
+            });
+            index += 2;
+            continue;
         }
         if object {
             let key = token;
@@ -97,4 +130,24 @@ fn binding_default(
         return None;
     }
     Some((Some(tokens[index + 1..end].to_vec()), end))
+}
+
+impl VariableBindingPattern {
+    pub(crate) fn names(&self) -> Vec<(&str, &SourceSpan)> {
+        let mut names: Vec<_> = match &self.pattern {
+            BindingPattern::Object(bindings) => bindings
+                .iter()
+                .map(|binding| (binding.name.as_str(), &binding.span))
+                .collect(),
+            BindingPattern::Array(bindings) => bindings
+                .iter()
+                .flatten()
+                .map(|binding| (binding.name.as_str(), &binding.span))
+                .collect(),
+        };
+        if let Some(rest) = &self.rest {
+            names.push((&rest.name, &rest.span));
+        }
+        names
+    }
 }

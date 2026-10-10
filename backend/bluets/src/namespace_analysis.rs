@@ -622,7 +622,23 @@ fn rewrite_variable(
     variable: &crate::parser::VariableDeclaration,
     rewrite: Rewrite<'_>,
 ) -> Result<crate::parser::VariableDeclaration, Diagnostic> {
+    let mut pattern = variable.pattern.clone();
+    if let Some(pattern) = &mut pattern {
+        match &mut pattern.pattern {
+            crate::parser::BindingPattern::Object(bindings) => {
+                for binding in bindings {
+                    binding.default = rewrite_optional(&binding.default, rewrite)?;
+                }
+            }
+            crate::parser::BindingPattern::Array(bindings) => {
+                for binding in bindings.iter_mut().flatten() {
+                    binding.default = rewrite_optional(&binding.default, rewrite)?;
+                }
+            }
+        }
+    }
     Ok(crate::parser::VariableDeclaration {
+        pattern,
         initializer: rewrite(&variable.initializer)?,
         ..variable.clone()
     })

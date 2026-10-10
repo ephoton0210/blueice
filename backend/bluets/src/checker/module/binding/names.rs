@@ -17,7 +17,7 @@ impl ModuleChecker<'_> {
             &self.values,
             &self.types,
             self.ambient,
-            self.target,
+            self.library_target,
             self.max_type_expansions,
         );
         for declaration in &self.module.declarations {

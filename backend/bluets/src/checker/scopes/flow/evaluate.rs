@@ -130,6 +130,11 @@ fn run_graph(
                     .is_some_and(|state| state.reachable)
             }),
         );
+    } else {
+        // The first exported function can share source offset zero with the
+        // module graph. An opaque function must not inherit that graph's
+        // normal-completion entry merely because their offsets coincide.
+        model.completions.remove(&graph.creation);
     }
     model.returns.insert(
         graph.creation,
@@ -263,6 +268,7 @@ fn expression(
         if let [name] = target {
             if let Some(id) = scopes.flow_binding(&name.text, name.start) {
                 let declared = scopes.flow_declared(&id);
+                let reset_unknown = declared == Type::Unknown && scopes.flow_annotated(&id);
                 let mut actual = predicates::reference(scopes, &tokens[equal + 1..], 0)
                     .and_then(|(id, path)| properties::read(scopes, &after, &id, &path))
                     .unwrap_or_else(|| {
@@ -301,7 +307,7 @@ fn expression(
                 {
                     actual = declared;
                 }
-                if actual != Type::Unknown {
+                if actual != Type::Unknown || reset_unknown {
                     let mut next = after;
                     next.invalidate(&id);
                     if actual == scopes.flow_declared(&id) {

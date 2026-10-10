@@ -16,6 +16,8 @@ use std::collections::BTreeMap;
 pub use decorators::DECORATOR_HELPER_V1_VERSION;
 pub use legacy_decorators::LEGACY_DECORATOR_HELPER_V1_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
+pub(crate) use targets::TARGET_HELPER_V1_SOURCES;
+pub use targets::TARGET_HELPER_V1_VERSION;
 
 mod callable_objects;
 mod class_expressions;
@@ -33,6 +35,7 @@ mod legacy_decorators;
 mod namespaces;
 mod private_lowering;
 mod reexports;
+mod targets;
 mod type_elision;
 
 use declarations::{
@@ -290,6 +293,7 @@ fn emit_javascript(
     let emitting_module = type_elision::queries(module);
     let module = emitting_module.as_ref();
     let mut edits = module.edits.clone();
+    let lexical = targets::es5::prepare(module, project, options, &mut edits)?;
     type_elision::lower(module, options.module_kind, &mut edits);
     for declaration in &module.declarations {
         let (specifier, span) = match declaration {
@@ -360,7 +364,8 @@ fn emit_javascript(
         edits.extend(strict_edits);
         strict_runtime = Some(record);
     }
-    let emitted = apply_edits(&module.source, edits);
+    let emitted = targets::lower(apply_edits(&module.source, edits), module, options)?;
+    let emitted = targets::es5::lower(emitted, module, options, &lexical)?;
     if let Some(record) = &mut strict_runtime {
         strict_boundaries::locate_emitted_calls(module, &emitted.javascript, record)?;
     }

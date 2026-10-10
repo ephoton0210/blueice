@@ -14,7 +14,7 @@ mod graph;
 mod predicates;
 mod properties;
 
-pub(crate) const VERSION: &str = "lexical-flow-v8";
+pub(crate) const VERSION: &str = "lexical-flow-v9";
 #[derive(Clone, Debug, PartialEq)]
 struct State {
     reachable: bool,
@@ -159,6 +159,12 @@ fn union(values: impl IntoIterator<Item = Type>) -> Type {
                 result.push(part);
             }
         }
+    }
+    if result.contains(&Type::Any) {
+        return Type::Any;
+    }
+    if result.contains(&Type::Unknown) {
+        return Type::Unknown;
     }
     // An unrestricted primitive absorbs its literals at a reachable join.
     let broad = result.clone();

@@ -62,7 +62,7 @@ pub use diagnostic::{
 pub use emitter::{
     BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
     SourceMap, CLASS_HELPER_V1_VERSION, DECORATOR_HELPER_V1_VERSION,
-    LEGACY_DECORATOR_HELPER_V1_VERSION,
+    LEGACY_DECORATOR_HELPER_V1_VERSION, TARGET_HELPER_V1_VERSION,
 };
 pub use enum_eval::{evaluate_enums, evaluate_enums_in, EnumValue, EvaluatedEnum, EvaluatedMember};
 pub use namespace_analysis::{
@@ -70,17 +70,17 @@ pub use namespace_analysis::{
     NamespaceExports,
 };
 pub use parser::{
-    parse_module, AmbientDeclaration, ClassAccessor, ClassConstructor, ClassDeclaration,
-    ClassExpression, ClassField, ClassMemberKind, ClassMemberShell, ClassMethod, ClassMethodGroup,
-    ConditionalType, Declaration, Decorator, EnumDeclaration, EnumMember, FunctionBodyItem,
-    FunctionCatchClause, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
-    FunctionTryStatement, FunctionWhileStatement, ImportAttribute, ImportAttributes,
-    ImportDeclaration, IndexSignature, InterfaceDeclaration, MappedModifier, MappedType, Module,
-    NamespaceDeclaration, Parameter, ParameterProperty, ParameterPropertyInsertion, ParserLimits,
-    RawDeclaration, TemplateLiteralType, TupleTypeElement, TypeAliasDeclaration,
-    TypeExportDeclaration, TypeParameter, TypePredicate, TypeSignature, UmdExportDeclaration,
-    ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind, Variance,
-    Visibility,
+    parse_module, AmbientDeclaration, BindingPattern, ClassAccessor, ClassConstructor,
+    ClassDeclaration, ClassExpression, ClassField, ClassMemberKind, ClassMemberShell, ClassMethod,
+    ClassMethodGroup, ConditionalType, Declaration, Decorator, ElementBinding, EnumDeclaration,
+    EnumMember, FunctionBodyItem, FunctionCatchClause, FunctionDeclaration, FunctionElseBranch,
+    FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, ImportAttribute,
+    ImportAttributes, ImportDeclaration, IndexSignature, InterfaceDeclaration, MappedModifier,
+    MappedType, Module, NamespaceDeclaration, ObjectBinding, Parameter, ParameterProperty,
+    ParameterPropertyInsertion, ParserLimits, RawDeclaration, TemplateLiteralType,
+    TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, TypePredicate,
+    TypeSignature, UmdExportDeclaration, ValueExportBinding, ValueExportDeclaration,
+    VariableBindingPattern, VariableDeclaration, VariableKind, Variance, Visibility,
 };
 pub use performance::CompilerPerformance;
 pub use syntax::parse_jsx;

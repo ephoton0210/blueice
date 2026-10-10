@@ -6,6 +6,7 @@ pub(super) mod classes;
 mod computed_fields;
 mod module_exports;
 mod namespaces;
+mod patterns;
 
 use classes::*;
 use namespaces::*;
@@ -487,6 +488,9 @@ fn lower_function_value(
 ) -> Result<bluejs::Function, BridgeError> {
     let mut params = Vec::with_capacity(parameters.len());
     for (index, parameter) in parameters.iter().enumerate() {
+        if parameter.name == "this" {
+            continue;
+        }
         if parameter.pattern.is_some() {
             return Err(unsupported(
                 parameter.span.clone(),
@@ -762,7 +766,10 @@ fn lower_variable(
             VariableKind::Var => bluejs::DeclKind::Var,
         },
         vec![bluejs::VarDeclarator {
-            pattern: bluejs::Pattern::Identifier(variable.name.clone()),
+            pattern: match &variable.pattern {
+                Some(pattern) => patterns::variable(module, pattern)?,
+                None => bluejs::Pattern::Identifier(variable.name.clone()),
+            },
             init,
         }],
     ))

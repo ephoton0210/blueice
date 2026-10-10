@@ -414,48 +414,51 @@ impl Builder<'_, '_> {
     }
 
     fn try_statement(&mut self, incoming: Vec<usize>) -> Vec<usize> {
+        // Structured completion still owns exceptional exits and finally's
+        // return override. Retain local flow edges without asserting that this
+        // adapter has a complete model of function completion.
         self.completion_known = false;
-        let start = self.index;
         self.index += 1;
+        let entry = self.node(&[], &incoming);
+        let first = self.nodes.len();
+        let mut outgoing = self.statement(vec![entry]);
+        let mut exceptional = vec![entry];
+        exceptional.extend(first..self.nodes.len());
         if self
             .tokens
             .get(self.index)
-            .is_some_and(|token| token.is("{"))
+            .is_some_and(|token| token.is("catch"))
         {
-            self.index = super::super::targets::close(self.tokens, self.index)
-                .map_or(self.tokens.len(), |end| end + 1);
-        }
-        for keyword in ["catch", "finally"] {
-            if !self
-                .tokens
-                .get(self.index)
-                .is_some_and(|token| token.is(keyword))
-            {
-                continue;
-            }
             self.index += 1;
-            if keyword == "catch"
-                && self
-                    .tokens
-                    .get(self.index)
-                    .is_some_and(|token| token.is("("))
-            {
-                self.index = super::super::targets::close(self.tokens, self.index)
-                    .map_or(self.tokens.len(), |end| end + 1);
-            }
             if self
                 .tokens
                 .get(self.index)
-                .is_some_and(|token| token.is("{"))
+                .is_some_and(|token| token.is("("))
             {
                 self.index = super::super::targets::close(self.tokens, self.index)
                     .map_or(self.tokens.len(), |end| end + 1);
             }
+            // An exception can occur before or after any write in the try
+            // body. Joining all such predecessors prevents a normal-path
+            // refinement from being assumed on entry to the handler.
+            let handler = self.node(&[], &exceptional);
+            let first = self.nodes.len();
+            outgoing.extend(self.statement(vec![handler]));
+            exceptional.push(handler);
+            exceptional.extend(first..self.nodes.len());
         }
-        // Structured completion owns exceptional exits. The adapter retains
-        // the lexical boundary and resumes at the following normal statement.
-        let node = self.node(&self.tokens[start..self.index], &incoming);
-        vec![node]
+        if self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.is("finally"))
+        {
+            self.index += 1;
+            // The finalizer also runs during throws and returns. Its local
+            // facts must include those paths, even when they do not continue.
+            let finalizer = self.node(&[], &exceptional);
+            outgoing = self.statement(vec![finalizer]);
+        }
+        outgoing
     }
 
     fn skip_declaration(&mut self) {
