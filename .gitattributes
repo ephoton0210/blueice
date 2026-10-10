@@ -34,3 +34,4 @@ backend/bluets/tests/fixtures/path_extras/** text eol=lf
 
 # K.9.3 Native JSON/JavaScript observations retain LF bytes.
 backend/bluets/tests/fixtures/source_extras/** text eol=lf
+backend/bluets/tests/fixtures/jsx_typing_extras/** text eol=lf

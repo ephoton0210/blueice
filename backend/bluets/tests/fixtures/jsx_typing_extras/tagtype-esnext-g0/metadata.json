@@ -1,0 +1,22 @@
+{
+  "id": "tagtype-esnext-g0",
+  "form": "g0",
+  "entry": "main.tsx",
+  "rootFiles": [
+    "main.tsx"
+  ],
+  "runtimeModule": "ESNext",
+  "options": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "jsx": "react",
+    "jsxFactory": "h",
+    "rootDir": ".",
+    "outDir": "out"
+  }
+}

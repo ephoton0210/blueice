@@ -1,0 +1,2747 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "tagtype-commonjs-g0",
+      "form": "g0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "696bb2be29d3aef907f395d5b2eb90cb3cd51c9237c35cc456b16b12e6a9e6fd",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Generic(props) { return { tag: 42 }; }\nconst element = h(Generic, { value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-g1",
+      "form": "g1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "86b1b0f5fbb2e4b2cbb1ef00fb407d6697e3086b287faaba94224abb0fbc28f4",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 823,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 739,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & { value: number; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-g2",
+      "form": "g2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "1a28b902080ed7c2759767de43d242847d76e32e2599e5c37e83e946a51daaa6",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Generic(props) { return { tag: 42 }; }\nconst element = h(Generic, { value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-g3",
+      "form": "g3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "831b4b519fd6143335e2c24266442a14ecf0da7b00131ced33d544619a045f51",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 837,
+          "length": 6,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 749,
+              "length": 6,
+              "message": "The expected type comes from property 'second' which is declared here on type 'IntrinsicAttributes & { first: number; second: number; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-g4",
+      "form": "g4",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "00509ea16166622024ecf6cec09e35e98019908f3ee13ca1e46261b0f8e515e3",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2344,
+          "file": "main.tsx",
+          "start": 830,
+          "length": 6,
+          "message": "Type 'string' does not satisfy the constraint 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-g5",
+      "form": "g5",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "436bfdf69b3947634156ec7680ea94f7c4562dab035db4fa14c37a9ed54c588e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Generic(props) { return { tag: 42 }; }\nconst element = h(Generic, { value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-g6",
+      "form": "g6",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "5f367ac1c7c0f3499708a90660965cf093a3b87de698ed6799c98ceb247b2058",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2558,
+          "file": "main.tsx",
+          "start": 830,
+          "length": 6,
+          "message": "Expected 0 type arguments, but got 1.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-g7",
+      "form": "g7",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "c1ae5e0d08e1ae4e1af189e6e05cc09928306f4d3881260c4e2212fbabe9a4d8",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nclass Panel {\n    props;\n    constructor(props) { this.props = props; }\n    render() { return { tag: 42 }; }\n}\nconst element = h(Panel, { value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-g8",
+      "form": "g8",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "abef842b6d7f0ecb1ebd4d09b261da30821a84a099b3497d59bda9c249cff9e7",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 886,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 736,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & { value: number; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-g9",
+      "form": "g9",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "f4de98ec7aa458a5147e500817ca35d44039564733279f31437ed3e3d7b04f13",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Generic(props) { return { tag: 42 }; }\nconst element = h(Generic, null);\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-e0",
+      "form": "e0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "12ee64935877467122d63eeb40b00f923b4efe8f2ac898b047040de7d23636ef",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Numeric(props) { return props.value; }\nconst element = h(Numeric, { value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-e1",
+      "form": "e1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "9947b4426254fdfff12cf452f8c5cd3f1d30c6c49cf67dfdff6621e34ee9a9e6",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2786,
+          "file": "main.tsx",
+          "start": 868,
+          "length": 7,
+          "message": "'Numeric' cannot be used as a JSX component.\n  Its type '(props: { value: number; }) => string' is not a valid JSX element type.\n    Type '(props: { value: number; }) => string' is not assignable to type '(props: any) => number'.\n      Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-e2",
+      "form": "e2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "bf49fc58db68e85e9ce9b0abdc41322654c1e86601be14ab25e17c977bbc358c",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2786,
+          "file": "main.tsx",
+          "start": 963,
+          "length": 5,
+          "message": "'Panel' cannot be used as a JSX component.\n  Its type 'typeof Panel' is not a valid JSX element type.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-l0",
+      "form": "l0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "3538e26a5430e0300631eabd48928cc10a45db39db095c8e1c39be6110d92667",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Component(props) { return { tag: props.value }; }\nconst element = h(Component, null);\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-l1",
+      "form": "l1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "43a4846904db59531c10a1fbca628d651e67866fefd1d41bae3192a9f7cd8b56",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 887,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 746,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & LibraryManagedAttributes<(props: { value: number; }) => Element, { value: number; }>'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-l2",
+      "form": "l2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "606aa8b0331217a9ed5f60098386d40eacfdfac5933b5501100965e58f1bd5e6",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Component(props) { return { tag: props.value }; }\n(function (Component) {\n    Component.defaultProps = { value: 42 };\n})(Component || (Component = {}));\nconst element = h(Component, null);\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-l3",
+      "form": "l3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "2132d2e3f21a49a654565edf6fda4d9fd3fb59703c762f75a85b3f04c0dab39e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nclass Panel {\n    static defaultProps = { value: 42 };\n    props;\n    constructor(props) { this.props = props; }\n    render() { return { tag: this.props.value }; }\n}\nconst element = h(Panel, null);\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-l4",
+      "form": "l4",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "a89ff461c046a83f63ac6ab9882fa8bc0fdb360315d9cca0f37f21394cc55dd8",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 1079,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 913,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & Omit<{ value: number; }, \"value\"> & Partial<Pick<{ value: number; }, \"value\">>'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-l5",
+      "form": "l5",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "d510ab34d78518ae6b5b056ed642b24987729493d76ab974cdc63a87d178abf0",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 1036,
+          "length": 5,
+          "message": "Type '{}' is not assignable to type 'IntrinsicAttributes & { value: number; }'.\n  Property 'value' is missing in type '{}' but required in type '{ value: number; }'.",
+          "related": [
+            {
+              "code": 2728,
+              "file": "main.tsx",
+              "start": 876,
+              "length": 5,
+              "message": "'value' is declared here."
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-c0",
+      "form": "c0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "9c10a78fceaa177ca1bd7ecdc225cafce7f1fef5b3515d53e407d6d9be2eb8cb",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nclass Panel {\n    props;\n    constructor(props) { this.props = props; }\n    render() { return { tag: this.props.value }; }\n}\nconst panel = new Panel({ value: 42 });\nconst element = h(Panel, { value: 42, ref: panel });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-c1",
+      "form": "c1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "14ecdc2360375f0f8f292c059a1bd2b426cf9cb4f1ae04a14b9383f5f36114da",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 959,
+          "length": 3,
+          "message": "Type 'string' is not assignable to type 'Panel'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 746,
+              "length": 3,
+              "message": "The expected type comes from property 'ref' which is declared here on type 'IntrinsicAttributes & IntrinsicClassAttributes<Panel> & { value: number; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-c2",
+      "form": "c2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "5205181a9529d99977500dfae2cc30f996b269e18e492e940f247a306f405c07",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 890,
+          "length": 3,
+          "message": "Type '{ value: number; ref: number; }' is not assignable to type 'IntrinsicAttributes & { value: number; }'.\n  Property 'ref' does not exist on type 'IntrinsicAttributes & { value: number; }'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-d0",
+      "form": "d0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "13f1fa7c89268baad04f5b94000cbe5b45324ae7427d3ba2a8f30107fdcaf514",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 17001,
+          "file": "main.tsx",
+          "start": 743,
+          "length": 5,
+          "message": "JSX elements cannot have multiple attributes with the same name.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-d1",
+      "form": "d1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "8830688f10a347e13e5de19c0a9764a9e49608f0b77b1b989a9a44d1a89deb1c",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 17001,
+          "file": "main.tsx",
+          "start": 756,
+          "length": 7,
+          "message": "JSX elements cannot have multiple attributes with the same name.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-d2",
+      "form": "d2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "2b08075991e2b1c300a11666d0c712fb2cee2f346ea84820158752c0e42f7cb4",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nconst element = h(\"item\", { value: 41, value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-d3",
+      "form": "d3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "513c6b6051c8d836b16711fb1e9a54c0e61a3937b897f5520b1e8ebba26d87a2",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2710,
+          "file": "main.tsx",
+          "start": 732,
+          "length": 24,
+          "message": "'children' are specified twice. The attribute named 'children' will be overwritten.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-n0",
+      "form": "n0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "feeff20ce28cbe93417f88d20b342519374d52ad7312f2e18e607a2a84a2f1ed",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nconst element = h(\"item\", { value: 42, \"ns:value\": 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-n1",
+      "form": "n1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "66f1d8977a71626ca6a287d2e4eb09e28a0dd76ff5e0f4daf7751f007f5b8d09",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 743,
+          "length": 8,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 483,
+              "length": 10,
+              "message": "The expected type comes from property 'ns:value' which is declared here on type '{ value: number; children?: number | undefined; 'ns:value'?: number | undefined; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-n2",
+      "form": "n2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "3648783d50a2c565dab34645dd69db41cc151eaf2fa67554a9bcfbba650e01b9",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 743,
+          "length": 8,
+          "message": "Type '{ value: number; \"ns:other\": number; }' is not assignable to type '{ value: number; children?: number | undefined; 'ns:value'?: number | undefined; }'.\n  Property 'ns:other' does not exist on type '{ value: number; children?: number | undefined; 'ns:value'?: number | undefined; }'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-commonjs-n3",
+      "form": "n3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "a1d664a90f9af0dfc12ac18bd3a7e7214be3ab2a274a0f9e246dcbccc5a6556e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nconst element = h(\"item\", { value: 42, \"data-other\": 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g0",
+      "form": "g0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "696bb2be29d3aef907f395d5b2eb90cb3cd51c9237c35cc456b16b12e6a9e6fd",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Generic(props) { return { tag: 42 }; }\nconst element = h(Generic, { value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g1",
+      "form": "g1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "86b1b0f5fbb2e4b2cbb1ef00fb407d6697e3086b287faaba94224abb0fbc28f4",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 823,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 739,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & { value: number; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g2",
+      "form": "g2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "1a28b902080ed7c2759767de43d242847d76e32e2599e5c37e83e946a51daaa6",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Generic(props) { return { tag: 42 }; }\nconst element = h(Generic, { value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g3",
+      "form": "g3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "831b4b519fd6143335e2c24266442a14ecf0da7b00131ced33d544619a045f51",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 837,
+          "length": 6,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 749,
+              "length": 6,
+              "message": "The expected type comes from property 'second' which is declared here on type 'IntrinsicAttributes & { first: number; second: number; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g4",
+      "form": "g4",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "00509ea16166622024ecf6cec09e35e98019908f3ee13ca1e46261b0f8e515e3",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2344,
+          "file": "main.tsx",
+          "start": 830,
+          "length": 6,
+          "message": "Type 'string' does not satisfy the constraint 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g5",
+      "form": "g5",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "436bfdf69b3947634156ec7680ea94f7c4562dab035db4fa14c37a9ed54c588e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Generic(props) { return { tag: 42 }; }\nconst element = h(Generic, { value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g6",
+      "form": "g6",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "5f367ac1c7c0f3499708a90660965cf093a3b87de698ed6799c98ceb247b2058",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2558,
+          "file": "main.tsx",
+          "start": 830,
+          "length": 6,
+          "message": "Expected 0 type arguments, but got 1.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g7",
+      "form": "g7",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "c1ae5e0d08e1ae4e1af189e6e05cc09928306f4d3881260c4e2212fbabe9a4d8",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nclass Panel {\n    props;\n    constructor(props) { this.props = props; }\n    render() { return { tag: 42 }; }\n}\nconst element = h(Panel, { value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g8",
+      "form": "g8",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "abef842b6d7f0ecb1ebd4d09b261da30821a84a099b3497d59bda9c249cff9e7",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 886,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 736,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & { value: number; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-g9",
+      "form": "g9",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "f4de98ec7aa458a5147e500817ca35d44039564733279f31437ed3e3d7b04f13",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Generic(props) { return { tag: 42 }; }\nconst element = h(Generic, null);\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-e0",
+      "form": "e0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "12ee64935877467122d63eeb40b00f923b4efe8f2ac898b047040de7d23636ef",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Numeric(props) { return props.value; }\nconst element = h(Numeric, { value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-e1",
+      "form": "e1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "9947b4426254fdfff12cf452f8c5cd3f1d30c6c49cf67dfdff6621e34ee9a9e6",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2786,
+          "file": "main.tsx",
+          "start": 868,
+          "length": 7,
+          "message": "'Numeric' cannot be used as a JSX component.\n  Its type '(props: { value: number; }) => string' is not a valid JSX element type.\n    Type '(props: { value: number; }) => string' is not assignable to type '(props: any) => number'.\n      Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-e2",
+      "form": "e2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "bf49fc58db68e85e9ce9b0abdc41322654c1e86601be14ab25e17c977bbc358c",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2786,
+          "file": "main.tsx",
+          "start": 963,
+          "length": 5,
+          "message": "'Panel' cannot be used as a JSX component.\n  Its type 'typeof Panel' is not a valid JSX element type.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-l0",
+      "form": "l0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "3538e26a5430e0300631eabd48928cc10a45db39db095c8e1c39be6110d92667",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Component(props) { return { tag: props.value }; }\nconst element = h(Component, null);\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-l1",
+      "form": "l1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "43a4846904db59531c10a1fbca628d651e67866fefd1d41bae3192a9f7cd8b56",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 887,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 746,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & LibraryManagedAttributes<(props: { value: number; }) => Element, { value: number; }>'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-l2",
+      "form": "l2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "606aa8b0331217a9ed5f60098386d40eacfdfac5933b5501100965e58f1bd5e6",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nfunction Component(props) { return { tag: props.value }; }\n(function (Component) {\n    Component.defaultProps = { value: 42 };\n})(Component || (Component = {}));\nconst element = h(Component, null);\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-l3",
+      "form": "l3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "2132d2e3f21a49a654565edf6fda4d9fd3fb59703c762f75a85b3f04c0dab39e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nclass Panel {\n    static defaultProps = { value: 42 };\n    props;\n    constructor(props) { this.props = props; }\n    render() { return { tag: this.props.value }; }\n}\nconst element = h(Panel, null);\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-l4",
+      "form": "l4",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "a89ff461c046a83f63ac6ab9882fa8bc0fdb360315d9cca0f37f21394cc55dd8",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 1079,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 913,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & Omit<{ value: number; }, \"value\"> & Partial<Pick<{ value: number; }, \"value\">>'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-l5",
+      "form": "l5",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "d510ab34d78518ae6b5b056ed642b24987729493d76ab974cdc63a87d178abf0",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 1036,
+          "length": 5,
+          "message": "Type '{}' is not assignable to type 'IntrinsicAttributes & { value: number; }'.\n  Property 'value' is missing in type '{}' but required in type '{ value: number; }'.",
+          "related": [
+            {
+              "code": 2728,
+              "file": "main.tsx",
+              "start": 876,
+              "length": 5,
+              "message": "'value' is declared here."
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-c0",
+      "form": "c0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "9c10a78fceaa177ca1bd7ecdc225cafce7f1fef5b3515d53e407d6d9be2eb8cb",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nclass Panel {\n    props;\n    constructor(props) { this.props = props; }\n    render() { return { tag: this.props.value }; }\n}\nconst panel = new Panel({ value: 42 });\nconst element = h(Panel, { value: 42, ref: panel });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-c1",
+      "form": "c1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "14ecdc2360375f0f8f292c059a1bd2b426cf9cb4f1ae04a14b9383f5f36114da",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 959,
+          "length": 3,
+          "message": "Type 'string' is not assignable to type 'Panel'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 746,
+              "length": 3,
+              "message": "The expected type comes from property 'ref' which is declared here on type 'IntrinsicAttributes & IntrinsicClassAttributes<Panel> & { value: number; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-c2",
+      "form": "c2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "5205181a9529d99977500dfae2cc30f996b269e18e492e940f247a306f405c07",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 890,
+          "length": 3,
+          "message": "Type '{ value: number; ref: number; }' is not assignable to type 'IntrinsicAttributes & { value: number; }'.\n  Property 'ref' does not exist on type 'IntrinsicAttributes & { value: number; }'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-d0",
+      "form": "d0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "13f1fa7c89268baad04f5b94000cbe5b45324ae7427d3ba2a8f30107fdcaf514",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 17001,
+          "file": "main.tsx",
+          "start": 743,
+          "length": 5,
+          "message": "JSX elements cannot have multiple attributes with the same name.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-d1",
+      "form": "d1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "8830688f10a347e13e5de19c0a9764a9e49608f0b77b1b989a9a44d1a89deb1c",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 17001,
+          "file": "main.tsx",
+          "start": 756,
+          "length": 7,
+          "message": "JSX elements cannot have multiple attributes with the same name.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-d2",
+      "form": "d2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "2b08075991e2b1c300a11666d0c712fb2cee2f346ea84820158752c0e42f7cb4",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nconst element = h(\"item\", { value: 41, value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-d3",
+      "form": "d3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "513c6b6051c8d836b16711fb1e9a54c0e61a3937b897f5520b1e8ebba26d87a2",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2710,
+          "file": "main.tsx",
+          "start": 732,
+          "length": 24,
+          "message": "'children' are specified twice. The attribute named 'children' will be overwritten.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-n0",
+      "form": "n0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "feeff20ce28cbe93417f88d20b342519374d52ad7312f2e18e607a2a84a2f1ed",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nconst element = h(\"item\", { value: 42, \"ns:value\": 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-n1",
+      "form": "n1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "66f1d8977a71626ca6a287d2e4eb09e28a0dd76ff5e0f4daf7751f007f5b8d09",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 743,
+          "length": 8,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "main.tsx",
+              "start": 483,
+              "length": 10,
+              "message": "The expected type comes from property 'ns:value' which is declared here on type '{ value: number; children?: number | undefined; 'ns:value'?: number | undefined; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-n2",
+      "form": "n2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "3648783d50a2c565dab34645dd69db41cc151eaf2fa67554a9bcfbba650e01b9",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 743,
+          "length": 8,
+          "message": "Type '{ value: number; \"ns:other\": number; }' is not assignable to type '{ value: number; children?: number | undefined; 'ns:value'?: number | undefined; }'.\n  Property 'ns:other' does not exist on type '{ value: number; children?: number | undefined; 'ns:value'?: number | undefined; }'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "tagtype-esnext-n3",
+      "form": "n3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react",
+        "jsxFactory": "h",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "a1d664a90f9af0dfc12ac18bd3a7e7214be3ab2a274a0f9e246dcbccc5a6556e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction h(tag, props, ...children) { return { tag: props && props.value !== undefined ? props.value : 42 }; }\nconst element = h(\"item\", { value: 42, \"data-other\": 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    }
+  ]
+}
