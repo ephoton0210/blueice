@@ -9,3 +9,6 @@ backend/core/engine/tests/fixtures/host_typings/** text eol=lf
 backend/bluets/tests/fixtures/typescript_oracle/lib-loop-return-assigned-error/main.ts text eol=lf
 backend/bluets/tests/fixtures/typescript_oracle/lib-loop-shadowed-error/main.ts text eol=lf
 backend/bluets/tests/fixtures/typescript_oracle/lib-loop-following-error/main.ts text eol=lf
+
+# K.7.2 native diagnostic offsets and fixture observations use original LF bytes.
+backend/bluets/tests/fixtures/module_systems/** text eol=lf
