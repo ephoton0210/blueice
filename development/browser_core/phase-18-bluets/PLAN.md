@@ -8350,3 +8350,11 @@ native `record_output_options.cjs` corpus.
 ### K.7.3 type-alias member regression supplement
 
 Eight original exported object-type programs measure member documentation, internal-member stripping and empty-interface formatting with pinned TypeScript 5.9.3. All eight execute successfully in CommonJS and ESNext; six frozen public CLI declarations differ. The 128-case native recorder retains all previous 120 observations exactly. Keep this test-only failing supplement isolated before correcting the declaration renderer; production changes and the complete K.0/hosted CI gates remain pending.
+
+### K.7.3 member output correction verification
+
+The frozen interface/enum implementation passes format, three-crate all-target Clippy, all 1,111 ordinary tests and all 194 ignored oracles in 129 target/doctest groups per command. The subsequent type-alias baseline independently records exactly six declaration differences; its other three tests pass. The corrected alias renderer shares ordered member documentation/internal policy with interfaces while retaining the existing inferred-variable printer. Its 128 native configurations, 122 actual executions, exact declarations, output metadata and strict-format regression pass. The final 7,768-file complete K.0 gate remains running; this is focused verification and does not close K.7.3 or claim hosted CI success.
+
+### K.7.3 callable/indexed and empty alias regression supplement
+
+Forty-eight original controls measure call/construct/index signature documentation and internal stripping, combined signatures, entirely internal record members and empty records. All native and public builds succeed and all native outputs execute; forty exact declarations differ before correction. The pinned recorder verifies 176 configurations with all previous 128 observations unchanged. Commit this failing supplement separately before extending member rendering. The inferred-variable and constructor-arrow printers retain their behavior; complete K.0 and hosted CI verification remain pending.
