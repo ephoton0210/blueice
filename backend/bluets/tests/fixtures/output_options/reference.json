@@ -3448,7 +3448,7 @@
       }
     },
     {
-      "id": "emitopt-members-commonjs-class-members-0",
+      "id": "emitopt-members-commonjs-c-0",
       "form": "class-members",
       "options": {
         "target": "ES2022",
@@ -3501,7 +3501,7 @@
       }
     },
     {
-      "id": "emitopt-members-commonjs-class-members-1",
+      "id": "emitopt-members-commonjs-c-1",
       "form": "class-members",
       "options": {
         "target": "ES2022",
@@ -3554,7 +3554,7 @@
       }
     },
     {
-      "id": "emitopt-members-commonjs-class-members-2",
+      "id": "emitopt-members-commonjs-c-2",
       "form": "class-members",
       "options": {
         "target": "ES2022",
@@ -3607,7 +3607,7 @@
       }
     },
     {
-      "id": "emitopt-members-commonjs-class-members-3",
+      "id": "emitopt-members-commonjs-c-3",
       "form": "class-members",
       "options": {
         "target": "ES2022",
@@ -3660,7 +3660,7 @@
       }
     },
     {
-      "id": "emitopt-members-commonjs-namespace-members-0",
+      "id": "emitopt-members-commonjs-n-0",
       "form": "namespace-members",
       "options": {
         "target": "ES2022",
@@ -3713,7 +3713,7 @@
       }
     },
     {
-      "id": "emitopt-members-commonjs-namespace-members-1",
+      "id": "emitopt-members-commonjs-n-1",
       "form": "namespace-members",
       "options": {
         "target": "ES2022",
@@ -3766,7 +3766,7 @@
       }
     },
     {
-      "id": "emitopt-members-commonjs-namespace-members-2",
+      "id": "emitopt-members-commonjs-n-2",
       "form": "namespace-members",
       "options": {
         "target": "ES2022",
@@ -3819,7 +3819,7 @@
       }
     },
     {
-      "id": "emitopt-members-commonjs-namespace-members-3",
+      "id": "emitopt-members-commonjs-n-3",
       "form": "namespace-members",
       "options": {
         "target": "ES2022",
@@ -3872,7 +3872,7 @@
       }
     },
     {
-      "id": "emitopt-members-esnext-class-members-0",
+      "id": "emitopt-members-esnext-c-0",
       "form": "class-members",
       "options": {
         "target": "ES2022",
@@ -3925,7 +3925,7 @@
       }
     },
     {
-      "id": "emitopt-members-esnext-class-members-1",
+      "id": "emitopt-members-esnext-c-1",
       "form": "class-members",
       "options": {
         "target": "ES2022",
@@ -3978,7 +3978,7 @@
       }
     },
     {
-      "id": "emitopt-members-esnext-class-members-2",
+      "id": "emitopt-members-esnext-c-2",
       "form": "class-members",
       "options": {
         "target": "ES2022",
@@ -4031,7 +4031,7 @@
       }
     },
     {
-      "id": "emitopt-members-esnext-class-members-3",
+      "id": "emitopt-members-esnext-c-3",
       "form": "class-members",
       "options": {
         "target": "ES2022",
@@ -4084,7 +4084,7 @@
       }
     },
     {
-      "id": "emitopt-members-esnext-namespace-members-0",
+      "id": "emitopt-members-esnext-n-0",
       "form": "namespace-members",
       "options": {
         "target": "ES2022",
@@ -4137,7 +4137,7 @@
       }
     },
     {
-      "id": "emitopt-members-esnext-namespace-members-1",
+      "id": "emitopt-members-esnext-n-1",
       "form": "namespace-members",
       "options": {
         "target": "ES2022",
@@ -4190,7 +4190,7 @@
       }
     },
     {
-      "id": "emitopt-members-esnext-namespace-members-2",
+      "id": "emitopt-members-esnext-n-2",
       "form": "namespace-members",
       "options": {
         "target": "ES2022",
@@ -4243,7 +4243,7 @@
       }
     },
     {
-      "id": "emitopt-members-esnext-namespace-members-3",
+      "id": "emitopt-members-esnext-n-3",
       "form": "namespace-members",
       "options": {
         "target": "ES2022",
