@@ -240,6 +240,7 @@ fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
 
 fn test_metadata() -> BuildMetadata {
     BuildMetadata {
+        downlevel_iteration: false,
         root_dir: None,
         standard_library: blueice_bluets::standard_library::identity(EcmaTarget::Es2022),
         language_version: "blue-ts-test",
@@ -257,6 +258,7 @@ fn test_metadata() -> BuildMetadata {
         package_resolution: None,
         remote_declarations: Vec::new(),
         class_helper_version: "bluets-class-helper-v1",
+        target_helper_version: blueice_bluets::TARGET_HELPER_V1_VERSION,
         decorator_helper_version: "bluets-decorator-helper-v1",
         legacy_decorator_helper_version: "bluets-legacy-decorator-helper-v1",
         experimental_decorators: false,

@@ -9,8 +9,19 @@ use super::*;
 /// through [`crate::Vm::execute_module_graph`], but this distinct goal keeps
 /// module strictness and top-level syntax separate from classic scripts.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
+    parse_module_with_edition(source, SyntaxEdition::EsNext)
+}
+
+/// Parses a Module with the selected body syntax edition. The Module goal
+/// admits static import/export headers even for an ES5 payload; this is not
+/// a claim that an ES5 Script admits module declarations.
+pub fn parse_module_with_edition(
+    source: &str,
+    edition: SyntaxEdition,
+) -> Result<Module, ParseError> {
     let source = crate::source_encoding::escape(source);
     let mut parser = Parser::new_module(&source);
+    parser.select_edition(edition)?;
     parser.module_await = true;
     parser.module = true;
     parser.strict = true;
@@ -89,6 +100,22 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
         }
     }
     validate_module_declarations(&body, &imports, &parser)?;
+    parser.validate_edition()?;
+    editions::validate_body(&body, edition)?;
+    if exports
+        .iter()
+        .any(|export| matches!(export, ExportEntry::Namespace { .. }))
+    {
+        edition.require(SyntaxEdition::Es2020, "namespace exports")?;
+    }
+    if imports.iter().any(|import| {
+        matches!(
+            import.import_name,
+            ImportName::DeferredNamespace | ImportName::Source
+        )
+    }) {
+        edition.require(SyntaxEdition::EsNext, "import phases")?;
+    }
     Ok(Module {
         body,
         imports,

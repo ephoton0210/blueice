@@ -14,6 +14,61 @@ pub(super) struct MemberCall<'a> {
     pub(super) generic: bool,
 }
 
+pub(super) struct IndexedCall<'a> {
+    pub(super) callee: &'a [Token],
+    pub(super) arguments: &'a [Token],
+}
+
+pub(super) fn indexed_call_ranges(
+    tokens: &[Token],
+    is_generic: impl Fn(usize) -> bool,
+) -> Vec<Range<usize>> {
+    let starts = postfix_starts(tokens, is_generic);
+    let mut open = Vec::new();
+    let mut ranges = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+        if token.is("(") {
+            open.push(index);
+        } else if token.is(")") {
+            if let Some(begin) = open.pop() {
+                if begin > 0 && tokens[begin - 1].is("]") {
+                    ranges.push(starts[begin - 1]..index + 1);
+                }
+            }
+        }
+    }
+    ranges
+}
+
+pub(super) fn indexed_call_parts(
+    tokens: &[Token],
+    is_generic: impl Fn(usize) -> bool,
+) -> Option<IndexedCall<'_>> {
+    indexed_call_ranges(tokens, is_generic)
+        .into_iter()
+        .find(|range| range.start == 0 && range.end == tokens.len())?;
+    let mut depth = 0usize;
+    let mut open = None;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.text.as_str() {
+            "(" if depth == 0 && index > 0 && tokens[index - 1].is("]") => open = Some(index),
+            _ => {}
+        }
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" => depth = depth.checked_sub(1)?,
+            _ => {}
+        }
+    }
+    let open = open?;
+    let arguments = &tokens[open + 1..];
+    split_call_arguments(arguments)?;
+    Some(IndexedCall {
+        callee: &tokens[..open],
+        arguments,
+    })
+}
+
 fn postfix_starts(tokens: &[Token], is_generic: impl Fn(usize) -> bool) -> Vec<usize> {
     let mut starts = vec![0; tokens.len()];
     let mut parents = Vec::new();

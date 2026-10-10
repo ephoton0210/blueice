@@ -76,6 +76,10 @@ pub(crate) struct TypeReference {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NestedFunction {
     pub kind: NestedFunctionKind,
+    /// An object method or function-valued property supplies its receiver.
+    pub contextual_this: bool,
+    /// Computed property-key expressions execute outside the method body.
+    pub computed_key: Vec<Token>,
     /// Declared `async`: its span starts at the `async` token.
     pub async_function: bool,
     /// A generator function or method.
@@ -677,12 +681,20 @@ pub struct TypeField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariableDeclaration {
     pub name: String,
+    pub pattern: Option<VariableBindingPattern>,
     pub kind: VariableKind,
     pub annotation: Option<Type>,
     pub initializer: Vec<Token>,
     pub exported: bool,
     pub declared: bool,
     pub span: SourceSpan,
+}
+
+/// A flat variable binding pattern and its optional final rest binding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariableBindingPattern {
+    pub pattern: BindingPattern,
+    pub rest: Option<ElementBinding>,
 }
 
 /// A destructuring pattern in the supported subset: shorthand, renamed and
@@ -1161,6 +1173,10 @@ pub(crate) fn parse_module_with_namespaces(
 #[path = "parser/implementation.rs"]
 mod implementation;
 mod namespace_names;
+pub(crate) use implementation::parse_emitted_block;
+pub(crate) use implementation::parse_emitted_module;
+pub(crate) use implementation::parse_emitted_statement;
+pub(crate) use implementation::parse_variable_pattern;
 use implementation::Parser;
 pub use namespace_names::{exported_namespace_trees, NamespaceTree};
 

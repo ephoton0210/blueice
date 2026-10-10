@@ -35,10 +35,13 @@ impl Parser {
         range_start: usize,
         index: usize,
         end: usize,
+        statement_range: bool,
     ) -> Option<usize> {
         self.try_parse_arrow_function(range_start, index, end)
-            .or_else(|| self.try_parse_function_expression(range_start, index, end))
-            .or_else(|| self.try_parse_object_member(range_start, index, end))
+            .or_else(|| {
+                self.try_parse_function_expression(range_start, index, end, statement_range)
+            })
+            .or_else(|| self.try_parse_object_member(range_start, index, end, statement_range))
     }
 
     /// Parses and erases the `<..>` at the cursor, returning its type
@@ -141,17 +144,17 @@ impl Parser {
 
     /// An object-literal method or accessor at a property position: `name(..)
     /// [: result] { .. }`, `get name() [: result] { .. }` or `set name(value)
-    /// { .. }`. Computed and string keys, `async` and generator members are
-    /// left as tokens.
+    /// { .. }`. Computed keys retain their enclosing expression context.
     fn try_parse_object_member(
         &mut self,
         range_start: usize,
         index: usize,
         end: usize,
+        statement_range: bool,
     ) -> Option<usize> {
         if index == range_start
             || !matches!(self.tokens[index - 1].text.as_str(), "{" | ",")
-            || !self.directly_in_braces(range_start, index)
+            || !self.directly_in_braces(range_start, index, statement_range)
         {
             return None;
         }
@@ -164,7 +167,13 @@ impl Parser {
                 .tokens
                 .get(index + 2)
                 .is_some_and(|token| token.is("("));
-        if !generator_method && !is_name(&self.tokens[index]) {
+        let computed_method = self.tokens[index].is("[");
+        let literal_method = matches!(
+            self.tokens[index].kind,
+            TokenKind::String | TokenKind::Number
+        );
+        if !generator_method && !computed_method && !literal_method && !is_name(&self.tokens[index])
+        {
             return None;
         }
         // `async name(..)` starts at `async`; a method named `async` has `(`
@@ -176,7 +185,12 @@ impl Parser {
                 .get(index + 2)
                 .is_some_and(|token| token.is("("));
         let next = self.tokens.get(index + 1)?;
-        let (kind, name, open) = if generator_method || async_method {
+        let mut computed_key = Vec::new();
+        let (kind, name, open) = if computed_method {
+            let close = matching_closing_delimiter(&self.tokens, index, end, "[", "]")?;
+            computed_key = self.tokens[index + 1..close].to_vec();
+            (NestedFunctionKind::Method, None, close + 1)
+        } else if generator_method || async_method {
             (NestedFunctionKind::Method, None, index + 2)
         } else if next.is("(") {
             (NestedFunctionKind::Method, None, index + 1)
@@ -196,6 +210,9 @@ impl Parser {
         } else {
             return None;
         };
+        if !self.tokens.get(open)?.is("(") {
+            return None;
+        }
         let close = matching_close(&self.tokens, open, end)?;
         // A statement block can contain `for (...) { ... }` at the same
         // brace depth as a method. A loop declaration is not a parameter.
@@ -218,6 +235,9 @@ impl Parser {
         if !self.simple_parameter_list(open, close) {
             return None;
         }
+        if computed_method {
+            self.collect_expression_type_edits(index + 1, open - 1);
+        }
         let saved_index = self.index;
         let ParsedFunctionTail {
             parameters,
@@ -227,7 +247,16 @@ impl Parser {
             next_index,
         } = self.parse_parameters_result_and_block(open)?;
         let start_offset = self.tokens[index].start;
+        let receiver_error = matches!(
+            kind,
+            NestedFunctionKind::Getter | NestedFunctionKind::Setter
+        ) && self.reject_receiver_parameters(
+            &parameters,
+            2784,
+            "'get' and 'set' accessors cannot declare 'this' parameters.",
+        );
         match kind {
+            _ if receiver_error => {}
             NestedFunctionKind::Getter if !parameters.is_empty() => self.error_at(
                 SourceSpan::new(&self.id, start_offset, body_end),
                 DiagnosticCode::ParseError,
@@ -249,6 +278,8 @@ impl Parser {
             start_offset,
             NestedFunction {
                 kind,
+                contextual_this: true,
+                computed_key,
                 async_function: async_method,
                 generator: generator_method,
                 name,
@@ -313,16 +344,26 @@ impl Parser {
         })
     }
 
-    /// Whether the nearest enclosing bracket of `index` within the range is a
-    /// `{`, that is, whether `index` sits directly in an object literal.
-    fn directly_in_braces(&self, range_start: usize, index: usize) -> bool {
+    /// Whether the nearest enclosing bracket belongs to an object operand.
+    /// A statement body also uses braces, but its control-flow keywords must
+    /// not be parsed as object methods.
+    fn directly_in_braces(&self, range_start: usize, index: usize, statement_range: bool) -> bool {
         let mut depth = 0usize;
         for cursor in (range_start..index).rev() {
             match self.tokens[cursor].text.as_str() {
                 ")" | "]" | "}" => depth += 1,
                 "(" | "[" | "{" => {
                     if depth == 0 {
-                        return self.tokens[cursor].is("{");
+                        if !self.tokens[cursor].is("{") {
+                            return false;
+                        }
+                        if cursor == range_start {
+                            return !statement_range;
+                        }
+                        return matches!(
+                            self.tokens[cursor - 1].text.as_str(),
+                            "=" | "(" | "[" | "," | ":" | "return" | "yield" | "?"
+                        );
                     }
                     depth -= 1;
                 }
@@ -340,6 +381,7 @@ impl Parser {
         range_start: usize,
         index: usize,
         end: usize,
+        statement_range: bool,
     ) -> Option<usize> {
         if !self.tokens[index].is("function") {
             return None;
@@ -405,10 +447,16 @@ impl Parser {
             next_index: next,
         } = self.parse_parameters_result_and_block(open)?;
         let start_offset = self.tokens[head].start;
+        let contextual_this = head >= range_start + 3
+            && self.tokens[head - 1].is(":")
+            && matches!(self.tokens[head - 3].text.as_str(), "{" | ",")
+            && self.directly_in_braces(range_start, head, statement_range);
         self.nested_functions.insert(
             start_offset,
             NestedFunction {
                 kind: NestedFunctionKind::Function,
+                contextual_this,
+                computed_key: Vec::new(),
                 async_function,
                 generator,
                 name,
@@ -512,6 +560,19 @@ impl Parser {
         } else {
             self.parse_parameters()
         };
+        for parameter in parameters
+            .iter()
+            .filter(|parameter| parameter.name == "this")
+        {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::ParseError,
+                    parameter.span.clone(),
+                    "an arrow function cannot have a this parameter",
+                )
+                .with_typescript(2730, Vec::new()),
+            );
+        }
         let return_start = self.current().start;
         let return_type = if self.consume(":") {
             let value = self.parse_return_type_until(&["=>"]);
@@ -575,6 +636,8 @@ impl Parser {
             start_offset,
             NestedFunction {
                 kind: NestedFunctionKind::Arrow,
+                contextual_this: false,
+                computed_key: Vec::new(),
                 async_function: async_arrow,
                 generator: false,
                 name: None,

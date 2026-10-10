@@ -13,6 +13,7 @@ mod freshness;
 mod function_methods;
 mod generic_inference;
 mod implementation_origin;
+mod indexed_calls;
 mod indexing;
 mod inference;
 mod library_presentation;
@@ -20,6 +21,7 @@ mod more_types;
 mod optional_property;
 mod property_diagnostics;
 mod readonly;
+mod receivers;
 pub(super) mod signatures;
 
 pub(super) use indexing::indexed_value_type;
@@ -78,6 +80,16 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
+        self.check_function_call_with_receiver(tokens, scope, span, None);
+    }
+
+    pub(super) fn check_function_call_with_receiver(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+        receiver: Option<&[Token]>,
+    ) {
         let Some(call) = direct_call_parts(tokens) else {
             return;
         };
@@ -111,7 +123,7 @@ impl<'a> ModuleChecker<'a> {
         if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
             let before = self.diagnostics.len();
             for alternative in &alternatives {
-                self.check_function_call(tokens, alternative, span);
+                self.check_function_call_with_receiver(tokens, alternative, span, receiver);
             }
             self.dedupe_diagnostics_since(before);
             return;
@@ -123,9 +135,28 @@ impl<'a> ModuleChecker<'a> {
                     "a spread argument for function {} must have a fixed-length tuple type",
                     call.callee.text,
                 );
-                if signatures
-                    .iter()
-                    .any(|signature| signature.parameters.last().is_some_and(|p| p.rest))
+                let mut argument_position = 0usize;
+                let mut fixed_array_spread = None;
+                for argument in &arguments {
+                    if argument.first().is_some_and(|token| token.is("..."))
+                        && matches!(self.infer_expression(&argument[1..], scope), Type::Array(_))
+                        && signatures.iter().all(|signature| {
+                            !function_parameter_for_argument(signature, argument_position)
+                                .is_some_and(|parameter| parameter.rest)
+                        })
+                    {
+                        fixed_array_spread = Some(*argument);
+                        break;
+                    }
+                    match self.expanded_call_argument_types(&[argument], scope) {
+                        Ok(types) => argument_position += types.len(),
+                        Err(()) => break,
+                    }
+                }
+                if fixed_array_spread.is_none()
+                    && signatures
+                        .iter()
+                        .any(|signature| signature.parameters.last().is_some_and(|p| p.rest))
                 {
                     self.blue_only_type_error(
                         span, message, DiagnosticCode::TypeMismatch,
@@ -139,6 +170,14 @@ impl<'a> ModuleChecker<'a> {
                         2556,
                         Vec::new(),
                     );
+                    if let Some(argument) = fixed_array_spread.or_else(|| {
+                        arguments
+                            .iter()
+                            .find(|argument| argument.first().is_some_and(|token| token.is("...")))
+                            .copied()
+                    }) {
+                        self.point_last_typescript(argument);
+                    }
                 }
                 return;
             }
@@ -190,6 +229,13 @@ impl<'a> ModuleChecker<'a> {
         let Some(signature) = selected.or_else(|| signatures.first().cloned()) else {
             return;
         };
+        self.check_call_receiver(
+            &signature.parameters,
+            receiver,
+            scope,
+            span,
+            receiver.unwrap_or(tokens),
+        );
         let required = function_signature_required_arguments(&signature);
         if !function_signature_accepts_argument_count(&signature, actuals.len()) {
             let expected = if signature
@@ -199,7 +245,14 @@ impl<'a> ModuleChecker<'a> {
             {
                 format!("at least {required}")
             } else {
-                format!("{required} to {}", signature.parameters.len())
+                format!(
+                    "{required} to {}",
+                    signature
+                        .parameters
+                        .iter()
+                        .filter(|p| p.name != "this")
+                        .count()
+                )
             };
             self.type_error(
                 span,
@@ -406,6 +459,19 @@ impl<'a> ModuleChecker<'a> {
         for argument in arguments {
             if argument.first().is_some_and(|token| token.is("...")) {
                 positions_known = false;
+                let spread = self.infer_expression(&argument[1..], scope);
+                if let Type::Array(element) = spread {
+                    if signatures.iter().any(|signature| {
+                        function_parameter_for_argument(signature, actuals.len())
+                            .is_some_and(|parameter| parameter.rest)
+                    }) {
+                        // The array may supply any number of rest arguments.
+                        // Its element type is checked once at the rest position;
+                        // fixed parameters must already have their own arguments.
+                        actuals.push(*element);
+                        continue;
+                    }
+                }
                 actuals.extend(self.expanded_call_argument_types(&[argument], scope)?);
                 continue;
             }

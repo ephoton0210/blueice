@@ -168,6 +168,7 @@ fn property_type_with_access(
         Type::Boolean => Some(("Boolean", Vec::new())),
         Type::Function { .. } => Some(("Function", Vec::new())),
         Type::Literal(text) if text.starts_with(['\'', '"', '`']) => Some(("String", Vec::new())),
+        Type::Literal(text) if text.ends_with('n') => Some(("BigInt", Vec::new())),
         Type::Literal(text) if text.parse::<f64>().is_ok() => Some(("Number", Vec::new())),
         Type::Literal(text) if matches!(text.as_str(), "true" | "false") => {
             Some(("Boolean", Vec::new()))

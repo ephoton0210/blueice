@@ -143,8 +143,8 @@ fn malformed_command_lines_fail_with_a_message_and_the_usage_text() {
             "--out-dir is valid only with build",
         ),
         (
-            &["check", "main.ts", "--target", "es2019"],
-            "unsupported target `es2019`; expected es2020 or es2022",
+            &["check", "main.ts", "--target", "es4"],
+            "unsupported target `es4`; expected es5, es2015 through es2023, or esnext",
         ),
         (
             &["check", "main.ts", "--runtime-policy", "loose"],
@@ -548,8 +548,8 @@ fn config_target_and_runtime_policy_are_validated_and_applied() {
     config_project(&scratch);
     for (text, message) in [
         (
-            r#"{"entries": ["src/main.ts"], "target": "es5"}"#,
-            "unsupported target `es5`; expected es2020 or es2022",
+            r#"{"entries": ["src/main.ts"], "target": "es4"}"#,
+            "unsupported target `es4`; expected es5, es2015 through es2023, or esnext",
         ),
         (
             r#"{"entries": ["src/main.ts"], "runtimePolicy": "reckless"}"#,

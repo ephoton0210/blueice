@@ -17,9 +17,11 @@ mod json;
 mod native_emit;
 mod project_builder;
 mod resolutions;
+mod targets;
 
 pub(crate) use fingerprint::fingerprint;
 use project_builder::ProjectBuilder;
+pub use targets::EcmaTarget;
 
 /// Closed-project work limits. They are part of [`CompilerOptions`] so a
 /// cached result or artifact cannot be reused under a looser resource policy.
@@ -47,21 +49,6 @@ impl Default for CompilerLimits {
             parser: ParserLimits::default(),
             max_type_expansions: 256,
             max_source_map_segments: 100_000,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EcmaTarget {
-    Es2020,
-    Es2022,
-}
-
-impl EcmaTarget {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Es2020 => "es2020",
-            Self::Es2022 => "es2022",
         }
     }
 }
@@ -164,10 +151,15 @@ pub struct CompilerOptions {
     /// surface; explicit options never select JavaScript emit or runtime grants.
     pub checking: Option<crate::CheckingOptions>,
     pub target: EcmaTarget,
+    /// Explicit whole ECMAScript library profiles. `None` follows `target`;
+    /// an empty list selects no library. Typings never supply runtime authority.
+    pub libraries: Option<Vec<EcmaTarget>>,
+    /// Use iterator protocols when lowering iteration below ES2015.
+    pub downlevel_iteration: bool,
     /// TypeScript's `useDefineForClassFields`: `Some(true)` defines class
     /// fields (native ES2022 fields, or `Object.defineProperty` below it),
     /// `Some(false)` assigns them in the constructor, and `None` follows the
-    /// target, as TypeScript does (define for ES2022, assign for ES2020).
+    /// target, as TypeScript does (define for ES2022 and later).
     pub use_define_for_class_fields: Option<bool>,
     /// Emit the runtime object of a `const enum` even though its uses are
     /// replaced by their values (TypeScript's `preserveConstEnums`).
@@ -228,6 +220,12 @@ pub struct CompilerOptions {
 }
 
 impl CompilerOptions {
+    pub(crate) fn library_target(&self) -> Option<EcmaTarget> {
+        self.libraries
+            .as_ref()
+            .map(|libraries| libraries.iter().copied().max())
+            .unwrap_or(Some(self.target))
+    }
     /// Whether a use of a `const enum` member is replaced by its value.
     /// Transpile-only compiles without types, so it cannot know the value.
     pub fn inlines_const_enums(&self) -> bool {
@@ -238,7 +236,7 @@ impl CompilerOptions {
     /// default is applied.
     pub fn defines_class_fields(&self) -> bool {
         self.use_define_for_class_fields
-            .unwrap_or(self.target == EcmaTarget::Es2022)
+            .unwrap_or(self.target >= EcmaTarget::Es2022)
     }
 }
 
@@ -246,6 +244,8 @@ impl Default for CompilerOptions {
     fn default() -> Self {
         Self {
             target: EcmaTarget::Es2022,
+            libraries: None,
+            downlevel_iteration: false,
             checking: None,
             use_define_for_class_fields: None,
             preserve_const_enums: false,
@@ -603,6 +603,16 @@ fn compile_with_cache(
         &project,
         checker::CheckerPolicy {
             target: options.target,
+            library_target: options
+                .library_target()
+                .into_iter()
+                .chain(
+                    project
+                        .referenced_libraries
+                        .iter()
+                        .filter_map(|name| EcmaTarget::parse(name)),
+                )
+                .max(),
             checking: options.checking,
             enforce_types: !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
             require_declared_global_calls: options.require_declared_global_calls,

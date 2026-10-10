@@ -144,6 +144,7 @@ impl ModuleChecker<'_> {
                     },
                 );
                 let variable = crate::parser::VariableDeclaration {
+                    pattern: None,
                     name: field.name.clone(),
                     kind: crate::parser::VariableKind::Const,
                     annotation: field.annotation.clone(),

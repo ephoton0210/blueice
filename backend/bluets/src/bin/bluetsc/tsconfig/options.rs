@@ -19,6 +19,7 @@ pub(super) const STRICT: &[&str] = &[
 ];
 
 const BOOLEAN: &[&str] = &[
+    "downlevelIteration",
     "sourceMap",
     "declaration",
     "useDefineForClassFields",
@@ -68,6 +69,7 @@ pub(super) fn validate(
             && !matches!(
                 name.as_str(),
                 "target"
+                    | "lib"
                     | "module"
                     | "moduleResolution"
                     | "jsx"
@@ -84,7 +86,25 @@ pub(super) fn validate(
             result.insert(name.clone(), Value::Null);
             continue;
         }
-        let checked = if BOOLEAN.contains(&name.as_str()) || STRICT.contains(&name.as_str()) {
+        let checked = if name == "lib" {
+            let libraries = value
+                .as_array()
+                .ok_or_else(|| "compiler option `lib` requires an array".to_string())?;
+            let mut selected = Vec::new();
+            for library in libraries {
+                let name = library
+                    .as_str()
+                    .ok_or_else(|| "compiler option `lib` requires strings".to_string())?;
+                let target = EcmaTarget::parse(name)
+                    .ok_or_else(|| format!("unsupported compiler option `lib` value `{name}`"))?;
+                selected.push(json!(if target == EcmaTarget::Es2015 {
+                    "es6"
+                } else {
+                    target.as_str()
+                }));
+            }
+            Value::Array(selected)
+        } else if BOOLEAN.contains(&name.as_str()) || STRICT.contains(&name.as_str()) {
             Value::Bool(
                 value
                     .as_bool()
@@ -95,7 +115,16 @@ pub(super) fn validate(
                 .as_str()
                 .ok_or_else(|| format!("compiler option `{name}` requires a string"))?;
             match name.as_str() {
-                "target" => enumeration(name, string, &["es2020", "es2022"])?,
+                "target" => {
+                    let target = EcmaTarget::parse(string).ok_or_else(|| {
+                        format!("unsupported compiler option `{name}` value `{string}`")
+                    })?;
+                    json!(if target == EcmaTarget::Es2015 {
+                        "es6"
+                    } else {
+                        target.as_str()
+                    })
+                }
                 "module" => {
                     let module = enumeration(
                         name,
@@ -246,7 +275,10 @@ pub(super) fn effective(raw: &Map<String, Value>, directory: &Path) -> Map<Strin
             "preserveConstEnums",
             raw.get("isolatedModules").and_then(Value::as_bool) == Some(true),
         ),
-        ("useDefineForClassFields", target == "es2022"),
+        (
+            "useDefineForClassFields",
+            EcmaTarget::parse(target).is_some_and(|target| target >= EcmaTarget::Es2022),
+        ),
         (
             "allowJs",
             raw.get("checkJs").and_then(Value::as_bool) == Some(true),
@@ -277,8 +309,11 @@ pub(super) fn owner_options(
 ) -> Result<Map<String, Value>, String> {
     let mut owner = Map::new();
     let computed = effective(raw, root);
+    owner.insert("target".to_string(), json!("es5"));
     for name in [
         "target",
+        "lib",
+        "downlevelIteration",
         "module",
         "resolveJsonModule",
         "sourceMap",

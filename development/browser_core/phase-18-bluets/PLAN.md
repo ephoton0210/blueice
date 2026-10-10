@@ -6730,6 +6730,216 @@ font work; the unresolved full macOS workload still needs final hosted evidence.
 Assertions, navigation timeouts, coverage floors/exclusions and original CI
 workflows have not changed. K.7.1 remains the next implementation leaf after M8.
 
+### K.7.1 isolated target test baseline (2026-10-10)
+
+Keep production at `1f76ff28c` while M8's original final-source CI is pending.
+An isolated test branch records seventeen forms for eleven targets: ES5,
+ES2015 through ES2023 and ESNext. The forms cover lexical loop/arrow captures,
+binding patterns, object/sparse-array spread, iterator closing, generator and
+async state, async iteration, inheritance, short-circuit/logical assignment,
+exponentiation, templates, rest calls, BigInt and private state. Fixture names
+use `emittarget-` without words claimed by other matrices. Every source has
+the MPL header. Reference flags retain strict checking and `lib ES2020`;
+five ES5 iterator-sensitive forms explicitly select `downlevelIteration`.
+
+TypeScript 5.9.3 accepts 180 programs and rejects seven: six old-target BigInt
+literals and one ES5 private name. All 180 accepted references pass Node,
+exact declaration generation and Acorn 8.15.0 at the requested edition.
+`record_targets.cjs` independently reproduces the complete canonical record.
+Only observations and helper names are retained; upstream helper bodies stay
+in temporary oracle output. The independent reference uses twelve helper
+names. A console-context adjustment is separately proved to preserve all
+187 reference verdicts/primary diagnostics and all 180 JavaScript, declaration
+and runtime outputs byte-for-byte. The original variadic ambient-method gap
+remains recorded in the earlier probe artifacts.
+
+The shared pinned diagnostic recorder consumes the new matrix and flags.
+Its 2,731 cases/219 templates retain every one of the prior 2,544 observations
+unchanged. Public CLI tests preserve exact project flags, primary diagnostics,
+Node/declaration parity, target syntax and helper-version manifest/fingerprint
+identity. A separate current-owned-profile ES2020 control shows why execution
+alone is insufficient: Node accepts the output's logical assignment, while
+the ES2020 parser rejects it. BlueJS currently exposes no edition-selecting
+parser API; the independent Acorn check does not close that implementation
+requirement. The isolated oracle workflow installs pinned Acorn alongside
+pinned TypeScript without altering job counts, coverage or skips.
+
+The frozen test-only Linux gate passes format, both-crate all-target Clippy
+with warnings denied and shared matrix completeness. The public replay has
+two passing and four failing tests, with zero ignored tests; the live pinned
+reference recorder is one of the passing tests. Production remains unchanged.
+Evidence: `blueice-k71-test-baseline-second-{status,source-hashes}.json`,
+`blueice-k71-shared-reference-proof.json`, retained first replay logs and the
+independent probe artifacts. Commit this failing baseline on the isolated
+branch before production changes. It remains unpushed until the verified
+leaf's complete K.0 gate passes. K.7.1 remains open, and implementation waits
+for M8's complete original hosted CI.
+
+### K.7.1 independent syntax-edition witnesses (2026-10-10)
+
+The isolated baseline now includes 55 authored JavaScript grammar witnesses.
+Pinned Acorn 8.15.0 records 605 decisions across the eleven targets: 403
+accept and 202 reject. The examples distinguish lexical declarations,
+arrows, patterns, generators/async iteration, spread, operators, literals,
+RegExp grammar, private/class elements, module expressions and hashbangs.
+ES5 controls retain future-looking text inside strings/comments and keywords
+used as property names. Feature boundaries follow the
+[ECMA-262 edition history](https://tc39.es/ecma262/2024/multipage/#sec-intro)
+and are independently checked by the pinned parser, rather than accepted
+because the current Node runtime understands them. Each source has the MPL
+header, including the hashbang source's header after its first line.
+
+The bridge's public BlueJS parser accepts every latest witness. All three
+new tests pass, including the live pinned edition recorder, along with format
+and both-crate all-target Clippy with warnings denied. All sixty new frozen
+files and the prior 384 baseline inputs match; production is unchanged.
+Evidence: `blueice-k71-syntax-profiles-{status,source-hashes}.json` and logs.
+This establishes the syntax witnesses and current latest-parser boundary.
+Older-edition rejection through a BlueJS API remains unimplemented; it must
+be tested against the same matrix when the edition-selecting API is added.
+This test-only preparation remains on the isolated unpushed K.7.1 branch.
+
+### K.7.1 ESM and CommonJS target baseline (2026-10-10)
+
+Extend each target/form witness to both existing module kinds. The corpus
+now has 374 programs: 360 accepted and fourteen rejected by TypeScript 5.9.3.
+Every accepted reference passes Node, exact declarations and the requested
+Acorn syntax edition with the corresponding script/module goal. Each ESM
+case matches its CommonJS partner's verdict, primary diagnostic, runtime
+output, declaration text and helper names. Every prior CommonJS observation
+is unchanged. The recorder independently selects the Node package type and
+parser goal from the actual compiler module option. ES5 ESM is checked with
+the explicitly selected module goal; Acorn permits module headers separately
+from the payload syntax edition. This is not an ES5 Script grammar claim.
+
+The shared diagnostic corpus grows from 2,731 to 2,918 cases, still with
+219 templates. Every old observation remains unchanged. The public replay
+retains exact project flags, both module runtime/declaration/syntax checks
+and 22 target/module manifest identities. The strict diagnostic harness
+preserves explicit `downlevelIteration` boolean values instead of encoding
+them as strings. Both diagnostic replay failures are counted by matrix before
+the existing twenty/twelve-line display limits are applied.
+
+The frozen Linux gate passes format and both-crate all-target Clippy with
+warnings denied. The expanded target replay has two passing/four failing
+tests, with no ignored tests, including the passing live 374-case recorder.
+Shared completeness passes; its two public diagnostic replays remain red.
+All 402 primary differences and fourteen presentation differences belong
+to the target matrix; the old corpus has no reported mismatch. The existing
+ignored shared recorder is independently executed during the full pinned
+regeneration, which proves all prior 2,731 observations unchanged.
+All 381 frozen changed inputs match, along with the sixty prior syntax files
+and every unaffected production/build input. Evidence:
+`blueice-k71-esm-{reference-proof,shared-reference-proof,public-replay-proof}.json`,
+`blueice-k71-esm-targets-{status,source-hashes}.json` and
+`blueice-k71-esm-baseline-final-third-{status,source-hashes}.json` / logs.
+Commit the expanded failing baseline before implementation. The branch stays
+unpushed until K.0 passes; main remains at `1f76ff28c` for M8 hosted CI.
+
+### K.7.1 control-flow and receiver baseline (2026-10-10)
+
+Twelve additional forms exercise generator return/throw, yielding from
+finally, delegated iterator closing, await rejection, finally overriding an
+awaited return, async-iterator closing before the caller resumes, destructuring
+getter/default order, abrupt loop closing and spread receiver evaluation.
+Arrow receiver controls separate lexical `this` from lexical `arguments`.
+The same forms run across eleven targets and both module kinds.
+
+The corpus now has 638 programs: 600 accepted and 38 rejected. TypeScript
+5.9.3 refuses arrow `arguments` in ES5 with TS2496 and array spread into a
+fixed-arity method with TS2556. These rejection controls remain in the corpus;
+the valid lexical-this and tuple-spread companions execute independently.
+The first 594-program probe is retained, and all earlier 374 observations
+and then all earlier 594 observations match exactly after the additions.
+All 600 accepted references pass Node, exact declarations and pinned syntax
+edition validation. Upstream helper implementations remain temporary output.
+
+The shared recorder now has 3,182 cases/221 templates and preserves all
+prior 2,918 observations. A new ordinary public build/declaration test
+exercises the 600 accepted emit paths without optional tools; live pinned
+Node/syntax execution remains in the separate oracle. This keeps emitted
+declarations and emitter paths in the normal test/coverage flow.
+
+Frozen Linux validation passes format and both-crate all-target Clippy with
+warnings denied. The complete expanded target replay has two passing/five
+failing tests and no ignored tests; the live 638-program reference recorder
+passes. Shared completeness passes, and both shared diagnostic replays remain
+red. All 714 primary differences and all 38 presentation differences belong
+to targets; the old pre-target corpus has no reported mismatch. All 533
+changed inputs and the prior syntax/unchanged production/build inputs match.
+Evidence: `blueice-k71-control-flow-{reference-proof,positive-reference-proof,
+shared-reference-proof,public-replay-proof}.json`,
+`blueice-k71-control-flow-targets-{status,source-hashes}.json` and
+`blueice-k71-control-flow-baseline-final{,-second}-{status,source-hashes}.json`
+/ logs. Commit this failing baseline on the isolated branch before production
+changes. K.7.1 stays open and unpushed; M8 complete final-source CI is pending.
+
+### K.7.1 owned-profile emission baseline (2026-10-10)
+
+The exact project replay currently refuses the explicit `lib: ES2020`
+configuration before it reaches emission. Keep that full 638-case replay and
+all its flags. Supplement it with the 112 accepted ES2020/ES2022 cases through
+the existing native CLI, in both module kinds, selecting the existing owned
+library profiles. This supplements the exact TypeScript library/checking
+contract; it does not replace it or claim the two library surfaces agree.
+
+An ordinary test builds the selected programs and compares exact declarations
+without optional tools. The separate ignored test also runs Node and checks
+the requested Acorn edition. Of 112 native builds, 68 succeed and 44 fail.
+All 68 emitted programs match reference execution; 64 match declarations and
+66 meet the syntax edition. Both ES2020 logical-assignment module variants
+execute successfully under Node but retain syntax rejected by the ES2020
+parser. These controls expose emission independently of configuration refusal.
+
+The expanded frozen Linux baseline passes format and both-crate all-target
+Clippy with warnings denied. The target suite has two passing/seven failing
+tests and zero ignored, including the passing live 638-program recorder.
+All 533 frozen changed inputs, sixty prior syntax inputs and every unaffected
+production/build input match. All source fixtures, target observations and
+the 3,182-case shared record remain unchanged. Evidence:
+`blueice-k71-owned-profile-baseline-{status,source-hashes}.json`, its logs and
+`blueice-k71-owned-profile-public-replay-proof.json`. Commit this test-only
+baseline before production changes and retain it unpushed until the complete
+K.0 gate passes. K.7.1 implementation and final-source M8 hosted CI remain open.
+
+### K.7.1 iterator/generator protocol baseline (2026-10-10)
+
+The existing target record exposes twelve upstream helper families. Before
+authoring them, retain native protocol boundaries from original source:
+fifteen synchronous close outcomes, four generator state controls and eighteen
+async close outcomes. The 37 observations cover getter/call/rejection failure,
+primitive close results, completion priority, settlement before resumption,
+return/throw before first execution, reentrancy and completed generators.
+The fixed [ECMA-262 2024 close operations](https://tc39.es/ecma262/2024/multipage/abstract-operations.html#sec-iteratorclose)
+and [generator operations](https://tc39.es/ecma262/2024/multipage/control-abstraction-objects.html#sec-generatorresumeabrupt)
+provide the semantic basis. The recorder checks these native outcomes directly.
+
+All 22 strict TypeScript 5.9.3 target/module combinations accept, emit and run;
+their output meets the requested Acorn 8.15.0 syntax edition. The live recorder
+retains exact declarations and every actual upstream observation. It measures
+20 upstream differences in eight programs: ES5 ignores primitive synchronous
+close results after break/return, and ES5/ES2015/ES2016/ES2017 ignore primitive
+async close results. These measured differences are documented alongside the
+native controls. Authored BlueTS helper output must satisfy native closing
+semantics; none of the existing 638 target expectations is weakened.
+Dynamic iterator receivers are explicitly `any`; the controls intentionally
+exercise invalid runtime protocol results without inventing static authority.
+
+The portable recorder preserves every prior scratch semantic observation and
+keeps upstream helper implementations out of repository source. The frozen
+Linux baseline passes format and both-crate all-target Clippy with warnings
+denied. Its three public/recording tests have one pass and two failures, zero
+ignored: the live pinned recorder passes, while both BlueTS build replays
+refuse all 22 projects at the unsupported `downlevelIteration` option. No
+authored helper output has passed yet. All 538 frozen inputs, sixty prior
+syntax inputs and every unaffected production/build input match; all prior
+533 inputs, 638 target observations and the 3,182-case shared record remain
+unchanged. Evidence: `blueice-k71-helper-spec-clause-proof.json`,
+`blueice-k71-protocol-first-proof/`, `blueice-k71-protocol-semantics-proof.json`,
+`blueice-k71-protocol-recorder-proof.json` and
+`blueice-k71-protocol-baseline-{status,source-hashes}.json` / logs.
+Commit this supplemental failing baseline before production changes and keep
+it unpushed until full K.0 passes. K.7.1 and final-source M8 CI remain open.
 ### M8 final-source workspace and hosted CI verification (2026-10-10)
 
 Final source `1f76ff28c8aa14da7c9e990bb5305c9e29278b62` passes the complete
@@ -6766,3 +6976,789 @@ Evidence: `blueice-font-cold-workspace-{status,report,source-hashes}.json`,
 `blueice-k63-final-source-ci-final-report.json`, raw logs and frozen inputs.
 M8 is verified. Continue K.7.1's committed test-first baseline through
 implementation and the full K.0 gate; K.7 through K.10 remain open.
+
+### K.7.1 public target-selection failing baseline (2026-10-10)
+
+After M8 closes on exact `1f76ff28c`, four public configuration tests fail
+on unchanged production. They cover all eleven target spellings, case folding,
+ES6/ES2015 aliasing, positional/native/tsconfig selection, distinct artifact
+fingerprints and class-field defaults, using a function with no downlevel
+syntax. The omitted tsconfig target must mean ES5; the native default remains
+ES2022. Pinned TypeScript 5.9.3 independently records thirteen target/default
+observations in `blueice-k71-config-pinned-defaults-proof.json`.
+The frozen Linux replay is zero pass/four fail (`blueice-k71-config-red-*`).
+This baseline is committed before implementation and stays unpushed until
+K.7.1's full K.0 gate succeeds. The existing 638 verdicts, 600 emit witnesses,
+605 grammar observations and normative iterator/generator protocols remain
+required; configuration selection alone does not close target emission.
+
+The initial configuration harness used `build --project` for tsconfig, which
+is not the native build invocation. Corrected to `build --config`; a second
+frozen replay restores every changed production input to `1f76ff28c` and
+again fails all four tests, this time on genuine unsupported target/default
+messages only. `blueice-k71-config-red-corrected-{status,source-hashes}.json`
+and its log supersede the initial default-target failure. No production
+change is committed by this baseline correction.
+
+Native and TypeScript configuration controls now use separate scratch roots:
+a native owner config intentionally auto-discovers a colocated tsconfig, so
+sharing one root would conflate the two public paths and their defaults.
+The ES6 and omitted-target controls likewise keep native defaults separate
+from tsconfig selection. The original-source target refusal is unchanged.
+
+### K.7.1 first target-selection implementation slice (2026-10-10)
+
+The isolated implementation introduces an ordered eleven-variant `EcmaTarget`
+in `compiler/targets.rs` (58 lines), with case-insensitive parsing and the
+ES6 alias. All positional/native/tsconfig paths use that selection; tsconfig
+retains TypeScript's `es6` showConfig spelling and its ES5 omitted-target
+default. The native/API default remains ES2022. Class-field defaults and
+native field lowering use the ES2022 threshold. Existing ES2020/ES2022
+owned library bytes and identities remain intact; per-target older library
+profiles still need implementation. No target transforms/helpers are claimed
+by accepting a target name.
+
+The frozen 5,862-file Linux replay passes format, both-crate all-target Clippy
+with warnings denied, four independent public target configuration tests and
+eighteen existing CLI tests. The complete ordinary two-crate run has 1,059
+passes, seven known K.7.1 failures and 165 ignored oracles in 101 groups.
+Shared primary/presentation differences remain exactly 714/38 and belong
+only to the target corpus. All other ordinary regressions pass. Every ignored
+oracle is running separately on these same frozen inputs; this is not a
+green K.0 gate. Evidence: `blueice-k71-target-config-third-{status,source-hashes,
+ordinary-report}.json`, logs and the corrected original-source baseline.
+
+Production files remain uncommitted/unpushed on `work/bluets-k71-targets`
+until complete target lowering, helper provenance, library/iteration options,
+BlueJS edition validation and all K.0 tests succeed. The configuration slice
+does not close K.7.1. No runtime, filesystem or network grant changes.
+
+### K.7.1 edition API failing baseline (2026-10-10)
+
+An ordinary bridge replay now selects each BlueJS syntax edition for the
+existing 605 pinned Acorn observations (403 accept, 202 reject). The original
+public BlueJS library has no `SyntaxEdition`, `parse_with_edition` or
+`parse_module_with_edition`; a Linux rustc probe fails on those three missing
+symbols without writing to the shared Cargo target. Its exact library/probe
+hashes and compiler output are `blueice-k71-edition-api-red-{report.json,log}`.
+Commit this API replay before adding parser support. The 55 authored sources
+and all reference verdicts remain unchanged; the latest/default parsing
+control remains independent. K.7.1 and its full K.0 gate remain open.
+
+The first authored edition guard compiles as the actual BlueJS library with
+exact dependency fingerprints from the existing Cargo cache, writing only
+to a bounded `/logs` probe. It matches all 605 independent edition decisions
+and preserves the original library's full Debug AST for all 55 latest
+witnesses. The native probe uses the unchanged actual RegExp worker through
+its existing environment option; the first standalone invocation lacked
+that worker path and is retained as a setup failure, not syntax evidence.
+Evidence: `blueice-k71-edition-probe-first-{build-report,replay-with-worker-
+report}.json`, exact source/dependency hashes and logs. This is actual
+compiled code evidence, not completion of the required Cargo gate.
+
+Thirty-one additional authored grammar controls record 341 pinned Acorn
+8.15.0 decisions (264 accept, 77 reject). They include nested template await/
+separators/optional access, raw versus escaped Unicode, reserved property
+names, RegExp character classes/escaped group text/property identity escapes,
+trailing commas, top-level async iteration and private-looking public names.
+A malformed Unicode-brace expression is retained as an explicit rejection
+control. The ordinary public API replay and live independent oracle are
+committed before further fixes; the original 605 observations are unchanged.
+
+### K.7.1 Cargo edition verification and CI oracle routing (2026-10-10)
+
+The frozen 6,449-file snapshot passes Cargo format, all-target Clippy for
+BlueJS/BlueTS/bridge with warnings denied, and all four bridge syntax tests,
+including the actual pinned independent recorder. Full BlueJS ordinary
+regressions are still running (`blueice-k71-edition-cargo-first-status.json`).
+The target-selection slice's preceding complete ordinary/ignored replay is
+1,059/161 passing tests, with seven/four known K.7.1 failures; every old
+TypeScript/Node/declaration oracle passes. The final report's alias-name
+assertion is corrected against actual Rust test names without rerunning tests
+(`blueice-k71-target-config-third-ignored-verified-report.json`).
+
+The added 341-decision live context oracle moves from BlueJS to the bridge,
+which the committed TypeScript CI command already selects. Its Node script
+and golden JSON are byte-identical, proven by
+`blueice-k71-context-oracle-ci-routing-proof.json`; revalidate this final
+test location after the ongoing snapshot finishes. The BlueJS ordinary
+context replay remains in its public-boundary test. No production change
+is made by this routing adjustment.
+
+Edition validation is separated into 242/243/283-line modules; the parser
+is 951 lines, module goal 205 and module-item parsing 436. Existing long
+expression/token sources gain no responsibilities. Original MPL headers
+and all frozen input hashes are verified. Selection checks syntax, never
+runtime API availability. Default ESNext skips the extra tree walk; the
+module goal separately admits ordinary import/export headers for an ES5
+payload, as recorded by the independent parser. K.7.1 is still open and
+all production remains uncommitted/unpushed pending complete target output
+and the full K.0 gate.
+
+### K.7.1 library/iteration configuration failing baseline (2026-10-10)
+
+Pinned TypeScript 5.9.3 records 29 library/target cases (19 accept, ten reject),
+including every owned edition, explicit older/newer library selection, Promise,
+`finally`, `trimStart`, BigInt syntax independent of `lib`, an empty library list
+and both iteration-policy values. Four new public CLI tests fail before library
+and iteration option implementation: verdict replay, independent library artifact
+identity, iteration manifest/fingerprint and normalized showConfig. The failing
+source and reference are committed on the isolated unpushed branch before
+production work on these options. No reference verdict is relaxed.
+
+The completed edition gate passes 4,109 ordinary BlueJS tests across 335 groups
+with zero failures. Its five ignored tests are the four existing Node comparisons
+and the then-local context oracle; all are explicitly executed by the original
+context step and final routing follow-up. The final bridge suite passes all five
+tests, including both live Acorn recorders, and the native context test passes.
+Format and three-crate all-target Clippy pass on the frozen 6,451-file follow-up.
+Evidence: `blueice-k71-edition-cargo-first-bluejs-report.json`,
+`blueice-k71-edition-routing-final-status.json` and their source hashes/logs.
+The library configuration baseline has zero passes/four expected failures;
+K.7.1 as a whole remains open and production is uncommitted/unpushed.
+
+### K.7.1 configuration and binding logical assignment progress (2026-10-10)
+
+The committed library/iteration baseline has become green on isolated production.
+All 29 pinned library cases match (19 accept/ten reject), including independently
+chosen syntax/library versions and missing global types with an empty set. The
+owner may still supply intrinsic declarations; protected owner interfaces and
+page runtime-call authority remain enforced. Sixteen focused tests, including
+the new live TypeScript recorder, pass; the existing library matrix passes all
+six tests including its three ignored oracles, and all eighteen CLI regressions
+pass. Format and three-crate all-target Clippy pass on 6,463 frozen files. The
+original ES2020 and ES2022 declaration source bytes and default selection are
+retained. Earlier/additional editions use original cumulative v2 profiles.
+Evidence: `blueice-k71-library-options-second-status.json` and
+`blueice-k71-library-regression-first-status.json`.
+
+Binding `||=`, `&&=` and `??=` now lower below ES2021 after type/module rewriting.
+The right operand stays in its lexical environment; a temporary reads the
+nullish binding once. An original ES5-compatible strict-nullish helper is
+versioned as `blue-ts-target-helper-v1`, included in fingerprint content and
+recorded by `target_helper_version`. The existing ES2020 Node/Acorn syntax-floor
+replay and the 22 distinct target/module helper identities now pass. Format,
+three-crate lint and sixteen configuration/library tests pass on 6,465 files.
+Member logical assignment, remaining older syntax, suspension helpers and the
+complete target/parser/checker surface are still unfinished.
+
+A public bridge regression compares BlueTS ES2020, original ES2021 and pinned
+TypeScript execution for single accessor reads, conditional/nested assignments,
+throw priority, helper collisions and await. Node observations match in all
+three versions, but BlueJS's syntax assertion fails with a known error:
+`expected an export declaration (found Identifier("async"))`. Its parser
+already accepts default async exports, but lacks the named async export branch.
+The new named async/function-generator controls are pinned independently with
+Acorn 8.15.0 before changing that parser; all 341 previous observations remain
+identical, now 363 decisions (279 accept/84 reject). This baseline remains
+isolated/unpushed. The complete target ordinary replay still has 256 primary
+verdict/diagnostic mismatches and five failing target/protocol tests.
+Evidence: `blueice-k71-logical-lowering-first-status.json`,
+`blueice-k71-logical-effects-first-status.json`,
+`blueice-k71-logical-effects-diagnostic-report.json` and their frozen hashes/logs.
+The largest newly extended source is `bluetsc.rs` at 1,190 lines; the target
+transform is 161 lines and no existing near/over-1,300-line BlueJS source gained
+responsibilities. K.7.1 remains open; no production commit or push is claimed.
+
+Before the named async export production fix, the frozen 6,467-file Cargo
+baseline passes format and three-crate all-target lint. The standalone named
+export and edition-control tests each fail as expected, while the live Acorn
+context recorder passes. All fifteen new native mismatches are the two missing
+named async export forms; the previous 341 decisions still match. Evidence:
+`blueice-k71-named-async-baseline-status.json` and frozen source hashes/logs.
+
+### K.7.1 ES5 primitive-symbol library correction baseline (2026-10-10)
+
+Read-only AST inspection of the installed pinned TypeScript 5.9.3 library proves
+that ES5 already supplies the primitive `Symbol` interface's `toString` and
+`valueOf` types; the global Symbol factory is a separate ES2015 addition. The
+new owned profile incorrectly placed both at ES2015. Before correcting it, a
+public CLI replay of an ES5-lib function accepting `symbol` fails with BTS3003
+for `value.toString()`, whereas pinned TypeScript accepts with no diagnostics.
+The exact CLI binary SHA is recorded in
+`blueice-k71-es5-symbol-type-red-report.json`; no Cargo rebuild or source change
+occurs during this replay. This additional accepted case is committed before
+the profile fix, growing the library record from 29 to 30 cases (20 accept/ten
+reject), with all original observations unchanged. The live pinned recorder
+and public reference loop cover the additional case.
+
+### K.7.1 statement/object parsing failing baseline (2026-10-10)
+
+Three new public parser tests reuse the already pinned iteration-close and
+37-observation protocol inputs. A test linked to the actual existing Cargo
+BlueTS library passes the keyword-object-method control and fails both
+regressions: a block `if (value === 42)` is incorrectly parsed with method
+parameter grammar, and a braced loop without a semicolon absorbs subsequent
+module function declarations. The new tests and failing replay are committed
+before parser changes. No fixture source or upstream observation is changed.
+The standalone replay compiles actual public-API tests, links the Cargo rlib
+whose hash/fingerprint is recorded, and writes outside the shared target; it
+does not start a second Cargo or substitute a parser implementation. Evidence:
+`blueice-k71-statement-baseline-report.json` and native test/build logs.
+
+### K.7.1 object receiver context failing baseline (2026-10-10)
+
+The complete named-async export correction passes all 4,110 ordinary BlueJS
+regressions in 335 groups and all four ignored Node differential tests, with
+frozen source hashes verified. The follow-up braced-statement parser correction
+passes its three public regressions, all 30 explicit-library observations,
+19 focused tests and 241 BlueTS units. Target replay remains red (two ordinary
+target tests pass, three fail); the separate protocol declaration replay still
+incorrectly diagnoses computed-method receiver `this` as TS2683.
+
+Ten independently recorded TypeScript 5.9.3 controls (seven accept, three
+reject) distinguish computed/named/string methods, accessors, lexical arrows,
+function-valued properties, ordinary nested functions and outer computed-key
+reads. The public compiler replay fails on seven controls before production
+changes. Exact diagnostic codes, source offsets and lengths are asserted,
+including the valid function-valued property confirmed by the actual compiler.
+Evidence: `blueice-k71-object-context-{input,reference}.json`,
+`blueice-k71-object-context-baseline-status.json` and its frozen hashes/log.
+K.7.1 remains open, and its production changes remain uncommitted/unpushed.
+
+### K.7.1 exponentiation syntax boundary failing replay (2026-10-10)
+
+The existing 638-case pinned target corpus supplies four unchanged power
+programs at ES2015/ES2016 in CommonJS/ES2022 modules. A focused ignored test
+builds BlueTS and actual TypeScript 5.9.3, checks both real programs with pinned
+Acorn, executes both under Node and compares every emitted declaration. Before
+power lowering, both ES2015 BlueTS outputs fail the edition parser; all eight
+Node/declaration comparisons and both ES2016 syntax controls pass. The failing
+replay is committed before adding the transform. Format and three-crate
+all-target Clippy pass. Evidence: `blueice-k71-power-baseline-status.json`, its
+frozen 7,000-file hashes and `blueice-k71-power-baseline-power.log`.
+
+The object-context correction separately passes all ten exact receiver
+controls and the live pinned oracle, 36 focused tests and 241 units. All 22
+protocol projects now match exact declarations. Both original v1 library
+source files remain byte-identical; new versioned supplemental declarations
+and v2 identity include well-known Symbol keys and invalidate their actual
+source fingerprint. Complete target emission and K.0 remain open.
+
+### K.7.1 named async-generator type context baseline (2026-10-10)
+
+Six TypeScript 5.9.3 observations (three accept, three reject) cover explicit
+`AsyncGenerator<number, void, unknown>` annotations with direct, promised and
+awaited yields, invalid string yields and invalid numeric returns. Each primary
+code, offset and length is asserted. The live pinned recorder passes; the public
+compiler fails all six at its existing blanket async-generator parser refusal.
+Format and three-crate all-target Clippy pass. The shared function-context
+recorder remains an actual TypeScript program and is reused by the existing
+object-receiver oracle. Evidence: `blueice-k71-async-generator-baseline-status.json`,
+its 7,005-file hashes and native log, and the source/diagnostic reference hash
+`d7f2233c923fbf74765a4a8dacb9d49d0e911a6f572def4e9ce580ff36fe4f82`.
+
+The first exponentiation transform passes the four ES2015/ES2016 module-boundary
+programs and six effect witnesses against actual TypeScript, native ES2016,
+Node, exact declarations and the public edition-selecting BlueJS parser.
+All 241 BlueTS units pass. A complete earlier 7,001-file ordinary replay passes
+1,073 tests across 105 groups and fails five tests, confined to the target and
+shared diagnostic matrices. The subsequent optional-call-receiver correction
+reduces the canonical primary differences to 178. No complete K.7.1 or K.0
+success is claimed, and production stays uncommitted/unpushed.
+
+### K.7.1 Explicit receiver parameter failing baseline (2026-10-10)
+
+Thirteen original function-context sources record TypeScript 5.9.3 diagnostics,
+including object methods with tuple/array spread, named and function-valued
+`this` parameters, callable annotations, class methods, incompatible receivers,
+misplaced receiver parameters and the arrow prohibition. The public replay
+compares every primary code, source start/length and full message. A nested
+function returned by an arrow retains its own implicit receiver diagnostic.
+
+Linux frozen gate `blueice-k71-explicit-this-baseline-status.json` (7,008 files)
+passes format, three-crate all-target Clippy and the live TypeScript recorder;
+the public replay fails on twelve sources because receiver parameters are
+refused. This baseline is committed before changing their parser/checker/
+emitter/runtime representation. K.7.1 production remains uncommitted, unpushed
+and incomplete. The preceding frozen target replay has 132 primary differences
+in six forms, three failing ordinary target tests and all 22 protocol
+declarations passing.
+
+### K.7.1 Explicit receiver parameter implementation in progress (2026-10-10)
+
+`this` remains in function/method types and emitted declarations while the
+parser removes its complete runtime parameter and following comma. Callable
+arity and generic inference address runtime parameters separately; direct
+BlueJS lowering skips the receiver parameter. Receiver compatibility is
+checked for direct, member and call/apply/bind calls. Misplaced and arrow
+receiver parameters retain TS2680/TS2730. The strict boundary profile continues
+to refuse explicit receiver parameters.
+
+Frozen Linux gate `blueice-k71-explicit-this-implementation-third-status.json`
+(7,011 files) passes format, three-crate all-target Clippy, thirteen focused
+context/library/runtime tests and 241 BlueTS unit tests. All thirteen original
+diagnostic sources match code, start, length and complete flattened message;
+flattening matches the pinned recorder's message-chain separator and preserves
+all text. Three direct-runtime programs return 42. Node and pinned TypeScript
+match six receiver/arity observations [42,42,20,1,1,0] and exact declarations.
+The target primary differences fall from 132 to 88: 22 each for binding
+patterns, pattern evaluation, rest calls and generator catch narrowing. All
+22 protocol declarations pass; three ordinary target tests still fail.
+The complete two-crate ordinary/ignored replay is pending. Production remains
+uncommitted and unpushed; K.7.1 is open.
+
+### K.7.1 Receiver parameter grammar boundaries failing baseline (2026-10-10)
+
+Six native TypeScript 5.9.3 controls record constructor/accessor receiver
+prohibitions and malformed optional/default/rest receiver syntax. The public
+regression compares full diagnostics for constructors/accessors; the malformed
+headers must be refused without reproducing TypeScript's secondary recovery
+parameters. All original native observations remain recorded and live-checked.
+
+Before validation changes, `blueice-k71-receiver-boundaries-red-report.json`
+records a real Linux `rustc --test` probe linked against the unchanged frozen
+public BlueTS compiler rlib. All six fail: four invalid sources are admitted,
+and getters/setters have the wrong diagnostics. The probe does not modify the
+Cargo target or source and runs while the complete ignored replay continues.
+This failing baseline is committed before implementing boundary validation.
+
+### K.7.1 Array rest and reduce callback failing baseline (2026-10-10)
+
+Eight original TypeScript 5.9.3 controls cover array spreads into rest
+parameters, fixed prefixes, rejected fixed-parameter spreads, incompatible
+elements, member rest calls and numeric/string reduce callback contexts.
+A typed callback-return rejection preserves its exact operand position.
+The native record has five accepted and three rejected sources.
+
+The public Linux compiler probe in `blueice-k71-rest-array-red-report.json`
+fails all eight before production changes. It links the existing frozen
+compiler rlib outside the Cargo target while the old ignored replay runs.
+The ordinary integration regression compares all codes, starts, lengths and
+complete messages, with a live TypeScript recorder check. Commit this baseline
+before changing call spread expansion or the original owned Array declarations.
+
+### K.7.1 Rest parameter declaration failing baseline (2026-10-10)
+
+The rest-array bridge fixture exports an annotated rest function and observes
+its fold result, source evaluation count, member call and runtime arity.
+`blueice-k71-rest-array-implementation-second-status.json` (7,017 files)
+passes format, three-crate all-target Clippy and all context/library tests,
+including the eight pinned array/rest sources, six receiver boundary sources,
+eight default generator execution/declaration combinations and the recovered
+complete `call` receiver messages. Both older frontend regressions pass.
+
+Both original receiver runtime tests and the two direct array-rest programs
+pass. The new array runtime oracle matches native TypeScript/Node observations
+[42,1,42,0], but its exact declaration comparison fails. Named-function
+declaration emission omits the rest parameter's ellipsis. Commit this runtime/
+declaration failing replay before correcting that emission path. Keep all
+production changes uncommitted and unpushed until the complete K.0 leaf gate.
+
+### K.7.1 Catch flow failing baseline (2026-10-10)
+
+Twelve original pinned TypeScript 5.9.3 sources cover literal/typeof guards,
+early throws, branch joins, unknown and string rejections, reassignment,
+shadowed/nested catches and local try/finally guards for generator operands.
+Six sources are accepted and six rejected; all diagnostics retain their exact
+codes, positions, lengths and complete messages. The native recorder passes.
+
+The frozen 7,019-file Linux replay in
+`blueice-k71-catch-flow-baseline-status.json` passes format and the live native
+recorder, but the public compiler regression fails ten of twelve sources.
+The current graph treats try/catch/finally as one opaque node, so guarded
+operand reads have no branch facts. The shadowed-block witness also exposes
+a retained body-boundary/diagnostic issue. Commit this failing replay before
+production changes.
+
+The preceding rest declaration correction passes all four bridge runtime/
+declaration tests, both rest context replays, 241 unit tests, format and
+three-crate all-target Clippy on the frozen 7,017-file third replay. All 22
+protocol declarations pass. The canonical target primary differences are
+66: 22 each for bind-patterns, pattern-evaluation and generator-throw. The
+three ordinary target tests still fail; K.7.1 and the complete K.0 gate remain
+open, and production remains isolated, uncommitted and unpushed.
+
+### K.7.1 Variable pattern failing baseline (2026-10-10)
+
+Eight original TypeScript 5.9.3 controls cover object shorthand/renaming,
+defaults, object and array rest, annotated tuples, missing properties and
+incompatible binding use. Native TypeScript accepts six and rejects two;
+the missing-property witness retains both the property and excess-property
+diagnostics, with complete messages and exact positions.
+
+The public Linux replay `blueice-k71-variable-pattern-red-report.json` fails
+all eight against the real frozen compiler library before pattern support.
+No Cargo artifacts or production sources are changed by that probe. Commit
+this regression before implementing variable binding patterns.
+
+The preceding 7,019-file catch-flow implementation third replay passes all
+twelve exact diagnostic observations and the live recorder, format, three-
+crate all-target Clippy and 241 unit tests. Target primary differences fall
+to 44 (22 bind-patterns and 22 pattern-evaluation); the generator-throw form
+is resolved. The public AST confirms that shadowed blocks were already
+retained correctly: the false return diagnostic came from a module/function
+completion cache collision at source offset zero. Its correction clears an
+opaque function's colliding completion entry. Catch assignments also reset
+unknown refinements. The broad ordinary replay is still running. K.7.1 and
+its lowering/declaration/K.0 gates remain open and production is unpushed.
+
+### K.7.1 Direct variable pattern failing baseline (2026-10-10)
+
+The 7,022-file third pattern replay passes all eight exact native diagnostic
+sources, both context recorders, 241 units, format and three-crate all-target
+Clippy. All 638 canonical target verdicts and primary diagnostics now match.
+Two ordinary target declaration tests still fail only on constant templates.
+The parser record helper is moved into the existing pattern module after a
+1,200-line review; the root returns to 1,180 lines without changing AST fields.
+
+The new bridge witness observes getter/default calls, array/object rest,
+[42,2,false] runtime values and exact declaration output. Its frozen 7,024-file
+replay passes the native Node/declaration oracle and all six precise pattern
+boundaries. The direct bridge test fails with `ReferenceError("first")`: its
+variable lowerer still puts the printed pattern in one identifier. Commit
+this actual failing runtime baseline before converting retained patterns to
+the original BlueJS AST. Exported/ambient, re-exported and nested variable
+patterns remain precise refusals pending their declaration/module support.
+
+The preceding complete ordinary catch-flow gate passes 1,082 tests in 113
+groups, with four failures confined to diagnostic/target matrices and 178
+ignored tests. Its original shared primary differences were 44 binding-
+pattern entries; the focused pattern correction resolves those verdicts.
+K.7.1 lowering and the final ordinary/every-ignored K.0 gates remain open.
+
+### K.7.1 Constant template failing baseline (2026-10-10)
+
+Ten original TypeScript 5.9.3 sources cover constant arithmetic, inline
+expressions, prefixes/suffixes, string concatenation, plain and escaped
+templates, mutable/annotated/call operands and an incompatible literal use.
+Native TypeScript accepts six and rejects four. The negative observations
+retain exact TS2322 codes, starts, lengths and complete messages.
+
+`blueice-k71-template-constant-red-report.json` links the real frozen public
+compiler and fails seven of ten sources before constant inference. Mutable,
+annotated and call operands already stay broad strings; preserve those
+controls while computing literal types for actual constant substitutions.
+Commit this failing replay before the production inference correction.
+The shared target corpus already records all 22 constant-template declaration
+failures. K.7.1 remains open and all production changes remain unpushed.
+
+### K.7.1 Checker and declarations checkpoint (2026-10-10)
+
+The correctly frozen 7,028-file constant-template final replay passes format,
+three-crate all-target Clippy, all focused context/native recorder tests,
+direct pattern execution and getter/default Node effects with exact `.d.ts`.
+All 638 target verdicts and primary diagnostics, all 600 accepted target
+declarations, the owned target declarations and the complete shared primary/
+presentation matrices pass. Constant types reuse the original enum arithmetic
+evaluator only for bounded, checked literal operands; mutable/annotated/call
+operands remain broad strings. The declaration emitter retains a proved
+constant template's initializer syntax.
+
+The complete ordinary replay passes 1,089 tests in 116 groups and fails one
+old frontend test that still expects object/array destructuring to be invalid
+syntax. Both original sources are preserved verbatim in native-recorded exact
+TS2304 controls; all eight previous pattern observations are unchanged. The
+new ten-source replay asserts the accepted verdict and output presence as
+well as every code, span, length and complete message. A second full frozen
+ordinary/every-ignored replay is pending. No production commit or push has
+occurred; original target lowering and the final K.0 gate remain open.
+
+The first runtime retry detected a source-hash/tar mismatch before any Cargo
+command, because the next template change began before the snapshot finished.
+That snapshot was discarded. All later snapshots wait for formatting and
+complete serialization before independent source changes or Cargo execution.
+
+### K.7.1 Optional and nullish target failing baseline (2026-10-10)
+
+An original ES2019 bridge witness records missing/present receivers, getter
+reads, fallback calls and a parenthesized arithmetic consumer. The real public
+Linux compiler probe in `blueice-k71-optional-target-red-report.json` matches
+native TypeScript/Node values [20,42,42,[3,2,1]] and exact declarations, then
+fails pinned Acorn's ES2019 syntax check at an unlowered optional property.
+Its TypeScript reference emits successfully. The probe links the actual
+frozen compiler library outside Cargo artifacts. Commit this failing runtime/
+declaration/edition replay before implementing original optional/nullish
+target transforms.
+
+The corrected 7,028-file complete ordinary gate passes all 1,090 tests in
+116 groups, with zero failures and 181 ignored tests. All focused exact native
+contexts, pattern runtime/declarations, format, three-crate all-target Clippy,
+target declarations/verdicts and shared diagnostics pass. The every-ignored
+gate is running. The new optional-target baseline is separate from those
+frozen sources. Keep the leaf open and all production uncommitted/unpushed
+until actual target lowering and every K.0 oracle pass.
+
+### K.7.1 Original downlevel transforms checkpoint (2026-10-10)
+
+The corrected 7,028-file complete ordinary gate passes 1,090 tests in 116
+groups. Every ignored oracle finishes with 179 passes and two failures, both
+confined to target/protocol syntax floors. There are no target build, runtime
+or declaration differences; the target replay records 101 older-edition syntax
+differences before the following transforms. All frozen input hashes match.
+
+The frozen 7,032-file optional/nullish gate passes format, three-crate all-target
+Clippy, its independent Node/effect/exact-declaration/ES2019 oracle and all five
+ordinary target tests. Terminal named optional properties preserve single
+receiver/getter reads; nullish conditionals retain right-side suspension and
+effects in the original function. The [20,42,42,[3,2,1]] witness agrees with
+pinned TypeScript. Other optional call/property-chain contexts retain their
+existing boundaries.
+
+Original object spread then copies enumerable own values using descriptors,
+including symbols and prototype-named data properties. Ordinary property runs
+retain descriptors and getter/setter pairs. Prototype setters and super-bearing
+ordinary properties stay precise refusals in this transform. The frozen
+7,034-file replay passes format, Clippy and nine target tests; its remaining
+failure reports 85 syntax differences, with zero build, runtime or declaration
+differences. Independent native helper controls cover getter ordering, deletion
+of later keys, symbols, hidden keys, prototype data and accessor pairs.
+
+The frozen 7,035-file object-rest replay also passes 241 unit tests, format,
+Clippy and the optional oracle. A temporary initializer preserves one source
+evaluation; the retained ordinary pattern performs defaults before the rest
+copy, which excludes original property keys. All runtime/declaration witnesses
+match and target syntax differences fall to 73. Native helper controls retain
+getter/default order and symbol/exclusion behavior. Every authored helper source
+now contributes to the versioned family fingerprint. ES5 and async/generator
+lowering still require implementation.
+
+Evidence is in `blueice-k71-{optional-implementation,object-spread,object-rest}-first-status.json`,
+their exact logs/hashes, `blueice-k71-object-rest-first-differences.json` and the
+native helper control scripts under `/private/tmp/blueice-k14-linux/`. Production
+remains uncommitted/unpushed, K.7.1 stays open, and no inventory row is closed.
+
+### K.7.1 Async defaults failing regression (2026-10-10)
+
+The frozen 7,037-file named async transform passes format, all-target Clippy,
+241 unit tests and nine target tests. Awaited results, rejected awaits and
+finally-return witnesses agree with native execution and exact declarations;
+target syntax differences fall from 73 to 61. The protocol replay preserves
+all 37 native observations and declarations, with only unlowered edition syntax
+remaining. Original generator/promise helpers contribute to the fingerprint.
+
+An additional independent ES2015 source covers default evaluation, function
+arity, a trailing parameter comma, immediate entry, await suspension, caught
+rejection and finally ordering. The real 7,039-file replay passes format and
+three-crate Clippy; pinned TypeScript/Node and emitted BlueTS agree on values
+[42,1,0] and effect order [default,start,returned,resume,string,finally], and
+the declarations match exactly. Its Acorn check fails at the retained trailing
+comma in the generated generator parameters. Commit this failing test and
+fixture before removing that comma for the older edition. Evidence:
+`blueice-k71-async-default-baseline-{status,source-hashes}.json` and its actual
+runtime log. Production and the full K.7.1 leaf remain uncommitted/unpushed.
+
+### K.7.1 Async generator request failing baseline (2026-10-10)
+
+The async-default correction passes the committed effect/arity/declaration/
+ES2015 oracle, format and Clippy. The subsequent frozen 7,041-file for-await
+transform passes format, Clippy, 241 unit tests and both earlier runtime
+oracles. All 37 native protocol observations and exact declarations agree;
+only the two ES5 protocol editions remain invalid. The 638-case target replay
+still has 61 syntax differences, including the not-yet-lowered async generator
+declarations. There are no build, execution or declaration differences. Native
+adapter controls cover cached next methods, sync value assimilation, async
+iterator values and closing-result validation.
+
+An original async-generator source now checks queued next requests, return and
+throw before entry, completed requests, finally counters and a rejected return
+argument caught inside the generator. Its pinned TypeScript reference uses
+ES2022 native generator semantics with an explicit ES2020 library; emitted
+BlueTS uses ES2017 with the same library selection. Exact declarations and
+every normative native observation agree before lowering. The corrected frozen
+7,043-file baseline passes format and three-crate Clippy, then fails Acorn at
+the unlowered async generator declaration. The first attempt omitted the
+required newer library and was corrected in the test configuration; production
+was unchanged. Commit the actual failing request/edition replay before writing
+the original async-generator helper. Evidence:
+`blueice-k71-async-generator-baseline-second-{status,source-hashes}.json` and its
+runtime log. K.7.1 stays open and all production remains uncommitted/unpushed.
+
+### K.7.1 ES5 scope and indexed-call failing regressions (2026-10-10)
+
+The frozen 7,045-file async-generator implementation passes format, all-target
+Clippy, 241 unit tests, its committed native request oracle and both earlier
+runtime oracles. The entire accepted target corpus has no build, runtime or
+declaration differences. Every ES2015-or-newer edition passes; the remaining
+49 target syntax differences and two protocol editions are exclusively ES5.
+Evidence: `blueice-k71-async-generator-first-{status,differences}.json` and logs.
+
+An original ES5 source retains two block shadows, five loop/block captures and
+an explicit receiver's lexical arrow. Pinned TypeScript 5.9.3 independently
+accepts it and executes [42,1,[20,22,0,1,2],42], with an exact declaration
+record in `blueice-k71-es5-scope-native-proof.json`. The frozen public replay
+passes format and Clippy but rejects its array of indexed function results:
+`callbacks[0]()` is incorrectly inferred as the function container instead
+of its return type. Fix this semantic defect before the ES5 scope transform.
+
+Six independently pinned indexed-call controls cover arrays, tuples, wrong
+result and argument types, missing arguments and a non-callable element.
+TypeScript accepts two and rejects four. The live recorder passes; the actual
+7,049-file public replay fails all six observations, including three false
+accepts. Code, start, length and complete normalized messages remain asserted.
+Commit both failing regressions before correcting indexed inference and
+reusing call-signature validation. Evidence:
+`blueice-k71-es5-scope-baseline-status.json`,
+`blueice-k71-indexed-call-baseline-status.json`, their logs/frozen hashes and
+the native reference. K.7.1 and all production remain uncommitted/unpushed.
+
+
+### K.7.1 Indexed-call correction verified (2026-10-10)
+
+Indexed callee inference now uses the actual indexed value type and the existing
+call-signature validator, preserving receiver, arity and argument diagnostics.
+All six committed native contexts agree on verdicts and exact primary code,
+position, length and normalized full message. The original ES5 scope source
+now executes [42,1,[20,22,0,1,2],42] and emits the exact native declaration;
+its remaining failure is the unlowered ES5 syntax, starting with `const`.
+
+The frozen 7,050-file broad gate passes 1,091 ordinary tests in 121 groups,
+with zero failures, plus every ordinary shared diagnostic/target test. The
+preceding focused gate passes format, three-crate all-target Clippy and both
+indexed-call tests, including the live recorder. Evidence:
+`blueice-k71-indexed-call-{first,broad}-status.json`, their logs and exact
+frozen source hashes. ES5 lexical/closure lowering has started after the
+committed native regression; no completed ES5 or K.0 claim is made. Production
+remains isolated, uncommitted and unpushed, and K.7.1 stays open.
+
+
+### K.7.1 Original ES5 lowering progress (2026-10-10)
+
+The committed scope regression now passes native execution, exact declarations
+and the ES5 syntax floor. The ES5 emitter reuses the checker's lexical binding
+identities for block shadows and captured loop bindings; ordinary arrows use
+the retained nested-function AST and preserve lexical receivers. The frozen
+7,053-file focused gate passes format, all-target Clippy and the original scope
+oracle. Its 638-case target replay preserves all build/execution/declaration
+observations and reduces ES5 syntax differences from 49 to 42.
+
+Original parameter prologues, untagged templates and ordinary object methods
+then reduce syntax differences to 38. Default/rest records come from the typed
+parser; template chunks keep their escape text, expression order and string-hint
+conversion. Flat ES5 destructuring reuses the same pattern parser after erasure,
+retains one initializer/getter read and executes defaults before rest copies.
+Braced for-of loops preserve completion and closing in their original function;
+iterator records cache next methods and body throws retain error precedence.
+The frozen 7,059-file gate passes format, Clippy, 241 unit tests and the scope
+oracle, with 32 remaining ES5 syntax differences and no other differences.
+
+Computed methods/properties now evaluate keys before values and preserve normal
+property descriptors; all authored helper bytes contribute to fingerprint
+identity. The frozen 7,061-file gate passes the same format/Clippy/unit/scope
+checks and nine target tests. Its remaining target test reports 28 ES5 syntax
+differences, with zero build, runtime or declaration differences. Array/call
+spread lowering is undergoing the next frozen gate; ES5 class and suspension
+state machines remain pending. No inventory row or K.7.1 checkbox is closed.
+
+Evidence: `blueice-k71-es5-{scope-second,scope-targets,parameters-second,iteration-first,objects-first}-status.json`,
+exact frozen hashes/logs and corresponding differences under
+`/private/tmp/blueice-k14-linux`. Changed production source audit remains below
+1,200 lines (largest: 1,190). Production remains isolated, uncommitted/unpushed;
+full K.0 closure is still required.
+
+
+### K.7.1 ES5 spread and class verification (2026-10-10)
+
+Array/call spreads preserve sparse ordinary entries, materialize spread holes
+and evaluate method receivers once before arguments. Iterator mode uses the
+existing original cached-next records; helper bytes remain fingerprinted. The
+frozen 7,063-file gate passes format, three-crate all-target Clippy, 241 unit
+tests and the committed scope oracle. All accepted target execution and exact
+declaration observations agree; remaining ES5 syntax differences fall to 22.
+
+Named ES5 classes now reuse the existing AST-owned field/parameter-property
+lowering before emitting constructors, prototype members and original
+inheritance helpers. Base results that replace a derived receiver retain that
+receiver for instance-field initialization. The corrected frozen 7,065-file
+gate passes format, Clippy, all 241 unit tests, the scope oracle and nine target
+tests. The last target test reports 18 syntax differences, all generator/async/
+for-await forms; it has no build, execution or declaration differences. The
+first class attempt exposed a Clippy parameter-count finding and was corrected
+without suppressing the lint. More complex constructor completions, heritage
+and member contexts remain precise boundaries, not unmeasured parity claims.
+
+The next original lowering needs a continuation graph over retained function
+body items, with runtime ownership of normal/throw/return completion, catch,
+finally and delegated iteration. Its acceptance witnesses are already in the
+committed pinned corpus, including suspended finalizers and queued async
+requests. A complete ordinary/every-ignored replay is running on the exact
+7,065-file class snapshot before that implementation begins.
+
+Evidence: `blueice-k71-es5-{spreads-first,classes-second}-status.json`, their
+exact logs/hashes/differences, and the ongoing
+`blueice-k71-es5-baseline-full` gate under `/private/tmp/blueice-k14-linux`.
+K.7.1 stays open; production remains uncommitted/unpushed.
+
+
+K.7.1 original ES5 suspension progress (2026-10-10): the frozen 7,065-file
+pre-suspension gate finishes with 1,091 ordinary tests passing in 121 groups and
+184 ignored oracles passing; two ignored tests fail solely on the 18 ES5 target
+syntax observations and two ES5 protocol syntax observations. No target
+build/runtime/declaration difference is reported. Evidence:
+`blueice-k71-es5-baseline-full-status.json`. The first original continuation
+graph snapshot passes format but fails three `clippy::useless_format` checks;
+they are corrected in the subsequent async snapshot. Structured branches,
+catch/finally, synchronous delegation, generator lifecycle, async request
+drivers and loop continuations are implemented in isolated drafts. Native
+validation of those drafts remains pending; K.7.1 stays open and production
+remains uncommitted/unpushed. The source audit reports a largest changed
+production source of 1,190 lines (the parser is 1,182 lines).
+
+
+K.7.1 focused target verification (2026-10-10): the 7,070-file
+`blueice-k71-es5-statements-first` snapshot passes format, three-crate all-target
+Clippy with warnings denied, 241 unit tests, the committed ES5 scope witness,
+all ten target tests and all three protocol tests. All 638 pinned verdicts,
+600 declarations/Node executions/Acorn edition observations, 22 protocol
+configurations and 37 native protocol observations match. Original structured
+continuations preserve catch/finally, abrupt completion, delegation, lifecycle,
+receiver/argument ordering and loop ownership. Internal re-parsing uses the
+ordinary parser on already checked runtime source with original token offsets;
+source-language async-generator annotation requirements remain unchanged.
+The 7,071-file `blueice-k71-emitted-bluejs-first` snapshot separately passes
+format, bridge all-target Clippy and the public-API gate parsing every one of
+the 600 accepted emitted programs through BlueJS at its selected edition.
+Named suspension graphs that cannot be lowered now refuse ES5 emission
+explicitly. The generated refusal inventory and G-E1 retain unmeasured
+combinations. Final whole-leaf K.0 verification is next; no production commit
+or push is made from these focused passes.
+
+
+The committed `7a4480d83` test-only supplement records the public BlueJS
+edition gate for all 600 emitted programs and a native TypeScript 5.9.3/Node
+positive control for a switch-containing generator. Its final red replay
+passes format, Clippy and both positive tests but fails the public ES5 refusal
+assertion because the old fallback publishes unsupported generator syntax.
+Evidence: `blueice-k71-es5-refusal-red-second-status.json`. The initial witness
+was stopped by an existing frontend yield boundary and is corrected before
+the committed baseline. The production fix makes that fallback an explicit
+UnsupportedSyntax diagnostic with no output. The baseline remains isolated
+and unpushed until the complete K.0 gate passes.
+
+### K.7.1 target emission verified (2026-10-10)
+
+The complete frozen 7,071-file `blueice-k71-final-k0-first` gate passes
+format, all-target Clippy with warnings denied for BlueTS, its direct bridge
+and BlueJS, all 1,093 ordinary BlueTS/bridge tests and every one of their
+187 ignored oracles in 122 target/doctest groups. The separate three-test
+emitted-edition preflight also passes; it duplicates tests in the complete
+replay, so the unique leaf total is 1,280, not 1,283. All 6,939 backend/Cargo
+file hashes match the tested snapshot. Subsequent edits close documentation
+only. The earlier complete BlueJS replay passes all 4,110 ordinary tests and
+its four Node differential oracles; BlueJS source is unchanged by the final
+continuation work.
+
+All 638 pinned verdicts, 600 accepted Node/declaration/Acorn observations,
+600 actual emitted programs through BlueJS at their selected edition,
+22 protocol configurations, 37 native protocol observations and every shared
+3,182-case diagnostic observation agree. Original versioned helper source
+bytes, target, module, library and iteration selection remain bound to the
+artifact fingerprint. The ES5 continuation graph uses retained parser records
+and preserves the measured normal/throw/return, catch/finally, delegation,
+request queue, receiver/argument and loop behavior. Unsupported named ES5
+suspension graphs fail explicitly without publishing an artifact.
+
+The regenerated inventory contains 197 refusal sites in eleven areas. G-E1
+keeps unmeasured computed heritage and super contexts, nested bindings,
+constructor spreads, async arrows/methods, template-contained suspension and
+complex suspension graphs visible. Passing this measured target leaf does
+not claim untested TypeScript parity or change runtime, filesystem or network
+authority. The changed-source audit has no file at or above 1,200 lines;
+the largest is 1,190, with the parser at 1,184. No size-driven split is due.
+
+Evidence: `blueice-k71-final-k0-first-{report,status,source-hashes}.json`,
+all exact step logs, and `blueice-k71-final-source-size-audit.json` under
+`/private/tmp/blueice-k14-linux`. K.7.1 is ready for its coherent implementation
+commit and integration; complete hosted workspace/platform/oracle/coverage
+CI must run on the pushed final source. K.7.2 is the next implementation leaf;
+K.7.2 through K.10 remain open.

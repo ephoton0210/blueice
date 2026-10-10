@@ -164,6 +164,9 @@ pub(super) fn emit_declaration(
                     if index > 0 {
                         output.push_str(", ");
                     }
+                    if parameter.rest {
+                        output.push_str("...");
+                    }
                     output.push_str(&parameter.name);
                     if parameter.optional {
                         output.push('?');

@@ -87,6 +87,10 @@ pub(super) struct BlueTscConfig {
     #[serde(default)]
     pub(super) target: Option<String>,
     #[serde(default)]
+    pub(super) lib: Option<Vec<String>>,
+    #[serde(default)]
+    pub(super) downlevel_iteration: bool,
+    #[serde(default)]
     pub(super) use_define_for_class_fields: Option<bool>,
     #[serde(default)]
     pub(super) preserve_const_enums: bool,
@@ -201,17 +205,17 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--source-map" => options.source_map = true,
             "--declaration" => options.declaration = true,
             "--target" => {
-                options.target = match value()?.as_str() {
-                    "es2020" => EcmaTarget::Es2020,
-                    "es2022" => EcmaTarget::Es2022,
-                    other => return Err(format!("unsupported target `{other}`; expected es2020 or es2022")),
-                }
+                options.target = parse_target(Some(&value()?))?;
             }
             "--preserve-const-enums" => options.preserve_const_enums = true,
             "--isolated-modules" => options.isolated_modules = true,
             "--es-module-interop" => options.es_module_interop = true,
             "--experimental-decorators" => options.experimental_decorators = true,
             "--emit-decorator-metadata" => options.emit_decorator_metadata = true,
+            "--lib" => {
+                options.libraries = Some(value()?.split(',').map(|name| parse_target(Some(name))).collect::<Result<Vec<_>, _>>()?);
+            }
+            "--downlevel-iteration" => options.downlevel_iteration = true,
             "--jsx" => {
                 let name = value()?;
                 options.jsx = Some(JsxMode::parse(&name).ok_or_else(|| {
@@ -286,7 +290,7 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
 }
 
 pub(super) fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime] [--diagnostics-json]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime] [--diagnostics-json]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc check --config <tsconfig.json> [--showConfig] [--diagnostics-json]\n  bluetsc build --config <bluetsc.json>\n  bluetsc build --config <tsconfig.json> [--showConfig] [--diagnostics-json]\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, experimentalDecorators, emitDecoratorMetadata, jsx, jsxFactory, jsxFragmentFactory, jsxImportSource, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries, tsconfig."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es5|es2015|es2016|es2017|es2018|es2019|es2020|es2021|es2022|es2023|esnext] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime] [--diagnostics-json]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es5|es2015|es2016|es2017|es2018|es2019|es2020|es2021|es2022|es2023|esnext] [--use-define-for-class-fields true|false] [--preserve-const-enums] [--isolated-modules] [--module esnext|commonjs] [--es-module-interop] [--experimental-decorators] [--emit-decorator-metadata] [--jsx preserve|react-native|react|react-jsx|react-jsxdev] [--jsx-factory <name>] [--jsx-fragment-factory <name>] [--jsx-import-source <module>] [--runtime-policy transpile-only|checked|strict-runtime] [--diagnostics-json]\n  bluetsc fetch-declarations --config <bluetsc.json>\n  bluetsc check --config <bluetsc.json>\n  bluetsc check --config <tsconfig.json> [--showConfig] [--diagnostics-json]\n  bluetsc build --config <bluetsc.json>\n  bluetsc build --config <tsconfig.json> [--showConfig] [--diagnostics-json]\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, useDefineForClassFields, preserveConstEnums, isolatedModules, module, esModuleInterop, experimentalDecorators, emitDecoratorMetadata, jsx, jsxFactory, jsxFragmentFactory, jsxImportSource, runtimePolicy, imports, moduleResolution, packageRoots, customConditions, remoteDeclarations, declarationCache, strictBoundaries, tsconfig."
 }
 
 pub(super) fn resolve_invocation(input: Input) -> Result<Invocation, String> {
@@ -539,6 +543,8 @@ pub(super) fn resolve_config_document(
     let options = CompilerOptions {
         checking: None,
         target: parse_target(config.target.as_deref())?,
+        libraries: config.lib.map(|libraries| libraries.iter().map(|name| parse_target(Some(name))).collect::<Result<Vec<_>, _>>()).transpose()?,
+        downlevel_iteration: config.downlevel_iteration,
         use_define_for_class_fields: config.use_define_for_class_fields,
         preserve_const_enums: config.preserve_const_enums,
         isolated_modules: config.isolated_modules,
@@ -717,13 +723,10 @@ pub(super) fn parse_module_kind(value: Option<&str>) -> Result<ModuleKind, Strin
 }
 
 pub(super) fn parse_target(value: Option<&str>) -> Result<EcmaTarget, String> {
-    match value.unwrap_or("es2022") {
-        "es2020" => Ok(EcmaTarget::Es2020),
-        "es2022" => Ok(EcmaTarget::Es2022),
-        other => Err(format!(
-            "unsupported target `{other}`; expected es2020 or es2022"
-        )),
-    }
+    let value = value.unwrap_or("es2022");
+    EcmaTarget::parse(value).ok_or_else(|| {
+        format!("unsupported target `{value}`; expected es5, es2015 through es2023, or esnext")
+    })
 }
 
 pub(super) fn parse_runtime_policy(value: Option<&str>) -> Result<RuntimePolicy, String> {

@@ -285,14 +285,6 @@ pub(super) fn prepare(invocation: &mut Invocation) -> Result<(), String> {
         return Ok(());
     };
     invocation.options.checking = Some(options::checking(&project.options)?);
-    if project
-        .options
-        .get("target")
-        .and_then(Value::as_str)
-        .is_none()
-    {
-        return Err("unsupported tsconfig target `es5`; select es2020 or es2022".to_string());
-    }
     for entry in &mut invocation.entries {
         let canonical = absolute_existing_path(entry).map_err(|error| {
             format!("cannot read configured entry {}: {error}", entry.display())

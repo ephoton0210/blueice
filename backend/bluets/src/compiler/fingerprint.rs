@@ -22,7 +22,12 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::checker::CLASS_SURFACE_VERSION);
     add(crate::checker::MODULE_EXPORTS_VERSION);
     add(crate::standard_library::VERSION);
-    add(&crate::standard_library::identity(options.target).source_fingerprint);
+    add(&crate::standard_library::identity_with_libraries(
+        options.target,
+        options.libraries.as_deref(),
+    )
+    .source_fingerprint);
+    add(&options.downlevel_iteration.to_string());
     add(options.target.as_str());
     add(if options.defines_class_fields() {
         "define-class-fields"
@@ -30,6 +35,10 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "assign-class-fields"
     });
     add(crate::emitter::CLASS_HELPER_V1_VERSION);
+    add(crate::emitter::TARGET_HELPER_V1_VERSION);
+    for source in crate::emitter::TARGET_HELPER_V1_SOURCES {
+        add(source);
+    }
     add(crate::emitter::DECORATOR_HELPER_V1_VERSION);
     add(if options.preserve_const_enums {
         "preserve-const-enums"

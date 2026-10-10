@@ -46,6 +46,8 @@ impl Parser {
             ambient_depth: 0,
             namespace_export_markers: 0,
             pending_decorators: Vec::new(),
+            emitted_runtime: false,
+            emitted_body_end: None,
         }
     }
 
@@ -388,9 +390,24 @@ impl Parser {
 
     pub(super) fn parse_raw(&mut self, start: usize) {
         let raw_start = self.index;
-        let end_index =
-            find_balanced_delimiter(&self.tokens, self.index, self.tokens.len() - 1, &[";"]);
-        self.collect_expression_type_edits(raw_start, end_index);
+        let (end_index, next_index, end) = if let Some(end) =
+            raw_boundaries::end(&self.tokens, raw_start, self.tokens.len() - 1)
+        {
+            if self.tokens[end].is(";") {
+                (end, end + 1, self.tokens[end].end)
+            } else {
+                (end, end, self.tokens[end - 1].end)
+            }
+        } else {
+            let end =
+                find_balanced_delimiter(&self.tokens, self.index, self.tokens.len() - 1, &[";"]);
+            (
+                end,
+                end + usize::from(self.tokens[end].is(";")),
+                self.tokens[end].end,
+            )
+        };
+        self.collect_statement_type_edits(raw_start, end_index);
         let assertions = self.tokens[raw_start..end_index]
             .iter()
             .filter(|token| token.is("as") || token.is("satisfies"))
@@ -402,12 +419,7 @@ impl Parser {
                 "TypeScript assertions outside a supported declaration are not in the initial BlueTS matrix",
             );
         }
-        let end = self.tokens[end_index].end;
-        self.index = if self.tokens[end_index].is(";") {
-            end_index + 1
-        } else {
-            end_index
-        };
+        self.index = next_index;
         self.declarations.push(Declaration::Raw(RawDeclaration {
             tokens: self.tokens[raw_start..end_index].to_vec(),
             span: SourceSpan::new(&self.id, start, end),
@@ -435,6 +447,9 @@ mod namespaces;
 mod nested_functions;
 #[path = "declarations/patterns.rs"]
 mod patterns;
+pub(crate) use patterns::parse_variable_pattern;
+#[path = "declarations/raw_boundaries.rs"]
+mod raw_boundaries;
 #[path = "declarations/source_edits.rs"]
 mod source_edits;
 #[path = "declarations/typed_declarations.rs"]

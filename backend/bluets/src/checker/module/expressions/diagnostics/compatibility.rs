@@ -178,7 +178,11 @@ impl ModuleChecker<'_> {
         false
     }
 
-    pub(super) fn compatibility_detail(&self, actual: &Type, expected: &Type) -> Option<String> {
+    pub(in crate::checker::module) fn compatibility_detail(
+        &self,
+        actual: &Type,
+        expected: &Type,
+    ) -> Option<String> {
         if let Type::Named { name, .. } = expected {
             if let Some(parameter) = self.bound_parameters.get(name) {
                 let name = crate::parser::source_type_name(name);

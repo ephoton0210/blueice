@@ -18,6 +18,7 @@ enum RecordSpreadFailure {
 pub(crate) struct CheckerPolicy {
     pub(crate) checking: Option<crate::CheckingOptions>,
     pub(crate) target: crate::compiler::EcmaTarget,
+    pub(crate) library_target: Option<crate::compiler::EcmaTarget>,
     pub(crate) enforce_types: bool,
     pub(crate) require_declared_global_calls: bool,
     /// Class fields are defined, not assigned, so a derived redeclaration
@@ -41,6 +42,7 @@ pub(super) struct ModuleChecker<'a> {
     checking: crate::CheckingOptions,
     explicit_checking: bool,
     target: crate::compiler::EcmaTarget,
+    library_target: Option<crate::compiler::EcmaTarget>,
     project: &'a Project,
     scopes: Option<scopes::ScopeModel<'a>>,
     flow: Option<scopes::flow::FlowModel>,

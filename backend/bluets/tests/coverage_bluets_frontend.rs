@@ -3863,6 +3863,8 @@ fn optional_dot_read_checks_nullish_result_and_rejects_unproven_shapes() {
     assert!(accepted.is_empty(), "{accepted:#?}");
     let named = diagnostics("interface Box { value: number; } function choose(flag: boolean): Box | null { return flag ? { value: 41 } : null; } const receiver: Box | null = choose(true); const answer: number = receiver?.value ?? 0;");
     assert!(named.is_empty(), "{named:#?}");
+    let call_receiver = check("const answer: number = choose(true)?.value ?? 0;");
+    assert!(call_receiver.is_empty(), "{call_receiver:#?}");
     for (suffix, message) in [
         (
             "const wrong: number = receiver?.value;",
@@ -3881,8 +3883,8 @@ fn optional_dot_read_checks_nullish_result_and_rejects_unproven_shapes() {
             "unsupported optional property read",
         ),
         (
-            "const wrong: number = choose(true)?.value ?? 0;",
-            "unsupported optional property read",
+            "const wrong: number = choose(true)?.missing ?? 0;",
+            "property `missing` does not exist",
         ),
         (
             "function takesNumber(value: number): number { return value; } const wrong: number = receiver?.value ?? takesNumber('wrong');",
@@ -4222,8 +4224,6 @@ fn syntax_errors_carry_a_precise_expectation() {
             "unterminated function body",
         ),
         ("declare function f(a: number): number", "expected `;`"),
-        ("const { a } = obj;", "expected a variable name"),
-        ("const [a] = arr;", "expected a variable name"),
         (
             "function f<T>(a: T): T { return a; } const x = f<number string>(1);",
             "expected a comma between type arguments",

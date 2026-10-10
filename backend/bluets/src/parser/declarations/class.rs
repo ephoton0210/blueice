@@ -279,6 +279,11 @@ impl Parser {
         self.parameter_properties.clear();
         let parameters = self.parse_parameters();
         self.parameter_property_mode = false;
+        self.reject_receiver_parameters(
+            &parameters,
+            2681,
+            "A constructor cannot have a 'this' parameter.",
+        );
         let parameter_properties = std::mem::take(&mut self.parameter_properties);
         let mut body_open = 0;
         let body = if self.consume("{") {
@@ -518,7 +523,14 @@ impl Parser {
         };
         // The accessor grammar: a getter has no parameters; a setter has one
         // plain parameter, no default, and no result annotation.
-        let arity_error = if getter {
+        let receiver_error = self.reject_receiver_parameters(
+            &parameters,
+            2784,
+            "'get' and 'set' accessors cannot declare 'this' parameters.",
+        );
+        let arity_error = if receiver_error {
+            None
+        } else if getter {
             (!parameters.is_empty()).then_some("a getter cannot have parameters")
         } else if return_type.is_some() {
             Some("a setter cannot have a return type annotation")

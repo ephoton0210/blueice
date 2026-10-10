@@ -220,6 +220,20 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn bind_class(&mut self, class: &ClassDeclaration) {
+        if self.target < crate::EcmaTarget::Es2015 {
+            for key in class
+                .members
+                .iter()
+                .filter_map(|member| member.key.first())
+                .filter(|key| key.kind == TokenKind::Identifier && key.text.starts_with('#'))
+            {
+                self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::UnsupportedSyntax,
+                    key.span(&self.module.id),
+                    "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+                ).with_typescript(18028, Vec::new()));
+            }
+        }
         if class.default_export
             && class.anonymous
             && self.target == crate::EcmaTarget::Es2020

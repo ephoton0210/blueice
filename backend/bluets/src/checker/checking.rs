@@ -47,6 +47,29 @@ pub(crate) fn check_incremental(
     exports.types = reexports::forward(&origins, &exports.types);
     let (ambient, mut ambient_diagnostics) =
         ambient_declarations(project, &exports, policy.enforce_types, max_type_expansions);
+    if policy.library_target.is_none() {
+        for name in [
+            "Array",
+            "Boolean",
+            "Function",
+            "IArguments",
+            "Number",
+            "Object",
+            "RegExp",
+            "String",
+        ] {
+            if !ambient.types.contains_key(name) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::UnknownType,
+                        SourceSpan::new(&project.entry, 0, 0),
+                        format!("cannot find global type `{name}`"),
+                    )
+                    .with_typescript(2318, vec![name.to_string()]),
+                );
+            }
+        }
+    }
     diagnostics.append(&mut ambient_diagnostics);
     let empty_namespaces = BTreeMap::new();
     exports.values = project

@@ -121,7 +121,6 @@ fn default_generators_match_pinned_execution_names_and_declarations() {
                     name,
                     directory,
                     config,
-                    asynchronous,
                     executed.stdout,
                     declarations(&reference),
                 ));
@@ -131,29 +130,12 @@ fn default_generators_match_pinned_execution_names_and_declarations() {
     // Execute every pinned witness before collecting BlueTSC differences.
     assert_eq!(references.len(), 8);
     let mut failures = Vec::new();
-    for (name, directory, config, asynchronous, expected_stdout, expected_declarations) in
-        references
-    {
+    for (name, directory, config, expected_stdout, expected_declarations) in references {
         let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
             .arg("--project")
             .arg(config)
             .output()
             .unwrap();
-        // Async generators retain the existing parser boundary. Their pinned
-        // programs remain reference controls; no runtime output is promised.
-        if asynchronous {
-            let expected = "BTS1001: an async generator is not supported yet";
-            if built.status.success()
-                || !report(&built).contains(expected)
-                || directory.join("blue").exists()
-            {
-                failures.push(format!(
-                    "{name}: async generator refusal differs: {}",
-                    report(&built)
-                ));
-            }
-            continue;
-        }
         if !built.status.success() {
             failures.push(format!("{name}: build: {}", report(&built)));
             continue;

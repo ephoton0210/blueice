@@ -40,26 +40,38 @@ impl ModuleChecker<'_> {
             && !scope.contains_key("this")
             && !function.parameters.iter().any(|p| p.name == "this")
         {
-            for token in crate::syntax::lex_with_limits(
+            let execution = self
+                .scopes
+                .as_ref()
+                .map(|scopes| scopes.flow_execution(function.span.end.saturating_sub(1)));
+            let tokens = crate::syntax::lex_with_limits(
                 &self.module.id,
                 &self.module.source[function.span.start..function.span.end],
                 function.span.end - function.span.start,
                 function.span.end - function.span.start + 1,
             )
-            .unwrap_or_default()
-            .iter()
-            .filter(|t| t.is("this"))
-            .filter(|token| {
-                let position = function.span.start + token.start;
-                !self.module.class_expressions().any(|expression| {
-                    expression.class.span.start <= position && position < expression.class.span.end
+            .unwrap_or_default();
+            let positions: Vec<_> = tokens
+                .iter()
+                .filter(|t| t.is("this"))
+                .filter(|token| {
+                    let position = function.span.start + token.start;
+                    !self.module.class_expressions().any(|expression| {
+                        expression.class.span.start <= position
+                            && position < expression.class.span.end
+                    }) && self
+                        .scopes
+                        .as_ref()
+                        .is_none_or(|scopes| Some(scopes.flow_execution(position)) == execution)
                 })
-            }) {
+                .map(|token| (token.start, token.end))
+                .collect();
+            for (start, end) in positions {
                 self.type_error(
                     &SourceSpan::new(
                         &self.module.id,
-                        function.span.start + token.start,
-                        function.span.start + token.end,
+                        function.span.start + start,
+                        function.span.start + end,
                     ),
                     "`this` implicitly has an `any` type".to_string(),
                     DiagnosticCode::TypeMismatch,

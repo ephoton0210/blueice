@@ -1,0 +1,114 @@
+{
+  "version": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ES2022",
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "cases": [
+    {
+      "name": "constructor-this",
+      "accepts": false,
+      "source": "export class C { constructor(this: C) {} }",
+      "diagnostics": [
+        {
+          "code": 2681,
+          "start": 29,
+          "length": 7,
+          "message": "A constructor cannot have a 'this' parameter."
+        }
+      ]
+    },
+    {
+      "name": "getter-this",
+      "accepts": false,
+      "source": "export const box = { get value(this: any): number { return 42; } };",
+      "diagnostics": [
+        {
+          "code": 2784,
+          "start": 31,
+          "length": 9,
+          "message": "'get' and 'set' accessors cannot declare 'this' parameters."
+        }
+      ]
+    },
+    {
+      "name": "setter-this",
+      "accepts": false,
+      "source": "export const box = { set value(this: any, value: number) {} };",
+      "diagnostics": [
+        {
+          "code": 2784,
+          "start": 31,
+          "length": 9,
+          "message": "'get' and 'set' accessors cannot declare 'this' parameters."
+        }
+      ]
+    },
+    {
+      "name": "optional-this",
+      "accepts": false,
+      "source": "export function f(this?: any) {}",
+      "diagnostics": [
+        {
+          "code": 7006,
+          "start": 18,
+          "length": 4,
+          "message": "Parameter 'this' implicitly has an 'any' type."
+        },
+        {
+          "code": 1005,
+          "start": 22,
+          "length": 1,
+          "message": "',' expected."
+        }
+      ]
+    },
+    {
+      "name": "default-this",
+      "accepts": false,
+      "source": "export function f(this: any = undefined) {}",
+      "diagnostics": [
+        {
+          "code": 1005,
+          "start": 28,
+          "length": 1,
+          "message": "',' expected."
+        },
+        {
+          "code": 7006,
+          "start": 30,
+          "length": 9,
+          "message": "Parameter 'undefined' implicitly has an 'any' type."
+        }
+      ]
+    },
+    {
+      "name": "rest-this",
+      "accepts": false,
+      "source": "export function f(...this: any[]) {}",
+      "diagnostics": [
+        {
+          "code": 7019,
+          "start": 18,
+          "length": 3,
+          "message": "Rest parameter '(Missing)' implicitly has an 'any[]' type."
+        },
+        {
+          "code": 1359,
+          "start": 21,
+          "length": 4,
+          "message": "Identifier expected. 'this' is a reserved word that cannot be used here."
+        },
+        {
+          "code": 2680,
+          "start": 21,
+          "length": 11,
+          "message": "A 'this' parameter must be the first parameter."
+        }
+      ]
+    }
+  ]
+}

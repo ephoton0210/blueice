@@ -25,9 +25,12 @@ mod checking;
 mod reexports;
 pub(crate) use checking::check_incremental;
 mod member_calls;
-use member_calls::{member_call_parts, member_call_ranges};
+use member_calls::{
+    indexed_call_parts, indexed_call_ranges, member_call_parts, member_call_ranges,
+};
 mod properties;
 mod scopes;
+pub(crate) use scopes::emission::{lexical_emission, LexicalEmission};
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
 pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v4";
@@ -540,7 +543,7 @@ fn function_signature_required_arguments(signature: &FunctionSignature) -> usize
     signature
         .parameters
         .iter()
-        .filter(|parameter| !parameter.rest && !parameter.optional)
+        .filter(|parameter| parameter.name != "this" && !parameter.rest && !parameter.optional)
         .count()
 }
 
@@ -553,19 +556,29 @@ fn function_signature_accepts_argument_count(
             .parameters
             .last()
             .is_some_and(|parameter| parameter.rest)
-            || actual_count <= signature.parameters.len())
+            || actual_count
+                <= signature
+                    .parameters
+                    .iter()
+                    .filter(|p| p.name != "this")
+                    .count())
 }
 
 fn function_parameter_for_argument(
     signature: &FunctionSignature,
     argument_index: usize,
 ) -> Option<&Parameter> {
-    signature.parameters.get(argument_index).or_else(|| {
-        signature
-            .parameters
-            .last()
-            .filter(|parameter| parameter.rest)
-    })
+    signature
+        .parameters
+        .iter()
+        .filter(|p| p.name != "this")
+        .nth(argument_index)
+        .or_else(|| {
+            signature
+                .parameters
+                .last()
+                .filter(|parameter| parameter.rest)
+        })
 }
 
 fn type_parameter_constraint_substitutions(parameters: &[TypeParameter]) -> BTreeMap<String, Type> {

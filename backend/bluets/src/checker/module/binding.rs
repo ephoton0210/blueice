@@ -20,6 +20,7 @@ mod predicates;
 mod reexports;
 mod return_types;
 mod standard_library;
+mod variable_patterns;
 
 use modules::specialize_imported_class_type;
 mod namespaces;
@@ -55,6 +56,7 @@ impl<'a> ModuleChecker<'a> {
                 .unwrap_or_else(crate::CheckingOptions::legacy),
             explicit_checking: policy.checking.is_some(),
             target: policy.target,
+            library_target: policy.library_target,
             project,
             scopes: None,
             flow: None,
@@ -190,6 +192,18 @@ impl<'a> ModuleChecker<'a> {
                     }
                 }
                 Declaration::Variable(variable) => {
+                    if let Some(pattern) = &variable.pattern {
+                        for (name, span) in pattern.names() {
+                            self.insert_value(
+                                name,
+                                Type::Unknown,
+                                span.clone(),
+                                SymbolKind::Variable,
+                                variable.exported,
+                            );
+                        }
+                        continue;
+                    }
                     if variable.annotation.is_some() {
                         self.annotated_names.insert(variable.name.clone());
                     }
@@ -675,6 +689,34 @@ impl<'a> ModuleChecker<'a> {
     pub(super) fn check_variable(&mut self, variable: &crate::parser::VariableDeclaration) {
         let scope = self.values.clone();
         self.check_variable_in_scope(variable, &scope);
+        if let Some(pattern) = &variable.pattern {
+            if self.module.declarations.iter().any(|declaration| {
+                matches!(declaration,
+                Declaration::ValueExport(export) if export.specifier.is_none()
+                    && export.bindings.iter().any(|binding|
+                        pattern.names().iter().any(|(name, _)| *name == binding.local)))
+            }) {
+                self.type_error(
+                    &variable.span,
+                    "re-exported variable binding patterns are not supported yet".to_string(),
+                    DiagnosticCode::UnsupportedSyntax,
+                );
+            }
+            let bound = self.variable_pattern_bindings(variable, &scope);
+            for (name, span) in pattern.names() {
+                if let Some(value) = bound.get(name) {
+                    self.values.insert(name.to_string(), value.clone());
+                    if let Some(symbol) = self.symbols.iter_mut().find(|symbol| {
+                        symbol.kind == SymbolKind::Variable
+                            && symbol.name == name
+                            && symbol.span == *span
+                    }) {
+                        symbol.value_type = Some(value.clone());
+                    }
+                }
+            }
+            return;
+        }
         if variable.annotation.is_none() && !variable.initializer.is_empty() && !variable.declared {
             let inferred = self
                 .alias_function_signatures(variable, &scope)
@@ -811,6 +853,7 @@ impl<'a> ModuleChecker<'a> {
         self.check_function_call(tokens, scope, span);
         self.check_flow_calls(tokens, scope, span);
         self.check_member_calls_in_expression(tokens, scope, span);
+        self.check_indexed_calls_in_expression(tokens, scope, span);
         self.check_class_index_accesses(tokens, scope);
         self.check_direct_property_access(tokens, scope, span);
         self.check_member_assignment(tokens, scope, span);

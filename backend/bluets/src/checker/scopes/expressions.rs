@@ -112,7 +112,12 @@ impl ScopeModel<'_> {
     }
 
     pub(super) fn nested_function(&mut self, function: &NestedFunction, parent: ScopeId) {
-        let scope = self.child(Some(parent), function.span.clone(), true, true);
+        self.expression(&function.computed_key, parent);
+        let mut span = function.span.clone();
+        if let Some(last) = function.computed_key.last() {
+            span.start = last.end;
+        }
+        let scope = self.child(Some(parent), span, true, true);
         self.scopes[scope]
             .types
             .extend(function.type_parameters.iter().map(|p| p.name.clone()));

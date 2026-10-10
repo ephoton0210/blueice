@@ -1,0 +1,139 @@
+{
+  "version": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ES2022",
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "cases": [
+    {
+      "name": "object-this-tuple",
+      "accepts": true,
+      "source": "const box = { base: 20, add(this: {base: number}, value: number): number { return this.base + value; } }; const values: [number] = [22]; export const result = box.add(...values);",
+      "diagnostics": []
+    },
+    {
+      "name": "object-this-array",
+      "accepts": false,
+      "source": "const box = { base: 20, add(this: {base: number}, value: number): number { return this.base + value; } }; const values = [22]; export const result = box.add(...values);",
+      "diagnostics": [
+        {
+          "code": 2556,
+          "start": 157,
+          "length": 9,
+          "message": "A spread argument must either have a tuple type or be passed to a rest parameter."
+        }
+      ]
+    },
+    {
+      "name": "named-this-void",
+      "accepts": true,
+      "source": "export function add(this: void, value: number): number { return value + 1; } export const result = add(41);",
+      "diagnostics": []
+    },
+    {
+      "name": "named-this-direct",
+      "accepts": false,
+      "source": "function add(this: {base: number}, value: number): number { return this.base + value; } export const result = add(22);",
+      "diagnostics": [
+        {
+          "code": 2684,
+          "start": 110,
+          "length": 7,
+          "message": "The 'this' context of type 'void' is not assignable to method's 'this' of type '{ base: number; }'."
+        }
+      ]
+    },
+    {
+      "name": "method-this-incompatible",
+      "accepts": false,
+      "source": "const box = { base: \"wrong\", add(this: {base: number}, value: number): number { return this.base + value; } }; export const result = box.add(22);",
+      "diagnostics": [
+        {
+          "code": 2684,
+          "start": 133,
+          "length": 3,
+          "message": "The 'this' context of type '{ base: string; add(this: { base: number; }, value: number): number; }' is not assignable to method's 'this' of type '{ base: number; }'.   Types of property 'base' are incompatible.     Type 'string' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "call-this-explicit",
+      "accepts": true,
+      "source": "function add(this: {base: number}, value: number): number { return this.base + value; } export const result = add.call({base: 20}, 22);",
+      "diagnostics": []
+    },
+    {
+      "name": "call-this-incompatible",
+      "accepts": false,
+      "source": "function add(this: {base: number}, value: number): number { return this.base + value; } export const result = add.call({base: \"wrong\"}, 22);",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 120,
+          "length": 4,
+          "message": "Type 'string' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "function-value-this",
+      "accepts": true,
+      "source": "const add = function(this: void, value: number): number { return value + 1; }; export const result = add(41);",
+      "diagnostics": []
+    },
+    {
+      "name": "callable-type-this",
+      "accepts": true,
+      "source": "declare const add: (this: void, value: number) => number; export const result = add(41);",
+      "diagnostics": []
+    },
+    {
+      "name": "class-method-this",
+      "accepts": true,
+      "source": "export class Box { base = 20; add(this: Box, value: number): number { return this.base + value; } } export const result = new Box().add(22);",
+      "diagnostics": []
+    },
+    {
+      "name": "this-not-first",
+      "accepts": false,
+      "source": "export function add(value: number, this: void): number { return value; }",
+      "diagnostics": [
+        {
+          "code": 2680,
+          "start": 35,
+          "length": 10,
+          "message": "A 'this' parameter must be the first parameter."
+        }
+      ]
+    },
+    {
+      "name": "arrow-this-parameter",
+      "accepts": false,
+      "source": "export const add = (this: void, value: number): number => value;",
+      "diagnostics": [
+        {
+          "code": 2730,
+          "start": 20,
+          "length": 10,
+          "message": "An arrow function cannot have a 'this' parameter."
+        }
+      ]
+    },
+    {
+      "name": "arrow-returns-function-context",
+      "accepts": false,
+      "source": "export const create = () => function() { return this; };",
+      "diagnostics": [
+        {
+          "code": 2683,
+          "start": 48,
+          "length": 4,
+          "message": "'this' implicitly has type 'any' because it does not have a type annotation."
+        }
+      ]
+    }
+  ]
+}

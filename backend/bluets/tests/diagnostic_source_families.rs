@@ -43,12 +43,9 @@ fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
     let known_checker_gaps = ["tuple-index", "throw-newline", "throw-empty"];
     let subset_refusals = [
         "rest-alias",
-        "argument-spread-rest",
         "catch-type",
         "name-type",
         "name-area",
-        "call-this-missing",
-        "call-this-type",
         "compatible-function-field",
         "setter-destructure",
     ];
@@ -69,7 +66,7 @@ fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
             &MapLoader::from([ModuleSource::new("memory:///witness.ts", source)]),
             options,
         );
-        if case["accepts"] == true && suffix == "apply-array" {
+        if case["accepts"] == true && matches!(suffix, "apply-array" | "argument-spread-rest") {
             assert!(
                 result.diagnostics.is_empty(),
                 "{id}: {:?}",
@@ -111,6 +108,24 @@ fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
                     }),
                 "unwitnessed counterpart {id}: {json}"
             );
+            if matches!(suffix, "call-this-missing" | "call-this-type") {
+                let recorded = &case["diagnostics"][0];
+                assert_eq!(
+                    counterpart.span.start as u64,
+                    recorded["start"].as_u64().unwrap(),
+                    "{id}: {json}"
+                );
+                assert_eq!(
+                    (counterpart.span.end - counterpart.span.start) as u64,
+                    recorded["length"].as_u64().unwrap(),
+                    "{id}: {json}"
+                );
+                assert_eq!(
+                    counterpart.message,
+                    recorded["message"].as_str().unwrap(),
+                    "{id}: {json}"
+                );
+            }
             assert!(json["noTypeScriptCounterpart"].is_null(), "{id}: {json}");
         }
         assert!(result.output.is_none(), "{id}");

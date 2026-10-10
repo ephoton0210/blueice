@@ -1,0 +1,1009 @@
+{
+  "version": "8.15.0",
+  "targets": [
+    "ES5",
+    "ES2015",
+    "ES2016",
+    "ES2017",
+    "ES2018",
+    "ES2019",
+    "ES2020",
+    "ES2021",
+    "ES2022",
+    "ES2023",
+    "ESNext"
+  ],
+  "specification": "https://tc39.es/ecma262/2024/multipage/#sec-intro",
+  "cases": [
+    {
+      "entry": "classic.js",
+      "sourceType": "script",
+      "sourceSha256": "5ce8659e4d07b42c72a7fbd6ca29d8f697c9636c34880f8899a5e7ed19851478",
+      "verdicts": {
+        "ES5": true,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "keywords-as-properties.js",
+      "sourceType": "script",
+      "sourceSha256": "b6f147b6f0a73a994f07d51aabe1e6202ea458421f8d3d65899f76b4a1b59289",
+      "verdicts": {
+        "ES5": true,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "future-text.js",
+      "sourceType": "script",
+      "sourceSha256": "9c578120b20b070cf1ffb7a9c6925e4d86662c740719485e4cae5625e65d2deb",
+      "verdicts": {
+        "ES5": true,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "lexical-let.js",
+      "sourceType": "script",
+      "sourceSha256": "7331c8974cae312a4f8b241dd982ae57efbffaaaeccde2bf3840b3aebe327dc5",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "lexical-const.js",
+      "sourceType": "script",
+      "sourceSha256": "55c87e9895d4111c9a0090c41ab13678d062ea1ad9cd2d553e0ae6d2d820601f",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "arrow.js",
+      "sourceType": "script",
+      "sourceSha256": "c4509c8183822ff71d0c3bea0083a1d7775f8103392c25d431b247ecdc0ffaef",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "object-method.js",
+      "sourceType": "script",
+      "sourceSha256": "bc9ee42d5cc39d3917cd35c34980739445275a6226e1f75d254e24afdef8ac5f",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "object-shorthand.js",
+      "sourceType": "script",
+      "sourceSha256": "a8039310e811f218afc708572eb71f8034c806c2170a60517b55b7b44cf59185",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "computed-property.js",
+      "sourceType": "script",
+      "sourceSha256": "5e728ffe242e4e723a0295dd1977b7d8e73d417c395d77d4c683747d213afad8",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "bind-pattern.js",
+      "sourceType": "script",
+      "sourceSha256": "bda4c8e3808bf2f56aa043628de44339e4aa4faf7c7b1984421bc86838ecae2f",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "default-parameter.js",
+      "sourceType": "script",
+      "sourceSha256": "010cff4ad43cbcdbac04d9359f252c7e52d536fa751494e5b5a1ea5483d4879c",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "rest-parameter.js",
+      "sourceType": "script",
+      "sourceSha256": "b48559ed715df986ab106e29d9896f47633d423bc64eff5e15765ce1c0278a40",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "call-spread.js",
+      "sourceType": "script",
+      "sourceSha256": "c243461e678efd45a0b2de39f6adcf93af835698d4596867e14a9350c75277c7",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "array-spread.js",
+      "sourceType": "script",
+      "sourceSha256": "b363343b78e2c3fbb9157a731568e1ce7cba78f86bdd155c111c45971503a226",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "template.js",
+      "sourceType": "script",
+      "sourceSha256": "c61e7dd658d91ea77d67b16d6e12d5eac99663d5f5e21de47662c1dcb1ab677f",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "iteration.js",
+      "sourceType": "script",
+      "sourceSha256": "3a873ce5cde06156d29bbdb3778014edfc226fd33d02bd8861e9cd4d840e1b91",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "generator.js",
+      "sourceType": "script",
+      "sourceSha256": "ae7b1b77f614de52d5e08d6442ed5be44001eb7ea96275d08488990f24c25d7d",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "inheritance.js",
+      "sourceType": "script",
+      "sourceSha256": "a779835605c11c3432c1d7fac9621283beed295153ef769fda894651846132e3",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "new-target.js",
+      "sourceType": "script",
+      "sourceSha256": "251bf343284c1ede694c4f6c0261ce0be5479689e62fa8d9b0d792652cb9f49b",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "binary-literal.js",
+      "sourceType": "script",
+      "sourceSha256": "37725b8a4bf2b34d5d13a861c05bb5d221e832ed4b80ef23bca375b3c3164f5f",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "octal-literal.js",
+      "sourceType": "script",
+      "sourceSha256": "f674f9b9a2c859aa39930da654d0bb0b03cf21639fb74c1001f95bd3a7a03a92",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "regexp-unicode.js",
+      "sourceType": "script",
+      "sourceSha256": "4fa4c56603b0e005cc72c6ef31a3c5b371e95155695d29bd2c1026ce21eccdb6",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "regexp-sticky.js",
+      "sourceType": "script",
+      "sourceSha256": "702748dcc128f99860352579a35f6be575ee1777cb4dc3fe426b38f0baed9ae9",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": true,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "power.js",
+      "sourceType": "script",
+      "sourceSha256": "3a4f447b006f4ad3f66229a3502878cd42f87e92d0f45f4e4ede6a93ebffc758",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": true,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "async-function.js",
+      "sourceType": "script",
+      "sourceSha256": "689a9ce80aa37cdbaf1cd3ec5c795ad9273757b18b79d11ef33a2fb41d36296a",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "trailing-call-comma.js",
+      "sourceType": "script",
+      "sourceSha256": "69645f10e2edc84cdc6dbe33bf44c1e9a8b1397818ab0dd2ba7c5709295a73a7",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "trailing-parameter-comma.js",
+      "sourceType": "script",
+      "sourceSha256": "f49527bb303cfd85ee5368b31e67d62bd449feb2c54c40c475e955ffe6896854",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": true,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "object-spread.js",
+      "sourceType": "script",
+      "sourceSha256": "68219348cbf0315dea3401df3a9022a8c093e5c1d8db509f3f016de0e574fceb",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "object-rest.js",
+      "sourceType": "script",
+      "sourceSha256": "ae02683ada5c338854f193baae488d76a62ea0ea3657379f63ee4e09f5c73297",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "async-generator.js",
+      "sourceType": "script",
+      "sourceSha256": "3f834ea86efa261e22f2d30a904271232b2235f2d906986fa87962016e696e2f",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "async-iteration.js",
+      "sourceType": "script",
+      "sourceSha256": "9f4bcc6edb669e5fbc16343874b0e5d779567dcc1104a70eb73ee8757a0f1c10",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "regexp-dotall.js",
+      "sourceType": "script",
+      "sourceSha256": "a241620e0c4758a6546e89f2ce020c2087b0d870fde5618ce0d8677fcf91a4b8",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "regexp-named-group.js",
+      "sourceType": "script",
+      "sourceSha256": "3c04c6337813b4e2e13322736a164ee07e3b36d1dca37f7f3ac6ec96b420a1ac",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "regexp-lookbehind.js",
+      "sourceType": "script",
+      "sourceSha256": "fce2b1409b9c9824b246215537505eb80220e22736f9e2b73d4782d14509e950",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "regexp-property.js",
+      "sourceType": "script",
+      "sourceSha256": "cb0be7114503d082800ea460f44988706dc670ecd3c10e8fd718f8681580fb15",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": true,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "optional-catch.js",
+      "sourceType": "script",
+      "sourceSha256": "2196ec6b5dae9ce16ad00e236431571daa9749ddea67a19b9b0ccc57b5008d84",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "json-line-separator.js",
+      "sourceType": "script",
+      "sourceSha256": "546258638b5b95a67862a5c799eb32d304e7c8ca3a0eee23a84ef690aed26fec",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": true,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "optional-chain.js",
+      "sourceType": "script",
+      "sourceSha256": "2efe13897be9b68aa169af794fe0379640eae9cdf9090dabbe955f1e67e59b33",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "nullish.js",
+      "sourceType": "script",
+      "sourceSha256": "6ba1653c20d368eafa90b3c5f88649df064f8f81b81b2cbb4bf1f5277656ae2d",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "bigint.js",
+      "sourceType": "script",
+      "sourceSha256": "53ee95b99daad31ad441ad0a3376659649127871b643445d76e70b59f4ae1df6",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "dynamic-import.js",
+      "sourceType": "script",
+      "sourceSha256": "b2f53384c315c8b1f80681a3660b9cbacbed35d060ec09d3bf015d919c5616ad",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "import-meta.js",
+      "sourceType": "module",
+      "sourceSha256": "affdc82bbd1337e941b231f6862a24c1e4ca33551be230c95019a693576e9152",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "namespace-export.js",
+      "sourceType": "module",
+      "sourceSha256": "9a57e43f899df1d11cec04f1537059e837861622922be77d0dc809628f56619a",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": true,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "logical-or-assign.js",
+      "sourceType": "script",
+      "sourceSha256": "ac188bdb9ac9f40eb6b046f131f7708993b7cbc0c817916a73049be44bcad2ee",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "logical-and-assign.js",
+      "sourceType": "script",
+      "sourceSha256": "d74f783d695951d85ae74f63f0f312d2b6c428721abffdc6d051251cfd9b9361",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "logical-nullish-assign.js",
+      "sourceType": "script",
+      "sourceSha256": "8f209c55731204e673ea9e6cad6ab7f1813acdfe07cf14e2deabf59b30c46f69",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "numeric-separator.js",
+      "sourceType": "script",
+      "sourceSha256": "460e2ec969fef2c93f96bb2603042391a2657559ae5f7e0444a564fc9d5c9dc3",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": true,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "public-field.js",
+      "sourceType": "script",
+      "sourceSha256": "f8941a9b7b671a15a6a37cb3135a08405e44070d71c8de733e18bf30022169be",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": false,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "private-field.js",
+      "sourceType": "script",
+      "sourceSha256": "ef4ca95945a21fb10f855c3781a6e9014847be66707f838c9c646afa8702c79c",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": false,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "private-method.js",
+      "sourceType": "script",
+      "sourceSha256": "4f966d0badf00680a148fe083d72e8bac65d148d81faf2e1c620ebb82d3cceda",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": false,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "private-brand.js",
+      "sourceType": "script",
+      "sourceSha256": "08c5f45e192cdca7662603d16dc7e9c18e48f83df51007a93ab229fdb94aa76e",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": false,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "static-block.js",
+      "sourceType": "script",
+      "sourceSha256": "e496b3ffbbd88b0a6425572002d11b6e032bd1c7bc7ffc0cc86bf26c213bfd05",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": false,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "top-level-await.js",
+      "sourceType": "module",
+      "sourceSha256": "70d8f7e88e6236643054e7dd7f229482de064b8cf310360f15109ec023d8fbda",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": false,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "regexp-indices.js",
+      "sourceType": "script",
+      "sourceSha256": "47cb5916ee294a13a7cc2d3bdc8cd38d278617841d326f1d1f2162e7a2839330",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": false,
+        "ES2022": true,
+        "ES2023": true,
+        "ESNext": true
+      }
+    },
+    {
+      "entry": "hashbang.js",
+      "sourceType": "script",
+      "sourceSha256": "9805cbf25c4d50253d4d1835e1b9894e80d628642d29fb4bb4eebbae6b57f5f4",
+      "verdicts": {
+        "ES5": false,
+        "ES2015": false,
+        "ES2016": false,
+        "ES2017": false,
+        "ES2018": false,
+        "ES2019": false,
+        "ES2020": false,
+        "ES2021": false,
+        "ES2022": false,
+        "ES2023": true,
+        "ESNext": true
+      }
+    }
+  ]
+}

@@ -57,7 +57,7 @@ pub(super) fn lower_class_members(
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
     let emit = FieldEmit {
-        es2022: options.target == EcmaTarget::Es2022,
+        es2022: options.target >= EcmaTarget::Es2022,
         define: options.defines_class_fields(),
     };
     let mut needed: BTreeSet<Helper> = BTreeSet::new();

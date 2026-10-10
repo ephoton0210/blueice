@@ -12,6 +12,47 @@ pub(super) enum OptionalPropertyError {
     Exhausted,
 }
 
+/// Start of an identifier/member/call receiver ending just before `end`.
+/// Balanced argument lists keep reads inside them out of the receiver chain.
+fn receiver_start(tokens: &[Token], end: usize) -> Option<usize> {
+    let mut cursor = end.checked_sub(1)?;
+    loop {
+        if cursor >= 2 && matches!(tokens[cursor - 1].text.as_str(), "." | "?.") {
+            cursor -= 2;
+            continue;
+        }
+        if matches!(tokens[cursor].text.as_str(), ")" | "]") {
+            let closing = tokens[cursor].text.as_str();
+            let opening = if closing == ")" { "(" } else { "[" };
+            let mut depth = 1usize;
+            let mut open = cursor;
+            while depth != 0 {
+                open = open.checked_sub(1)?;
+                if tokens[open].is(closing) {
+                    depth += 1;
+                } else if tokens[open].is(opening) {
+                    depth -= 1;
+                }
+            }
+            if open > 0
+                && (tokens[open - 1].kind == TokenKind::Identifier
+                    || matches!(tokens[open - 1].text.as_str(), "this" | ")" | "]"))
+            {
+                cursor = open - 1;
+                continue;
+            }
+            return (opening == "(").then_some(open);
+        }
+        if tokens[cursor].kind != TokenKind::Identifier && !tokens[cursor].is("this") {
+            return None;
+        }
+        return (!cursor
+            .checked_sub(1)
+            .is_some_and(|before| tokens[before].is("new")))
+        .then_some(cursor);
+    }
+}
+
 pub(super) fn optional_property_type(
     receiver: &Type,
     property: &str,
@@ -134,14 +175,10 @@ impl ModuleChecker<'_> {
                 self.optional_property_error(span, "unsupported optional property read".into());
                 return true;
             }
-            let mut start = index - 1;
-            while start >= 2 && matches!(tokens[start - 1].text.as_str(), "." | "?.") {
-                start -= 2;
-            }
-            if tokens[start].kind != TokenKind::Identifier && !tokens[start].is("this") {
+            let Some(start) = receiver_start(tokens, index) else {
                 self.optional_property_error(span, "unsupported optional property read".into());
                 return true;
-            }
+            };
             let receiver = &tokens[start..index];
             let receiver_type = self.infer_expression(receiver, scope);
             let non_nullable = match &receiver_type {
@@ -207,15 +244,13 @@ impl ModuleChecker<'_> {
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
     ) -> Option<Type> {
-        let first = tokens.first()?;
-        if (first.kind != TokenKind::Identifier && !first.is("this"))
-            || !tokens.iter().any(|token| token.is("?."))
-        {
+        let optional = tokens.iter().position(|token| token.is("?."))?;
+        if receiver_start(tokens, optional)? != 0 {
             return None;
         }
-        let mut value = self.infer_expression(std::slice::from_ref(first), scope);
+        let mut value = self.infer_expression(&tokens[..optional], scope);
         let mut short_circuit = false;
-        for pair in tokens[1..].chunks(2) {
+        for pair in tokens[optional..].chunks(2) {
             let [dot, property] = pair else {
                 return None;
             };

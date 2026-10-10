@@ -1,0 +1,259 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Named ES5 classes after the existing AST-owned member and field lowering.
+
+use super::*;
+
+pub(super) fn lower(
+    mut emitted: EmittedJavaScript,
+    module: &Module,
+    options: &CompilerOptions,
+) -> Result<EmittedJavaScript, Diagnostic> {
+    let names = runtime_declarations(&module.declarations)
+        .into_iter()
+        .filter_map(|(declaration, _)| {
+            if let Declaration::Class(class) = declaration {
+                Some(class.name.clone())
+            } else {
+                None
+            }
+        })
+        .chain(
+            module
+                .class_expressions
+                .values()
+                .map(|expression| expression.class.name.clone()),
+        )
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut remaining = options.limits.parser.max_tokens;
+    let mut sequence = 0;
+    loop {
+        let tokens = crate::syntax::lex_with_limits(
+            &module.id,
+            &emitted.javascript,
+            options.limits.parser.max_source_bytes,
+            remaining,
+        )
+        .map_err(|mut diagnostics| diagnostics.remove(0))?;
+        remaining = remaining.saturating_sub(tokens.len());
+        let Some(start) = (0..tokens.len()).rev().find(|index| {
+            tokens[*index].is("class")
+                && tokens
+                    .get(*index + 1)
+                    .is_some_and(|token| names.contains(&token.text))
+        }) else {
+            return Ok(emitted);
+        };
+        let name = &tokens[start + 1].text;
+        let extends = tokens
+            .get(start + 2)
+            .is_some_and(|token| token.is("extends"));
+        let open = start + if extends { 4 } else { 2 };
+        if !tokens.get(open).is_some_and(|token| token.is("{")) {
+            return Err(unsupported(
+                module,
+                &SourceSpan::new(&module.id, 0, 0),
+                "class heritage requires one retained base binding",
+            ));
+        }
+        let close = exponentiation::matching_close(&tokens, open).ok_or_else(|| {
+            unsupported(
+                module,
+                &SourceSpan::new(&module.id, 0, 0),
+                "class body was not retained",
+            )
+        })?;
+        let base = unused_name(&emitted.javascript, "base_class", &mut sequence);
+        let inherit = unused_name(&emitted.javascript, "inherit_class", &mut sequence);
+        let construct = unused_name(&emitted.javascript, "call_base", &mut sequence);
+        let receiver = unused_name(&emitted.javascript, "class_this", &mut sequence);
+        let mut constructor = None;
+        let mut members = String::new();
+        let mut cursor = open + 1;
+        while cursor < close {
+            if tokens[cursor].is(";") {
+                cursor += 1;
+                continue;
+            }
+            let is_static = tokens[cursor].is("static")
+                && !tokens.get(cursor + 1).is_some_and(|token| token.is("("));
+            let first = cursor + usize::from(is_static);
+            let accessor = matches!(tokens[first].text.as_str(), "get" | "set")
+                && !tokens.get(first + 1).is_some_and(|token| token.is("("));
+            let property = first + usize::from(accessor);
+            let parameters = property + 1;
+            if !tokens.get(parameters).is_some_and(|token| token.is("(")) {
+                return Err(unsupported(
+                    module,
+                    &SourceSpan::new(&module.id, 0, 0),
+                    "class member requires a retained named method",
+                ));
+            }
+            let parameters_end = exponentiation::matching_close(&tokens, parameters).unwrap();
+            let body = parameters_end + 1;
+            if !tokens.get(body).is_some_and(|token| token.is("{")) {
+                return Err(unsupported(
+                    module,
+                    &SourceSpan::new(&module.id, 0, 0),
+                    "class method body was not retained",
+                ));
+            }
+            let end = exponentiation::matching_close(&tokens, body).unwrap();
+            let arguments =
+                &emitted.javascript[tokens[parameters].end..tokens[parameters_end].start];
+            let text = &emitted.javascript[tokens[body].start..tokens[end].end];
+            if tokens[property].is("constructor") && !is_static && !accessor {
+                let text = if extends {
+                    derived_body(
+                        &emitted.javascript,
+                        &tokens,
+                        (body, end),
+                        &base,
+                        &construct,
+                        &receiver,
+                        module,
+                    )?
+                } else {
+                    text.to_string()
+                };
+                constructor = Some(format!("function {name}({arguments}) {text}\n"));
+            } else {
+                let owner = if is_static {
+                    name.clone()
+                } else {
+                    format!("{name}.prototype")
+                };
+                let key = if tokens[property].kind == TokenKind::String {
+                    tokens[property].text.clone()
+                } else {
+                    serde_json::to_string(&tokens[property].text).unwrap()
+                };
+                if accessor {
+                    // Redefining only get or set retains the previously defined mate.
+                    members.push_str(&format!("Object.defineProperty({owner}, {key}, {{ {}: function ({arguments}) {text}, enumerable: false, configurable: true }});\n",tokens[first].text));
+                } else {
+                    members.push_str(&format!("Object.defineProperty({owner}, {key}, {{ value: function ({arguments}) {text}, writable: true, enumerable: false, configurable: true }});\n"));
+                }
+            }
+            cursor = end + 1;
+        }
+        let constructor = constructor.unwrap_or_else(|| {
+            if extends {
+                format!("function {name}() {{ return {construct}({base}, this, arguments); }}\n")
+            } else {
+                format!("function {name}() {{}}\n")
+            }
+        });
+        let inheritance = if extends {
+            format!("{inherit}({name}, {base});\n")
+        } else {
+            String::new()
+        };
+        let argument = if extends {
+            tokens[start + 3].text.as_str()
+        } else {
+            ""
+        };
+        let replacement = format!("var {name} = (function ({}) {{\n{constructor}{inheritance}{members}return {name};\n}})({argument});",
+            if extends { base.as_str() } else { "" });
+        let insertion = directive_end(&tokens);
+        let helper = include_str!("../class_helpers.v1.js")
+            .replace("__blueice_target_inherit_class", &inherit)
+            .replace("__blueice_target_call_base", &construct);
+        emitted = mapped_edits(
+            emitted,
+            vec![
+                TextEdit {
+                    start: insertion,
+                    end: insertion,
+                    replacement: format!("\n{helper}\n"),
+                },
+                TextEdit {
+                    start: tokens[start].start,
+                    end: tokens[close].end,
+                    replacement,
+                },
+            ],
+        );
+    }
+}
+
+fn derived_body(
+    source: &str,
+    tokens: &[Token],
+    body: (usize, usize),
+    base: &str,
+    construct: &str,
+    receiver: &str,
+    module: &Module,
+) -> Result<String, Diagnostic> {
+    let (open, close) = body;
+    let mut edits = Vec::new();
+    let begin = tokens[open].start;
+    let mut index = open + 1;
+    while index < close {
+        if tokens[index].is("function") {
+            if let Some(body) = (index + 1..close).find(|index| tokens[*index].is("{")) {
+                if let Some(end) = exponentiation::matching_close(tokens, body) {
+                    index = end + 1;
+                    continue;
+                }
+            }
+        }
+        if tokens[index].is("super") {
+            if !tokens.get(index + 1).is_some_and(|token| token.is("(")) {
+                return Err(unsupported(
+                    module,
+                    &SourceSpan::new(&module.id, 0, 0),
+                    "derived constructor super properties require a retained receiver",
+                ));
+            }
+            let end = exponentiation::matching_close(tokens, index + 1).unwrap();
+            let arguments = &tokens[index + 2..end];
+            let values = if let [spread, arguments] = arguments {
+                if spread.is("...") && arguments.is("arguments") {
+                    "arguments".to_string()
+                } else {
+                    format!("[{}]", &source[tokens[index + 1].end..tokens[end].start])
+                }
+            } else {
+                format!("[{}]", &source[tokens[index + 1].end..tokens[end].start])
+            };
+            edits.push(TextEdit {
+                start: tokens[index].start - begin,
+                end: tokens[end].end - begin,
+                replacement: format!("{receiver} = {construct}({base}, this, {values})"),
+            });
+            index = end + 1;
+            continue;
+        }
+        if tokens[index].is("this") {
+            edits.push(TextEdit {
+                start: tokens[index].start - begin,
+                end: tokens[index].end - begin,
+                replacement: receiver.into(),
+            });
+        }
+        if tokens[index].is("return") {
+            return Err(unsupported(
+                module,
+                &SourceSpan::new(&module.id, 0, 0),
+                "derived constructor returns require a retained constructor completion",
+            ));
+        }
+        index += 1;
+    }
+    edits.push(TextEdit {
+        start: tokens[open].end - begin,
+        end: tokens[open].end - begin,
+        replacement: format!("\nvar {receiver};\n"),
+    });
+    edits.push(TextEdit {
+        start: tokens[close].start - begin,
+        end: tokens[close].start - begin,
+        replacement: format!("\nreturn {receiver};\n"),
+    });
+    Ok(apply_edits(&source[begin..tokens[close].end], edits).javascript)
+}

@@ -43,12 +43,21 @@ impl ModuleChecker<'_> {
             return open;
         };
         match name.as_str() {
-            "Generator" | "Iterator" | "IterableIterator" | "Iterable" => {
+            "Generator"
+            | "Iterator"
+            | "IterableIterator"
+            | "Iterable"
+            | "AsyncGenerator"
+            | "AsyncIterator"
+            | "AsyncIterableIterator"
+            | "AsyncIterable"
+                if name.starts_with("Async") == function.async_function =>
+            {
                 let argument =
                     |index: usize, default: Type| arguments.get(index).cloned().unwrap_or(default);
                 GeneratorContext {
                     yield_type: Some(argument(0, Type::Unknown)),
-                    return_type: if name == "Iterable" {
+                    return_type: if matches!(name.as_str(), "Iterable" | "AsyncIterable") {
                         None
                     } else {
                         Some(argument(1, Type::Any))
@@ -194,13 +203,23 @@ impl ModuleChecker<'_> {
                 None => return,
             }
         };
+        let yielded = if self.async_context == Some(true) {
+            promise_value_type(&yielded).unwrap_or(yielded)
+        } else {
+            yielded
+        };
         if let Some(expected) = &context.yield_type {
             if !self.is_assignable_bounded(&yielded, expected, &at) {
+                let displayed = if matches!(expected, Type::Number | Type::String | Type::Boolean) {
+                    return_inference::widen(yielded.clone())
+                } else {
+                    yielded.clone()
+                };
                 self.type_error(
-                    &at,
+                    &SourceSpan::new(&span.module, operand[0].start, operand[operand.len() - 1].end),
                     format!(
                         "yielded value of type `{}` is not assignable to the generator's yield type `{}`",
-                        type_label(&yielded),
+                        type_label(&displayed),
                         type_label(expected)
                     ),
                     DiagnosticCode::TypeMismatch,

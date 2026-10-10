@@ -42,6 +42,7 @@
 use crate::ast::*;
 use crate::token::{Keyword, LexError, Punct, SpannedToken, Token, Tokenizer};
 
+mod editions;
 mod expressions;
 mod functions;
 mod module;
@@ -51,7 +52,8 @@ mod statements;
 #[cfg(test)]
 mod tests;
 
-pub use module::parse_module;
+pub use editions::SyntaxEdition;
+pub use module::{parse_module, parse_module_with_edition};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
@@ -76,14 +78,25 @@ impl From<LexError> for ParseError {
 /// Parses one classic Script. `source` is ordinary host text: to run source
 /// that may hold an unpaired surrogate, see [`parse_encoded`].
 pub fn parse(source: &str) -> Result<Program, ParseError> {
-    parse_encoded(&crate::source_encoding::escape(source))
+    parse_with_edition(source, SyntaxEdition::EsNext)
+}
+
+/// Parses Script syntax restricted to the selected output edition. Built-in
+/// runtime APIs are independent of this grammar selection.
+pub fn parse_with_edition(source: &str, edition: SyntaxEdition) -> Result<Program, ParseError> {
+    parse_encoded_with_edition(&crate::source_encoding::escape(source), edition)
 }
 
 /// [`parse`] over *lexer text* (see [`crate::source_encoding`]), the form in
 /// which the source of `eval`, `Function` and `ShadowRealm.prototype.evaluate`
 /// reaches the parser, since a JavaScript string may hold unpaired surrogates.
 pub(crate) fn parse_encoded(source: &str) -> Result<Program, ParseError> {
+    parse_encoded_with_edition(source, SyntaxEdition::EsNext)
+}
+
+fn parse_encoded_with_edition(source: &str, edition: SyntaxEdition) -> Result<Program, ParseError> {
     let mut parser = Parser::new_script(source);
+    parser.select_edition(edition)?;
     let mut body = Vec::new();
     let mut prologue = DirectivePrologue::default();
     while !parser.at_eof() {
@@ -97,6 +110,8 @@ pub(crate) fn parse_encoded(source: &str) -> Result<Program, ParseError> {
     }
     crate::compiler::validate_private_early_errors(&program)
         .map_err(|error| parser.syntax_error(error.to_string()))?;
+    parser.validate_edition()?;
+    editions::validate_body(&program.body, edition)?;
     Ok(program)
 }
 
@@ -388,6 +403,8 @@ fn known_syntax(mut error: ParseError) -> ParseError {
 }
 
 struct Parser {
+    edition: SyntaxEdition,
+    edition_error: Option<ParseError>,
     tokens: Vec<SpannedToken>,
     positions: Vec<usize>,
     tokenizer: Tokenizer,
@@ -452,6 +469,8 @@ impl Parser {
                 .collect()
         });
         Parser {
+            edition: SyntaxEdition::EsNext,
+            edition_error: None,
             tokens,
             positions,
             tokenizer,
@@ -582,6 +601,7 @@ impl Parser {
     }
 
     fn advance(&mut self) -> Token {
+        self.check_edition_token();
         let t = self.tokens[self.pos].token.clone();
         if self.pos + 1 < self.tokens.len() {
             self.pos += 1;
@@ -868,6 +888,7 @@ impl Parser {
     /// placeholder what they mean around the template.
     fn parse_template_placeholder(&self, source: &str) -> Result<Expr, ParseError> {
         let mut parser = Parser::new(source);
+        parser.edition = self.edition;
         parser.generator_depth = self.generator_depth;
         parser.async_depth = self.async_depth;
         parser.module_await = self.module_await;
@@ -876,6 +897,12 @@ impl Parser {
         if !parser.at_eof() {
             return Err(parser.error("unexpected trailing tokens after expression"));
         }
+        parser.validate_edition()?;
+        editions::validate_expression(
+            &expr,
+            self.edition,
+            self.function_depth != 0 || self.async_depth != 0 || self.generator_depth != 0,
+        )?;
         Ok(expr)
     }
 

@@ -13,17 +13,61 @@ use super::runtime_syntax::*;
 use super::*;
 
 impl Parser {
+    pub(super) fn reject_receiver_parameters(
+        &mut self,
+        parameters: &[Parameter],
+        code: u32,
+        message: &str,
+    ) -> bool {
+        let mut found = false;
+        for parameter in parameters.iter().filter(|p| p.name == "this") {
+            found = true;
+            self.diagnostics.push(
+                Diagnostic::error(DiagnosticCode::ParseError, parameter.span.clone(), message)
+                    .with_typescript(code, Vec::new()),
+            );
+        }
+        found
+    }
+
+    pub(super) fn parse_parameter_name(&mut self, message: &str) -> String {
+        if self.consume("this") {
+            "this".to_string()
+        } else {
+            self.require_identifier(message)
+        }
+    }
+
+    pub(super) fn check_receiver_parameter_position(&mut self, index: usize, span: SourceSpan) {
+        if index != 0 {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::ParseError,
+                    span,
+                    "A 'this' parameter must be the first parameter.",
+                )
+                .with_typescript(2680, Vec::new()),
+            );
+        }
+    }
+
     pub(super) fn parse_method_signature(&mut self, result_stop: &[&str]) -> Type {
         self.expect("(");
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(")") {
             let start = self.current().start;
             let rest = self.consume("...");
-            let name = self.require_identifier("expected a method parameter name");
+            let name = self.parse_parameter_name("expected a method parameter name");
             let optional = self.consume("?");
             self.expect(":");
             let annotation = self.parse_type_until(&[",", ")"]);
             let end = self.previous().end;
+            if name == "this" {
+                self.check_receiver_parameter_position(
+                    parameters.len(),
+                    SourceSpan::new(&self.id, start, end),
+                );
+            }
             parameters.push(Parameter {
                 decorators: Vec::new(),
                 name,
@@ -354,11 +398,17 @@ impl Parser {
             while !self.at_eof() && !self.consume(")") {
                 let start = self.current().start;
                 let rest = self.consume("...");
-                let name = self.require_identifier("expected a function type parameter name");
+                let name = self.parse_parameter_name("expected a function type parameter name");
                 let optional = self.consume("?");
                 self.expect(":");
                 let annotation = self.parse_type_until(&[",", ")"]);
                 let end = self.previous().end;
+                if name == "this" {
+                    self.check_receiver_parameter_position(
+                        parameters.len(),
+                        SourceSpan::new(&self.id, start, end),
+                    );
+                }
                 parameters.push(Parameter {
                     decorators: Vec::new(),
                     name,

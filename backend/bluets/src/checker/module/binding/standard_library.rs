@@ -10,12 +10,11 @@ impl ModuleChecker<'_> {
     pub(super) fn bind_standard_library(&mut self) {
         let protected_types: BTreeSet<_> = self.types.keys().cloned().collect();
         let protected_values: BTreeSet<_> = self.values.keys().cloned().collect();
-        let target = if self.project.referenced_libraries.contains("es2022") {
-            crate::EcmaTarget::Es2022
-        } else {
-            self.target
-        };
-        for module in crate::standard_library::modules(target) {
+        for module in self
+            .library_target
+            .into_iter()
+            .flat_map(crate::standard_library::modules)
+        {
             for declaration in &module.declarations {
                 match declaration {
                     Declaration::Interface(interface)
@@ -23,6 +22,9 @@ impl ModuleChecker<'_> {
                     {
                         let mut value = interface_value(interface);
                         if self.explicit_checking
+                            && self
+                                .library_target
+                                .is_some_and(|target| target >= crate::EcmaTarget::Es2015)
                             && interface.name == "Array"
                             && !self.types.contains_key("Array")
                         {
@@ -232,7 +234,11 @@ fn signature(function: &FunctionDeclaration) -> FunctionSignature {
 }
 
 fn merge_records(existing: &mut Type, value: Type) {
-    if let (Type::Record(existing), Type::Record(fields)) = (existing, value) {
-        existing.extend(fields);
+    if let Type::Record(fields) = value {
+        match existing {
+            Type::Record(existing) => existing.extend(fields),
+            Type::Intersection(parts) => parts.push(Type::Record(fields)),
+            _ => *existing = Type::Intersection(vec![existing.clone(), Type::Record(fields)]),
+        }
     }
 }
