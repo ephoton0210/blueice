@@ -29,6 +29,7 @@ enum BrowserCommand: Encodable, Sendable {
     case nativeClick(TextInputContext, Double, Double)
     case nativeActivate(TextInputContext, UInt64, Double, Double)
     case nativeHover(NativePointerContext, UInt64, CGPoint?)
+    case nativeDrag(NativePointerContext, UInt64, NativeDragAction, mouse: NativeDragMouse? = nil)
     case accessibilityText(AccessibilityTextContext, AccessibilityTextAction)
     case accessibilityReveal(AccessibilityTextContext)
     case accessibilityAcknowledge(AccessibilityDelivery)
@@ -75,6 +76,13 @@ enum BrowserCommand: Encodable, Sendable {
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("NativeClick"))
             try value.encode(context, forKey: MessageKey("context"))
             try value.encode(x, forKey: MessageKey("x")); try value.encode(y, forKey: MessageKey("y"))
+        case .nativeDrag(let context, let frame, let action, let mouse):
+            var root = encoder.container(keyedBy: MessageKey.self)
+            var value = root.nestedContainer(keyedBy: MessageKey.self,forKey: MessageKey("NativeDrag"))
+            try value.encode(context,forKey: MessageKey("context"))
+            try value.encode(frame,forKey: MessageKey("frame_generation"))
+            try value.encode(action,forKey: MessageKey("action"))
+            try value.encodeIfPresent(mouse,forKey: MessageKey("mouse"))
         case .nativeHover(let context, let frame, let point):
             var root = encoder.container(keyedBy: MessageKey.self)
             var value = root.nestedContainer(keyedBy: MessageKey.self, forKey: MessageKey("NativeHover"))
@@ -335,6 +343,7 @@ enum BrowserMessage: Decodable, Sendable {
     case navigationSessionState(NavigationSessionState), sessionUnavailable
     case assistantResult(AssistantPageResult), assistantUnavailable, translation(TranslationState), translationUnavailable
     case fileInputState(FileInputState)
+    case nativeDragState(NativeDragState)
     case nativeActivationCompleted(UInt64, FileInputState?)
     case printState(PrintReply)
     case hello(UInt32), tabs([BrowserTab]), opened(UInt64, String?), closed(UInt64)
@@ -389,6 +398,9 @@ enum BrowserMessage: Decodable, Sendable {
             else { self = .unknown }
         case "PrintState": self = .printState(try object.decode(PrintReply.self,forKey: key))
         case "FileInputState": self = .fileInputState(try object.decode(FileInputState.self,forKey: key))
+        case "NativeDragState":
+            if let state = try? object.decode(NativeDragState.self,forKey: key), state.valid { self = .nativeDragState(state) }
+            else { self = .unknown }
         case "NativeActivationCompleted":
             struct Activation: Decodable { let gesture: UInt64; let file_input: FileInputState? }
             let activation = try object.decode(Activation.self,forKey: key)

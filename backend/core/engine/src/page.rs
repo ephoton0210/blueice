@@ -67,6 +67,10 @@ pub struct Page {
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     native_editor: Option<native_editing::EditorSession>,
+    native_drag: Option<native_drag::DragDestination>,
+    native_drag_source: Option<native_drag::DragSource>,
+    native_drag_last_id: u64,
+    native_drag_source_last_id: u64,
     document_selection: document_selection::DocumentSelection,
     native_text_scroll: HashMap<NodeId, (f64, f64)>,
     native_text_scroll_target: Option<(NodeId, blueice_ipc::input::TextRange)>,
@@ -140,6 +144,10 @@ impl Page {
             hovered: None,
             focused: None,
             native_editor: None,
+            native_drag: None,
+            native_drag_source: None,
+            native_drag_last_id: 0,
+            native_drag_source_last_id: 0,
             document_selection: document_selection::DocumentSelection::default(),
             native_text_scroll: HashMap::new(),
             native_text_scroll_target: None,
@@ -213,6 +221,9 @@ impl Page {
         self.hovered = None;
         self.focused = None;
         self.native_editor = None;
+        self.clear_native_drag();
+        self.native_drag_last_id = 0;
+        self.native_drag_source_last_id = 0;
         self.document_selection = document_selection::DocumentSelection::default();
         self.native_focus_exit = None;
         self.native_focus_start = None;
@@ -1304,6 +1315,7 @@ mod dom_write;
 mod file_input;
 mod find;
 mod form_submission;
+pub(crate) mod native_drag;
 mod native_editing;
 mod native_forms;
 mod native_interaction;

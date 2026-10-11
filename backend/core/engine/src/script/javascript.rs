@@ -208,6 +208,26 @@ pub trait PageJavaScriptExecutor {
         Ok(())
     }
 
+    fn dispatch_drag_serving_script(
+        &mut self,
+        _tabs: &mut TabManager,
+        _tab_id: TabId,
+        _node_id: u64,
+        _event: blueice_ipc::page_host::PageHostDragEvent,
+        _script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<Option<blueice_ipc::page_host::PageHostDragOutcome>> {
+        Ok(None)
+    }
+
+    fn flush_drag_tasks_serving_script(
+        &mut self,
+        _tabs: &mut TabManager,
+        _tab_id: TabId,
+        _script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        Ok(())
+    }
+
     /// Drains one tab's reports without exposing or consuming another tab's
     /// records.
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport>;

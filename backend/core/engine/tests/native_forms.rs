@@ -279,7 +279,11 @@ impl Browser {
 
 impl Drop for Browser {
     fn drop(&mut self) {
-        let _ = self.client.shutdown(std::net::Shutdown::Both);
+        // Navigation can publish final frame/input replies after Navigated.
+        // Half-close commands, then keep receiving until Core observes EOF;
+        // closing both directions here races its last write under coverage.
+        let _ = self.client.shutdown(std::net::Shutdown::Write);
+        let drained = std::io::copy(&mut self.client, &mut std::io::sink());
         let mut failed = self.workers.pop().expect("session worker").join().is_err();
         self.running.store(false, Ordering::Release);
         for worker in self.workers.drain(..) {
@@ -287,6 +291,7 @@ impl Drop for Browser {
         }
         let cleanup = std::fs::remove_dir_all(&self.root);
         if !thread::panicking() {
+            drained.expect("drain final session replies before closing the reader");
             assert!(!failed, "form fixture worker failed");
             cleanup.unwrap();
         }

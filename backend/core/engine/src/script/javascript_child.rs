@@ -1277,6 +1277,114 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
         }
     }
 
+    fn dispatch_drag_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        tab_id: TabId,
+        node_id: u64,
+        mut event: blueice_ipc::page_host::PageHostDragEvent,
+        script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<Option<blueice_ipc::page_host::PageHostDragOutcome>> {
+        let Some(identity) = tabs.get(tab_id).and_then(live_page_identity) else {
+            return Ok(None);
+        };
+        if self.live_documents.get(&tab_id) != Some(&identity) {
+            return Ok(None);
+        }
+        let Some(script_requests) = script_requests else {
+            return Ok(None);
+        };
+        let Some(nodes) = tabs
+            .get_mut(tab_id)
+            .and_then(|page| page.script_file_event_path(node_id))
+        else {
+            return Ok(None);
+        };
+        if !event.valid() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid core drag event",
+            ));
+        }
+        if let Some(node) = event.related_target {
+            event.related_target = Some(
+                tabs.get_mut(tab_id)
+                    .and_then(|page| page.script_handle_for_raw_node(node))
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "Stale drag related target")
+                    })?,
+            );
+        }
+        let target = ScriptDocumentTarget {
+            tab_id: tab_id.as_u64(),
+            document_generation: identity.document_generation,
+        };
+        let kind = event.kind;
+        let mut remaining = MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT;
+        let mut pump = || {
+            pump_script_requests_during_child_wait(script_requests, tabs, target, &mut remaining)
+        };
+        match self.child.dispatch_drag_with_script_pump(
+            target.tab_id,
+            target.document_generation,
+            nodes,
+            event,
+            &mut pump,
+        )? {
+            PageHostReply::DragDispatched {
+                tab_id,
+                document_generation,
+                kind: reply_kind,
+                outcome,
+            } if tab_id == target.tab_id
+                && document_generation == target.document_generation
+                && reply_kind == kind
+                && outcome.valid(kind) =>
+            {
+                Ok(Some(outcome))
+            }
+            _ => Err(io::Error::other("Page host drag response invalid")),
+        }
+    }
+
+    fn flush_drag_tasks_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        tab_id: TabId,
+        script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        let Some(identity) = tabs.get(tab_id).and_then(live_page_identity) else {
+            return Ok(());
+        };
+        if self.live_documents.get(&tab_id) != Some(&identity) {
+            return Ok(());
+        }
+        let Some(script_requests) = script_requests else {
+            return Ok(());
+        };
+        let target = ScriptDocumentTarget {
+            tab_id: tab_id.as_u64(),
+            document_generation: identity.document_generation,
+        };
+        let mut remaining = MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT;
+        let mut pump = || {
+            pump_script_requests_during_child_wait(script_requests, tabs, target, &mut remaining)
+        };
+        match self.child.flush_drag_tasks_with_script_pump(
+            target.tab_id,
+            target.document_generation,
+            &mut pump,
+        )? {
+            PageHostReply::DragTasksFlushed {
+                tab_id,
+                document_generation,
+            } if tab_id == target.tab_id && document_generation == target.document_generation => {
+                Ok(())
+            }
+            _ => Err(io::Error::other("Page host drag task response invalid")),
+        }
+    }
+
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport> {
         Self::drain_reports_for_tab(self, tab_id)
     }

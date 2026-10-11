@@ -100,7 +100,7 @@ struct PageViewport: NSViewRepresentable {
 final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations {
     weak var model: BrowserModel? {
         didSet {
-            if oldValue !== model { oldValue?.clearNativeHover() }
+            if oldValue !== model { oldValue?.clearNativeHover(); pageDragging.invalidate(); pageDragging.cancelSource() }
             model?.nativeFileActivation = { [weak self, weak model] state in
                 guard let self, let model, self.model === model, let window = self.window,
                       window.isVisible, window.isKeyWindow, window.firstResponder === self else { return }
@@ -140,6 +140,8 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     var image: CGImage?
     var pageFocusSerial: UInt64 = 0
     private let filePicker = BrowserFilePicker()
+    private lazy var pageDragging = BrowserPageDragging(view: self)
+    private var replayingDragPress = false
     lazy var accessibilityTree = PageAccessibilityTree(view: self, text: { [weak self] snapshot, epoch, node, action in
         self?.model?.accessibilityText(snapshot, epoch: epoch, node: node, action: action)
     }, acknowledge: { [weak self] snapshot, epoch in
@@ -211,11 +213,12 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
 
     override func layout() { super.layout(); reportSize() }
     override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow !== window { model?.clearNativeHover() }
+        if newWindow !== window { model?.clearNativeHover(); pageDragging.invalidate(); pageDragging.cancelSource() }
         super.viewWillMove(toWindow: newWindow)
     }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow(); reportSize()
+        registerForDraggedTypes(BrowserPageDragging.pasteboardTypes)
         if window == nil { filePicker.cancel(); pendingSelectPopup = nil; activeSelectMenu?.menu.cancelTracking(); activeSelectMenu = nil }
         (window as? BrowserWindow)?.pageInput = self
         window?.acceptsMouseMovedEvents = true
@@ -235,7 +238,9 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
                         }
                         if !owned.isKeyWindow || owned.attachedSheet != nil || notification.name == NSWindow.willCloseNotification {
                             self.model?.clearNativeHover()
+                            self.pageDragging.invalidate()
                         }
+                        if owned.attachedSheet != nil || notification.name == NSWindow.willCloseNotification { self.pageDragging.cancelSource() }
                         self.replayPendingKeys()
                     }
                 }
@@ -270,6 +275,13 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
               event.trackingArea == nil || event.trackingArea === hoverTracking else { return }
         model?.clearNativeHover()
     }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { pageDragging.entered(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { pageDragging.updated(sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { if let sender { pageDragging.exited(sender) } else { pageDragging.invalidate() } }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { pageDragging.prepare(sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { pageDragging.perform(sender) }
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) { if let sender { pageDragging.exited(sender) } else { pageDragging.invalidate() } }
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
@@ -311,6 +323,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         if event.modifierFlags.contains(.control) { rightMouseDown(with: event); return }
         guard bounds.width > 0, bounds.height > 0 else { return }
         window?.makeFirstResponder(self)
+        if !replayingDragPress, pageDragging.pressed(event) { return }
         if let model, model.canInteract, let tab = model.selected {
             pointerTransition = PointerTransition(owner: ObjectIdentifier(model), tab: tab,
                 epoch: model.accessibilityEpoch, document: model.textInputState?.document_generation,
@@ -534,6 +547,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if pageDragging.dragged(event) { documentGesture = nil; return }
         if bufferMouseEvent(event) { return }
         guard let size = model?.cssViewportSize, bounds.width > 0, bounds.height > 0 else { return }
         let point = convert(event.locationInWindow, from: nil)
@@ -560,6 +574,9 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     override func mouseUp(with event: NSEvent) {
+        if let press = pageDragging.released() {
+            replayingDragPress = true; mouseDown(with: press); replayingDragPress = false
+        }
         if bufferMouseEvent(event) { return }
         guard let gesture = documentGesture else { return }
         documentGesture = nil

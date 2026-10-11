@@ -971,18 +971,57 @@ fn host_click_listener_removal_and_receiver_checks_are_exact() {
         "node.addEventListener.call({}, 'click', listener);",
         "node.addEventListener.call(Object.create(node), 'click', listener);",
         "node.addEventListener('mouseover', listener);",
-        "node.addEventListener('click', {});",
-        "node.addEventListener('click', listener, true);",
+        "node.addEventListener('click', 1);",
+        "node.addEventListener('click', listener, {signal: {}});",
         "new node.addEventListener('click', listener);",
     ] {
-        assert!(matches!(
-            vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap()),
-            Err(RuntimeError::TypeError(_))
-        ));
+        assert!(
+            matches!(
+                vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap()),
+                Err(RuntimeError::TypeError(_))
+            ),
+            "invalid listener call must be rejected: {source}"
+        );
     }
     vm.execute_script(
-        &crate::compile(&crate::parse("node.removeEventListener('click', listener);").unwrap())
+        &crate::compile(
+            &crate::parse(
+                "node.addEventListener('click', listener, true); \
+                 node.addEventListener('click', listener, true); \
+                 var objectListener = {handleEvent: function(event) { \
+                   if (this !== objectListener || event.target !== node) throw 'receiver'; \
+                   globalThis.calls += 10; \
+                 }}; node.addEventListener('click', objectListener);",
+            )
             .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(13.0));
+    vm.execute_script(
+        &crate::compile(
+            &crate::parse(
+                "node.removeEventListener('click', listener); \
+                 node.removeEventListener('click', objectListener); objectListener = undefined;",
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(14.0));
+    vm.execute_script(
+        &crate::compile(
+            &crate::parse("node.removeEventListener('click', listener, true);").unwrap(),
+        )
+        .unwrap(),
     )
     .unwrap();
     vm.execute_script(&crate::compile(&crate::parse("listener = undefined;").unwrap()).unwrap())
@@ -997,7 +1036,7 @@ fn host_click_listener_removal_and_receiver_checks_are_exact() {
     assert!(!vm
         .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
         .unwrap());
-    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(14.0));
 }
 
 #[test]

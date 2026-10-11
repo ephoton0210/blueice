@@ -869,3 +869,21 @@ remain unchanged. See the [contract](MACOS_NATIVE_HOVER_CONTRACT.md) and
 DOM pointer-event dispatch, CSS pseudo-class rendering, full CSS stacking/positioned
 layout, general pointer-events, flat-tree/modal inertness and remaining software,
 distribution and physical requirements remain open.
+
+## Native text and page dragging
+
+The bounded native text/page drag software increment passed macOS acceptance
+2026-10-11. Core owns DataTransfer content, source lifetime,
+operation decisions and destination edits; SwiftUI/AppKit handles actual OS
+gestures and delayed pasteboard publication. Cancelled and stale transactions
+refuse edits. Background hover refusals preserve navigation feedback.
+
+Complete native acceptance is 296 passes with one existing physical Zhuyin skip;
+the fresh complete Rust workspace passes 7,455 cases on the four corrected
+fixtures. Linux instrumented workspace/BlueJS checks pass their CI floors, with
+14 affected launcher cases passing after the sole counter fixture delta.
+Windows runtime acceptance remains pending at the unchanged C: disk guard.
+See the [contract](MACOS_NATIVE_DRAG_CONTRACT.md) and
+[dated results](MACOS_NATIVE_DRAG_RESULTS.md). File promises, default images,
+operation modifiers, external/multiple-window gestures, physical acceptance and
+the remaining browser milestones stay open.

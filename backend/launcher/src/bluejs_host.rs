@@ -29,9 +29,10 @@ use blueice_bluets::{
     Contract, ContractPlan, ContractValue, RuntimePolicy, ValidationLimits,
 };
 use blueice_bluets_bluejs::page_host_typings::{
-    page_host_document_runtime_bindings_v1, page_host_dom_event_runtime_bindings_v1,
-    page_host_dom_file_runtime_bindings_v1, page_host_dom_mutation_runtime_bindings_v1,
-    page_host_dom_text_runtime_bindings_v1, PageHostDocumentTypingsV1,
+    page_host_document_runtime_bindings_v1, page_host_dom_drag_runtime_bindings_v1,
+    page_host_dom_event_runtime_bindings_v1, page_host_dom_file_runtime_bindings_v1,
+    page_host_dom_mutation_runtime_bindings_v1, page_host_dom_text_runtime_bindings_v1,
+    PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
@@ -863,6 +864,7 @@ mod bluets_metadata_details;
 
 mod bluets_metadata_catalog;
 
+mod host_drag;
 mod host_lifecycle;
 
 mod host_supervisor;
@@ -1014,14 +1016,14 @@ fn install_document_snapshot_bindings(
         PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text(),
         PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation(),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event(),
-        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_file(),
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_drag(),
     };
     let expected_bindings = match page_dom_profile {
         PageDomProfile::Snapshot => page_host_document_runtime_bindings_v1().to_vec(),
         PageDomProfile::Text => page_host_dom_text_runtime_bindings_v1().to_vec(),
         PageDomProfile::Mutation => page_host_dom_mutation_runtime_bindings_v1().to_vec(),
         PageDomProfile::Event => page_host_dom_event_runtime_bindings_v1().to_vec(),
-        PageDomProfile::File => page_host_dom_file_runtime_bindings_v1().to_vec(),
+        PageDomProfile::File => page_host_dom_drag_runtime_bindings_v1().to_vec(),
     };
     artifact
         .verify_runtime_bindings(&expected_bindings)
@@ -1341,6 +1343,8 @@ fn install_document_snapshot_bindings(
                     )?;
                     installed_bindings
                         .extend_from_slice(&page_host_dom_file_runtime_bindings_v1()[10..]);
+                    installed_bindings
+                        .extend_from_slice(&page_host_dom_drag_runtime_bindings_v1()[16..]);
                 }
             } else {
                 installed_bindings

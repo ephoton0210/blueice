@@ -10,6 +10,57 @@ use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
 #[test]
+fn representation_ignores_correlated_native_drag_payloads() {
+    let (client, mut server) = UnixStream::pair().unwrap();
+    client
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let retained = AiSnapshot {
+        accessibility: None,
+        frame_source: 7,
+        generation: 8,
+        tab_id: 1,
+        url: Some("https://example.com/retained".into()),
+        scroll_y: 0.0,
+        nodes: vec![],
+    };
+    let snapshot = retained.clone();
+    let worker = std::thread::spawn(move || {
+        let (tab, request, message) = blueice_ipc::read_client_message_with_ids(&mut server)?;
+        assert_eq!(message, ClientMessage::GetRepresentation);
+        blueice_ipc::write_server_message_with_ids(
+            &mut server,
+            tab,
+            request,
+            &ServerMessage::NativeDragState(blueice_ipc::input::NativeDragState {
+                version: 1,
+                drag_id: 9,
+                frame_source: 7,
+                document_generation: 8,
+                frame_generation: 8,
+                active: true,
+                operation: blueice_ipc::input::NativeDragOperation::Copy,
+                allowed_operations: vec![blueice_ipc::input::NativeDragOperation::Copy],
+                mouse: None,
+                items: Some(vec![blueice_ipc::input::NativeDragItem::Text {
+                    format: "text/plain".into(),
+                    data: "native-only-drag-payload".into(),
+                }]),
+            }),
+        )?;
+        blueice_ipc::write_server_message_with_ids(
+            &mut server,
+            tab,
+            request,
+            &ServerMessage::Representation(snapshot),
+        )
+    });
+    let result = CoreConnection::new(client).representation(Some(1));
+    worker.join().unwrap().unwrap();
+    assert_eq!(result.unwrap(), retained);
+}
+
+#[test]
 fn representation_ignores_native_activation_hints_and_returns_only_its_snapshot() {
     let (client, mut server) = UnixStream::pair().unwrap();
     client

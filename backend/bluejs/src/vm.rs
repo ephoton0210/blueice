@@ -42,6 +42,9 @@ mod shadow_realm;
 mod temporal;
 mod test262;
 mod test262_agents;
+mod web_dom_exception;
+mod web_drag_drop;
+mod web_events;
 mod web_file_api;
 mod web_file_input;
 use completion::{
@@ -62,6 +65,7 @@ use host_objects::{
     HostObjectMethodRegistration, HostObjectPairMethodRegistration,
 };
 pub use host_objects::{
+    HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragItem,
     HostFileSelectionEvent, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
     HostObjectPairMethod,
 };
@@ -976,7 +980,10 @@ pub struct Vm {
     host_object_families: Vec<HostObjectFamilyState>,
     host_file_inputs: Vec<web_file_input::HostFileInputRegistration>,
     host_click_listeners: Vec<HostClickListener>,
+    next_host_listener_serial: u64,
     active_host_click_event: Option<ActiveHostClickEvent>,
+    active_host_drag_event: Option<ObjectId>,
+    event_time_origin: std::time::Instant,
     global_bindings: HashMap<String, GlobalBinding>,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an
     /// individual Realm. Test262 child realms share this handle; independent
@@ -1084,6 +1091,7 @@ pub struct Vm {
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
     promise_jobs: VecDeque<PromiseJob>,
+    drag_string_tasks: VecDeque<(ObjectId, JsString, RootId)>,
     test262_done: Option<Result<(), Value>>,
     /// Test262-only host scheduler state. Ordinary realms never install or
     /// expose it; agent VMs receive the same Arc while retaining their own
@@ -1142,7 +1150,8 @@ pub struct Vm {
 impl Vm {
     /// Installs the owner-selected browser File API in this realm.
     pub fn install_web_file_api(&mut self) -> Result<(), RuntimeError> {
-        self.install_web_files()
+        self.install_web_files()?;
+        self.install_web_drag_drop()
     }
 
     /// Installs one non-constructable host function as an own property of
@@ -1716,6 +1725,9 @@ impl Vm {
                 NativeFunction::String
                     | NativeFunction::Blob
                     | NativeFunction::File
+                    | NativeFunction::DOMException
+                    | NativeFunction::WebDrag(crate::native::DragNative::DataTransfer | crate::native::DragNative::DragEvent)
+                    | NativeFunction::WebEvent(crate::native::EventNative::Constructor(_))
                     | NativeFunction::Array
                     | NativeFunction::Date
                     | NativeFunction::TemporalConstructor(_)

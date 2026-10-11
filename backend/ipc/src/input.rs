@@ -9,6 +9,12 @@
 use crate::Bounds;
 use serde::{Deserialize, Serialize};
 
+mod drag_drop;
+pub use drag_drop::{
+    NativeDragAction, NativeDragItem, NativeDragModifiers, NativeDragMouse, NativeDragOperation,
+    NativeDragState, MAX_DRAG_FORMATS, MAX_DRAG_ITEMS, MAX_DRAG_TEXT_BYTES,
+};
+
 pub const TEXT_INPUT_VERSION: u32 = 1;
 pub const MAX_EDIT_TEXT_UTF16: usize = 65_536;
 pub const MAX_EDIT_CARETS: usize = 1_024;
@@ -218,6 +224,10 @@ pub struct DocumentSelectionState {
     pub active: bool,
     pub selection: TextRange,
     pub selected_text: Option<String>,
+    /// Core layout content coordinates. The shell only uses these to preserve
+    /// an existing public selection while distinguishing a click from a drag.
+    #[serde(default)]
+    pub selection_rects: Vec<Bounds>,
     pub limited: bool,
 }
 

@@ -19,7 +19,7 @@ struct FileInputState: Decodable, Sendable {
     let accept: String
     let names: [String]
 }
-struct SelectedFile: Encodable, Sendable {
+struct SelectedFile: Codable, Sendable {
     let name: String
     let media_type: String
     let last_modified: Int64
@@ -32,8 +32,8 @@ struct SelectedFile: Encodable, Sendable {
         !name.isEmpty && name.utf8.count <= 255 && name != "." && name != ".."
             && !name.unicodeScalars.contains { $0.properties.generalCategory == .control || "/\\:".unicodeScalars.contains($0) }
     }
-    // This function is called only with URLs returned by the user's native
-    // panel. Neither page content nor an incoming browser message supplies URLs.
+    // URLs originate only from a human's native panel or explicit OS drop.
+    // Neither page content nor an incoming browser message supplies URLs.
     static func read(_ urls: [URL], multiple: Bool) throws -> [SelectedFile] {
         guard urls.count <= 16, multiple || urls.count <= 1 else { throw BrowserFailure.invalid("Too many files selected.") }
         var result: [SelectedFile] = []; var total = 0

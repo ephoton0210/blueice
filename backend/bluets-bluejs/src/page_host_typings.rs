@@ -51,6 +51,13 @@ pub const PAGE_HOST_DOM_FILE_DECLARATION_MODULE_ID_V1: &str =
     "blueice:///profiles/core-script-dom-file-v1/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_FILE_HOST_API_VERSION_V1: &str = "blueice-core-script-v5";
 
+/// Owner-selected profile for the VM drag/event API installed with live files.
+/// The earlier file profile keeps its declaration bytes and runtime inventory.
+pub const PAGE_HOST_DOM_DRAG_PROFILE_V1: &str = "core-script-dom-drag-v1";
+pub const PAGE_HOST_DOM_DRAG_DECLARATION_MODULE_ID_V1: &str =
+    "blueice:///profiles/core-script-dom-drag-v1/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1: &str = "blueice-core-script-v6";
+
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
 
 /// One runtime global represented by the fixed page-host profile.
@@ -356,6 +363,111 @@ pub fn page_host_dom_file_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 16
     })
 }
 
+// BlueTS has no numeric interface index signatures. The bounded types use
+// actual includes/join and item-list methods; JS keeps native indexed access.
+const PAGE_HOST_DOM_DRAG_BINDINGS_V1: [PageHostDocumentBindingV1; 24] = [
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[0],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[1],
+    PageHostDocumentBindingV1 {
+        declaration: "type BlueIceDragCallback = (event: BlueIceDragEvent) => void;\ninterface BlueIceDragListenerOptions { capture?: boolean; once?: boolean; passive?: boolean; }\ninterface BlueIceDragEventListener { handleEvent(event: BlueIceDragEvent): void; }\ninterface BlueIceDragRemovalOptions { capture?: boolean; }\ninterface BlueIceNode { textContent: string; appendChild(child: BlueIceNode): BlueIceNode; readonly files: BlueIceFileList | null; value: string | undefined; reset(): void; addEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; addEventListener(eventType: 'input' | 'change' | 'cancel', listener: (event: BlueIceSelectionEvent) => void): void; addEventListener(eventType: 'dragstart' | 'drag' | 'dragenter' | 'dragleave' | 'dragover' | 'drop' | 'dragend', listener: BlueIceDragCallback | BlueIceDragEventListener | null, options?: boolean | BlueIceDragListenerOptions): void; removeEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; removeEventListener(eventType: 'input' | 'change' | 'cancel', listener: (event: BlueIceSelectionEvent) => void): void; removeEventListener(eventType: 'dragstart' | 'drag' | 'dragenter' | 'dragleave' | 'dragover' | 'drop' | 'dragend', listener: BlueIceDragCallback | BlueIceDragEventListener | null, options?: boolean | BlueIceDragRemovalOptions): void; }\ninterface BlueIceDocument { textContent: string; appendChild(child: BlueIceNode): BlueIceNode; readonly files: BlueIceFileList | null; value: string | undefined; reset(): void; addEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; addEventListener(eventType: 'input' | 'change' | 'cancel', listener: (event: BlueIceSelectionEvent) => void): void; addEventListener(eventType: 'dragstart' | 'drag' | 'dragenter' | 'dragleave' | 'dragover' | 'drop' | 'dragend', listener: BlueIceDragCallback | BlueIceDragEventListener | null, options?: boolean | BlueIceDragListenerOptions): void; removeEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; removeEventListener(eventType: 'input' | 'change' | 'cancel', listener: (event: BlueIceSelectionEvent) => void): void; removeEventListener(eventType: 'dragstart' | 'drag' | 'dragenter' | 'dragleave' | 'dragover' | 'drop' | 'dragend', listener: BlueIceDragCallback | BlueIceDragEventListener | null, options?: boolean | BlueIceDragRemovalOptions): void;  getElementById(id: string): BlueIceNode | null; createElement(tagName: string): BlueIceNode; createTextNode(data: string): BlueIceNode; }\ndeclare const document: BlueIceDocument;",
+        feature_flag: "live-dom-drag",
+        first_host_api_version: PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1,
+        ..PAGE_HOST_DOM_FILE_BINDINGS_V1[2]
+    },
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[3],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[4],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[5],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[6],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[7],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[8],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[9],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[10],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[11],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[12],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[13],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[14],
+    PAGE_HOST_DOM_FILE_BINDINGS_V1[15],
+    PageHostDocumentBindingV1 {
+        stable_id: "drag.global-Event",
+        declaration: "interface BlueIceEventInit { bubbles?: boolean; cancelable?: boolean; composed?: boolean; }\ninterface BlueIceUIEventInit extends BlueIceEventInit { view?: null; detail?: number; }\ninterface BlueIceMouseEventInit extends BlueIceUIEventInit { ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean; modifierAltGraph?: boolean; modifierCapsLock?: boolean; modifierFn?: boolean; modifierFnLock?: boolean; modifierHyper?: boolean; modifierNumLock?: boolean; modifierScrollLock?: boolean; modifierSuper?: boolean; modifierSymbol?: boolean; modifierSymbolLock?: boolean; screenX?: number; screenY?: number; clientX?: number; clientY?: number; button?: number; buttons?: number; relatedTarget?: BlueIceNode | null; }\ninterface BlueIceDragEventInit extends BlueIceMouseEventInit { dataTransfer?: BlueIceDataTransfer | null; }\ninterface BlueIceEvent { readonly type: string; readonly target: BlueIceNode | null; readonly srcElement: BlueIceNode | null; readonly currentTarget: BlueIceNode | null; readonly eventPhase: number; readonly bubbles: boolean; readonly cancelable: boolean; readonly composed: boolean; readonly defaultPrevented: boolean; readonly isTrusted: boolean; readonly timeStamp: number; cancelBubble: boolean; returnValue: boolean; preventDefault(): void; stopPropagation(): void; stopImmediatePropagation(): void; composedPath(): BlueIceNode[]; initEvent(eventType: string, bubbles?: boolean, cancelable?: boolean): void; }\ndeclare const Event: { new(eventType: string, init?: BlueIceEventInit): BlueIceEvent; readonly prototype: BlueIceEvent; readonly NONE: number; readonly CAPTURING_PHASE: number; readonly AT_TARGET: number; readonly BUBBLING_PHASE: number; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.Event",
+        capability: "dom-read",
+        feature_flag: "live-dom-drag",
+        first_host_api_version: PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "drag.global-UIEvent",
+        declaration: "interface BlueIceUIEvent extends BlueIceEvent { readonly view: null; readonly detail: number; readonly which: number; initUIEvent(eventType: string, bubbles?: boolean, cancelable?: boolean, view?: null, detail?: number): void; }\ndeclare const UIEvent: { new(eventType: string, init?: BlueIceUIEventInit): BlueIceUIEvent; readonly prototype: BlueIceUIEvent; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.UIEvent",
+        capability: "dom-read",
+        feature_flag: "live-dom-drag",
+        first_host_api_version: PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "drag.global-MouseEvent",
+        declaration: "interface BlueIceMouseEvent extends BlueIceUIEvent { readonly screenX: number; readonly screenY: number; readonly clientX: number; readonly clientY: number; readonly x: number; readonly y: number; readonly pageX: number; readonly pageY: number; readonly offsetX: number; readonly offsetY: number; readonly ctrlKey: boolean; readonly shiftKey: boolean; readonly altKey: boolean; readonly metaKey: boolean; readonly button: number; readonly buttons: number; readonly relatedTarget: BlueIceNode | null; getModifierState(key: string): boolean; initMouseEvent(eventType: string, bubbles?: boolean, cancelable?: boolean, view?: null, detail?: number, screenX?: number, screenY?: number, clientX?: number, clientY?: number, ctrl?: boolean, alt?: boolean, shift?: boolean, meta?: boolean, button?: number, related?: BlueIceNode | null): void; }\ndeclare const MouseEvent: { new(eventType: string, init?: BlueIceMouseEventInit): BlueIceMouseEvent; readonly prototype: BlueIceMouseEvent; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.MouseEvent",
+        capability: "dom-read",
+        feature_flag: "live-dom-drag",
+        first_host_api_version: PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "drag.global-DragEvent",
+        declaration: "interface BlueIceDragEvent extends BlueIceMouseEvent { readonly dataTransfer: BlueIceDataTransfer | null; }\ndeclare const DragEvent: { new(eventType: string, init?: BlueIceDragEventInit): BlueIceDragEvent; readonly prototype: BlueIceDragEvent; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.DragEvent",
+        capability: "dom-read",
+        feature_flag: "live-dom-drag",
+        first_host_api_version: PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "drag.global-DataTransfer",
+        declaration: "interface BlueIceDataTransferTypes { readonly length: number; includes(format: string, fromIndex?: number): boolean; join(separator?: string): string; }\ninterface BlueIceDataTransfer { dropEffect: string; effectAllowed: string; readonly items: BlueIceDataTransferItemList; readonly files: BlueIceFileList; readonly types: BlueIceDataTransferTypes; getData(format: string): string; setData(format: string, data: string): void; clearData(format?: string): void; }\ndeclare const DataTransfer: { new(): BlueIceDataTransfer; readonly prototype: BlueIceDataTransfer; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.DataTransfer",
+        capability: "dom-read",
+        feature_flag: "live-dom-drag",
+        first_host_api_version: PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "drag.global-DataTransferItemList",
+        declaration: "interface BlueIceDataTransferItemList { readonly length: number; add(data: string, format: string): BlueIceDataTransferItem | null; add(file: BlueIceFile): BlueIceDataTransferItem | null; remove(index: number): void; clear(): void; }\ndeclare const DataTransferItemList: { readonly prototype: BlueIceDataTransferItemList; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.DataTransferItemList",
+        capability: "dom-read",
+        feature_flag: "live-dom-drag",
+        first_host_api_version: PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "drag.global-DataTransferItem",
+        declaration: "type BlueIceDragStringCallback = (data: string) => void;\ninterface BlueIceDataTransferItem { readonly kind: string; readonly type: string; getAsFile(): BlueIceFile | null; getAsString(callback: BlueIceDragStringCallback | null): void; }\ndeclare const DataTransferItem: { readonly prototype: BlueIceDataTransferItem; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.DataTransferItem",
+        capability: "dom-read",
+        feature_flag: "live-dom-drag",
+        first_host_api_version: PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "drag.global-DOMException",
+        declaration: "interface BlueIceDOMException { readonly name: string; readonly message: string; readonly code: number; }\ndeclare const DOMException: { new(message?: string, name?: string): BlueIceDOMException; readonly prototype: BlueIceDOMException; };",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.DOMException",
+        capability: "dom-read",
+        feature_flag: "live-dom-drag",
+        first_host_api_version: PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1,
+    },
+];
+
+pub fn page_host_dom_drag_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 24] {
+    PAGE_HOST_DOM_DRAG_BINDINGS_V1.map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -421,6 +533,13 @@ impl PageHostDocumentTypingsV1 {
         Self::generate_from(
             PAGE_HOST_DOM_FILE_PROFILE_V1,
             &PAGE_HOST_DOM_FILE_BINDINGS_V1,
+        )
+    }
+
+    pub fn generate_dom_drag() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_DRAG_PROFILE_V1,
+            &PAGE_HOST_DOM_DRAG_BINDINGS_V1,
         )
     }
 
@@ -521,6 +640,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_file(),
             PAGE_HOST_DOM_FILE_DECLARATION_MODULE_ID_V1,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_drag_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_drag(),
+            PAGE_HOST_DOM_DRAG_DECLARATION_MODULE_ID_V1,
             installed_bindings,
         )
     }

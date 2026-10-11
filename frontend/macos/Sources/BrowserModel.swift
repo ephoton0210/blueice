@@ -68,7 +68,7 @@ final class BrowserModel: ObservableObject {
     let appearance: BrowserAppearance
     let search: BrowserSearchPreferences
     let windowID: UInt64
-    private(set) var contextID: UInt64 = 1
+    private(set) var contextID: UInt64 = 1 { didSet { revokeStaleDragPayload() } }
     @Published private(set) var profileName = "Default"
     @Published var profileEditor: ProfileEditor?
     @Published var downloadsPresented = false
@@ -76,6 +76,101 @@ final class BrowserModel: ObservableObject {
     private(set) var fileInputError = ""
     private var fileOperation: UUID?
     private var fileReplies: [IncomingEnvelope] = []
+    // A tab can move between window models while its core document survives.
+    // Drag identities must continue increasing across that handoff.
+    private static var nativeDragCounter: UInt64 = 0
+    private var nativeDragFlights: Set<UUID> = []
+    private var nativeDragReplies: [IncomingEnvelope] = []
+    private var nativeDragPayloadOwner: (id: UInt64, owner: NativeDragOwner, payload: NativeDragPayload)?
+    func retainNativeDragPayload(_ payload: NativeDragPayload,id: UInt64,owner: NativeDragOwner) -> Bool {
+        guard nativeDragIsCurrent(owner), nativeDragPayloadOwner == nil else { return false }
+        nativeDragPayloadOwner = (id,owner,payload); return true
+    }
+    func releaseNativeDragPayload(_ id: UInt64) {
+        if nativeDragPayloadOwner?.id == id { nativeDragPayloadOwner = nil }
+    }
+    private func revokeStaleDragPayload() {
+        guard let source = nativeDragPayloadOwner, !nativeDragIsCurrent(source.owner) else { return }
+        source.payload.revoke(); nativeDragPayloadOwner = nil
+    }
+    var nativeDragOwner: NativeDragOwner? {
+        guard canInteract, status != "Loading…", let tab = selected, let input = textInputState,
+              input.tab_id == tab, input.frame_generation == generation, let size = cssViewportSize else { return nil }
+        return NativeDragOwner(tab: tab,browserContext: contextID,window: windowID,epoch: accessibilityEpoch,
+            context: NativePointerContext(version: 1,frame_source: input.frame_source,document_generation: input.document_generation),cssSize: size)
+    }
+    func nextNativeDragID() -> UInt64? {
+        guard Self.nativeDragCounter < UInt64.max else { return nil }
+        Self.nativeDragCounter += 1; return Self.nativeDragCounter
+    }
+    func nativeDragIsCurrent(_ owner: NativeDragOwner) -> Bool {
+        canInteract && status != "Loading…" && selected == owner.tab && contextID == owner.browserContext
+            && windowID == owner.window && accessibilityEpoch == owner.epoch
+            && tabs.contains(where: { $0.id == owner.tab })
+            && textInputState?.frame_source == owner.context.frame_source
+            && textInputState?.document_generation == owner.context.document_generation
+            && (cssViewportSize == nil || cssViewportSize == owner.cssSize)
+    }
+    func commitNativeDrop(_ action: NativeDragAction,owner: NativeDragOwner,mouse: NativeDragMouse? = nil) -> NativeDragState? {
+        guard nativeDragIsCurrent(owner) else { return nil }
+        let reply = try? BrowserNativeDragCommit.drop(action,runtime: session.runtimeDirectory,owner: owner,frameGeneration: generation,mouse: mouse)
+        hoverRepresentationPending.insert(owner.tab); requestRepresentation(owner.tab); requestTextInput(owner.tab)
+        return reply
+    }
+    func startNativeDrag(_ action: NativeDragAction,owner: NativeDragOwner,mouse: NativeDragMouse? = nil) -> NativeDragState? {
+        guard nativeDragIsCurrent(owner), !textInputBusy else { return nil }
+        let reply = try? BrowserNativeDragCommit.start(action,runtime: session.runtimeDirectory,owner: owner,frameGeneration: generation,mouse: mouse)
+        hoverRepresentationPending.insert(owner.tab); requestRepresentation(owner.tab); requestTextInput(owner.tab)
+        return reply
+    }
+    func moveNativeDrag(_ action: NativeDragAction,owner: NativeDragOwner,mouse: NativeDragMouse) -> NativeDragState? {
+        guard nativeDragIsCurrent(owner) else { return nil }
+        let reply = try? BrowserNativeDragCommit.sourceMove(action,runtime: session.runtimeDirectory,owner: owner,mouse: mouse)
+        hoverRepresentationPending.insert(owner.tab); requestRepresentation(owner.tab); requestTextInput(owner.tab)
+        return reply
+    }
+    func negotiateNativeDrag(_ action: NativeDragAction,owner: NativeDragOwner,mouse: NativeDragMouse) -> NativeDragState? {
+        guard nativeDragIsCurrent(owner) else { return nil }
+        let reply = try? BrowserNativeDragCommit.negotiate(action,runtime: session.runtimeDirectory,
+            owner: owner,frameGeneration: generation,mouse: mouse)
+        hoverRepresentationPending.insert(owner.tab); requestRepresentation(owner.tab); requestTextInput(owner.tab)
+        return reply
+    }
+    func nativeDrag(_ action: NativeDragAction,owner: NativeDragOwner,mouse: NativeDragMouse? = nil) async -> NativeDragState? {
+        guard mouse?.valid != false, ready, contextID == owner.browserContext, windowID == owner.window, nativeDragFlights.count < 4 else { return nil }
+        if let point = action.point {
+            guard nativeDragIsCurrent(owner), point.x.isFinite, point.y.isFinite,
+                  abs(point.x) <= 16384, abs(point.y) <= 16384 else { return nil }
+            if case .sourceMove = action {} else {
+                guard point.x >= 0, point.y >= 0, point.x < owner.cssSize.width, point.y < owner.cssSize.height else { return nil }
+            }
+            let deadline = Date().addingTimeInterval(2)
+            while !Task.isCancelled, nativeDragIsCurrent(owner), textInputState?.frame_generation != generation, Date() < deadline {
+                requestTextInput(owner.tab); try? await Task.sleep(for: .milliseconds(10))
+            }
+            guard !Task.isCancelled, nativeDragIsCurrent(owner), textInputState?.frame_generation == generation else { return nil }
+        }
+        let token = UUID(); nativeDragFlights.insert(token)
+        defer { nativeDragFlights.remove(token); if nativeDragFlights.isEmpty { nativeDragReplies.removeAll() } }
+        guard let request = await send(.nativeDrag(owner.context,generation,action,mouse: mouse),tab: owner.tab) else { return nil }
+        let deadline = Date().addingTimeInterval(5)
+        while !Task.isCancelled, ready, nativeDragFlights.contains(token), contextID == owner.browserContext, Date() < deadline {
+            if let index = nativeDragReplies.firstIndex(where: { $0.requestID == request && $0.tabID == owner.tab }) {
+                let reply = nativeDragReplies.remove(at: index)
+                guard case .nativeDragState(let state) = reply.message, state.drag_id == action.id,
+                      state.frame_source == owner.context.frame_source, state.document_generation == owner.context.document_generation, state.mouse == mouse else { return nil }
+                if case .start = action {
+                    guard !state.active || state.items != nil else { return nil }
+                } else if state.items != nil { return nil }
+                if action.point != nil && !nativeDragIsCurrent(owner) { return nil }
+                hoverRepresentationPending.insert(owner.tab); requestRepresentation(owner.tab); requestTextInput(owner.tab)
+                return state
+            }
+            if action.point != nil && !nativeDragIsCurrent(owner) { return nil }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return nil
+    }
     var nativeFileActivation: ((FileInputState) -> Void)?
     func presentFileInputError(_ text: String) { fileInputError = text; fileInputErrorPresented = true }
     func fileInputIsCurrent(_ context: FileInputContext, tab: UInt64) -> Bool {
@@ -228,7 +323,7 @@ final class BrowserModel: ObservableObject {
             preferenceTask = nil
         }
     }
-    @Published private(set) var tabs: [BrowserTab] = []
+    @Published private(set) var tabs: [BrowserTab] = [] { didSet { revokeStaleDragPayload() } }
     @Published private(set) var groups: [BrowserTabGroup] = []
     @Published private(set) var groupsAvailable = false
     @Published private(set) var groupBusy = false
@@ -238,10 +333,10 @@ final class BrowserModel: ObservableObject {
     private var groupReplies: [IncomingEnvelope] = []
     private var groupRequests: [UInt64] = []
     @Published private(set) var selected: UInt64? {
-        didSet { if selected != oldValue { clearNativeHover() } }
+        didSet { if selected != oldValue { clearNativeHover(); revokeStaleDragPayload() } }
     }
     @Published var address = ""
-    @Published private(set) var status = "Starting BlueIce…"
+    @Published private(set) var status = "Starting BlueIce…" { didSet { revokeStaleDragPayload() } }
     var localizedStatus: String {
         if status.hasPrefix("Navigation blocked: ") {
             return BrowserStrings.format("Navigation blocked: %@", String(status.dropFirst("Navigation blocked: ".count)))
@@ -261,12 +356,13 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var ready = false {
         didSet {
             guard ready != oldValue else { return }
+            revokeStaleDragPayload()
             let window = nativeWindow as? BrowserWindow
             window?.pageInput?.supersedeKeyboardFocus()
             window?.chromeFocus?.discardQueuedInput()
         }
     }
-    @Published private(set) var interactionSuspended = false
+    @Published private(set) var interactionSuspended = false { didSet { revokeStaleDragPayload() } }
     var canInteract: Bool { ready && !interactionSuspended }
     func suspendInteraction(_ value: Bool) {
         guard value != interactionSuspended else { return }
@@ -278,7 +374,7 @@ final class BrowserModel: ObservableObject {
     }
     @Published private(set) var image: CGImage?
     @Published private(set) var generation: UInt64 = 0
-    @Published private(set) var displayState: ViewportState?
+    @Published private(set) var displayState: ViewportState? { didSet { revokeStaleDragPayload() } }
     private var displayStates: [UInt64: ViewportState] = [:]
     private var desiredZooms: [UInt64: Double] = [:]
     private var zoomWrites: [UInt64: Double] = [:]
@@ -314,8 +410,8 @@ final class BrowserModel: ObservableObject {
     }
     @Published private(set) var history = HistoryState()
     @Published private(set) var representation: PageRepresentation?
-    @Published private(set) var accessibilityEpoch: UInt64 = 0
-    @Published private(set) var textInputState: TextInputState?
+    @Published private(set) var accessibilityEpoch: UInt64 = 0 { didSet { revokeStaleDragPayload() } }
+    @Published private(set) var textInputState: TextInputState? { didSet { revokeStaleDragPayload() } }
     @Published private(set) var textInputBusy = false
     @Published private(set) var pageFocusSerial: UInt64 = 0 { didSet { requestChromeFocus("page") } }
     @Published private(set) var addressFocusSerial: UInt64 = 0 { didSet { requestChromeFocus("address") } }
@@ -426,6 +522,19 @@ final class BrowserModel: ObservableObject {
 
     func apply(_ envelope: IncomingEnvelope, pixels: FramePixels?) {
         let tab = envelope.tabID
+        // Hover is background work. A frame can change after its request was
+        // admitted; that refusal must not replace a person's navigation result.
+        if case .error = envelope.message, let request = envelope.requestID,
+           let owner = hoverRequests[request], tab == owner {
+            hoverRequests.removeValue(forKey: request)
+            return
+        }
+        if !nativeDragFlights.isEmpty, nativeDragReplies.count < 64 {
+            switch envelope.message {
+            case .nativeDragState, .error: nativeDragReplies.append(envelope)
+            default: break
+            }
+        }
         switch envelope.message {
         case .assistantResult, .assistantUnavailable, .translation, .translationUnavailable:
             _ = assistant.receive(envelope); return
@@ -985,6 +1094,7 @@ final class BrowserModel: ObservableObject {
     private var hoverUpdates: [HoverUpdate] = []
     private var hoverTask: Task<Void, Never>?
     private var hoverRepresentationPending: Set<UInt64> = []
+    private var hoverRequests: [UInt64: UInt64] = [:]
 
     func nativeHover(_ point: CGPoint) {
         guard canInteract, status != "Loading…", let tab = selected,
@@ -1026,7 +1136,17 @@ final class BrowserModel: ObservableObject {
                           self.textInputState?.frame_source == update.context.frame_source,
                           self.textInputState?.document_generation == update.context.document_generation else { continue }
                 }
-                guard await self.send(.nativeHover(update.context,update.frame,update.point),tab: update.tab) != nil,
+                let register: @Sendable (UInt64) -> Void = { [weak self, tab = update.tab] request in
+                    DispatchQueue.main.async {
+                        guard let self, self.ready else { return }
+                        self.hoverRequests[request] = tab
+                        // Successful hover updates have no acknowledgement.
+                        if self.hoverRequests.count > 512, let oldest = self.hoverRequests.keys.min() {
+                            self.hoverRequests.removeValue(forKey: oldest)
+                        }
+                    }
+                }
+                guard await self.send(.nativeHover(update.context,update.frame,update.point),tab: update.tab,willSend: register) != nil,
                       self.ready, self.documentEpochs[update.tab,default: 0] == update.epoch else { continue }
                 self.hoverRepresentationPending.insert(update.tab)
                 self.requestRepresentation(update.tab)
@@ -1398,11 +1518,11 @@ final class BrowserModel: ObservableObject {
     }
 
     @discardableResult
-    private func send(_ command: BrowserCommand, tab: UInt64? = nil) async -> UInt64? {
+    private func send(_ command: BrowserCommand, tab: UInt64? = nil, willSend: (@Sendable (UInt64) -> Void)? = nil) async -> UInt64? {
         guard ready else { return nil }
         do {
-            if let workspace { return try await workspace.send(command, tab: tab, owner: self) }
-            return try await session.send(command, tab: tab)
+            if let workspace { return try await workspace.send(command, tab: tab, owner: self, willSend: willSend) }
+            return try await session.send(command, tab: tab, willSend: willSend)
         }
         catch { status = error.localizedDescription; return nil }
     }
@@ -1430,5 +1550,5 @@ final class BrowserModel: ObservableObject {
         }
     }
 
-    func stop() async { hoverTask?.cancel(); hoverUpdates.removeAll(); hoverOwner = nil; hoverRepresentationPending.removeAll(); accessibilityDeliveryJobs.values.forEach { $0.task.cancel() }; accessibilityDeliveryJobs.removeAll(); accessibilityDeliveryRequests.removeAll(); assistant.clear(); groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); if workspace == nil { await session.stop() } }
+    func stop() async { nativeDragFlights.removeAll(); nativeDragReplies.removeAll(); hoverTask?.cancel(); hoverUpdates.removeAll(); hoverOwner = nil; hoverRepresentationPending.removeAll(); hoverRequests.removeAll(); accessibilityDeliveryJobs.values.forEach { $0.task.cancel() }; accessibilityDeliveryJobs.removeAll(); accessibilityDeliveryRequests.removeAll(); assistant.clear(); groupOperation = nil; groupReplies = []; groupRequests = []; groupBusy = false; groups = []; groupsAvailable = false; groupEditor = nil; zoomTask?.cancel(); zoomWrites.removeAll(); preferenceTask?.cancel(); lastSentPreferences = nil; preferenceStates.removeAll(); displayPreferences = nil; findTask?.cancel(); findPanels.removeAll(); findVisible = false; findResult = nil; resubmissions.removeAll(); resubmission = nil; resubmissionPresented = false; ready = false; representation = nil; representations.removeAll(); representationRequests.removeAll(); clearTextInput(); resizeTask?.cancel(); if workspace == nil { await session.stop() } }
 }

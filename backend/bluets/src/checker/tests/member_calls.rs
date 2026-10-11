@@ -89,7 +89,7 @@ fn property_lookup_keeps_both_callback_method_overloads_without_first_wins() {
 fn unsupported_callback_method_overload_sets_do_not_choose_the_first_signature() {
     for signatures in [
         "visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'text', callback: (value: number) => void): void;",
-        "visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; visit(kind: 'other', callback: (value: boolean) => void): void;",
+        "visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; visit(kind: 'count', callback: (value: boolean) => void): void;",
         "visit(kind: 'text', callback?: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void;",
         "visit(kind: 'text', callback: (value: string) => string): void; visit(kind: 'count', callback: (value: number) => void): void;",
     ] {

@@ -162,6 +162,38 @@ impl PageHostConnection {
 }
 
 impl PageHostClient for PageHostConnection {
+    fn dispatch_drag_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        nodes: Vec<u64>,
+        event: blueice_ipc::page_host::PageHostDragEvent,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::DispatchDrag {
+                tab_id,
+                document_generation,
+                nodes,
+                event,
+            },
+            pump,
+        )
+    }
+    fn flush_drag_tasks_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::FlushDragTasks {
+                tab_id,
+                document_generation,
+            },
+            pump,
+        )
+    }
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply> {
         self.request(PageHostRequest::SynchronizeDocument { document })
     }

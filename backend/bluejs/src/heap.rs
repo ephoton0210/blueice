@@ -49,7 +49,9 @@ mod lifecycle;
 mod object_storage;
 #[cfg(test)]
 mod tests;
+mod web_drag_drop;
 mod web_file_api;
+pub(crate) use web_drag_drop::{DragEventState, DragItem, DragItemData, DragStore, DragStoreMode};
 
 /// A persistent root registration, independent of other registrations
 /// of the same object. Release it with [`Heap::unroot`]. Copying or
@@ -883,6 +885,19 @@ enum ObjectKind {
     },
     WebBlob(WebBlobData),
     WebFileList(Vec<ObjectId>),
+    WebDOMException {
+        name: JsString,
+        message: JsString,
+    },
+    // Optional browser payloads must not enlarge every ordinary JS object.
+    WebDataTransfer(Box<DragStore>),
+    WebDragItems(ObjectId),
+    WebDragFiles(ObjectId),
+    WebDragItem {
+        store: ObjectId,
+        id: u64,
+    },
+    WebDragEvent(Box<DragEventState>),
     HostSelectionEvent {
         current_target: Option<ObjectId>,
     },
@@ -1339,6 +1354,11 @@ impl Object {
                     .collect(),
                 ObjectKind::NativeFunction { function, .. } => function.references(),
                 ObjectKind::WebFileList(files) => files.clone(),
+                ObjectKind::WebDataTransfer(store) => store.references(),
+                ObjectKind::WebDragItems(store)
+                | ObjectKind::WebDragFiles(store)
+                | ObjectKind::WebDragItem { store, .. } => vec![*store],
+                ObjectKind::WebDragEvent(state) => state.references(),
                 ObjectKind::HostSelectionEvent { current_target } => {
                     current_target.iter().copied().collect()
                 }
@@ -1551,6 +1571,11 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
                 .collect(),
             ObjectKind::NativeFunction { function, .. } => function.references(),
             ObjectKind::WebFileList(files) => files.clone(),
+            ObjectKind::WebDataTransfer(store) => store.references(),
+            ObjectKind::WebDragItems(store)
+            | ObjectKind::WebDragFiles(store)
+            | ObjectKind::WebDragItem { store, .. } => vec![*store],
+            ObjectKind::WebDragEvent(state) => state.references(),
             ObjectKind::HostSelectionEvent { current_target } => {
                 current_target.iter().copied().collect()
             }

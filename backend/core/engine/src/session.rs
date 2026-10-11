@@ -911,6 +911,7 @@ impl DownloadsRefresher {
     }
 }
 
+mod native_drag;
 mod script_runtime;
 use script_runtime::*;
 

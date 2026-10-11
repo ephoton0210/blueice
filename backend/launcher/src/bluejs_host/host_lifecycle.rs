@@ -118,6 +118,16 @@ impl BlueJsChildHost {
     /// than accidentally resetting host state.
     pub fn handle_request(&mut self, request: PageHostRequest) -> PageHostReply {
         match request {
+            PageHostRequest::DispatchDrag {
+                tab_id,
+                document_generation,
+                nodes,
+                event,
+            } => self.dispatch_drag(tab_id, document_generation, nodes, event),
+            PageHostRequest::FlushDragTasks {
+                tab_id,
+                document_generation,
+            } => self.flush_drag_tasks(tab_id, document_generation),
             PageHostRequest::DispatchFileSelection {
                 tab_id,
                 document_generation,

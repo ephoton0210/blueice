@@ -103,6 +103,10 @@ pub struct NodeState {
     pub native_text_input: bool,
     #[serde(default)]
     pub native_focusable: bool,
+    /// Static ordinary drag eligibility. Selected text additionally uses the
+    /// core's current selection geometry. It never discloses source content.
+    #[serde(default)]
+    pub native_drag_source: bool,
     #[serde(default)]
     pub file_input: bool,
     #[serde(default)]

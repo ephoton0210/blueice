@@ -446,6 +446,17 @@ impl Vm {
                 return Ok(None);
             }
             if let Some(descriptor) = self.heap.get_own_property_descriptor(id, &key)? {
+                if let Some(getter) = descriptor.get.as_ref().and_then(Value::object_id) {
+                    let native = self.heap.native_function(getter)?;
+                    if let Ok((name, message)) = self.heap.dom_exception(object) {
+                        if key == "name" && native == Some(NativeFunction::DOMExceptionName) {
+                            return Ok(Some(name.clone()));
+                        }
+                        if key == "message" && native == Some(NativeFunction::DOMExceptionMessage) {
+                            return Ok(Some(message.clone()));
+                        }
+                    }
+                }
                 return Ok(match descriptor.value {
                     Some(Value::String(text)) => Some(text),
                     _ => None,

@@ -149,7 +149,7 @@ impl Vm {
         result
     }
 
-    fn web_file_constructor(
+    pub(super) fn web_file_constructor(
         &mut self,
         name: &str,
         length: u32,

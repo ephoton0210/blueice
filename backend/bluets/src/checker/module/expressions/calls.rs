@@ -25,7 +25,8 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         for start in 0..tokens.len().saturating_sub(3) {
-            if tokens[start].kind != TokenKind::Identifier && !tokens[start].is("this")
+            if start > 0 && (tokens[start - 1].is(".") || tokens[start - 1].is("?."))
+                || tokens[start].kind != TokenKind::Identifier && !tokens[start].is("this")
                 || !tokens[start + 1].is(".")
                 || tokens[start + 2].kind != TokenKind::Identifier
                 || !tokens[start + 3].is("(")
@@ -214,6 +215,34 @@ impl<'a> ModuleChecker<'a> {
                 }
                 return;
             }
+            Type::Intersection(overloads) if !has_literal_method_tags(&overloads) => {
+                let Some(signatures) = method_overload_signatures(&overloads) else {
+                    return;
+                };
+                match self.select_function_signature(&signatures, &actuals, None) {
+                    Ok(Some(signature)) => (signature.parameters.clone(), true),
+                    Ok(None) => {
+                        self.type_error(
+                            &call_span,
+                            format!(
+                                "no overload of method {} matches the supplied argument types",
+                                call.member.text
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                        return;
+                    }
+                    Err(()) => {
+                        self.type_error(
+                            &call_span,
+                            "method overload selection exceeds the type-expansion limit"
+                                .to_string(),
+                            DiagnosticCode::ResourceLimit,
+                        );
+                        return;
+                    }
+                }
+            }
             Type::Intersection(overloads) => {
                 if !supports_callback_method_receiver(&base, &self.types, self.max_type_expansions)
                 {
@@ -224,7 +253,12 @@ impl<'a> ModuleChecker<'a> {
                     );
                     return;
                 }
-                match select_callback_method_overload(&overloads, &actuals) {
+                match select_callback_method_overload(
+                    &overloads,
+                    &actuals,
+                    &self.types,
+                    self.max_type_expansions,
+                ) {
                     Ok(Type::Function { parameters, .. }) => {
                         let named_callback = matches!(arguments.get(1), Some([callback]) if callback.kind == TokenKind::Identifier);
                         if matches!(actuals.get(1), Some(Type::Any | Type::Unknown))
@@ -309,7 +343,15 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         for (index, actual) in actuals.iter().enumerate() {
-            if selected_overload && index == 0 {
+            if selected_overload
+                && index == 0
+                && parameters
+                    .first()
+                    .and_then(|parameter| parameter.annotation.as_ref())
+                    .is_some_and(|annotation| {
+                        matches!(annotation, Type::Literal(_) | Type::Union(_))
+                    })
+            {
                 // The selector already compared the literal string values,
                 // including equivalent single and double quote spellings.
                 continue;
@@ -318,6 +360,28 @@ impl<'a> ModuleChecker<'a> {
                 .annotation
                 .as_ref()
                 .expect("method signature parameters have annotations");
+            if let Type::Record(fields) = actual {
+                if arguments
+                    .get(index)
+                    .is_some_and(|argument| argument.first().is_some_and(|token| token.is("{")))
+                    && record_argument_fields_fit(
+                        fields,
+                        expected,
+                        &self.types,
+                        self.max_type_expansions,
+                    ) == Some(false)
+                {
+                    self.type_error(
+                        argument_span,
+                        format!(
+                            "argument {} contains a property not declared by the method parameter",
+                            index + 1
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                    continue;
+                }
+            }
             if !self.is_assignable_bounded(actual, expected, argument_span) {
                 self.type_error(
                     argument_span,
@@ -332,5 +396,45 @@ impl<'a> ModuleChecker<'a> {
                 );
             }
         }
+    }
+}
+
+// A fresh object argument gets the usual excess-property check. Referenced
+// structural objects retain their existing assignability rules.
+fn record_argument_fields_fit(
+    fields: &[crate::parser::TypeField],
+    expected: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    limit: usize,
+) -> Option<bool> {
+    if limit == 0 {
+        return None;
+    }
+    match expected {
+        Type::Any | Type::Unknown => Some(true),
+        Type::Record(expected) => Some(fields.iter().all(|field| {
+            expected
+                .iter()
+                .any(|candidate| candidate.name == field.name)
+        })),
+        Type::Named { .. } => {
+            let mut budget = TypeExpansionBudget::new(limit);
+            instantiate_named(
+                expected,
+                aliases,
+                &mut HashSet::new(),
+                &mut budget,
+                "object argument",
+            )
+            .and_then(|expanded| record_argument_fields_fit(fields, &expanded, aliases, limit - 1))
+        }
+        Type::Union(parts) => {
+            let fits = parts
+                .iter()
+                .filter_map(|part| record_argument_fields_fit(fields, part, aliases, limit - 1))
+                .collect::<Vec<_>>();
+            (!fits.is_empty()).then(|| fits.into_iter().any(|fit| fit))
+        }
+        _ => None,
     }
 }

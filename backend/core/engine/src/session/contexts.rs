@@ -180,6 +180,7 @@ pub(super) fn scoped_command(
         | ClientMessage::NativeActivate { .. }
         | ClientMessage::Hover { .. }
         | ClientMessage::NativeHover { .. }
+        | ClientMessage::NativeDrag { .. }
         | ClientMessage::Scroll { .. }
         | ClientMessage::InsertText { .. }
         | ClientMessage::DeleteBackward

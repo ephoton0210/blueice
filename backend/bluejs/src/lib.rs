@@ -101,7 +101,8 @@ pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};
 pub use vm::{
-    HostFileData, HostFileSelectionEvent, HostFunction, HostFunctionError, HostInputFilesReader,
+    HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragItem, HostFileData,
+    HostFileSelectionEvent, HostFunction, HostFunctionError, HostInputFilesReader,
     HostInputFilesUpdate, HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey,
     HostObjectMethod, HostObjectPairMethod, HostValue, RuntimeError, Vm, VmConfig,
     VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,

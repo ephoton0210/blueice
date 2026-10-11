@@ -1072,6 +1072,35 @@ impl BlueJsPageRuntime {
         self.run_click_microtask_checkpoint(tab_id)
     }
 
+    pub fn dispatch_host_drag_event(
+        &mut self,
+        tab_id: u64,
+        family: HostObjectFamily,
+        path: &[HostObjectKey],
+        event: &crate::HostDragEventData,
+    ) -> Result<crate::HostDragEventOutcome, BlueJsPageRuntimeError> {
+        let result = self
+            .realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .dispatch_host_drag_event(family, path, event)
+            .map_err(BlueJsPageRuntimeError::Runtime)?;
+        self.run_click_microtask_checkpoint(tab_id)?;
+        Ok(result)
+    }
+
+    /// Called after core has completed the enclosing drag default action.
+    /// Drag string callbacks are tasks, separate from microtask checkpoints.
+    pub fn flush_drag_tasks(&mut self, tab_id: u64) -> Result<(), BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .run_drag_tasks_bounded(64)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Completes the same bounded checkpoint for a click in a realm with no
     /// event bindings. Pending jobs from its preceding script turn cannot be
     /// deferred past a core default action merely because it has no listener.

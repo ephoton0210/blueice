@@ -183,7 +183,52 @@ pub(crate) enum DatePart {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EventNative {
+    Constructor(u8),
+    Get(&'static str, u8),
+    SetCancellation(bool),
+    PreventDefault,
+    StopPropagation(bool),
+    ComposedPath,
+    InitEvent,
+    InitUIEvent,
+    InitMouseEvent,
+    GetModifierState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DragNative {
+    DataTransfer,
+    DragEvent,
+    IllegalConstructor,
+    Items,
+    Files,
+    Types,
+    DropEffect,
+    EffectAllowed,
+    SetEffect(bool),
+    GetData,
+    SetData,
+    ClearData,
+    ItemsLength,
+    ItemsAdd,
+    ItemsRemove,
+    ItemsClear,
+    ItemKind,
+    ItemType,
+    GetAsFile,
+    GetAsString,
+    EventTransfer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
+    DOMException,
+    DOMExceptionName,
+    DOMExceptionMessage,
+    DOMExceptionCode,
+    WebDrag(DragNative),
+    WebEvent(EventNative),
     Blob,
     File,
     BlobSize,

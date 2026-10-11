@@ -1858,6 +1858,7 @@ mod unix {
                     | ServerMessage::ViewportState(_)
                     | ServerMessage::FileInputState(_)
                     | ServerMessage::NativeActivationCompleted { .. }
+                    | ServerMessage::NativeDragState(_)
                     | ServerMessage::PrintState(_)
                     | ServerMessage::AccessibilityAcknowledged(_)
                     | ServerMessage::AccessibilityRevealed(_)

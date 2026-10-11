@@ -124,7 +124,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
+mod drag_drop;
+pub use drag_drop::{
+    valid_effect_allowed as valid_drag_effect_allowed, valid_format as valid_drag_format,
+    valid_items as valid_drag_items, PageHostDragEvent, PageHostDragKind, PageHostDragOutcome,
+};
+
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V46 adds document-bound drag events and post-default drag string tasks.
 /// V45 adds document-bound native file-selection event dispatch.
 /// V44 adds a bounded private BlueTS rejection-position candidate. V43 adds
 /// bounded child-retained static and deferred payload totals to realm
@@ -132,7 +139,7 @@ use std::io::{self, Read, Write};
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 45;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 48;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -438,6 +445,16 @@ impl PageHostChildStats {
 /// cannot claim the child before its launcher does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageHostRequest {
+    DispatchDrag {
+        tab_id: u64,
+        document_generation: u64,
+        nodes: Vec<u64>,
+        event: PageHostDragEvent,
+    },
+    FlushDragTasks {
+        tab_id: u64,
+        document_generation: u64,
+    },
     /// Core-selected live ancestry for a completed native selection task.
     DispatchFileSelection {
         tab_id: u64,
@@ -817,6 +834,16 @@ pub enum PageHostRequest {
 /// Child replies for [`PageHostRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageHostReply {
+    DragDispatched {
+        tab_id: u64,
+        document_generation: u64,
+        kind: PageHostDragKind,
+        outcome: PageHostDragOutcome,
+    },
+    DragTasksFlushed {
+        tab_id: u64,
+        document_generation: u64,
+    },
     FileSelectionDispatched {
         tab_id: u64,
         document_generation: u64,

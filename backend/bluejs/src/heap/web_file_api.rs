@@ -51,9 +51,10 @@ impl Heap {
         self.alloc(ObjectKind::WebFileList(files), Some(prototype))
     }
 
-    pub(crate) fn web_file_list(&self, object: ObjectId) -> Result<&[ObjectId], HeapError> {
+    pub(crate) fn web_file_list(&self, object: ObjectId) -> Result<Vec<ObjectId>, HeapError> {
         match &self.object(object)?.kind {
-            ObjectKind::WebFileList(files) => Ok(files),
+            ObjectKind::WebFileList(files) => Ok(files.clone()),
+            ObjectKind::WebDragFiles(store) => self.drag_files(*store),
             _ => Err(HeapError::InvalidInternalSlot(object)),
         }
     }

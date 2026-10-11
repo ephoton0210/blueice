@@ -1466,6 +1466,50 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             page.clear_hover();
                         }
                     }
+                    ClientMessage::NativeDrag {
+                        context,
+                        frame_generation,
+                        action,
+                        mouse,
+                    } => {
+                        let source = blueice_ipc::shm::frame_source_id(frame_dir);
+                        let previous_visual = tabs
+                            .get(target)
+                            .map(|page| (page.render(), page.scroll_y()));
+                        let outcome = native_drag::handle_native_drag(
+                            tabs,
+                            target,
+                            source,
+                            &context,
+                            frame_generation,
+                            action,
+                            mouse,
+                            &mut page_script_runtime.javascript_executor,
+                            requests.script,
+                        );
+                        if let Some(page) = tabs.get_mut(target).filter(|page| {
+                            previous_visual.as_ref().is_some_and(|(paint, scroll)| {
+                                paint != &page.render() || *scroll != page.scroll_y()
+                            })
+                        }) {
+                            send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                        }
+                        match outcome {
+                            Ok(mut state) => {
+                                state.frame_generation = tabs
+                                    .get(target)
+                                    .expect("a successful native drag retains its tab")
+                                    .frame_generation();
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::NativeDragState(state),
+                                )?;
+                            }
+                            Err(message) => write_error(stream, reply_tab, request_id, message)?,
+                        }
+                    }
                     ClientMessage::GetRepresentation => match tabs.get_mut(target) {
                         Some(page) => {
                             let mut snapshot =

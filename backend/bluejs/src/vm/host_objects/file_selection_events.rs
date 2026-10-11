@@ -31,14 +31,15 @@ impl HostFileSelectionEvent {
 }
 
 impl Vm {
-    /// Keeps callbacks in the VM and enables only the browser's click and
-    /// file-selection event vocabulary on this exact wrapper family.
+    /// Keeps callbacks in the VM and enables the browser's click, file
+    /// selection, and drag event vocabulary on this exact wrapper family.
     pub fn install_host_file_selection_event_methods(
         &mut self,
         family: HostObjectFamily,
     ) -> Result<(), RuntimeError> {
         self.install_host_click_event_methods(family)?;
         self.host_object_families[family.index as usize].file_events = true;
+        self.host_object_families[family.index as usize].drag_events = true;
         Ok(())
     }
 
@@ -64,7 +65,7 @@ impl Vm {
                 "Invalid file event ancestry".into(),
             ));
         }
-        if self.active_host_click_event.is_some() {
+        if self.active_host_click_event.is_some() || self.active_host_drag_event.is_some() {
             return Err(RuntimeError::TypeError(
                 "An event is already dispatching".into(),
             ));
@@ -122,8 +123,10 @@ impl Vm {
                 default_prevented: false,
                 propagation_stopped: false,
                 immediate_stopped: false,
+                passive: false,
             });
-            for key in path {
+            for (index, capture) in super::listener_phases(path.len()) {
+                let key = &path[index];
                 let callbacks = self
                     .host_click_listeners
                     .iter()
@@ -131,18 +134,16 @@ impl Vm {
                         listener.family_index == family.index
                             && listener.key == *key
                             && listener.selection == Some(kind)
+                            && listener.capture == capture
                     })
-                    .map(|listener| listener.callback)
+                    .cloned()
                     .collect::<Vec<_>>();
-                if callbacks.is_empty() {
-                    continue;
-                }
                 let current = self.mint_host_wrapper(family.index as usize, *key)?;
                 self.heap
                     .set_host_selection_current_target(event, Some(current))?;
                 let mut roots = Vec::with_capacity(callbacks.len());
                 for callback in &callbacks {
-                    match self.heap.root(*callback) {
+                    match self.heap.root(callback.callback) {
                         Ok(root) => roots.push(root),
                         Err(error) => {
                             for root in roots {
@@ -154,20 +155,14 @@ impl Vm {
                 }
                 let outcome = (|| {
                     for callback in callbacks {
-                        if !self.host_click_listeners.iter().any(|listener| {
-                            listener.family_index == family.index
-                                && listener.key == *key
-                                && listener.selection == Some(kind)
-                                && listener.callback == callback
-                        }) {
-                            continue;
+                        if self
+                            .active_host_click_event
+                            .as_ref()
+                            .is_some_and(|event| event.immediate_stopped)
+                        {
+                            break;
                         }
-                        if let Err(error) = self.call_native(
-                            Value::Object(callback),
-                            Value::Object(current),
-                            vec![Value::Object(event)],
-                            false,
-                        ) {
+                        if let Err(error) = self.invoke_host_listener(&callback, current, event) {
                             if !matches!(
                                 error,
                                 RuntimeError::Thrown(_)
@@ -197,6 +192,7 @@ impl Vm {
                     .active_host_click_event
                     .as_ref()
                     .is_some_and(|event| event.propagation_stopped)
+                    && !(index == 0 && capture)
                 {
                     break;
                 }

@@ -70,6 +70,83 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/native-drop-events": body = """
+                    <html><body style="margin:0">
+                    <div id='zone' role='button' aria-label='Script drop zone' style='width:300px;height:60px'>Drop here</div>
+                    <p id='status'>Waiting for drag support</p><p id='result'>No dropped payload</p>
+                    <script>
+                    const zone = document.getElementById('zone');
+                    const status = document.getElementById('status');
+                    const result = document.getElementById('result');
+                    zone.addEventListener('dragenter', function(e) { e.preventDefault(); });
+                    zone.addEventListener('dragover', function(e) {
+                      e.preventDefault();
+                      e.dataTransfer.setData('text/plain', 'Page must not overwrite a protected drag');
+                      status.textContent = 'protected:' + e.dataTransfer.types.join(',') + ':' + e.dataTransfer.getData('text/plain').length + ':' + e.dataTransfer.files.length;
+                    });
+                    zone.addEventListener('drop', function(e) {
+                      e.preventDefault();
+                      result.textContent = 'dropped:' + e.dataTransfer.getData('text/plain') + ':' + (e.target === zone ? 'zone' : 'wrong target');
+                    });
+                    status.textContent = 'Drop script ready';
+                    </script></body></html>
+                    """
+                case "/native-drop-stationary": body = """
+                    <html><body style="margin:0">
+                    <p id='source' aria-label='StationarySourceWord' draggable=true style='height:36px'>StationarySourceWord</p>
+                    <input aria-label='Drop text' value='' style='display:block;width:300px;height:36px'>
+                    <p id='status'>Loading stationary drag</p>
+                    <button id='trace-inspect' aria-label='Inspect stationary trace'>Inspect stationary trace</button>
+                    <p id='trace'>Stationary trace not inspected</p>
+                    <script>
+                    const source = document.getElementById('source');
+                    const status = document.getElementById('status');
+                    let lastX = -1, lastY = -1, stationarySince = 0;
+                    let traceEvents = '', traceCount = 0;
+                    source.addEventListener('dragstart', function(event) { traceEvents += 'start;'; });
+                    source.addEventListener('drag', function(event) {
+                      if (traceCount < 16) {
+                        traceEvents += 'drag:' + event.clientX + ',' + event.clientY + ',' + event.buttons + ',' + event.timeStamp + ';';
+                        traceCount += 1;
+                      }
+                    });
+                    source.addEventListener('dragend', function(event) { traceEvents += 'end;'; });
+                    document.getElementById('trace-inspect').addEventListener('click', function(event) {
+                      document.getElementById('trace').textContent = 'Stationary trace ' + traceEvents;
+                    });
+                    source.addEventListener('drag', function(event) {
+                      if (event.clientX !== lastX || event.clientY !== lastY) {
+                        lastX = event.clientX; lastY = event.clientY; stationarySince = event.timeStamp;
+                      } else if (event.buttons === 1 && event.timeStamp - stationarySince >= 250) {
+                        event.preventDefault(); status.textContent = 'Stationary source cancelled';
+                      }
+                    });
+                    status.textContent = 'Stationary drag ready';
+                    </script></body></html>
+                    """
+                case "/native-drop-cancel": body = """
+                    <html><body style="margin:0">
+                    <p id='source' aria-label='CancelSourceWord' draggable=true style='height:36px'>CancelSourceWord</p>
+                    <input aria-label='Drop text' value='' style='display:block;width:300px;height:36px'>
+                    <p id='status'>Loading source cancellation</p>
+                    <script>
+                    const source = document.getElementById('source');
+                    const status = document.getElementById('status');
+                    source.addEventListener('drag', function(event) {
+                      event.preventDefault(); status.textContent = 'Source cancelled';
+                    });
+                    status.textContent = 'Source cancellation ready';
+                    </script></body></html>
+                    """
+                case "/native-drop": body = """
+                    <html><body style="margin:0">
+                    <p aria-label='DragSourceWord' style='height:36px'>DragSourceWord</p>
+                    <input id='drop' aria-label='Drop text' value='' style='display:block;width:300px;height:36px'>
+                    <input aria-label='Disabled drop' value='disabled retained' disabled style='display:block;width:300px;height:36px'>
+                    <input aria-label='Inert drop' value='inert retained' inert style='display:block;width:300px;height:36px'>
+                    <input aria-label='Read only drop' value='read only retained' readonly style='display:block;width:300px;height:36px'>
+                    </body></html>
+                    """
                 case "/native-hover": body = """
                     <html><body style="margin:0">
                     <a href='/native-hover-next' aria-label='First hover link' style='display:block;width:240px;height:40px'>First hover link</a>

@@ -95,9 +95,10 @@ impl Rig {
             &built_dir.join("blueice-core"),
             &dir.join("blueice-core-real"),
         );
+        // Readers poll during cutover: publish a whole count without a truncation window.
         let script = format!(
             "#!/bin/sh\nDIR=\"$(dirname \"$0\")\"\nREAL=\"$DIR/blueice-core-real\"\n\
-             n=$(cat \"$DIR/count\" 2>/dev/null || echo 0)\nn=$((n+1))\necho $n > \"$DIR/count\"\n{core_script}\n"
+             n=$(cat \"$DIR/count\" 2>/dev/null || echo 0)\nn=$((n+1))\necho $n > \"$DIR/count.$$\"\nmv \"$DIR/count.$$\" \"$DIR/count\"\n{core_script}\n"
         );
         let core = dir.join("blueice-core");
         std::fs::write(&core, script).unwrap();

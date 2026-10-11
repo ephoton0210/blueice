@@ -94,6 +94,18 @@ impl Vm {
         };
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::DOMException
+            | NativeFunction::DOMExceptionName
+            | NativeFunction::DOMExceptionMessage
+            | NativeFunction::DOMExceptionCode => {
+                self.web_dom_exception_call(function, &receiver, &args, construct)
+            }
+            NativeFunction::WebDrag(native) => {
+                self.web_drag_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::WebEvent(native) => {
+                self.web_event_call(native, &receiver, &args, construct)
+            }
             NativeFunction::FileListIteratorNext => self.web_file_list_iterator_next(&receiver),
             NativeFunction::HostSelectionCurrentTarget => {
                 self.host_selection_current_target(&receiver)

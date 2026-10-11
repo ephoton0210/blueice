@@ -268,6 +268,13 @@ pub enum ClientMessage {
         frame_generation: u64,
         point: Option<input::PointerPoint>,
     },
+    NativeDrag {
+        context: input::PointerContext,
+        frame_generation: u64,
+        action: input::NativeDragAction,
+        #[serde(default)]
+        mouse: Option<input::NativeDragMouse>,
+    },
     /// Scroll the viewport by this many CSS pixels (positive = down).
     Scroll {
         delta_y: f64,
@@ -479,6 +486,7 @@ pub enum ServerMessage {
     },
     /// Native text state for one live document and render generation.
     TextInputState(input::TextInputState),
+    NativeDragState(input::NativeDragState),
     FindState(find::FindState),
     ContextMenu(context_menu::ContextMenuState),
     /// Published with frames for clients that explicitly configured a viewport.

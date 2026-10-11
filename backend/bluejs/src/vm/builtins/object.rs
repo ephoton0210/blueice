@@ -305,6 +305,9 @@ impl Vm {
         &mut self,
         object: ObjectId,
     ) -> Result<bool, RuntimeError> {
+        if self.heap.drag_index_count(object)?.is_some() {
+            return Ok(false);
+        }
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_prevent_extensions(object);
         }
@@ -843,6 +846,9 @@ impl Vm {
                 NativeFunction::Function
                     | NativeFunction::Blob
                     | NativeFunction::File
+                    | NativeFunction::DOMException
+                    | NativeFunction::WebDrag(crate::native::DragNative::DataTransfer | crate::native::DragNative::DragEvent)
+                    | NativeFunction::WebEvent(crate::native::EventNative::Constructor(_))
                     | NativeFunction::String
                     | NativeFunction::Array
                     | NativeFunction::Date

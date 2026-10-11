@@ -993,6 +993,83 @@ impl ModuleChecker<'_> {
             return;
         };
         if !self.is_bound_class_constructor_value(&call.callee.text, scope) {
+            let Some(constructor) = scope.get(&call.callee.text) else {
+                if self.require_declared_global_calls {
+                    self.type_error(
+                        span,
+                        format!(
+                            "constructor {} is not declared by this page profile",
+                            call.callee.text
+                        ),
+                        DiagnosticCode::UnknownName,
+                    );
+                }
+                return;
+            };
+            if matches!(constructor, Type::Any | Type::Unknown) {
+                return;
+            }
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            let member = property_type(
+                constructor,
+                "new",
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            );
+            let signature = match member {
+                PropertyType::Found {
+                    value: Type::Function { parameters, result },
+                    ..
+                } => FunctionSignature {
+                    parameters,
+                    type_parameters: Vec::new(),
+                    return_type: *result,
+                },
+                PropertyType::Exhausted => {
+                    self.type_error(
+                        span,
+                        "host constructor lookup exceeds the type-expansion limit".to_string(),
+                        DiagnosticCode::ResourceLimit,
+                    );
+                    return;
+                }
+                _ => {
+                    self.type_error(
+                        span,
+                        format!("value {} has no construct signature", call.callee.text),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                    return;
+                }
+            };
+            let Some(arguments) = split_call_arguments(call.arguments) else {
+                return;
+            };
+            let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+                self.type_error(
+                    span,
+                    "host constructor spread requires a fixed-length tuple".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return;
+            };
+            match self.select_function_signature(&[signature], &actuals, None) {
+                Ok(Some(_)) => {}
+                Ok(None) => self.type_error(
+                    span,
+                    format!(
+                        "no construct signature of {} accepts the supplied argument types",
+                        call.callee.text
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                ),
+                Err(()) => self.type_error(
+                    span,
+                    "host constructor selection exceeds the type-expansion limit".to_string(),
+                    DiagnosticCode::ResourceLimit,
+                ),
+            }
             return;
         }
         let Some(binding) = self.class_constructors.get(&call.callee.text) else {
@@ -1067,7 +1144,6 @@ impl ModuleChecker<'_> {
             if !tokens[start].is("new")
                 || tokens[start + 1].kind != TokenKind::Identifier
                 || !tokens[start + 2].is("(")
-                || !self.is_bound_class_constructor_value(&tokens[start + 1].text, scope)
             {
                 continue;
             }

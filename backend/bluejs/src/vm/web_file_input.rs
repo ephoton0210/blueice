@@ -14,7 +14,7 @@ pub struct HostFileData {
     pub bytes: Vec<u8>,
 }
 impl HostFileData {
-    fn valid(&self) -> bool {
+    pub(super) fn valid(&self) -> bool {
         !self.name.is_empty()
             && self.name.len() <= 255
             && !matches!(self.name.as_str(), "." | "..")

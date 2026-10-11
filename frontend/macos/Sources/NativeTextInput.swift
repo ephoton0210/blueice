@@ -204,9 +204,26 @@ struct DocumentSelectionState: Decodable, Sendable {
     let active: Bool
     let selection: TextRange
     let selected_text: String?
+    let selection_rects: [PageNode.Bounds]
     let limited: Bool
+    private enum CodingKeys: String, CodingKey { case version, text_length, active, selection, selected_text, selection_rects, limited }
+    init(from decoder: Decoder) throws {
+        let value = try decoder.container(keyedBy: CodingKeys.self)
+        version = try value.decode(UInt32.self,forKey: .version)
+        text_length = try value.decode(UInt32.self,forKey: .text_length)
+        active = try value.decode(Bool.self,forKey: .active)
+        selection = try value.decode(TextRange.self,forKey: .selection)
+        selected_text = try value.decodeIfPresent(String.self,forKey: .selected_text)
+        selection_rects = try value.decodeIfPresent([PageNode.Bounds].self,forKey: .selection_rects) ?? []
+        limited = try value.decode(Bool.self,forKey: .limited)
+    }
     var valid: Bool {
         version == 1 && text_length <= 2_097_152 && selection.valid(length: text_length)
+            && selection_rects.count <= 4096 && (active || selection_rects.isEmpty)
+            && selection_rects.allSatisfy { rect in
+                [rect.x,rect.y,rect.width,rect.height].allSatisfy { $0.isFinite && abs($0) <= 1e9 }
+                    && rect.width >= 0 && rect.height >= 0
+            }
             && (active ? selected_text?.utf16.count == Int(selection.length)
                 : selected_text == nil && selection.location == 0 && selection.length == 0)
     }

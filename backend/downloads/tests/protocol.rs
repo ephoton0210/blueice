@@ -1338,19 +1338,34 @@ fn removing_right_after_completion_never_races_the_job_cleanup() {
 #[test]
 fn removing_a_failed_transfer_also_deletes_its_leftover_partial_files() {
     let rig = Rig::with(|c| c.options.max_retries = 1);
-    rig.server.serve("/f.bin", Resource::new(body(MIB)));
+    // The probe only needs response headers. Close every response body before
+    // its first byte, so segment retries fail without racing a live download.
+    rig.server.serve(
+        "/f.bin",
+        Resource {
+            cut_body_after: Some(0),
+            cut_times: usize::MAX,
+            ..Resource::new(body(MIB))
+        },
+    );
     let mut client = rig.client();
     let id = client.start(&rig.url("/f.bin"), None, false).unwrap().id;
-    // Let the probe through, then make every segment request fail.
-    wait_for(&mut client, id, "the probe to have happened", |_| {
-        !rig.server.requests().is_empty()
-    });
-    rig.server
-        .update("/f.bin", |r| r.fail_statuses = vec![503; 500]);
     let failed = wait_state(&mut client, id, TransferState::Failed);
+    assert_eq!(failed.total_bytes, Some(MIB as u64));
+    assert_eq!(failed.completed_bytes, 0);
+    assert!(rig
+        .server
+        .requests()
+        .iter()
+        .any(|request| { request.status == 206 && request.range.as_deref() != Some("bytes=0-0") }));
     let dest = PathBuf::from(&failed.dest_path);
+    assert!(part_path(&dest).exists() && sidecar_path(&dest).exists());
+    assert!(!dest.exists());
     client.remove(id).unwrap();
+    assert_eq!(remote_code(client.get(id)), ErrorCode::NotFound);
+    assert!(client.list(None).unwrap().is_empty());
     assert!(!part_path(&dest).exists() && !sidecar_path(&dest).exists());
+    assert!(!dest.exists());
 }
 
 #[test]

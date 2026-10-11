@@ -180,5 +180,6 @@ fn a_function_that_never_reads_arguments_allocates_nothing_per_call() {
         vm.execute(&compile(&parse(source).unwrap()).unwrap()),
         Ok(Value::Number(6000.0))
     );
-    assert!(vm.heap().stats().minor_collections > 20);
+    let stats = vm.heap().stats();
+    assert!(stats.minor_collections > 20, "{stats:?}");
 }

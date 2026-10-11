@@ -14,6 +14,122 @@ import Darwin
 @MainActor
 final class BrowserUITests: XCTestCase {
     private var printPanel: XCUIElement { app.sheets.containing(.menuButton,identifier: "PDF").firstMatch }
+    func testNativeOSStationaryDragDispatchesSourceCancellationBeforeRelease() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let started = Date(); launch()
+        let main = app.windows["browser-window"]
+        positionWindowForUnobstructedSheet(main)
+        let url = fixture.origin + "/native-drop-stationary"
+        enter(url); waitValue(main.textFields["address"],url)
+        let source = main.staticTexts["StationarySourceWord"], target = main.textFields["Drop text"]
+        XCTAssertTrue(main.staticTexts["Stationary drag ready"].waitForExistence(timeout: 15))
+        XCTAssertTrue(source.exists); XCTAssertTrue(target.exists)
+        let owned = try ownedHoverRuntime(started: started)
+        source.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24,dy: 10)).click(forDuration: 0.4,
+            thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.5)),
+            withVelocity: .fast,thenHoldForDuration: 1.2)
+        let cancelled = main.staticTexts["Stationary source cancelled"].waitForExistence(timeout: 10)
+        main.buttons["Inspect stationary trace"].click()
+        let diagnosticData = try AutomaticUpdateFixture().inspectRepresentation(launcher: owned.launcher,
+            application: owned.application,context: 1,window: 1,tab: 1)
+        let diagnosticPage = try JSONSerialization.jsonObject(with: diagnosticData)
+        let diagnostic = try JSONSerialization.data(withJSONObject: ["cancelled": cancelled, "page": diagnosticPage],options: [.sortedKeys])
+        print("STATIONARY_DRAG_OBSERVATION=" + String(decoding: diagnostic,as: UTF8.self))
+        let image = XCTAttachment(screenshot: main.screenshot())
+        image.name = "macos-stationary-drag-diagnostic"; image.lifetime = .keepAlways; add(image)
+        XCTAssertTrue(cancelled)
+        waitValue(target, "")
+        let data = try AutomaticUpdateFixture().inspectRepresentation(launcher: owned.launcher,
+            application: owned.application,context: 1,window: 1,tab: 1)
+        let page = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(page["url"] as? String,url)
+        let nodes = try XCTUnwrap(page["nodes"] as? [[String: Any]])
+        XCTAssertTrue(nodes.contains { $0["name"] as? String == "Stationary source cancelled" })
+        let destination = try XCTUnwrap(nodes.first { $0["name"] as? String == "Drop text" })
+        XCTAssertEqual((destination["state"] as? [String: Any])?["value"] as? String, "")
+        XCTAssertEqual(fixture.requests,["/native-drop-stationary"])
+    }
+
+    func testNativeOSPageDragCancellationKeepsTheActualCoreDestinationEmpty() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let started = Date(); launch()
+        let main = app.windows["browser-window"]
+        positionWindowForUnobstructedSheet(main)
+        let url = fixture.origin + "/native-drop-cancel"
+        enter(url); waitValue(main.textFields["address"],url)
+        let source = main.staticTexts["CancelSourceWord"], target = main.textFields["Drop text"]
+        XCTAssertTrue(main.staticTexts["Source cancellation ready"].waitForExistence(timeout: 15))
+        XCTAssertTrue(source.exists); XCTAssertTrue(target.exists)
+        let owned = try ownedHoverRuntime(started: started)
+        source.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24,dy: 10)).click(forDuration: 0.4,
+            thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.5)))
+        XCTAssertTrue(main.staticTexts["Source cancelled"].waitForExistence(timeout: 10))
+        waitValue(target, "")
+        let data = try AutomaticUpdateFixture().inspectRepresentation(launcher: owned.launcher,
+            application: owned.application,context: 1,window: 1,tab: 1)
+        let page = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(page["url"] as? String,url)
+        let nodes = try XCTUnwrap(page["nodes"] as? [[String: Any]])
+        XCTAssertTrue(nodes.contains { $0["name"] as? String == "Source cancelled" })
+        let destination = try XCTUnwrap(nodes.first { $0["name"] as? String == "Drop text" })
+        XCTAssertEqual((destination["state"] as? [String: Any])?["value"] as? String, "")
+        XCTAssertEqual(fixture.requests,["/native-drop-cancel"])
+    }
+
+    func testNativeOSDocumentTextDragCopiesToTheCoreControlAndRefusesReadOnlyDrop() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        let started = Date(); launch()
+        let main = app.windows["browser-window"]
+        positionWindowForUnobstructedSheet(main)
+        let url = fixture.origin + "/native-drop"
+        enter(url); waitValue(main.textFields["address"],url)
+        let source = main.staticTexts["DragSourceWord"]
+        let target = main.textFields["Drop text"], readOnly = main.textFields["Read only drop"]
+        XCTAssertTrue(source.waitForExistence(timeout: 15))
+        XCTAssertTrue(target.waitForExistence(timeout: 15)); XCTAssertTrue(readOnly.exists)
+        let owned = try ownedHoverRuntime(started: started)
+        func assertCoreValue(_ name: String, _ expected: String) {
+            var lastError: Error?
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                do {
+                    let data = try AutomaticUpdateFixture().inspectRepresentation(launcher: owned.launcher,
+                        application: owned.application,context: 1,window: 1,tab: 1)
+                    guard let page = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          page["url"] as? String == url, let nodes = page["nodes"] as? [[String: Any]],
+                          let node = nodes.first(where: { $0["name"] as? String == name }),
+                          let state = node["state"] as? [String: Any] else { return false }
+                    return state["value"] as? String == expected
+                } catch { lastError = error; return false }
+            },object: main)
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation],timeout: 10),.completed,
+                "Actual owned core value must be \(expected); observer error: \(String(describing: lastError))")
+        }
+        // A paragraph's AX frame includes its empty width. Focus its visible
+        // text and use the real document Select All/Copy commands. This fixture's
+        // only public document text is the source word; control values stay out.
+        let origin = source.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24,dy: 10))
+        func selectSource() {
+            origin.click()
+            app.typeKey("a",modifierFlags: .command)
+            NSPasteboard.general.clearContents()
+            app.typeKey("c",modifierFlags: .command)
+            let selected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                NSPasteboard.general.string(forType: .string) == "DragSourceWord"
+            },object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [selected],timeout: 5),.completed,
+                "The actual Core word selection must exist before an OS drag begins")
+        }
+        selectSource()
+        origin.click(forDuration: 0.4,thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.5)))
+        assertCoreValue("Drop text", "DragSourceWord")
+        selectSource()
+        origin.click(forDuration: 0.4,thenDragTo: readOnly.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.5)))
+        assertCoreValue("Read only drop", "read only retained")
+        assertCoreValue("Drop text", "DragSourceWord")
+        XCTAssertEqual(fixture.requests,["/native-drop"])
+    }
+
     func testNativeOSHoverLeavesOnChromeTabSelectionAndWindowFocusChange() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         let started = Date(); launch()
@@ -1342,7 +1458,7 @@ final class BrowserUITests: XCTestCase {
         app.buttons["downloads-close"].click(); waitValue(editor,"Keep this document")
         waitValue(app.textFields["address"],fixture.origin + "/response-links")
         let requests = fixture.requests
-        app.typeKey("q",modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        quitNormallyForRelaunch()
         launch(); app.buttons["downloads"].click(); waitDownload(1,"Completed"); waitDownload(3,"Completed")
         XCTAssertEqual(fixture.requests,requests,"Relaunch must not replay original requests")
     }
@@ -1416,8 +1532,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(try PropertyListSerialization.propertyList(from: origins,format: nil) as? [String],[fixture.origin + "/notes.txt"])
         let attachment = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
         attachment.name = "macos-native-download-quarantine"; attachment.lifetime = .keepAlways; add(attachment)
-        app.buttons["downloads-close"].click(); app.typeKey("q",modifierFlags: .command)
-        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        app.buttons["downloads-close"].click(); quitNormallyForRelaunch()
         launch(); app.buttons["downloads"].click(); waitDownload(1,"Completed")
         XCTAssertTrue(app.staticTexts["download-quarantine-1"].waitForExistence(timeout: 10))
         app.buttons["download-remove-1"].click()
@@ -1473,8 +1588,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(finder.descendants(matching: .any).matching(NSPredicate(format: "label == %@",oldName)).firstMatch.waitForExistence(timeout: 15),finder.debugDescription)
         app.activate()
         let requests = fixture.requests.count
-        app.buttons["downloads-close"].click(); app.typeKey("q",modifierFlags: .command)
-        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        app.buttons["downloads-close"].click(); quitNormallyForRelaunch()
         launch(); app.buttons["downloads"].click(); waitDownload(2,"Paused")
         XCTAssertEqual(fixture.requests.count,requests)
         waitDownload(1,"Completed")
@@ -1580,8 +1694,7 @@ final class BrowserUITests: XCTestCase {
         attachment.name = "macos-native-sftp-files"; attachment.lifetime = .keepAlways; add(attachment)
         app.buttons["download-sftp-close"].click(); waitDownload(1,"Paused")
         let requestCount = fixture.requests.count
-        app.buttons["downloads-close"].click(); app.typeKey("q",modifierFlags: .command)
-        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        app.buttons["downloads-close"].click(); quitNormallyForRelaunch()
         launch(); app.buttons["downloads"].click(); waitDownload(1,"Paused")
         XCTAssertEqual(fixture.requests.count,requestCount,"Opening the stored catalog must not resume a transfer")
         app.buttons["download-sftp-files"].click()
@@ -1671,8 +1784,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(SecItemCopyMatching(metadataQuery as CFDictionary,nil),errSecItemNotFound)
         ownedCredential = false
         app.buttons["download-credentials-close"].click()
-        app.buttons["downloads-close"].click(); app.typeKey("q",modifierFlags: .command)
-        XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        app.buttons["downloads-close"].click(); quitNormallyForRelaunch()
     }
 
     func testNativeSFTPFilesTraditionalChineseChooserAndDefaults() throws {
@@ -1784,7 +1896,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(app.buttons["download-credential-save"].label,"儲存至鑰匙圈")
         saveDownloadCredential("fixture-localized-password",result: "已將憑證儲存至 macOS 鑰匙圈。")
         app.buttons["download-credentials-close"].click(); app.buttons["downloads-close"].click()
-        app.typeKey("q",modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        quitNormallyForRelaunch()
         XCTAssertFalse(String(describing: storedPreferences()).contains("fixture-localized-password"))
         launch(); openDownloadCredentials(); reviewDownloadAccount(url)
         XCTAssertFalse(app.buttons["download-credential-save"].isEnabled)
@@ -1999,7 +2111,7 @@ final class BrowserUITests: XCTestCase {
         let archive = try waitSessionArchive(windows: 3, tabs: 4)
         XCTAssertFalse(String(decoding: archive, as: UTF8.self).contains("unsaved-form-content"))
         let originalFrame = app.windows["browser-window"].frame
-        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        quitNormallyForRelaunch()
         app.launch()
         let root = app.windows["browser-window-2"]
         let work = app.windows["browser-window-4"]
@@ -2034,7 +2146,7 @@ final class BrowserUITests: XCTestCase {
         let archive = try waitSessionArchive(windows: 1, tabs: 1)
         XCTAssertFalse(String(decoding: archive, as: UTF8.self).contains("private-post-session-value"))
         XCTAssertTrue(String(decoding: archive, as: UTF8.self).contains("\"was_post\":true"))
-        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15)); app.launch()
+        quitNormallyForRelaunch(); app.launch()
         let restored = app.windows["browser-window-2"]
         XCTAssertTrue(restored.waitForExistence(timeout: 20)); waitValue(restored.textFields["address"], fixture.origin + "/posted?kept=1")
         waitPageContent("POST page could not be restored")
@@ -2047,7 +2159,7 @@ final class BrowserUITests: XCTestCase {
         launch(); enter("about:settings"); waitValue(app.textFields["address"], "about:settings")
         let settings = preferenceWindow(); settings.checkBoxes["session-remember"].click()
         settings.buttons[XCUIIdentifierCloseWindow].click(); _ = try waitSessionArchive(windows: 1, tabs: 1)
-        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        quitNormallyForRelaunch()
         launch(); app.menuBars.menuBarItems["File"].click(); app.menuItems["Restore Last Session"].click()
         let restored = app.windows["browser-window-2"]
         XCTAssertTrue(restored.waitForExistence(timeout: 15)); waitValue(restored.textFields["address"], "about:settings")
@@ -2055,15 +2167,13 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == 0 OR value == '0'"), object: panel.checkBoxes["session-remember"])], timeout: 10), .completed)
         XCTAssertFalse(panel.buttons["session-restore"].isEnabled)
         XCTAssertFalse(panel.checkBoxes["session-reopen"].isEnabled)
-        panel.buttons[XCUIIdentifierCloseWindow].click(); app.typeKey("q", modifierFlags: .command)
-        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        panel.buttons[XCUIIdentifierCloseWindow].click(); quitNormallyForRelaunch()
         // cfprefsd owns the plist flush; verify durability after normal exit.
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in self.storedSessionArchive() == nil }, object: nil)], timeout: 30), .completed)
         launch(); let forgotten = preferenceWindow()
         XCTAssertTrue(NSPredicate(format: "value == 0 OR value == '0'").evaluate(with: forgotten.checkBoxes["session-remember"]))
         XCTAssertFalse(forgotten.buttons["session-restore"].isEnabled)
-        forgotten.buttons[XCUIIdentifierCloseWindow].click(); app.typeKey("q", modifierFlags: .command)
-        XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        forgotten.buttons[XCUIIdentifierCloseWindow].click(); quitNormallyForRelaunch()
         app.launchArguments += ["-browser.session.archive", "malformed-session-fixture"]
         launch(); let recovery = preferenceWindow()
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS 'unavailable' OR value CONTAINS 'unavailable'"), object: recovery.staticTexts["session-status"])], timeout: 10), .completed)
@@ -2077,7 +2187,7 @@ final class BrowserUITests: XCTestCase {
         launch(); enter(fixture.origin + "/session-change"); waitPageContent("Initially reviewed page")
         let settings = preferenceWindow(); try enableSessionRestoration(settings, windows: 1, tabs: 1)
         settings.buttons[XCUIIdentifierCloseWindow].click(); _ = try waitSessionArchive(windows: 1, tabs: 1)
-        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15)); app.launch()
+        quitNormallyForRelaunch(); app.launch()
         let window = app.windows["browser-window-2"]
         XCTAssertTrue(window.waitForExistence(timeout: 20))
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS 'Navigation blocked' OR value CONTAINS 'Navigation blocked'"), object: window.staticTexts["status"])], timeout: 15), .completed)
@@ -2345,7 +2455,7 @@ final class BrowserUITests: XCTestCase {
         }
         XCTAssertEqual(urls, [fixture.origin + "/first", "about:credits", "about:settings"])
         XCTAssertEqual(windows.first?["selected"] as? Int, 0)
-        app.typeKey("q", modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning, timeout: 15))
+        quitNormallyForRelaunch()
         app.launch()
         let reopened = app.windows["browser-window-2"]
         XCTAssertTrue(reopened.waitForExistence(timeout: 15))
@@ -2884,6 +2994,70 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(window.waitForExistence(timeout: 10), app.debugDescription)
         return window
     }
+    private func quitNormallyForRelaunch(timeout: TimeInterval = 15) {
+        // Closing Settings can leave the cursor over a background window's
+        // green control after Cmd-Q, opening the macOS tiling menu on relaunch.
+        app.menuBars.menuBarItems["BlueIce"].hover()
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: timeout))
+    }
+    func testNormalQuitRelaunchKeepsSettingsUsableAboveAnOwnedFinderWindow() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("bi-quit-" + UUID().uuidString.prefix(8))
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700])
+        let file = folder.appendingPathComponent("owned-relaunch-fixture.txt")
+        try Data("Owned BlueIce UI fixture".utf8).write(to: file)
+        let finder = XCUIApplication(bundleIdentifier: "com.apple.finder")
+        let previousCount = finder.windows.count
+        let background = finder.windows[folder.lastPathComponent]
+        var ownsWindow = false
+        defer {
+            if ownsWindow, background.exists {
+                finder.activate(); finder.typeKey(.escape, modifierFlags: [])
+                background.buttons[XCUIIdentifierCloseWindow].click()
+                XCTAssertFalse(background.waitForExistence(timeout: 1), "The owned Finder fixture must close")
+            }
+            if app.state != .notRunning { app.activate() }
+            try? FileManager.default.removeItem(at: folder)
+            print("OWNED_RELAUNCH_FINDER_FIXTURE_CLEANUP=" + String(!background.exists && !FileManager.default.fileExists(atPath: folder.path)))
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([file])
+        XCTAssertTrue(background.waitForExistence(timeout: 15), finder.debugDescription)
+        XCTAssertEqual(finder.windows.count, previousCount + 1,
+            "Only a newly opened fixture window may be moved or closed")
+        ownsWindow = true
+        print("OWNED_RELAUNCH_FINDER_FIXTURE_STARTED=" + folder.path)
+        launch()
+        let settings = preferenceWindow()
+        let close = settings.buttons[XCUIIdentifierCloseWindow].frame
+        finder.activate()
+        let zoom = background.buttons[XCUIIdentifierFullScreenWindow].exists
+            ? background.buttons[XCUIIdentifierFullScreenWindow] : background.buttons[XCUIIdentifierZoomWindow]
+        XCTAssertTrue(zoom.exists)
+        let zoomFrame = zoom.frame
+        let origin = background.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 350, dy: 12))
+        origin.click(forDuration: 0.2, thenDragTo: origin.withOffset(
+            CGVector(dx: close.midX - zoomFrame.midX, dy: close.midY - zoomFrame.midY)))
+        XCTAssertEqual(zoom.frame.midX, close.midX, accuracy: 3)
+        XCTAssertEqual(zoom.frame.midY, close.midY, accuracy: 3)
+        app.activate()
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        quitNormallyForRelaunch()
+        // Verify the immediate handoff without an extra hover or delay.
+        let pointer = try XCTUnwrap(CGEvent(source: nil)?.location)
+        XCTAssertFalse(zoom.frame.contains(pointer), "Normal quit must park the pointer away from background window controls")
+        let observation: [String: Any] = ["pointer_x": pointer.x, "pointer_y": pointer.y,
+            "green_x": zoom.frame.midX, "green_y": zoom.frame.midY]
+        let observationData = try JSONSerialization.data(withJSONObject: observation, options: [.sortedKeys])
+        print("QUIT_RELAUNCH_CURSOR_OBSERVATION=" + String(decoding: observationData, as: UTF8.self))
+        launch()
+        let restored = preferenceWindow()
+        XCTAssertTrue(restored.popUpButtons["search-provider"].isHittable)
+        XCTAssertTrue(restored.checkBoxes["session-remember"].isHittable)
+        let image = XCTAttachment(screenshot: app.windows["browser-window"].screenshot())
+        image.name = "macos-quit-relaunch-owned-finder"; image.lifetime = .keepAlways; add(image)
+        restored.buttons[XCUIIdentifierCloseWindow].click()
+    }
     private func configureSearch(_ endpoint: String, parameter: String = "q") {
         let window = preferenceWindow()
         choosePreference(window,"search-provider","Custom")
@@ -2929,7 +3103,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertEqual(fixture.requests,[])
         second.buttons["go"].click(); waitValue(second.textFields["address"],fixture.origin + "/search?term=example.test")
         XCTAssertEqual(fixture.requests,["/search?term=example.test"])
-        app.typeKey("q",modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        quitNormallyForRelaunch()
         launch()
         let settings = preferenceWindow()
         XCTAssertEqual(settings.popUpButtons["search-provider"].value as? String,"Custom")
@@ -2997,7 +3171,7 @@ final class BrowserUITests: XCTestCase {
         // Inspect durable user-visible state in a fresh process. A runner's
         // cross-process UserDefaults cache is not an acceptance boundary.
         settings.buttons[XCUIIdentifierCloseWindow].click()
-        app.typeKey("q",modifierFlags: .command); XCTAssertTrue(app.wait(for: .notRunning,timeout: 15))
+        quitNormallyForRelaunch()
         launch()
         let restored = preferenceWindow()
         XCTAssertEqual(restored.popUpButtons["search-provider"].value as? String,"自訂")
@@ -3535,9 +3709,20 @@ final class BrowserUITests: XCTestCase {
         let copied = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in NSPasteboard.general.string(forType: .string) == expected }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [copied], timeout: 15), .completed)
         guard NSPasteboard.general.string(forType: .string) == expected else { return }
+        // Start a fresh range on text: pressing an existing selection or a
+        // link is reserved for native OS dragging.
+        let collapsedClipboard = "document-collapsed-selection-sentinel"
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(collapsedClipboard, forType: .string)
+        first.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24, dy: 10)).click()
+        app.typeKey("c", modifierFlags: .command)
+        let collapsed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            NSPasteboard.general.string(forType: .string) == collapsedClipboard
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [collapsed], timeout: 15), .completed,
+            "Clicking document text should collapse Select All before starting a new range")
         let link = page.links["selectable link"]
-        link.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).press(forDuration: 0.1,
-            thenDragTo: first.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)))
+        first.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).press(forDuration: 0.1,
+            thenDragTo: link.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)))
         app.typeKey("c", modifierFlags: .command)
         let dragged = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard let text = NSPasteboard.general.string(forType: .string) else { return false }
@@ -4211,8 +4396,7 @@ final class BrowserUITests: XCTestCase {
         launch()
         let fixture = try AutomaticUpdateFixture()
         automaticUpdateFixture = fixture
-        app.typeKey("q", modifierFlags: .command)
-        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
+        quitNormallyForRelaunch(timeout: 10)
         app.launchArguments += ["--launcher-exe", fixture.launcher.path]
         app.launch()
         XCTAssertTrue(app.textFields["address"].waitForExistence(timeout: 15))

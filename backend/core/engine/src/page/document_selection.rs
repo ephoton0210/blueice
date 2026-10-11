@@ -467,12 +467,45 @@ impl Page {
     pub(super) fn document_selection_active(&self) -> bool {
         self.document_selection.active
     }
+
+    pub(super) fn document_drag_text_at(
+        &self,
+        point: blueice_ipc::input::PointerPoint,
+    ) -> Option<String> {
+        let selection = &self.document_selection;
+        if !selection.active {
+            return None;
+        }
+        let range = range(selection.anchor, selection.cursor);
+        let rects = selection.index.rects(range).0;
+        let y = point.y + self.scroll_y;
+        if !rects.iter().any(|rect| {
+            point.x >= rect.x
+                && point.x <= rect.x + rect.width
+                && y >= rect.y
+                && y <= rect.y + rect.height
+        }) {
+            return None;
+        }
+        selection
+            .index
+            .substring(range)
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+    }
     pub(super) fn document_text_is_public(&self, node: NodeId) -> bool {
         public_text(self, node)
     }
     pub(super) fn document_selection_state(&self) -> DocumentSelectionState {
         let selection = &self.document_selection;
         let range = range(selection.anchor, selection.cursor);
+        let (mut selection_rects, geometry_limited) = if selection.active {
+            selection.index.rects(range)
+        } else {
+            (Vec::new(), false)
+        };
+        let shell_geometry_limited = selection_rects.len() > 4096;
+        selection_rects.truncate(4096);
         DocumentSelectionState {
             version: 1,
             text_length: selection.index.length,
@@ -485,7 +518,8 @@ impl Page {
                     .unwrap_or_default()
                     .to_string()
             }),
-            limited: selection.index.limited || selection.index.rects(range).1,
+            selection_rects,
+            limited: selection.index.limited || geometry_limited || shell_geometry_limited,
         }
     }
     pub(super) fn paint_document_selection(&self, frame: &mut Frame) {

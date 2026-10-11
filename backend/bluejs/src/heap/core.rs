@@ -908,7 +908,10 @@ impl Heap {
     }
 
     pub(crate) fn is_error(&self, object: ObjectId) -> Result<bool, HeapError> {
-        Ok(matches!(self.object(object)?.kind, ObjectKind::Error))
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::Error | ObjectKind::WebDOMException { .. }
+        ))
     }
 
     pub(crate) fn is_date(&self, object: ObjectId) -> Result<bool, HeapError> {
