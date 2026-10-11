@@ -52,6 +52,14 @@ const BODIES: &[(&str, &str)] = &[
         "nested elements inside expressions",
         "const a: any = <div>{<i />}{<span n={1}>{<i />}</span>}</div>;\na;",
     ),
+    (
+        "explicit and inferred generic component tags",
+        "function Item<T>(props: { n: T }): JSX.Element { return { n: 1 }; }\nconst a: any = <Item<number> n={2} />;\nconst b: any = <Item n={4} />;\na + b;",
+    ),
+    (
+        "defaulted generic component tags",
+        "function Item<T = number>(props: { n?: T }): JSX.Element { return { n: 1 }; }\nconst a: any = <Item />;\na;",
+    ),
 ];
 
 fn options() -> CompilerOptions {

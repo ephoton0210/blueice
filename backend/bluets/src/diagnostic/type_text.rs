@@ -19,6 +19,29 @@ pub(crate) fn render_in(value: &Type, project: &crate::Project) -> String {
     text(value, 0, Some(project))
 }
 
+fn field_name(field: &crate::parser::TypeField, project: Option<&crate::Project>) -> String {
+    if let Some(source) = project.and_then(|p| p.source(&field.span.module)) {
+        if let Some(text) = source.get(field.span.start..field.span.end) {
+            let text = text.trim_start();
+            if let Some(quote) = text.chars().next().filter(|c| matches!(c, '\'' | '"')) {
+                if let Some(end) = text[1..].find(quote) {
+                    return text[..end + 2].to_string();
+                }
+            }
+        }
+    }
+    if field
+        .name
+        .chars()
+        .enumerate()
+        .all(|(i, c)| c.is_alphabetic() || matches!(c, '_' | '$') || (i > 0 && c.is_ascii_digit()))
+    {
+        field.name.clone()
+    } else {
+        serde_json::to_string(&field.name).unwrap()
+    }
+}
+
 fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String {
     if depth >= 128 {
         return "...".into();
@@ -173,7 +196,7 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
                     if source_method { return format!("{}{}({}): {};",field.name,if field.optional {"?"} else {""},parameters::list(parameters,project),render(result)); }
                 }
                 if optional && matches!(field.value,Type::Union(_)) {value=render(&Type::Union(match &field.value {Type::Union(values)=>{let mut values=values.clone();if !values.contains(&Type::Undefined) {values.push(Type::Undefined)} values},_=>unreachable!()}));}
-                format!("{}{}{}: {value};",if field.readonly {"readonly "} else {""},field.name,if field.optional {"?"} else {""})
+                format!("{}{}{}: {value};",if field.readonly {"readonly "} else {""},field_name(field,project),if field.optional {"?"} else {""})
             }).collect::<Vec<_>>().join(" ");
             format!("{{ {fields} }}")
         }

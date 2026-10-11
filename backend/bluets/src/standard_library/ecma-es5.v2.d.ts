@@ -3,6 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Original versioned declarations for the owned ECMAScript surface.
+type Partial<T> = { [P in keyof T]?: T[P] };
+type Pick<T, K extends keyof T> = { [P in K]: T[P] };
+type Exclude<T, U> = T extends U ? never : T;
+type Extract<T, U> = T extends U ? T : never;
+type Omit<T, K extends string | number | symbol> = Pick<T, Exclude<keyof T, K>>;
 interface Array<T> {
     length: number;
     push(item: T): number;

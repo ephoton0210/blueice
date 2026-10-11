@@ -309,6 +309,50 @@ fn emitted_jsx_preserves_native_execution_declarations_and_es2022_syntax() {
 }
 
 #[test]
+fn malformed_or_unknown_tag_type_arguments_publish_no_artifacts() {
+    let root = Temporary::new("argument-guards");
+    let case = cases()
+        .into_iter()
+        .find(|case| case["id"] == "tagtype-commonjs-g0")
+        .unwrap();
+    for (index, arguments) in ["", "number 42", "Missing"].into_iter().enumerate() {
+        let directory = root.copy(&case);
+        let source_path = directory.join("main.tsx");
+        let source = fs::read_to_string(&source_path).unwrap();
+        fs::write(
+            &source_path,
+            source.replace("<Generic<number>", &format!("<Generic<{arguments}>")),
+        )
+        .unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .arg("--project")
+            .arg(directory.join("tsconfig.json"))
+            .arg("--diagnostics-json")
+            .output()
+            .unwrap();
+        assert!(
+            !output.status.success(),
+            "argument guard {index}: {output:?}"
+        );
+        assert!(
+            output_files(&directory).is_empty(),
+            "argument guard {index}"
+        );
+        if arguments == "Missing" {
+            let diagnostics = String::from_utf8(output.stderr).unwrap();
+            assert!(
+                diagnostics
+                    .lines()
+                    .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                    .any(|diagnostic| diagnostic["typescript"]["code"] == 2304),
+                "{diagnostics}"
+            );
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
+}
+
+#[test]
 #[ignore = "requires pinned TypeScript 5.9.3, Acorn 8.15.0 and Node"]
 fn recorded_jsx_typing_extras_match_the_live_native_compiler() {
     let recorder = Path::new(env!("CARGO_MANIFEST_DIR"))

@@ -89,6 +89,16 @@ pub(super) fn matches(
                 None => field.optional,
             }
         }),
+        (Type::Intersection(_) | Type::CallableRecord { .. }, Type::Record(pattern)) => {
+            pattern.iter().all(|field| {
+                match property_type(&actual, &field.name, aliases, &mut HashSet::new(), budget) {
+                    PropertyType::Found { value, .. } => {
+                        matches(&value, &field.value, bindings, aliases, budget)
+                    }
+                    _ => field.optional,
+                }
+            })
+        }
         (
             Type::Function {
                 parameters: actual,

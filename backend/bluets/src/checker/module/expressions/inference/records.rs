@@ -235,6 +235,30 @@ impl<'a> ModuleChecker<'a> {
                         .collect(),
                 )
             }
+            Type::Intersection(parts) => {
+                let mut fields: Vec<TypeField> = Vec::new();
+                for part in parts {
+                    if !budget.consume() {
+                        return None;
+                    }
+                    for field in self.expand_record_fields(part, &mut visited.clone(), budget)? {
+                        if let Some(existing) = fields
+                            .iter_mut()
+                            .find(|existing| existing.name == field.name)
+                        {
+                            existing.optional &= field.optional;
+                            existing.readonly |= field.readonly;
+                            if existing.value != field.value {
+                                existing.value =
+                                    Type::Intersection(vec![existing.value.clone(), field.value]);
+                            }
+                        } else {
+                            fields.push(field)
+                        }
+                    }
+                }
+                Some(fields)
+            }
             _ => None,
         }
     }

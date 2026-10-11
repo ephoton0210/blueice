@@ -47,6 +47,14 @@ pub(super) fn display(name: &str, project: Option<&Project>) -> String {
     if name.ends_with("JSX.Element") {
         return "Element".into();
     }
+    if let Some((_, member)) = name.rsplit_once(".JSX.") {
+        if matches!(
+            member,
+            "IntrinsicClassAttributes" | "LibraryManagedAttributes"
+        ) {
+            return member.into();
+        }
+    }
     if let Some((_, tail)) = name.rsplit_once('.') {
         fn found(items: &[Declaration], name: &str) -> bool {
             items.iter().any(|item| match item {

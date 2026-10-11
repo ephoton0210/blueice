@@ -7,6 +7,73 @@ use super::*;
 use crate::diagnostic::type_text;
 
 impl ModuleChecker<'_> {
+    pub(super) fn jsx_attach_origin(&mut self, field: &TypeField, props: &Props, missing: bool) {
+        if !self.enforce_types {
+            return;
+        }
+        let Some(source) = self.project.source(&field.span.module) else {
+            return;
+        };
+        let Some(text) = source.get(field.span.start..field.span.end) else {
+            return;
+        };
+        let Ok(tokens) = crate::syntax::lex(&field.span.module, text) else {
+            return;
+        };
+        let Some(token) = tokens
+            .iter()
+            .find(|token| token.text.trim_matches(['\'', '"']) == field.name)
+        else {
+            return;
+        };
+        let span = SourceSpan::new(
+            &field.span.module,
+            field.span.start + token.start,
+            field.span.start + token.end,
+        );
+        let code = if missing { 2728 } else { 6500 };
+        let Props::Known {
+            value, value_based, ..
+        } = props
+        else {
+            return;
+        };
+        let target = type_text::render_in(value, self.project);
+        let target = if *value_based {
+            format!("IntrinsicAttributes & {target}")
+        } else {
+            target
+        };
+        let arguments = if missing {
+            vec![field.name.clone()]
+        } else {
+            vec![field.name.clone(), target]
+        };
+        let message = Diagnostic::error(
+            DiagnosticCode::TypeMismatch,
+            span.clone(),
+            "JSX props declaration",
+        )
+        .with_typescript(code, arguments)
+        .typescript
+        .unwrap()
+        .message;
+        if let Some(counterpart) = self
+            .diagnostics
+            .last_mut()
+            .and_then(|d| d.typescript.as_mut())
+        {
+            counterpart
+                .related_information
+                .push(crate::diagnostic::TypeScriptRelatedInformation {
+                    code,
+                    message,
+                    span,
+                    position: None,
+                });
+        }
+    }
+
     fn jsx_present_message(&mut self, actual: String, expected: String, detail: String) {
         if !self.enforce_types {
             return;
@@ -27,13 +94,25 @@ impl ModuleChecker<'_> {
         diagnostic.typescript = Some(counterpart);
     }
     pub(super) fn jsx_present_pair(&mut self, actual: &Type, expected: &Type) {
+        let widened;
+        let actual = if matches!(expected, Type::Named { .. }) {
+            widened = match actual {
+                Type::Literal(text) if text.starts_with(['\'', '"']) => Type::String,
+                Type::Literal(text) if text.parse::<f64>().is_ok() => Type::Number,
+                Type::Literal(text) if matches!(text.as_str(), "true" | "false") => Type::Boolean,
+                other => other.clone(),
+            };
+            &widened
+        } else {
+            actual
+        };
         self.jsx_present_message(
             type_text::argument_in(actual, expected, self.project),
             type_text::render_in(expected, self.project),
             type_text::detail(actual, expected, self.project),
         );
     }
-    fn jsx_actual_props(
+    pub(super) fn jsx_actual_props(
         &self,
         element: &JsxElement,
         scope: &BTreeMap<String, Type>,

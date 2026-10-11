@@ -176,7 +176,13 @@ impl<'a> Index<'a> {
             .get(&span.module)
             .into_iter()
             .flatten()
-            .find(|token| token.start >= span.start && token.end <= span.end && token.is(name))
+            .find(|token| {
+                token.start >= span.start
+                    && token.end <= span.end
+                    && (token.is(name)
+                        || (token.kind == crate::syntax::TokenKind::String
+                            && token.text.trim_matches(['\'', '"']) == name))
+            })
             .map(|token| token.span(&span.module))
             .unwrap_or_else(|| span.clone())
     }

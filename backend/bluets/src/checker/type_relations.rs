@@ -123,6 +123,19 @@ pub(super) fn is_assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    // Every symbolic keyof result is a property key, even before its operand
+    // can be instantiated. Concrete, narrower comparisons still use expansion.
+    if matches!(actual, Type::KeyOf(_))
+        && is_assignable(
+            &Type::Union(vec![Type::String, Type::Number, Type::Symbol]),
+            expected,
+            aliases,
+            &mut visited.clone(),
+            budget,
+        )
+    {
+        return true;
+    }
     if let Some(result) = variance::assignable(actual, expected, aliases, visited, budget) {
         return result;
     }

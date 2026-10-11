@@ -528,7 +528,9 @@ impl ClassField {
         if let Some(annotation) = &self.annotation {
             return Some(annotation.clone());
         }
-        widen_literal_tokens(self.initializer.as_deref()?, self.readonly)
+        let tokens = self.initializer.as_deref()?;
+        widen_literal_tokens(tokens, self.readonly)
+            .or_else(|| field_literals::record(tokens, &self.span.module))
     }
 }
 
@@ -1179,6 +1181,8 @@ mod namespace_names;
 pub(crate) use implementation::parse_emitted_block;
 pub(crate) use implementation::parse_emitted_module;
 pub(crate) use implementation::parse_emitted_statement;
+pub(crate) use implementation::parse_jsx_type_arguments;
+mod field_literals;
 pub(crate) use implementation::parse_variable_pattern;
 use implementation::Parser;
 pub use namespace_names::{exported_namespace_trees, NamespaceTree};

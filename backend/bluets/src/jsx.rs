@@ -98,6 +98,8 @@ pub struct JsxElement {
     pub end: usize,
     /// `None` for a fragment.
     pub name: Option<JsxName>,
+    /// The contents of an explicit `<T, U>` on a value tag, without delimiters.
+    pub type_arguments: Option<std::ops::Range<usize>>,
     pub attributes: Vec<JsxAttribute>,
     pub children: Vec<JsxChild>,
     pub self_closing: bool,
@@ -258,6 +260,7 @@ impl Scanner<'_> {
             start,
             end: start,
             name: None,
+            type_arguments: None,
             attributes: Vec::new(),
             children: Vec::new(),
             self_closing: false,
@@ -272,6 +275,10 @@ impl Scanner<'_> {
                 return Err(self.error("expected a JSX tag name", false));
             };
             element.name = Some(name);
+            self.trivia();
+            if self.peek() == Some(b'<') {
+                element.type_arguments = Some(self.type_arguments()?);
+            }
             self.attributes(&mut element)?;
             match self.peek() {
                 Some(b'/') => {
@@ -312,6 +319,44 @@ impl Scanner<'_> {
         self.depth -= 1;
         let _ = nested;
         Ok(element)
+    }
+
+    fn type_arguments(&mut self) -> Result<std::ops::Range<usize>, JsxError> {
+        self.index += 1;
+        let start = self.index;
+        let mut depth = 1usize;
+        while let Some(byte) = self.peek() {
+            match byte {
+                b'\'' | b'"' | b'`' => {
+                    self.index += 1;
+                    while let Some(next) = self.peek() {
+                        self.index += 1;
+                        if next == b'\\' {
+                            self.index = (self.index + 1).min(self.bytes.len());
+                        } else if next == byte {
+                            break;
+                        }
+                    }
+                }
+                b'/' if matches!(self.bytes.get(self.index + 1), Some(b'/' | b'*')) => {
+                    self.trivia();
+                }
+                b'<' => {
+                    depth += 1;
+                    self.index += 1;
+                }
+                b'>' if self.bytes.get(self.index.wrapping_sub(1)) != Some(&b'=') => {
+                    depth -= 1;
+                    let end = self.index;
+                    self.index += 1;
+                    if depth == 0 {
+                        return Ok(start..end);
+                    }
+                }
+                _ => self.index += 1,
+            }
+        }
+        Err(self.error("unterminated JSX type arguments", true))
     }
 
     fn attributes(&mut self, element: &mut JsxElement) -> Result<(), JsxError> {

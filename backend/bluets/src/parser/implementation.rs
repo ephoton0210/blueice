@@ -51,6 +51,44 @@ mod runtime_syntax;
 #[path = "type_syntax.rs"]
 mod type_syntax;
 
+/// Parse an owned JSX tag's erased type arguments with the ordinary type grammar.
+pub(crate) fn parse_jsx_type_arguments(
+    module: &Module,
+    range: std::ops::Range<usize>,
+    depth: usize,
+) -> Result<(Vec<Type>, Vec<TypeReference>), Vec<Diagnostic>> {
+    let mut tokens = crate::syntax::lex(&module.id, &module.source[range.clone()])?;
+    for token in &mut tokens {
+        token.start += range.start;
+        token.end += range.start;
+    }
+    let mut parser = Parser::new(module.id.clone(), module.source.clone(), tokens, depth);
+    let mut arguments = Vec::new();
+    while !parser.at_eof() {
+        let before = parser.index;
+        arguments.push(parser.parse_type_until(&[","]));
+        if !parser.consume(",") {
+            break;
+        }
+        if parser.index <= before {
+            break;
+        }
+    }
+    if arguments.is_empty() {
+        parser.error_here(DiagnosticCode::ParseError, "expected a type");
+    } else if !parser.at_eof() {
+        parser.error_here(
+            DiagnosticCode::ParseError,
+            "expected `,` between JSX type arguments",
+        );
+    }
+    if parser.diagnostics.is_empty() {
+        Ok((arguments, parser.type_references))
+    } else {
+        Err(parser.diagnostics)
+    }
+}
+
 pub(crate) fn parse_emitted_module(
     id: &str,
     source: &str,

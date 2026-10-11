@@ -20,10 +20,15 @@ pub(super) fn resolve(
     budget: &mut TypeExpansionBudget,
 ) -> Option<Type> {
     let constraint = value.parameter.constraint.as_ref()?;
-    let origin = if let Type::KeyOf(object) = constraint {
-        Some(expanded(object, aliases, &mut visited.clone(), budget))
-    } else {
-        None
+    let origin = match (constraint, &value.value) {
+        (Type::KeyOf(object), _) => Some(expanded(object, aliases, &mut visited.clone(), budget)),
+        (_, Type::IndexedAccess { object, index, .. })
+            if matches!(index.as_ref(), Type::Named { name, arguments }
+                if name == &value.parameter.name && arguments.is_empty()) =>
+        {
+            Some(expanded(object, aliases, &mut visited.clone(), budget))
+        }
+        _ => None,
     };
     if value.name_type.is_none() {
         if let Some(origin) = &origin {
@@ -136,7 +141,10 @@ pub(super) fn resolve(
                         value.optional,
                         inherited.is_some_and(|field| field.optional),
                     ),
-                    span: value.span.clone(),
+                    span: inherited
+                        .filter(|_| value.name_type.is_none())
+                        .map(|field| field.span.clone())
+                        .unwrap_or_else(|| value.span.clone()),
                 });
             }
         }

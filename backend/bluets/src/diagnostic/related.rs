@@ -206,7 +206,8 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
                         vec![name.into(), owner],
                         field.name_span.clone(),
                     );
-                } else if diagnostic.message.starts_with("missing required props: ") {
+                } else if diagnostic.message.starts_with("missing required props: ")
+                    && !related.iter().any(|item| item.code == 2728) {
                     if let Some(name) = diagnostic.message.strip_prefix("missing required props: ")
                     {
                         if let Some(field) = index.field(name, &props, &span.module) {
@@ -221,7 +222,7 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
                     }
                 }
             }
-            2786 => {
+            2786 if !diagnostic.message.contains("declared ElementType") => {
                 if let Some(field) = index.field("render", "ElementClass", &span.module) {
                     push(
                         project,

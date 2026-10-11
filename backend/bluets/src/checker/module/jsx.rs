@@ -12,14 +12,15 @@
 //! (such as `key`) always allowed and hyphenated names never checked; and an
 //! element's own type is `JSX.Element`.
 //!
-//! Where BlueTS lacks the type machinery a check needs (generic components,
-//! class components, props that are intersections or unions) the element is
-//! still resolved and its embedded expressions are still checked, but its
-//! attributes are not compared with props; `PLAN.md` records each such gap.
+//! Generic tags reuse bounded call inference. ElementType and managed attributes
+//! come from the selected JSX namespace; class attributes use the instantiated
+//! component instance. Unresolved targets keep their expressions checked.
 
 use super::*;
 use crate::jsx::{self, JsxAttribute, JsxChild, JsxElement, JsxName, JsxValue};
+mod managed;
 mod presentation;
+mod tags;
 
 /// What an element's attributes are checked against.
 enum Props {
@@ -120,7 +121,7 @@ impl<'a> ModuleChecker<'a> {
         self.check_jsx_factory(&span, element);
         let props = match &element.name {
             None => Props::Open,
-            Some(name) => self.jsx_props(name, &span, scope),
+            Some(name) => self.jsx_props(name, element, &span, scope),
         };
         self.check_jsx_attributes(element, &props, scope);
         self.check_jsx_children(element, &props, scope);
@@ -187,6 +188,7 @@ impl<'a> ModuleChecker<'a> {
     fn jsx_props(
         &mut self,
         name: &JsxName,
+        element: &JsxElement,
         span: &SourceSpan,
         scope: &BTreeMap<String, Type>,
     ) -> Props {
@@ -218,57 +220,18 @@ impl<'a> ModuleChecker<'a> {
                 }
             };
         }
-        // A value tag: a function component, whose first parameter is its props.
-        if let Some(signatures) = self.functions.get(&name.text) {
-            let Some(signature) = signatures.first().cloned() else {
-                return Props::Open;
-            };
-            return self.component_props(
-                &signature.parameters,
-                &signature.return_type,
-                &signature.type_parameters,
-                span,
-            );
-        }
-        if self.class_constructors.contains_key(&name.text) {
-            return self.class_props(&name.text, span);
-        }
-        let bound = scope
-            .get(&name.text)
-            .or_else(|| self.values.get(&name.text))
-            .cloned();
-        match bound {
-            Some(Type::Function { parameters, result }) => {
-                self.component_props(&parameters, &result, &[], span)
-            }
-            Some(_) => Props::Open,
-            None if self.name_is_in_scope(name.text.split('.').next().unwrap_or(&name.text)) => {
-                Props::Open
-            }
-            None => {
-                self.type_error(
-                    span,
-                    format!("cannot find the JSX tag name `{}`", name.text),
-                    DiagnosticCode::UnknownName,
-                );
-                Props::Open
-            }
-        }
+        self.jsx_value_props(name, element, span, scope)
     }
 
     /// A class component's props: the member of its instance type that
     /// `JSX.ElementAttributesProperty` names, or the instance type itself.
-    fn class_props(&mut self, class: &str, span: &SourceSpan) -> Props {
-        let instance = Type::Named {
-            name: class.to_string(),
-            arguments: Vec::new(),
-        };
+    fn class_props(&mut self, class: &str, instance: &Type, span: &SourceSpan) -> Props {
         if let Some(class_type) = self.jsx_key("ElementClass") {
             let required = Type::Named {
                 name: class_type,
                 arguments: Vec::new(),
             };
-            if !self.is_assignable_bounded(&instance, &required, span) {
+            if !self.is_assignable_bounded(instance, &required, span) {
                 self.type_error(
                     span,
                     format!("class `{class}` cannot be used as a JSX component: its instance type is not a `JSX.ElementClass`"),
@@ -280,12 +243,12 @@ impl<'a> ModuleChecker<'a> {
             .jsx_interface_fields("ElementAttributesProperty")
             .and_then(|fields| fields.into_iter().next())
         else {
-            return self.props_of(&instance, true);
+            return self.props_of(instance, true);
         };
         let mut visited = HashSet::new();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         match property_type(
-            &instance,
+            instance,
             &attribute.name,
             &self.types,
             &mut visited,
@@ -303,7 +266,7 @@ impl<'a> ModuleChecker<'a> {
         type_parameters: &[TypeParameter],
         span: &SourceSpan,
     ) -> Props {
-        if self.jsx_key("Element").is_some() {
+        if self.jsx_key("Element").is_some() && self.jsx_key("ElementType").is_none() {
             let valid = Type::Union(vec![self.jsx_element_type(), Type::Null]);
             if !matches!(result, Type::Any | Type::Unknown)
                 && !self.is_assignable_bounded(result, &valid, span)
@@ -371,6 +334,7 @@ impl<'a> ModuleChecker<'a> {
             Vec::new()
         };
         let mut provided: BTreeSet<String> = BTreeSet::new();
+        let mut named: BTreeSet<String> = BTreeSet::new();
         let mut open_spread = false;
         for attribute in &element.attributes {
             match attribute {
@@ -427,6 +391,16 @@ impl<'a> ModuleChecker<'a> {
                 } => {
                     let span = self.jsx_span(*start, *end);
                     let actual_tokens;
+                    if !named.insert(name.text.clone()) {
+                        self.typescript_type_error(
+                            &self.jsx_span(name.start, name.end),
+                            "JSX elements cannot have multiple attributes with the same name"
+                                .into(),
+                            DiagnosticCode::TypeMismatch,
+                            17001,
+                            Vec::new(),
+                        );
+                    }
                     let expected_field = match props {
                         Props::Known { fields, .. } => {
                             fields.iter().find(|field| field.name == name.text)
@@ -484,11 +458,10 @@ impl<'a> ModuleChecker<'a> {
                                             expected
                                         };
                                     self.jsx_present_pair(&actual, &expected);
+                                    self.jsx_attach_origin(field, props, false);
                                 }
                             }
-                            None if name.text.contains('-')
-                                || name.text.contains(':')
-                                || intrinsic.contains(&name.text) => {}
+                            None if name.text.contains('-') || intrinsic.contains(&name.text) => {}
                             None => {
                                 let known = fields
                                     .iter()
@@ -537,6 +510,12 @@ impl<'a> ModuleChecker<'a> {
                     DiagnosticCode::TypeMismatch,
                 );
                 self.jsx_present_props(element, props, scope, None, missing.first().copied());
+                if let Some(field) = fields
+                    .iter()
+                    .find(|field| Some(field.name.as_str()) == missing.first().copied())
+                {
+                    self.jsx_attach_origin(field, props, true);
+                }
             }
         }
     }
@@ -626,6 +605,21 @@ impl<'a> ModuleChecker<'a> {
         };
         if types.is_empty() {
             return;
+        }
+        if element.attributes.iter().any(|attribute| {
+            matches!(attribute, JsxAttribute::Named { name, .. } if name.text == children_name)
+        }) {
+            let start = element.name.as_ref().map_or(element.start, |name| name.end);
+            let start = start + self.module.source[start..element.opening_end]
+                .len().saturating_sub(self.module.source[start..element.opening_end].trim_start().len());
+            let end = element.opening_end.saturating_sub(1);
+            self.typescript_type_error(
+                &self.jsx_span(start, end),
+                format!("`{children_name}` are specified twice: the attribute will be overwritten"),
+                DiagnosticCode::TypeMismatch,
+                2710,
+                vec![children_name.clone()],
+            );
         }
         let span = self.jsx_span(element.opening_end, element.closing_start);
         let Some(field) = fields.iter().find(|field| field.name == children_name) else {

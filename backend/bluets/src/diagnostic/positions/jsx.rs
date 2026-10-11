@@ -41,7 +41,14 @@ pub(super) fn refine(diagnostic: &Diagnostic, source: &str) -> Option<SourceSpan
             let opening = if source.get(span.start..)?.starts_with('<') {
                 span.start
             } else {
-                source.get(..span.start)?.rfind('<')?
+                crate::syntax::lex(&span.module, source)
+                    .ok()?
+                    .into_iter()
+                    .filter(|token| token.kind == crate::syntax::TokenKind::JsxElement)
+                    .filter_map(|token| {
+                        crate::syntax::parse_jsx(&span.module, source, token.start).ok()
+                    })
+                    .find_map(|element| enclosing_start(&element, span))?
             };
             let element = crate::syntax::parse_jsx(&span.module, source, opening).ok()?;
             if diagnostic.message.starts_with("attribute ") {
@@ -72,4 +79,29 @@ fn name_end(source: &str, start: usize) -> usize {
         .char_indices()
         .find(|(_, ch)| !ch.is_alphanumeric() && !matches!(ch, '_' | '$' | '-' | '.' | ':'))
         .map_or(source.len(), |(offset, _)| start + offset)
+}
+
+fn enclosing_start(element: &crate::jsx::JsxElement, span: &SourceSpan) -> Option<usize> {
+    if span.start < element.start || element.end < span.end {
+        return None;
+    }
+    for attribute in &element.attributes {
+        if let JsxAttribute::Named {
+            value: Some(crate::jsx::JsxValue::Element(inner)),
+            ..
+        } = attribute
+        {
+            if let Some(start) = enclosing_start(inner, span) {
+                return Some(start);
+            }
+        }
+    }
+    for child in &element.children {
+        if let crate::jsx::JsxChild::Element(inner) = child {
+            if let Some(start) = enclosing_start(inner, span) {
+                return Some(start);
+            }
+        }
+    }
+    Some(element.start)
 }
