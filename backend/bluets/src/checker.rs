@@ -205,6 +205,7 @@ struct AmbientDeclarations {
     module_types: BTreeMap<String, BTreeMap<String, TypeDefinition>>,
     contexts: BTreeMap<String, BTreeMap<String, Type>>,
     types: BTreeMap<String, TypeDefinition>,
+    type_namespaces: Vec<crate::parser::NamespaceDeclaration>,
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
     binding_kinds: BTreeMap<String, scopes::BindingKind>,
@@ -351,6 +352,7 @@ pub(crate) use module::NamespaceExport;
 /// What each module exports as a namespace, by module and exported name.
 type NamespaceExports = BTreeMap<String, BTreeMap<String, NamespaceExport>>;
 mod ambient;
+pub(crate) use ambient::namespace_is_type_only;
 mod project;
 
 fn interface_value(interface: &InterfaceDeclaration) -> Type {

@@ -112,7 +112,9 @@ pub(super) fn declaration_module_diagnostics(
                 Declaration::Function(function) => !function.declared && !function.overload,
                 Declaration::Class(_) => true,
                 Declaration::Enum(_) => true,
-                Declaration::Namespace(namespace) => !namespace.declared,
+                Declaration::Namespace(namespace) => {
+                    !namespace.declared && !ambient::namespace_is_type_only(&namespace.body)
+                }
                 Declaration::Raw(_) => true,
                 Declaration::Ambient(_)
                 | Declaration::DefaultExport(_)

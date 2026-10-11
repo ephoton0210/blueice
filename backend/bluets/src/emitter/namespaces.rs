@@ -640,7 +640,7 @@ fn words(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
-fn render_namespace_body(
+pub(super) fn render_namespace_body(
     module: &Module,
     namespace: &NamespaceDeclaration,
     symbols: &[crate::checker::Symbol],

@@ -39,6 +39,14 @@ pub(super) fn emit_declaration(
         }
         let body_start = output.len();
         match declaration {
+            Declaration::Ambient(global)
+                if global.specifier.is_none()
+                    && crate::checker::namespace_is_type_only(&global.body) =>
+            {
+                output.push_str(&global_declarations::emit(
+                    module, global, symbols, inferred, options,
+                )?);
+            }
             Declaration::Import(import) => {
                 if let Some(text) = inferred.and_then(|context| context.import(import)) {
                     output.push_str(&text);

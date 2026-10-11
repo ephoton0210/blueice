@@ -31,6 +31,7 @@ mod declaration_maps;
 mod declarations;
 mod decorators;
 mod enums;
+mod global_declarations;
 mod helper_selection;
 mod inferred_declarations;
 mod inferred_returns;

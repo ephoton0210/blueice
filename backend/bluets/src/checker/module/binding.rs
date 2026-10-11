@@ -89,6 +89,7 @@ impl<'a> ModuleChecker<'a> {
             jsx_factory: policy.jsx_factory.clone(),
             jsx_fragment_factory: policy.jsx_fragment_factory.clone(),
             jsx_pragmas: crate::jsx::Pragmas::of(&module.source),
+            jsx_runtime_namespace: false,
             checked_jsx_elements: BTreeSet::new(),
             checked_nested_functions: BTreeSet::new(),
             checked_class_expressions: BTreeSet::new(),
@@ -130,6 +131,7 @@ impl<'a> ModuleChecker<'a> {
         self.bind_declarations();
         self.bind_ambient_declarations();
         self.bind_standard_library();
+        self.bind_jsx_runtime_namespace();
         self.infer_module_return_signatures();
         self.validate_function_overloads();
         self.validate_default_exports();
@@ -314,6 +316,9 @@ impl<'a> ModuleChecker<'a> {
             if !local_values.contains(name) && !local_functions.contains(name) {
                 self.functions.insert(name.clone(), signatures.clone());
             }
+        }
+        for namespace in &ambient.type_namespaces {
+            self.bind_namespace(namespace);
         }
     }
 

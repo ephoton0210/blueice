@@ -64,6 +64,9 @@ pub(super) fn insert_body(
         .collect::<Vec<_>>();
     for (declaration, definition) in declarations.iter().zip(definitions) {
         match declaration {
+            Declaration::Namespace(namespace) if namespace_is_type_only(&namespace.body) => {
+                ambient.type_namespaces.push(namespace.clone());
+            }
             Declaration::TypeAlias(alias) => insert_ambient_type(
                 project,
                 ambient,
@@ -111,6 +114,14 @@ pub(super) fn insert_body(
             _ => {}
         }
     }
+}
+
+pub(crate) fn namespace_is_type_only(declarations: &[Declaration]) -> bool {
+    declarations.iter().all(|declaration| match declaration {
+        Declaration::Interface(_) | Declaration::TypeAlias(_) => true,
+        Declaration::Namespace(namespace) => namespace_is_type_only(&namespace.body),
+        _ => false,
+    })
 }
 
 pub(super) fn has_module_syntax(declarations: &[Declaration]) -> bool {

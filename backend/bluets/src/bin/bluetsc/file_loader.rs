@@ -56,6 +56,28 @@ impl ModuleLoader for FileLoader {
     fn implied_module_kind(&self, module_id: &str) -> Result<ModuleKind, String> {
         node_modules::implied_kind(self, module_id)
     }
+
+    fn resolve_jsx_runtime_namespace(
+        &self,
+        from_module: &str,
+        specifier: &str,
+        mode: Option<ImportMode>,
+    ) -> Result<Option<String>, String> {
+        if self.packages.is_none()
+            && !self.imports.contains_key(specifier)
+            && !self.matches_import_prefix(specifier)
+        {
+            return Ok(None);
+        }
+        match self.resolve_with_mode(from_module, specifier, mode) {
+            Ok(target) => Ok(Some(target)),
+            // An absent static declaration retains the existing global JSX
+            // fallback. Canonical-root and malformed-manifest refusals stay
+            // errors; they are never a reason to try a different provider.
+            Err(message) if message.starts_with("cannot resolve ") => Ok(None),
+            Err(message) => Err(message),
+        }
+    }
     fn load(&self, module_id: &str) -> Result<ModuleSource, String> {
         if let Some(pin) = module_id
             .strip_prefix("@remote/")

@@ -7,6 +7,7 @@
 use super::*;
 mod augmentations;
 mod helper_providers;
+mod jsx_namespaces;
 mod references;
 use std::collections::HashMap;
 
@@ -20,6 +21,7 @@ pub(super) struct ProjectBuilder<'a> {
     pub(super) resolve_json_module: bool,
     pub(super) module_kind: ModuleKind,
     total_source_bytes: usize,
+    module_depths: BTreeMap<String, usize>,
     pub(super) parsed_modules: BTreeSet<String>,
     pub(super) reused_parsed_modules: BTreeSet<String>,
     unresolved_imports: Vec<(
@@ -52,6 +54,7 @@ impl<'a> ProjectBuilder<'a> {
             resolve_json_module: false,
             module_kind: ModuleKind::Esm,
             total_source_bytes: 0,
+            module_depths: BTreeMap::new(),
             parsed_modules: BTreeSet::new(),
             reused_parsed_modules: BTreeSet::new(),
             unresolved_imports: Vec::new(),
@@ -166,6 +169,9 @@ impl<'a> ProjectBuilder<'a> {
     }
 
     fn visit_loaded_source(&mut self, module_id: &str, source: ModuleSource, depth: usize) {
+        self.module_depths
+            .entry(module_id.to_string())
+            .or_insert(depth);
         if source.id != module_id {
             self.diagnostics.push(Diagnostic::error(
                 DiagnosticCode::ModuleNotFound,

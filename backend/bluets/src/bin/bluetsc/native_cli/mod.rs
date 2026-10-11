@@ -425,5 +425,8 @@ fn ordered_sources(
             ordered_sources(target, project, seen, ordered);
         }
     }
+    if let Some(provider) = project.jsx_runtime_namespace_provider(module_id) {
+        ordered_sources(provider, project, seen, ordered);
+    }
     ordered.push(module_id.to_string());
 }

@@ -118,7 +118,11 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
             }
             2741 => {
                 if let (Some(name), Some(owner)) = (args.first(), args.get(2)) {
-                    if let Some(field) = index.field(name, owner, &span.module) {
+                    if let Some(field) = index.field(name, owner, &span.module).filter(|field| {
+                        !related
+                            .iter()
+                            .any(|item| item.code == 2728 && item.span == field.related_span())
+                    }) {
                         push(
                             project,
                             &mut related,

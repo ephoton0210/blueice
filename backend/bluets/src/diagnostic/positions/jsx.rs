@@ -19,7 +19,7 @@ pub(super) fn refine(diagnostic: &Diagnostic, source: &str) -> Option<SourceSpan
             let opening = source.get(..span.start)?.rfind('<')? + 1;
             (opening, name_end(source, opening))
         }
-        2322 | 2786 | 2874 | 2304 => {
+        2322 | 2741 | 2786 | 2874 | 2304 => {
             let is_jsx = diagnostic.message.starts_with("attribute ")
                 || diagnostic.message.starts_with("spread attribute ")
                 || diagnostic.message.starts_with("missing required props")

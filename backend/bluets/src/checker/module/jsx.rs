@@ -19,6 +19,7 @@
 use super::*;
 use crate::jsx::{self, JsxAttribute, JsxChild, JsxElement, JsxName, JsxValue};
 mod managed;
+mod namespace;
 mod presentation;
 mod tags;
 
@@ -73,6 +74,10 @@ impl<'a> ModuleChecker<'a> {
     /// namespace's own (`React.JSX.Element`) when the program has one, else the
     /// global (`JSX.Element`), as TypeScript looks it up.
     fn jsx_key(&self, member: &str) -> Option<String> {
+        if self.jsx_runtime_namespace {
+            let key = format!("{}.{}", namespace::RUNTIME_NAMESPACE, member);
+            return self.types.contains_key(&key).then_some(key);
+        }
         let factory = self
             .jsx_pragmas
             .factory
@@ -510,6 +515,17 @@ impl<'a> ModuleChecker<'a> {
                     DiagnosticCode::TypeMismatch,
                 );
                 self.jsx_present_props(element, props, scope, None, missing.first().copied());
+                if missing.len() == 1
+                    && matches!(
+                        props,
+                        Props::Known {
+                            value_based: false,
+                            ..
+                        }
+                    )
+                {
+                    self.jsx_present_required_prop(missing[0]);
+                }
                 if let Some(field) = fields
                     .iter()
                     .find(|field| Some(field.name.as_str()) == missing.first().copied())

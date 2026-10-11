@@ -86,6 +86,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "no-decorator-metadata"
     });
     add(crate::emitter::LEGACY_DECORATOR_HELPER_V1_VERSION);
+    add("bluets-jsx-runtime-namespace/1");
     add(options.jsx.map_or("jsx-none", JsxMode::as_str));
     add(options
         .jsx_factory
@@ -161,6 +162,10 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         add(from);
         add(specifier);
         add(target);
+    }
+    for (from, provider) in &project.jsx_runtime_modules {
+        add(from);
+        add(provider);
     }
     for ((from, specifier, mode), target) in &project.mode_resolutions {
         add(from);

@@ -263,17 +263,22 @@ impl ModuleChecker<'_> {
         path: &str,
         check: bool,
     ) -> BodyRun {
+        let owner = self
+            .project
+            .modules
+            .get(&namespace.span.module)
+            .unwrap_or(self.module);
         let body_module = Module {
-            id: self.module.id.clone(),
-            source: self.module.source.clone(),
+            id: owner.id.clone(),
+            source: owner.source.clone(),
             declarations: namespace.body.clone(),
-            edits: self.module.edits.clone(),
-            generic_call_type_arguments: self.module.generic_call_type_arguments.clone(),
-            nested_functions: self.module.nested_functions.clone(),
-            class_expressions: self.module.class_expressions.clone(),
-            type_references: self.module.type_references.clone(),
-            expression_variable_types: self.module.expression_variable_types.clone(),
-            type_assertions: self.module.type_assertions.clone(),
+            edits: owner.edits.clone(),
+            generic_call_type_arguments: owner.generic_call_type_arguments.clone(),
+            nested_functions: owner.nested_functions.clone(),
+            class_expressions: owner.class_expressions.clone(),
+            type_references: owner.type_references.clone(),
+            expression_variable_types: owner.expression_variable_types.clone(),
+            type_assertions: owner.type_assertions.clone(),
         };
         let declared = declared_in(namespace);
         let mut sub = ModuleChecker::new(
@@ -1019,7 +1024,7 @@ impl ModuleChecker<'_> {
     }
 
     /// Binds a namespace imported from another module under `local`.
-    pub(super) fn bind_imported_namespace(
+    pub(in crate::checker::module) fn bind_imported_namespace(
         &mut self,
         local: &str,
         export: &NamespaceExport,

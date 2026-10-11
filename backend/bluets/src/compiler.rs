@@ -392,6 +392,18 @@ pub trait ModuleLoader {
         self.resolve(from_module, specifier)
     }
 
+    /// Supplies an optional static JSX provider through the owner's resolver.
+    /// This does not authorize or load the emitted JavaScript runtime. Owners
+    /// with filesystem bounds must preserve denied lookups as errors.
+    fn resolve_jsx_runtime_namespace(
+        &self,
+        from_module: &str,
+        specifier: &str,
+        mode: Option<crate::package_resolution::ImportMode>,
+    ) -> Result<Option<String>, String> {
+        Ok(self.resolve_with_mode(from_module, specifier, mode).ok())
+    }
+
     /// Supplies the owner's missing-module diagnostic mode without performing
     /// a lookup or changing an authorized source identity.
     fn resolution_error_typescript_code(&self, _message: &str) -> Option<u32> {
@@ -490,6 +502,7 @@ pub struct Project {
     pub modules: BTreeMap<String, Module>,
     pub(crate) module_kinds: BTreeMap<String, ModuleKind>,
     pub(crate) resolutions: BTreeMap<(String, String), String>,
+    pub(crate) jsx_runtime_modules: BTreeMap<String, String>,
     mode_resolutions: BTreeMap<(String, String, crate::package_resolution::ImportMode), String>,
     // Static namespace keys never appear as runtime/physical source targets.
     pub(crate) ambient_resolutions: BTreeMap<
@@ -511,6 +524,12 @@ pub struct Project {
 }
 
 impl Project {
+    /// Returns a static provider already resolved and loaded by the owner.
+    /// This grants no JavaScript runtime or additional input lookup.
+    pub fn jsx_runtime_namespace_provider(&self, module: &str) -> Option<&str> {
+        self.jsx_runtime_modules.get(module).map(String::as_str)
+    }
+
     /// Node16 and NodeNext default to module detection for runtime inputs;
     /// declaration files retain their syntax-based global/module distinction.
     pub(crate) fn is_external_module(&self, module: &Module) -> bool {
@@ -628,6 +647,7 @@ impl Project {
             modules: BTreeMap::new(),
             module_kinds: BTreeMap::new(),
             resolutions: BTreeMap::new(),
+            jsx_runtime_modules: BTreeMap::new(),
             mode_resolutions: BTreeMap::new(),
             ambient_resolutions: BTreeMap::new(),
             json_modules: BTreeMap::new(),
@@ -663,6 +683,7 @@ fn compile_with_cache(
     builder.module_kind = options.module_kind;
     builder.visit(entry, 0);
     builder.resolve_helper_providers(&options);
+    builder.resolve_jsx_runtime_namespaces(&options);
     for declaration in &options.ambient_declaration_modules {
         builder.visit_ambient_declaration(declaration);
     }

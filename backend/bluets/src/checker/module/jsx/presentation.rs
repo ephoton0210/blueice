@@ -93,6 +93,33 @@ impl ModuleChecker<'_> {
         counterpart.message.push_str(&detail);
         diagnostic.typescript = Some(counterpart);
     }
+    pub(super) fn jsx_present_required_prop(&mut self, name: &str) {
+        if !self.enforce_types {
+            return;
+        }
+        let Some(diagnostic) = self.diagnostics.last_mut() else {
+            return;
+        };
+        let Some(counterpart) = &diagnostic.typescript else {
+            return;
+        };
+        let Some(actual) = counterpart.arguments.first() else {
+            return;
+        };
+        let Some(expected) = counterpart.arguments.get(1) else {
+            return;
+        };
+        diagnostic.typescript = Diagnostic::error(
+            diagnostic.code,
+            counterpart.span.clone(),
+            &diagnostic.message,
+        )
+        .with_typescript(
+            2741,
+            vec![name.to_string(), actual.clone(), expected.clone()],
+        )
+        .typescript;
+    }
     pub(super) fn jsx_present_pair(&mut self, actual: &Type, expected: &Type) {
         let widened;
         let actual = if matches!(expected, Type::Named { .. }) {

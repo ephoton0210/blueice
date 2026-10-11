@@ -31,6 +31,7 @@ test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
 | `commonjs_oracle.rs` | `--module commonjs` output (live bindings, cycles, `export =`, `import = require`, interop) run under Node | 6 programs |
 | `source_extras.rs`, `source_option_boundaries.rs` | relative JSON assets and owner-enabled JavaScript, allow/check policy, exact primary diagnostics, selected physical inputs, declarations/output inventory, asset values and actual emitted execution; canonical symlink and policy controls | 28 configurations, 18 runtime/declaration witnesses, 6 CLI controls |
 | `jsx_typing_extras.rs` and `bluets-bluejs/tests/jsx_direct.rs` | generic tag arguments/components, ElementType, managed/class attributes/defaultProps, duplicate/children/namespaced errors; exact primary/related positions, declarations/inputs/inventory and every actual emitted execution | 60 configurations (26 accept, 34 reject), 26 emitted witnesses, 9 direct Native programs and a CLI argument-refusal guard |
+| `jsx_runtime_namespace.rs` and `jsx_runtime_boundaries.rs` | automatic package JSX namespaces, production/development runtimes, pragma priority, global fallback, per-file provider identity, exact diagnostics/declarations/inputs/inventory and physical execution; owner/cache/resource/symlink controls | 28 configurations (16 accept, 12 reject), 16 emitted witnesses, 8 related records and 6 public controls |
 | `jsx_checker_matrix.rs`, `jsx_oracle.rs` | accept/reject of JSX against the declared `JSX` namespace (53 entries); every `jsx` mode, factory, pragma and runtime option run under Node | 53 entries, 11 programs |
 | `decorators_checker_matrix.rs`, `decorators_oracle.rs` | standard decorators: accept/reject (32); evaluation/application order, contexts, metadata, class replacement, errors at class definition, run under Node | 32 entries, 20 programs |
 | `legacy_decorators_checker_matrix.rs`, `legacy_decorators_oracle.rs` | `experimentalDecorators`/`emitDecoratorMetadata`: accept/reject (19); `__decorate`/`__param`/metadata call order and values, ES2022 and ES2020, ESM and CommonJS | 19 entries, 18 programs |
@@ -221,7 +222,7 @@ suite entry, then removing the row.
 | --- | --- |
 | G-C1 | K.3.1 provides pinned TypeScript codes and message templates through `--diagnostics-json` and the public diagnostic API, preserving BTS aliases and enumerated owner/subset reasons. All 1,398 existing checker entries agree on primary code/template; 97 additional source witnesses cover further diagnostic families. K.3.2 matches primary UTF-16 positions and source module identity across 1,398 language/strictness and 867 project/CLI/option cases. K.3.3 adds related codes/messages/module identity/UTF-16 coordinates, contextual rendered wording, plain/pretty formatting, source and related context, per-file error tables, diagnostics summary fields and measured native exit/emission semantics. K.4.1 resolves the three measured G-T1 wording gaps; `--explainFiles` and the full `tsc` command line remain outside this measured subset. |
 | G-C2 | Closed for the compared subset by K.2.2: parent `strict`, its nine family flags, unused locals/parameters, implicit returns, switch fallthrough, exact optional properties and unchecked indexed reads are independently selectable through projects and `CheckingOptions`. Thirty-two on/off configurations and 39 boundary controls agree with pinned TypeScript; valid JavaScript stays identical and legacy API defaults remain unchanged. Broader type-system behavior remains in G-T1/G-T2 and the other open rows; full `tsc` parity is not claimed. |
-| G-C3 | K.10.1 measures sixty factory-owned JSX configurations: explicit/inferred/defaulted generic function and class tags, ElementType eligibility, LibraryManagedAttributes, function/class defaultProps, IntrinsicClassAttributes, duplicate attributes, children collisions and namespaced attributes. All 26 accepted programs execute and retain exact declarations/inputs/inventory; primary and sixteen related records agree, and nine direct Native/Node programs pass. Its complete 1,363-test K.0 gate passes with unchanged Native goldens. Remaining: automatic-runtime JSX namespace lookup from `<jsxImportSource>/jsx-runtime` (K.10.2), decorator replacement/context typing (K.10.3), broader JSX overload/union/recursive combinations and imported/global declaration contexts. Full parity is not claimed. |
+| G-C3 | K.10.1 measures sixty factory-owned JSX configurations: explicit/inferred/defaulted generic function and class tags, ElementType eligibility, LibraryManagedAttributes, function/class defaultProps, IntrinsicClassAttributes, duplicate attributes, children collisions and namespaced attributes. All 26 accepted programs execute and retain exact declarations/inputs/inventory; primary and sixteen related records agree, and nine direct Native/Node programs pass. Its complete 1,363-test K.0 gate passes with unchanged Native goldens. K.10.2 adds 28 package-owned automatic-runtime namespace configurations (16 accept, 12 reject), production/development provider selection, pragma priority, global fallback and per-file identity. Exact declarations/inputs/inventory, all primary and eight related records and all sixteen physical executions agree. Six owner/cache/resource/symlink controls pass, and its complete 1,373-test K.0 gate preserves all 509 Native files. Remaining: decorator replacement/context typing (K.10.3), broader JSX overload/union/recursive combinations, conditional/re-exported provider compositions, missing-provider diagnostics, value-bearing/imported global declaration contexts and preserve/native JSX typing. Full parity is not claimed. |
 
 ### 3.6 Direct runtime (BlueJS) profile
 
@@ -254,7 +255,7 @@ Generated by `tools/inventory_refusals.py` from current production source.
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:332` — a field initializer that refers to a later field inside a nested \ function is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/fields.rs:263` — a static block that refers to a later static field inside a nested \ function is not supported yet
 - `backend/bluets/src/checker/module/binding/classes.rs:266` — an anonymous default class with private names on ES2020 is not supported: the pinned TypeScript 5.9.3 output fails at runtime; use a named default class or ES2022
-- `backend/bluets/src/checker/module/binding.rs:280` — an unstructured class member (a generator or auto-accessor) is not supported yet
+- `backend/bluets/src/checker/module/binding.rs:282` — an unstructured class member (a generator or auto-accessor) is not supported yet
 - `backend/bluets/src/checker/module/binding/classes/accessors.rs:144` — cannot infer getter `{}` within the supported body boundary
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:478` — cannot prove that access to `{}` is permitted for this receiver
 - `backend/bluets/src/checker/module/binding/classes/visibility.rs:559` — cannot prove that access to `{}` is permitted for this receiver
@@ -262,9 +263,9 @@ Generated by `tools/inventory_refusals.py` from current production source.
 - `backend/bluets/src/checker/module/binding/classes.rs:559` — class tuple rest annotation cannot be specialized within the type budget
 - `backend/bluets/src/checker/module/binding/names.rs:212` — cyclic tuple spread cannot be resolved
 - `backend/bluets/src/checker/module/decorators.rs:124` — decorators are not valid here: they decorate a class or a class member
-- `backend/bluets/src/checker/module/binding.rs:649` — interface heritage {name} must name an interface declaration
+- `backend/bluets/src/checker/module/binding.rs:654` — interface heritage {name} must name an interface declaration
 - `backend/bluets/src/checker/module/binding/classes/expressions.rs:54` — merged interface heritage must resolve to a bounded record of instance members
-- `backend/bluets/src/checker/module/binding/namespaces.rs:1046` — namespace `{source}` has no run-time members; import it with `import type`
+- `backend/bluets/src/checker/module/binding/namespaces.rs:1051` — namespace `{source}` has no run-time members; import it with `import type`
 - `backend/bluets/src/checker/module/binding/names.rs:216` — tuple spread names an unresolved type
 - `backend/bluets/src/checker/module/binding/names.rs:220` — tuple spread requires one concrete tuple or array type
 
@@ -272,9 +273,9 @@ Generated by `tools/inventory_refusals.py` from current production source.
 
 - `backend/bluets/src/compiler/project_builder/references.rs:71` — library reference `{name}` is not supported by the owned declaration profiles
 - `backend/bluets/src/compiler/node_modules.rs:32` — module declaration is incompatible with the selected Node file format
-- `backend/bluets/src/compiler/project_builder.rs:213` — owner must select ESM or CommonJS for a Node file
+- `backend/bluets/src/compiler/project_builder.rs:219` — owner must select ESM or CommonJS for a Node file
 - `backend/bluets/src/compiler/project_builder/helper_providers.rs:97` — owner-resolved helper provider does not declare the supported __extends ABI
-- `backend/bluets/src/compiler.rs:716` — strict-runtime JSON assets require a supported runtime profile
+- `backend/bluets/src/compiler.rs:737` — strict-runtime JSON assets require a supported runtime profile
 
 ### diagnostic (1)
 

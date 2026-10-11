@@ -67,6 +67,7 @@ pub(super) struct ModuleChecker<'a> {
     jsx_factory: Option<String>,
     jsx_fragment_factory: Option<String>,
     jsx_pragmas: crate::jsx::Pragmas,
+    jsx_runtime_namespace: bool,
     /// JSX elements already checked, by start offset.
     checked_jsx_elements: BTreeSet<usize>,
     /// Arrow functions already checked, by start offset, so an expression
