@@ -1,0 +1,21 @@
+{
+  "id": "dectype-esnext-legacy-method-good",
+  "form": "legacy-method-good",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "ESNext",
+  "options": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "rootDir": ".",
+    "outDir": "out",
+    "experimentalDecorators": true
+  }
+}

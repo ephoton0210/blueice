@@ -1,0 +1,20 @@
+{
+  "id": "dectype-esnext-setter-parameter",
+  "form": "setter-parameter",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "ESNext",
+  "options": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "rootDir": ".",
+    "outDir": "out"
+  }
+}
