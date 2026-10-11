@@ -5,6 +5,7 @@
 //! Decorator call and replacement messages from retained syntax.
 use super::*;
 use crate::{ClassDeclaration, ClassMemberShell, Decorator, Type};
+mod replacements;
 
 pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
     let Some(counterpart) = &diagnostic.typescript else {
@@ -84,6 +85,22 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
         Declaration::Function(function) if function.name == name => Some(function),
         _ => None,
     });
+    if let Some(function) = function {
+        if diagnostic
+            .message
+            .starts_with("decorator replacement type ")
+        {
+            replacements::replacement(project, diagnostic, class, member, function);
+            return;
+        }
+        if diagnostic
+            .message
+            .starts_with("decorator context is incompatible ")
+        {
+            replacements::context(project, diagnostic, member, function, decorator);
+            return;
+        }
+    }
     if counterpart.code == 1270 {
         let Some(function) = function else { return };
         let result = function.return_type.as_ref().unwrap_or(&Type::Any);

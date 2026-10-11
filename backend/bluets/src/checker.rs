@@ -28,6 +28,8 @@ mod member_calls;
 use member_calls::{
     indexed_call_parts, indexed_call_ranges, member_call_parts, member_call_ranges,
 };
+mod decorator_types;
+pub(crate) use decorator_types::replacement_type as decorator_replacement_type;
 mod properties;
 mod scopes;
 pub(crate) use scopes::emission::{lexical_emission, LexicalEmission};

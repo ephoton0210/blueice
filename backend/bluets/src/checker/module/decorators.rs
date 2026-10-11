@@ -4,19 +4,17 @@
 
 //! Checking of standard decorators (J.5.3).
 //!
-//! A decorator is called with the decorated value and a context object. BlueTS
-//! has no `lib.decorators.d.ts`, so the context is not typed; what it checks
-//! is what is decidable from the decorator's own declaration: it is callable,
-//! it does not require more than the two arguments it is given, and what it
-//! returns is a kind of value the decorated element accepts (nothing, or a
-//! function for a method, accessor half, field initializer or replacement class;
-//! an object for an auto-accessor). Placement is checked too: decorators decorate
+//! A decorator is called with the decorated value and a static context object.
+//! Callable/arity checks retain the decorator's own declaration, while context
+//! arguments and replacements use the ordinary bounded type relation against
+//! the decorated element. Placement is checked too: decorators decorate
 //! classes and class members, and a method implementation, never a constructor,
 //! a static block, an overload signature or a member the class parser does not
 //! structure.
 
 use super::*;
 use crate::parser::{ClassDeclaration, ClassMemberKind, Decorator};
+mod replacements;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Target {
@@ -99,14 +97,20 @@ impl<'a> ModuleChecker<'a> {
                             DiagnosticCode::InvalidDeclarationFile,
                         );
                     } else {
-                        self.check_decorator(decorator, Target::Parameter, &scope);
+                        self.check_decorator(
+                            decorator,
+                            Target::Parameter,
+                            class,
+                            Some(shell),
+                            &scope,
+                        );
                     }
                     let _ = index;
                 }
             }
         }
         for decorator in &class.decorators {
-            self.check_decorator(decorator, Target::Class, &scope);
+            self.check_decorator(decorator, Target::Class, class, None, &scope);
         }
         for shell in &class.members {
             if shell.decorators.is_empty() {
@@ -181,7 +185,7 @@ impl<'a> ModuleChecker<'a> {
                 }
             };
             for decorator in &shell.decorators {
-                self.check_decorator(decorator, target, &scope);
+                self.check_decorator(decorator, target, class, Some(shell), &scope);
             }
         }
     }
@@ -190,6 +194,8 @@ impl<'a> ModuleChecker<'a> {
         &mut self,
         decorator: &Decorator,
         target: Target,
+        class: &ClassDeclaration,
+        member: Option<&crate::parser::ClassMemberShell>,
         scope: &BTreeMap<String, Type>,
     ) {
         // The expression is ordinary code: its own errors are reported.
@@ -208,6 +214,7 @@ impl<'a> ModuleChecker<'a> {
             Callee::Function { parameters, result } => {
                 if self.experimental_decorators {
                     self.check_legacy_signature(decorator, target, &parameters, &result);
+                    self.check_decorator_replacement(decorator, target, class, member, &result);
                     return;
                 }
                 let required = parameters
@@ -242,7 +249,10 @@ impl<'a> ModuleChecker<'a> {
                         ),
                         DiagnosticCode::TypeMismatch,
                     );
+                } else {
+                    self.check_decorator_replacement(decorator, target, class, member, &result);
                 }
+                self.check_decorator_context(decorator, target, class, member, &parameters);
             }
         }
     }

@@ -33,6 +33,8 @@ impl Parser {
     pub(super) fn parse_parameter_name(&mut self, message: &str) -> String {
         if self.consume("this") {
             "this".to_string()
+        } else if self.consume("object") {
+            "object".to_string()
         } else {
             self.require_identifier(message)
         }

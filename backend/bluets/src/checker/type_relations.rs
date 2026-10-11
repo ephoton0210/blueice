@@ -429,43 +429,10 @@ pub(super) fn is_assignable(
                 parameters: expected_parameters,
                 result: expected_result,
             },
-        ) if actual_parameters
-            .iter()
-            .filter(|parameter| {
-                !parameter.optional && parameter.default.is_none() && !parameter.rest
-            })
-            .count()
-            <= expected_parameters.len() =>
-        {
+        ) => {
             // A callback may ignore trailing arguments supplied by its caller.
             // Every parameter it does consume must still be compatible.
-            expected_parameters
-                .iter()
-                .zip(actual_parameters)
-                .all(|(expected, actual)| {
-                    let value = |parameter: &Parameter| {
-                        let value = parameter.annotation.clone().unwrap_or(Type::Unknown);
-                        if parameter.optional && budget.checking.strict_null_checks {
-                            union([value, Type::Undefined])
-                        } else { value }
-                    };
-                    let expected_type = value(expected);
-                    let actual_type = value(actual);
-                    is_assignable(
-                            &expected_type,
-                            &actual_type,
-                            aliases,
-                            &mut visited.clone(),
-                            budget,
-                        ) || (!budget.checking.strict_function_types
-                            && is_assignable(
-                                &actual_type,
-                                &expected_type,
-                                aliases,
-                                &mut visited.clone(),
-                                budget,
-                            ))
-                })
+            parameters::compatible(actual_parameters, expected_parameters, aliases, visited, budget)
                 // A function type whose result is `void` accepts a function that
                 // returns anything: its result is simply ignored.
                 && match (actual_result.as_ref(), expected_result.as_ref()) {

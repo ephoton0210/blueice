@@ -18,6 +18,10 @@ pub const VERSION: &str = "blue-ts-ecma-lib-v2";
 const BASE: &str = include_str!("standard_library/ecma-base.v1.d.ts");
 const ES2022: &str = include_str!("standard_library/ecma-es2022.v1.d.ts");
 const ADDITIONS: &str = include_str!("standard_library/ecma-additions.v2.d.ts");
+const DECORATORS: (&str, &str) = (
+    "decorator-contexts.v1.d.ts",
+    include_str!("standard_library/decorator-contexts.v1.d.ts"),
+);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,15 +34,18 @@ pub struct Identity {
 }
 
 fn sources(target: EcmaTarget) -> Vec<(&'static str, &'static str)> {
-    if !matches!(target, EcmaTarget::Es2020 | EcmaTarget::Es2022) {
-        return profiles::sources(target);
-    }
-    let mut sources = vec![("ecma-base.v1.d.ts", BASE)];
-    if target >= EcmaTarget::Es2022 {
-        sources.push(("ecma-es2022.v1.d.ts", ES2022));
-    }
-    sources.push(("ecma-additions.v2.d.ts", ADDITIONS));
-    sources.push(ASYNC_ITERATION);
+    let mut sources = if matches!(target, EcmaTarget::Es2020 | EcmaTarget::Es2022) {
+        let mut sources = vec![("ecma-base.v1.d.ts", BASE)];
+        if target >= EcmaTarget::Es2022 {
+            sources.push(("ecma-es2022.v1.d.ts", ES2022));
+        }
+        sources.push(("ecma-additions.v2.d.ts", ADDITIONS));
+        sources.push(ASYNC_ITERATION);
+        sources
+    } else {
+        profiles::sources(target)
+    };
+    sources.push(DECORATORS);
     sources
 }
 
@@ -126,8 +133,8 @@ mod tests {
 
     #[test]
     fn declarations_parse_and_the_target_selects_exact_static_content() {
-        assert_eq!(modules(EcmaTarget::Es2020).len(), 3);
-        assert_eq!(modules(EcmaTarget::Es2022).len(), 4);
+        assert_eq!(modules(EcmaTarget::Es2020).len(), 4);
+        assert_eq!(modules(EcmaTarget::Es2022).len(), 5);
         let old = identity(EcmaTarget::Es2020);
         let new = identity(EcmaTarget::Es2022);
         assert_eq!(old.version, VERSION);
@@ -138,7 +145,8 @@ mod tests {
                 "ecma-base.v1.d.ts",
                 "ecma-es2022.v1.d.ts",
                 "ecma-additions.v2.d.ts",
-                "ecma-async-iteration.v2.d.ts"
+                "ecma-async-iteration.v2.d.ts",
+                "decorator-contexts.v1.d.ts"
             ]
         );
     }
