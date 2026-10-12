@@ -286,8 +286,13 @@ verifying 2,192 source files, 1,902 program inputs, the B: corpus junction
 and nine helper hashes/parser results. The 60 GiB target cap and original
 free-space guards remain enforced.
 
-The original `ec4217440` macOS full Rust gate is still running with its
-two known GC failures; its program sources remain frozen until terminal
-completion. Main integration and fresh corrected-source complete macOS
-Rust checks follow that boundary. Focused tests, ongoing gates, direct
+The original `ec4217440` macOS full Rust gate ends with 7,603 passed,
+three failed and 69 ignored across 516 result groups; all 1,902 frozen
+program inputs match. In addition to the two corrected GC regressions,
+the Unix launcher click fixture retained an obsolete dispatchEvent-absence
+assertion. Its corrected callable-API guard passes all seven real
+Core/child cases against the same immutable `504eeb924` runtime. See
+the [fixture follow-up](LAUNCHER_NODE_EVENT_FIXTURE_RESULTS.md). Main
+integration and canonical corrected-source complete macOS Rust checks
+now follow this terminal boundary. Focused tests, ongoing gates, direct
 hardware inventory and compiled helpers do not establish full completion.
