@@ -8778,3 +8778,15 @@ test-only baseline, not K.11 acceptance or permission to weaken map checks.
 Next work must preserve existing source-map budgets and debugger provenance
 while implementing token-level mappings, then add generated helper-frame and
 relocated decorator coverage before the complete K.0 gate and hosted CI.
+
+### K.11 named-segment carriage (2026-10-12)
+
+The source-map value now retains a `names` table and its encoder can emit the
+optional fifth VLQ field with a cumulative name-index delta. A focused unit
+test covers two named segments and JSON escaping of a quoted name. Existing
+JavaScript and declaration maps still construct empty tables and unnamed
+segments, so their serialized bytes and prior mapping budgets are unchanged;
+emitter, declaration-map, CLI publication, module-wrapper, and System-map
+tests pass. This is an internal prerequisite, not K.11 acceptance: no current
+production mark assigns a name, the token-aligned Native oracle remains red,
+and future named marks must stay inside the source-map resource envelope.

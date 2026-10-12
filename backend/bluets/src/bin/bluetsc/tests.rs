@@ -348,6 +348,7 @@ fn publishing_replaces_a_complete_output_directory_only_after_staging() {
                 sources_content: vec!["export const answer: number = 42;".to_string()],
                 inline_sources: true,
                 source_root: String::new(),
+                names: Vec::new(),
                 mappings: "AAAA".to_string(),
             }),
             declaration: Some("export declare const answer: number;\n".to_string()),

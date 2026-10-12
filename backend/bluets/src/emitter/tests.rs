@@ -7,7 +7,7 @@ use crate::{
     SourceSpan, StrictRuntimeBoundary,
 };
 
-use super::source_line_column;
+use super::{encode_mappings, source_line_column, ProvenanceSegment, SourceMap};
 
 #[test]
 fn erases_types_and_rewrites_typescript_module_specifiers() {
@@ -73,6 +73,44 @@ fn emits_source_map_and_public_declaration() {
         .as_ref()
         .unwrap()
         .contains("export interface User"));
+}
+
+#[test]
+fn source_map_serializes_named_segments_and_escaped_names() {
+    let mappings = encode_mappings(&[
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 0,
+            source_line: 0,
+            source_column: 0,
+            name_index: Some(0),
+        },
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 6,
+            source_line: 0,
+            source_column: 7,
+            name_index: Some(1),
+        },
+    ]);
+    let map = SourceMap {
+        file: "named.js".to_string(),
+        sources: vec!["named.ts".to_string()],
+        sources_content: vec!["const name = 1;".to_string()],
+        inline_sources: true,
+        source_root: String::new(),
+        names: vec!["name".to_string(), "quoted\"name".to_string()],
+        mappings,
+    };
+    let value: serde_json::Value = serde_json::from_str(&map.to_json()).unwrap();
+    assert_eq!(value["names"], serde_json::json!(["name", "quoted\"name"]));
+    let segments = map
+        .mappings
+        .split(',')
+        .map(decode_vlq_fields)
+        .collect::<Vec<_>>();
+    assert_eq!(segments[0], vec![0, 0, 0, 0, 0]);
+    assert_eq!(segments[1], vec![6, 0, 0, 7, 1]);
 }
 
 #[test]

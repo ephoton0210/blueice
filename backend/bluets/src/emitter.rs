@@ -108,13 +108,15 @@ pub struct SourceMap {
     pub sources_content: Vec<String>,
     pub inline_sources: bool,
     pub source_root: String,
+    /// Source Map v3 names referenced by optional fifth fields in mappings.
+    pub names: Vec<String>,
     pub mappings: String,
 }
 
 impl SourceMap {
     pub fn to_json(&self) -> String {
         format!(
-            "{{\"version\":3,\"file\":\"{}\",\"sourceRoot\":\"{}\",\"sources\":[{}]{},\"names\":[],\"mappings\":\"{}\"}}",
+            "{{\"version\":3,\"file\":\"{}\",\"sourceRoot\":\"{}\",\"sources\":[{}]{},\"names\":[{}],\"mappings\":\"{}\"}}",
             json_escape(&self.file),
             json_escape(&self.source_root),
             self.sources
@@ -129,6 +131,11 @@ impl SourceMap {
                     .collect::<Vec<_>>()
                     .join(","))
             } else { String::new() },
+            self.names
+                .iter()
+                .map(|name| format!("\"{}\"", json_escape(name)))
+                .collect::<Vec<_>>()
+                .join(","),
             json_escape(&self.mappings),
         )
     }
@@ -324,6 +331,8 @@ struct ProvenanceSegment {
     generated_column: usize,
     source_line: usize,
     source_column: usize,
+    /// Index into `SourceMap::names`; absent for unnamed segments.
+    name_index: Option<usize>,
 }
 
 fn emit_javascript(
@@ -822,6 +831,7 @@ impl<'a> ProvenanceEmitter<'a> {
             generated_column: self.generated_column,
             source_line,
             source_column,
+            name_index: None,
         };
         if self.provenance.last().is_some_and(|previous| {
             previous.generated_line == segment.generated_line
@@ -892,6 +902,7 @@ fn source_map(
                     format!("{root}/")
                 }
             }),
+        names: Vec::new(),
         mappings: encode_mappings(&emitted.provenance),
     }
 }
@@ -905,6 +916,7 @@ fn encode_mappings(segments: &[ProvenanceSegment]) -> String {
     let mut index = 0usize;
     let mut previous_source_line = 0i64;
     let mut previous_source_column = 0i64;
+    let mut previous_name_index = 0i64;
     for line in 0..=last_line {
         if line > 0 {
             mappings.push(';');
@@ -929,6 +941,10 @@ fn encode_mappings(segments: &[ProvenanceSegment]) -> String {
             mappings.push_str(&base64_vlq(
                 segment.source_column as i64 - previous_source_column,
             ));
+            if let Some(name_index) = segment.name_index {
+                mappings.push_str(&base64_vlq(name_index as i64 - previous_name_index));
+                previous_name_index = name_index as i64;
+            }
             previous_generated_column = segment.generated_column as i64;
             previous_source_line = segment.source_line as i64;
             previous_source_column = segment.source_column as i64;

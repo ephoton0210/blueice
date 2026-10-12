@@ -203,6 +203,7 @@ pub(super) fn build(
                     generated_column,
                     source_line,
                     source_column,
+                    name_index: None,
                 }
             },
         )
@@ -221,6 +222,7 @@ pub(super) fn build(
         sources_content: Vec::new(),
         inline_sources: false,
         source_root: options.source_root.clone().unwrap_or_default(),
+        names: Vec::new(),
         mappings: encode_mappings(&segments),
     })
 }
