@@ -186,6 +186,12 @@ that the original `press(...thenDragTo:)` step delivered no mouse events after
 the collapse. The four methods now use macOS `click(...thenDragTo:)`, preserving
 coordinates, hold durations, text/privacy/no-fetch and placement checks. All four
 pass without failures or skips. Temporary trace code is removed from the final
-candidate. The corrected complete Rust and complete native runs are live; they
-are not yet complete acceptance. Windows will use the committed source snapshot
-and its independently hashed B: archive rather than an uncommitted worktree.
+candidate. The corrected complete Rust run for committed `83436f846` has
+finished successfully: 7,507 passed, zero failed and 69 ignored across 495 result
+groups. All 1,246 frozen Rust/Cargo inputs are unchanged. The complete native
+run is still live; physical input-method/hardware acceptance is still open.
+Windows uses the independently hashed B: archive of that same committed source.
+After the storage-scanner race correction, its format, strict all-target Clippy
+and complete all-target build have passed; complete Rust and WinUI execution
+remain pending. See the Windows storage follow-up receipt for the retained
+failed preparation and the separate retry directory.

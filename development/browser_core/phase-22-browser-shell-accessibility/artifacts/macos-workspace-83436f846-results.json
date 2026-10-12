@@ -1,0 +1,14 @@
+{
+  "source_commit": "83436f8461c6f681df183473ecb7dcbe83423605",
+  "session_id": 42499,
+  "exit_code": 0,
+  "passed": 7507,
+  "failed": 0,
+  "ignored": 69,
+  "groups": 495,
+  "log": "frontend/macos/.build/precommit-workspace-corrected-20261012.log",
+  "log_sha256": "f32d8d958aa5e26bb942bff0e598306a067b9e32b45129b01c5b193a2fef5106",
+  "verified_rust_input_files": 1246,
+  "changed_rust_inputs": [],
+  "command": "CARGO_TARGET_DIR=frontend/macos/.build/core-target rustup run 1.96.0 cargo test --workspace --no-fail-fast --locked"
+}
