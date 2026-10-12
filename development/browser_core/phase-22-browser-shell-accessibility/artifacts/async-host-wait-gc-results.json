@@ -1,0 +1,80 @@
+{
+  "base_commit": "33dfdb3b78150a470c07b99d4941e6651a9833ae",
+  "status": "focused-passed-complete-platform-pending",
+  "source_inputs": {
+    "backend/bluejs/src/vm/test262_agents.rs": "4b098d33f8aac0e40d72079f6788a7b0efd195169b6b4496ebe16ee6b7717068",
+    "backend/bluejs/src/vm/builtins/binary_data.rs": "9a6b473719e10a48fc490cade1b42c2bfdce90e1cb9c8846697065911f99c9b8",
+    "backend/bluejs/tests/promise_gc_lifecycle.rs": "623f9afcbc5e8657c3945b72442ffdbe177b132e6b14c2d7f40372939d2b78c6"
+  },
+  "changed_inputs": [],
+  "focused": {
+    "session_id": 68115,
+    "exit_code": 0,
+    "groups": 4,
+    "passed": 138,
+    "failed": 0,
+    "ignored": 0,
+    "log_sha256": "b6cd392ebd17d8ff2df955bd34c24b046d32e8dd3f2a26b25dc9fa77f68d1b70",
+    "targets": [
+      "cov_g4_binary_sweeps",
+      "gc_stress_rooting",
+      "promise_gc_lifecycle",
+      "test262_host"
+    ],
+    "command": "CARGO_TARGET_DIR=/private/tmp/blueice-array-from-async-target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 rustup run 1.96.0 cargo test -p blueice-bluejs --test promise_gc_lifecycle --test test262_host --test gc_stress_rooting --test cov_g4_binary_sweeps --locked"
+  },
+  "original_test262": {
+    "fixture_modes_verified": 4,
+    "fixtures": [
+      "Atomics/waitAsync/undefined-for-timeout.js",
+      "Atomics/waitAsync/bigint/undefined-for-timeout.js"
+    ],
+    "modes": [
+      "sloppy",
+      "strict"
+    ],
+    "passed": true,
+    "sha256": {
+      "undefined-for-timeout.js": "622a73ebd0ac150e34db60884fd248a17465c354048b8517d4c9c75fa4172468",
+      "bigint/undefined-for-timeout.js": "7897b990dcfcdddd91fd3214aa809b7b233cb24e03adafbccc814b9edef013f7"
+    }
+  },
+  "red": {
+    "exit_code": 101,
+    "failed": 2,
+    "log_sha256": "16df24acfe7792d5685251a27801b37eab48ab345d1e94b43192b11dbd341456"
+  },
+  "clippy": {
+    "exit_code": 0,
+    "scope": "blueice-bluejs all targets, warnings denied",
+    "command": "CARGO_TARGET_DIR=/private/tmp/blueice-array-from-async-target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 rustup run 1.96.0 cargo clippy -p blueice-bluejs --all-targets --locked -- -D warnings",
+    "log_sha256": "4d2ceaf7cd192346379ab8dc8d4f4d27d4946b7f35493a20ac74ff0b11926161"
+  },
+  "fmt": {
+    "exit_code": 0,
+    "command": "cargo fmt --all -- --check"
+  },
+  "full_pre_fix_platforms": {
+    "source_commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+    "macos": "Complete active workspace run fails atomics_wait_async: four original fixture/mode failures, invalid Promise receiver",
+    "windows": {
+      "scope": "Same failure in active complete workspace run; run not terminal",
+      "probe_utc": "2026-10-12T20:13:16.4111042Z",
+      "details": [
+        "failures:\n\n---- atomics_wait_async stdout ----\nbuilt-ins/Atomics/waitAsync: ran 134, skipped 64, failed 4\n\nthread 'atomics_wait_async' (6288) panicked at backend\\bluejs\\tests\\cov_g4_test262_binary.rs:12:5:\nbuilt-ins/Atomics/waitAsync\\bigint\\undefined-for-timeout.js [sloppy]: TypeError: invalid Promise receiver\nbuilt-ins/Atomics/waitAsync\\bigint\\undefined-for-timeout.js [strict]: TypeError: invalid Promise receiver\nbuilt-ins/Atomics/waitAsync\\undefined-for-timeout.js [sloppy]: TypeError: invalid Promise receiver\nbuilt-ins/Atomics/waitAsync\\undefined-for-timeout.js [strict]: TypeError: invalid Promise receiver\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    atomics_wait_async\n\ntest result: FAILED. 7 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 912.62s"
+      ]
+    }
+  },
+  "behavior": [
+    "Host wait retains its Promise until owning VM settlement",
+    "Host thread carries only opaque object/root IDs and shared waiter state",
+    "Dequeued event batch remains rooted across callbacks",
+    "All dequeued roots are released even when an earlier callback/settlement fails",
+    "Settled unreferenced wait Promise becomes collectible"
+  ],
+  "remaining": [
+    "Committed corrected-source backend rebuild and source packaging",
+    "Fresh complete Rust/native/Windows acceptance after frozen pre-fix gates finish",
+    "Physical IME/VoiceOver/display/printer acceptance"
+  ]
+}

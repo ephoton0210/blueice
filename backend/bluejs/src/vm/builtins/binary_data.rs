@@ -1186,7 +1186,7 @@ impl Vm {
             let backing = self.heap.shared_buffer_backing(buffer)?;
             let promise = self.new_promise()?;
             self.stack.push(Value::Object(promise));
-            self.schedule_test262_async_wait(backing, position, timeout, promise);
+            self.schedule_test262_async_wait(backing, position, timeout, promise)?;
             self.define_data(result, "async", Value::Bool(true), true, true, true)?;
             self.define_data(result, "value", Value::Object(promise), true, true, true)
         })();

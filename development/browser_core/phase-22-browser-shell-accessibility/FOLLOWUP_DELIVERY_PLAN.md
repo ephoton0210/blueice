@@ -246,3 +246,12 @@ related cases, strict BlueJS all-target Clippy and format checks pass.
 The [GC follow-up](ARRAY_FROM_ASYNC_GC_RESULTS.md) preserves the existing
 red regression, additional semantic coverage and pending complete gates.
 The active pre-fix complete runs still contain that failure.
+
+Both complete pre-fix Rust runs also fail four original Atomics.waitAsync
+fixture/mode cases because the OS waiter did not keep its pending
+Promise alive. The [async host-wait follow-up](ASYNC_HOST_WAIT_GC_RESULTS.md)
+roots the owned wait through VM settlement and cleans every dequeued
+event root on success or error. All 138 related cases and the four
+original fixture/mode executions pass, as do strict Clippy and formatting.
+The next complete acceptance must use this final correction rather than
+the earlier `33dfdb3b7` package. Physical requirements remain open.
