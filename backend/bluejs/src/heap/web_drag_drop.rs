@@ -40,6 +40,7 @@ pub(crate) struct DragStore {
     pub types: Option<ObjectId>,
     pub drop_effect: JsString,
     pub effect_allowed: JsString,
+    pub image: Option<(ObjectId, i32, i32)>,
 }
 
 impl DragStore {
@@ -53,6 +54,7 @@ impl DragStore {
             types: None,
             drop_effect: "none".into(),
             effect_allowed: "none".into(),
+            image: None,
         }
     }
 
@@ -68,6 +70,7 @@ impl DragStore {
             .chain(self.item_list)
             .chain(self.file_list)
             .chain(self.types)
+            .chain(self.image.map(|(element, _, _)| element))
             .collect()
     }
 

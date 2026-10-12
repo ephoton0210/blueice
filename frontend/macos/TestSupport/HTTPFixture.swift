@@ -70,6 +70,50 @@ final class HTTPFixture: @unchecked Sendable {
                 }
                 let body: String
                 switch route {
+                case "/native-drag-image": body = """
+                    <html><body style='margin:0'>
+                    <p id='image-source' draggable='true' aria-label='Custom preview source' style='width:300px;height:36px'>Drag custom preview</p>
+                    <div id='image-preview' style='width:100px;height:48px;background-color:#00cc66'>Core preview</div>
+                    <p id='image-status'>Waiting for custom preview</p>
+                    <script>
+                    document.getElementById('image-source').addEventListener('dragstart', function(event) {
+                        let rejected = 0;
+                        for (const node of [document,document.createTextNode('Not an Element')]) {
+                            try { event.dataTransfer.setDragImage(node,0,0); }
+                            catch (error) { if (error instanceof TypeError) rejected++; }
+                        }
+                        if (rejected !== 2) { event.preventDefault(); return; }
+                        event.dataTransfer.setData('text/plain','Custom preview payload');
+                        event.dataTransfer.setDragImage(document.getElementById('image-preview'),12,8);
+                        document.getElementById('image-status').textContent = 'Custom preview started';
+                    });
+                    document.getElementById('image-status').textContent = 'Custom preview ready';
+                    </script></body></html>
+                    """
+                case "/native-drag-modifiers": body = """
+                    <html><body style='margin:0'>
+                    <input id='modifier-source' aria-label='Modifier source' value='Modifier 中文 😀' style='display:block;width:300px;height:36px'>
+                    <input id='modifier-target' aria-label='Modifier target' value='' style='display:block;width:300px;height:36px'>
+                    <input id='modifier-readonly' aria-label='Readonly modifier source' readonly value='Locked source' style='display:block;width:300px;height:36px'>
+                    <p id='modifier-status'>Drag idle</p>
+                    <script>
+                    function ended(event) { document.getElementById('modifier-status').textContent = 'Ended ' + event.dataTransfer.dropEffect; }
+                    document.getElementById('modifier-source').addEventListener('dragend', ended);
+                    document.getElementById('modifier-readonly').addEventListener('dragend', ended);
+                    </script></body></html>
+                    """
+                case "/native-file-promise": body = """
+                    <html><body style='margin:0'>
+                    <p id='file-source' draggable='true' aria-label='File promise source' style='width:300px;height:36px'>Export binary file</p>
+                    <p id='promise-status'>Waiting for file promise support</p>
+                    <script>
+                    document.getElementById('file-source').addEventListener('dragstart', function(event) {
+                        event.dataTransfer.items.add(new File([new Uint8Array([0,255,65,240,159,152,128])], 'export-中文.bin', {type:'application/octet-stream'}));
+                        event.dataTransfer.effectAllowed = 'copy';
+                    });
+                    document.getElementById('promise-status').textContent = 'File promise ready';
+                    </script></body></html>
+                    """
                 case "/native-drop-events": body = """
                     <html><body style="margin:0">
                     <div id='zone' role='button' aria-label='Script drop zone' style='width:300px;height:60px'>Drop here</div>

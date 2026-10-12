@@ -9,7 +9,9 @@
 use super::*;
 mod drag_events;
 mod file_selection_events;
-pub use drag_events::{HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragItem};
+pub use drag_events::{
+    HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragImage, HostDragItem,
+};
 pub use file_selection_events::HostFileSelectionEvent;
 
 /// A fixed bound on permanently rooted wrappers in one host-object family.
@@ -133,6 +135,7 @@ pub(super) struct HostObjectFamilyState {
     event_target: bool,
     file_events: bool,
     drag_events: bool,
+    element_validator: Option<Box<dyn Fn(HostObjectKey) -> bool>>,
 }
 
 pub(super) struct HostObjectFactoryRegistration {
@@ -182,10 +185,34 @@ fn listener_phases(length: usize) -> Vec<(usize, bool)> {
 }
 
 impl Vm {
+    /// The embedding owner classifies opaque DOM identities; page properties
+    /// cannot impersonate an Element or reclassify a text/document wrapper.
+    pub fn install_host_element_validator(
+        &mut self,
+        family: HostObjectFamily,
+        validator: impl Fn(HostObjectKey) -> bool + 'static,
+    ) -> Result<(), RuntimeError> {
+        self.host_family_prototype(family)?;
+        self.host_object_families[family.index as usize].element_validator =
+            Some(Box::new(validator));
+        Ok(())
+    }
+    pub(super) fn is_host_element(&self, object: ObjectId) -> bool {
+        self.host_object_families.iter().any(|family| {
+            family.keys_by_wrapper.get(&object).is_some_and(|key| {
+                family
+                    .element_validator
+                    .as_ref()
+                    .is_some_and(|check| check(*key))
+            })
+        })
+    }
     pub(super) fn is_host_event_target(&self, object: ObjectId) -> bool {
-        self.host_object_families
-            .iter()
-            .any(|family| family.event_target && family.keys_by_wrapper.contains_key(&object))
+        self.heap.web_event_target(object).is_ok()
+            || self
+                .host_object_families
+                .iter()
+                .any(|family| family.event_target && family.keys_by_wrapper.contains_key(&object))
     }
     /// Installs one minted wrapper as a global while preserving its family
     /// identity. Its opaque owner key remains inaccessible to JavaScript.
@@ -627,6 +654,7 @@ impl Vm {
             event_target: false,
             file_events: false,
             drag_events: false,
+            element_validator: None,
         });
         Ok(HostObjectFamily {
             heap: self.object_prototype.heap,

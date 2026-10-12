@@ -9,9 +9,17 @@ import Foundation
 final class NativeDragPayload: @unchecked Sendable {
     private let lock = NSLock()
     private var values: [String: Data]
+    private var files: [SelectedFile]
     private var active = true
 
-    init(values: [String: Data]) { self.values = values }
+    init(values: [String: Data], files: [SelectedFile] = []) { self.values = values; self.files = files }
+
+    /// Admit one immutable fulfillment under the same source-decision lock.
+    /// Disk I/O happens after admission, without blocking the drag heartbeat.
+    /// Revocation refuses later admissions; an admitted write may complete.
+    func fileSnapshot(_ index: Int) -> SelectedFile? {
+        lock.withLock { active && files.indices.contains(index) ? files[index] : nil }
+    }
 
     @discardableResult
     func provide(_ type: String, publish: (Data) -> Void) -> Bool {
@@ -26,6 +34,7 @@ final class NativeDragPayload: @unchecked Sendable {
         lock.withLock {
             active = false
             values.removeAll(keepingCapacity: false)
+            files.removeAll(keepingCapacity: false)
         }
     }
 
@@ -37,6 +46,7 @@ final class NativeDragPayload: @unchecked Sendable {
             if decision() { return true }
             active = false
             values.removeAll(keepingCapacity: false)
+            files.removeAll(keepingCapacity: false)
             return false
         }
     }

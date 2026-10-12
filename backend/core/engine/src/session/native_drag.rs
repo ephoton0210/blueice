@@ -251,6 +251,7 @@ pub(super) fn handle_native_drag(
             }
             let items = if let Some(outcome) = outcome {
                 drag.allowed = restrict_operations(&drag.allowed, &outcome.effect_allowed);
+                drag.image = outcome.image;
                 outcome.items
             } else {
                 drag.items.clone()

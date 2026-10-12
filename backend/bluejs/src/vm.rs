@@ -20,6 +20,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
+mod browser_tasks;
 mod builtins;
 mod completion;
 mod debugger;
@@ -44,9 +45,12 @@ mod test262;
 mod test262_agents;
 mod web_dom_exception;
 mod web_drag_drop;
+mod web_event_target;
 mod web_events;
 mod web_file_api;
 mod web_file_input;
+mod web_file_reader;
+mod web_streams;
 use completion::{
     call_stack_exhausted, Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
 };
@@ -65,7 +69,7 @@ use host_objects::{
     HostObjectMethodRegistration, HostObjectPairMethodRegistration,
 };
 pub use host_objects::{
-    HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragItem,
+    HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragImage, HostDragItem,
     HostFileSelectionEvent, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
     HostObjectPairMethod,
 };
@@ -1091,7 +1095,7 @@ pub struct Vm {
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
     promise_jobs: VecDeque<PromiseJob>,
-    drag_string_tasks: VecDeque<(ObjectId, JsString, RootId)>,
+    browser_tasks: VecDeque<browser_tasks::BrowserTask>,
     test262_done: Option<Result<(), Value>>,
     /// Test262-only host scheduler state. Ordinary realms never install or
     /// expose it; agent VMs receive the same Arc while retaining their own
@@ -1151,7 +1155,11 @@ impl Vm {
     /// Installs the owner-selected browser File API in this realm.
     pub fn install_web_file_api(&mut self) -> Result<(), RuntimeError> {
         self.install_web_files()?;
-        self.install_web_drag_drop()
+        self.install_web_drag_drop()?;
+        self.install_web_event_target()?;
+        self.install_web_progress_events()?;
+        self.install_web_file_reader()?;
+        self.install_web_streams()
     }
 
     /// Installs one non-constructable host function as an own property of
@@ -1728,6 +1736,9 @@ impl Vm {
                     | NativeFunction::DOMException
                     | NativeFunction::WebDrag(crate::native::DragNative::DataTransfer | crate::native::DragNative::DragEvent)
                     | NativeFunction::WebEvent(crate::native::EventNative::Constructor(_))
+                    | NativeFunction::WebTarget(crate::native::TargetNative::Constructor)
+                    | NativeFunction::WebReader(crate::native::ReaderNative::Constructor)
+                    | NativeFunction::WebStream(crate::native::StreamNative::Constructor(_))
                     | NativeFunction::Array
                     | NativeFunction::Date
                     | NativeFunction::TemporalConstructor(_)

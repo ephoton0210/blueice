@@ -8,6 +8,11 @@ use super::*;
 /// separate from a VM/registry prevents the core from bypassing the child's
 /// process boundary and lets focused tests use a recording child peer.
 pub trait PageHostClient {
+    /// Production peers can schedule existing realm jobs between Core turns.
+    /// Recording peers preserve their declared, smaller transport surface.
+    fn browser_tasks_available(&self) -> bool {
+        false
+    }
     fn dispatch_drag_with_script_pump(
         &mut self,
         _tab_id: u64,

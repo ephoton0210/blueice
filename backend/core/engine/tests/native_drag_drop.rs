@@ -11,6 +11,31 @@ mod browser;
 use browser::{scoped, text, Browser};
 
 #[test]
+fn native_source_start_publishes_core_selection_preview_geometry_only_on_start() {
+    let mut browser = Browser::new();
+    let point = browser.select_source("Preview 中文");
+    let state = browser
+        .drag(json!({"Start":{"drag_id":91,"point":point,"allowed_operations":["Copy"]}}))
+        .unwrap();
+    let regions = state["image"]["regions"]
+        .as_array()
+        .expect("Core must provide selected source pixels' geometry");
+    assert!(!regions.is_empty());
+    assert!(regions
+        .iter()
+        .all(|region| region["width"].as_f64().unwrap() > 0.0
+            && region["height"].as_f64().unwrap() > 0.0));
+    let ended = browser
+        .drag(json!({"End":{"drag_id":91,"operation":"Copy"}}))
+        .unwrap();
+    assert!(
+        ended["image"].is_null(),
+        "Ending or observing a drag cannot export another preview"
+    );
+    assert_eq!(browser.value("Drop text"), "Preview 中文");
+}
+
+#[test]
 fn native_drag_edits_only_on_drop_and_rejects_replayed_payloads() {
     let mut browser = Browser::new();
     let original = browser.snapshot();

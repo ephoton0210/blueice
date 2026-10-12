@@ -127,10 +127,12 @@ use std::io::{self, Read, Write};
 mod drag_drop;
 pub use drag_drop::{
     valid_effect_allowed as valid_drag_effect_allowed, valid_format as valid_drag_format,
-    valid_items as valid_drag_items, PageHostDragEvent, PageHostDragKind, PageHostDragOutcome,
+    valid_items as valid_drag_items, PageHostDragEvent, PageHostDragImage, PageHostDragKind,
+    PageHostDragOutcome,
 };
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V49 carries document-bound drag image requests.
 /// V46 adds document-bound drag events and post-default drag string tasks.
 /// V45 adds document-bound native file-selection event dispatch.
 /// V44 adds a bounded private BlueTS rejection-position candidate. V43 adds
@@ -139,7 +141,7 @@ pub use drag_drop::{
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 48;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 49;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;

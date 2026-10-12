@@ -1,5 +1,10 @@
 # macOS browser delivery milestones
 
+The [2026-10-12 follow-up plan](FOLLOWUP_DELIVERY_PLAN.md) retains the requested
+Windows, drag interoperability, physical-system and Web API completion gates.
+Those tracks remain open; the accepted native drag increment below is their
+starting point.
+
 The macOS browser remains an active delivery target. This plan translates the
 Phase 22 native-shell requirements into reviewable commits; an initial window,
 a passing smoke test, or one bridge does not complete the browser design.

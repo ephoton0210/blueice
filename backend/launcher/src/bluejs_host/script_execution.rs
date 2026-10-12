@@ -241,8 +241,8 @@ pub(super) fn bluets_compiler_options(
             .verified_dom_mutation_ambient_module(&page_host_dom_mutation_runtime_bindings_v1()),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event()
             .verified_dom_event_ambient_module(&page_host_dom_event_runtime_bindings_v1()),
-        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_drag()
-            .verified_dom_drag_ambient_module(&page_host_dom_drag_runtime_bindings_v1()),
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_stream()
+            .verified_dom_stream_ambient_module(&page_host_dom_stream_runtime_bindings_v4()),
     }
     .map_err(|_| "verified page-host BlueTS typings are unavailable")?;
     let mut options = CompilerOptions {

@@ -158,6 +158,25 @@ pub(crate) enum DateMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StreamNative {
+    Constructor(u8),
+    Locked,
+    GetReader,
+    Cancel,
+    Read,
+    Release,
+    Closed,
+    DesiredSize,
+    Enqueue,
+    Close,
+    Error,
+    ByobRequest,
+    View,
+    Respond(bool),
+    Blob(bool),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DateSetter {
     Date,
     FullYear,
@@ -210,6 +229,7 @@ pub(crate) enum DragNative {
     GetData,
     SetData,
     ClearData,
+    SetDragImage,
     ItemsLength,
     ItemsAdd,
     ItemsRemove,
@@ -222,6 +242,25 @@ pub(crate) enum DragNative {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TargetNative {
+    Constructor,
+    Add,
+    Remove,
+    Dispatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReaderNative {
+    Constructor,
+    Ready,
+    Result,
+    Error,
+    Read(crate::heap::FileReadKind),
+    Abort,
+    Handler(&'static str, bool),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
     DOMException,
     DOMExceptionName,
@@ -229,6 +268,14 @@ pub(crate) enum NativeFunction {
     DOMExceptionCode,
     WebDrag(DragNative),
     WebEvent(EventNative),
+    WebTarget(TargetNative),
+    WebReader(ReaderNative),
+    WebStream(StreamNative),
+    StreamReaction {
+        stream: ObjectId,
+        action: u8,
+        rejected: bool,
+    },
     Blob,
     File,
     BlobSize,
@@ -878,6 +925,7 @@ impl NativeFunction {
     pub(crate) fn references(self) -> Vec<ObjectId> {
         match self {
             Self::ProxyRevoker(proxy) => vec![proxy],
+            Self::StreamReaction { stream, .. } => vec![stream],
             Self::PromiseResolvingFunction { promise, state, .. } => vec![promise, state],
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
             Self::ArrayFromAsyncResume { state, .. } => vec![state],

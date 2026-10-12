@@ -50,8 +50,14 @@ mod object_storage;
 #[cfg(test)]
 mod tests;
 mod web_drag_drop;
+mod web_event_target;
 mod web_file_api;
+mod web_file_reader;
+mod web_streams;
 pub(crate) use web_drag_drop::{DragEventState, DragItem, DragItemData, DragStore, DragStoreMode};
+pub(crate) use web_event_target::{WebListener, WebTargetData};
+pub(crate) use web_file_reader::{FileReadKind, FileReaderState};
+pub(crate) use web_streams::{PullInto, StreamData, StreamRead, StreamReader, WebStreamState};
 
 /// A persistent root registration, independent of other registrations
 /// of the same object. Release it with [`Heap::unroot`]. Copying or
@@ -898,6 +904,9 @@ enum ObjectKind {
         id: u64,
     },
     WebDragEvent(Box<DragEventState>),
+    WebEventTarget(Box<WebTargetData>),
+    WebFileReader(Box<FileReaderState>),
+    WebStream(Box<WebStreamState>),
     HostSelectionEvent {
         current_target: Option<ObjectId>,
     },
@@ -1359,6 +1368,9 @@ impl Object {
                 | ObjectKind::WebDragFiles(store)
                 | ObjectKind::WebDragItem { store, .. } => vec![*store],
                 ObjectKind::WebDragEvent(state) => state.references(),
+                ObjectKind::WebEventTarget(state) => state.references(),
+                ObjectKind::WebFileReader(state) => state.references(),
+                ObjectKind::WebStream(state) => state.references(),
                 ObjectKind::HostSelectionEvent { current_target } => {
                     current_target.iter().copied().collect()
                 }
@@ -1576,6 +1588,9 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             | ObjectKind::WebDragFiles(store)
             | ObjectKind::WebDragItem { store, .. } => vec![*store],
             ObjectKind::WebDragEvent(state) => state.references(),
+            ObjectKind::WebEventTarget(state) => state.references(),
+            ObjectKind::WebFileReader(state) => state.references(),
+            ObjectKind::WebStream(state) => state.references(),
             ObjectKind::HostSelectionEvent { current_target } => {
                 current_target.iter().copied().collect()
             }

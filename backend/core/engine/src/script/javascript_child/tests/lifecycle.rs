@@ -4,6 +4,83 @@
 
 use super::*;
 
+struct FailedBrowserTaskChild {
+    synchronized: usize,
+    flushed: usize,
+    closed: Vec<(u64, u64)>,
+}
+
+impl PageHostClient for FailedBrowserTaskChild {
+    fn browser_tasks_available(&self) -> bool {
+        true
+    }
+    fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply> {
+        self.synchronized += 1;
+        Ok(PageHostReply::Synchronized {
+            tab_id: document.tab_id,
+            document_generation: document.document_generation,
+            already_current: false,
+            reports: vec![],
+        })
+    }
+    fn realm_stats(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {
+        Ok(PageHostReply::RealmStats(PageHostRealmStats {
+            tab_id,
+            document_generation,
+            program_count: 1,
+            bytecode_bytes: 0,
+            heap_bytes: 0,
+            static_metadata_bytes: 0,
+            deferred_payload_bytes: 0,
+        }))
+    }
+    fn flush_drag_tasks_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        _: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.flushed += 1;
+        // A plausible acknowledgement for another tab must revoke this realm.
+        Ok(PageHostReply::DragTasksFlushed {
+            tab_id: tab_id + 1,
+            document_generation,
+        })
+    }
+    fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {
+        self.closed.push((tab_id, document_generation));
+        Ok(PageHostReply::RealmClosed {
+            tab_id,
+            document_generation,
+        })
+    }
+}
+
+#[test]
+fn child_browser_task_failure_keeps_core_alive_without_replaying_document_scripts() {
+    let (mut tabs, tab_id) = loaded_tabs(
+        "<script>let once = 1;</script>",
+        "https://example.test/tasks",
+    );
+    let (_sender, receiver) = crate::script::script_request_channel();
+    let mut executor = OutOfProcessJavaScriptPageExecutor::new(FailedBrowserTaskChild {
+        synchronized: 0,
+        flushed: 0,
+        closed: vec![],
+    });
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert_eq!(executor.child.synchronized, 1);
+    assert_eq!(executor.child.flushed, 1);
+    assert_eq!(executor.child.closed, vec![(tab_id.as_u64(), 1)]);
+    assert!(executor.realm_stats.is_empty());
+    assert!(!executor.debugger_has_live_realm(tab_id, 1));
+}
+
 /// A hostile authenticated child still cannot acknowledge a different
 /// realm and make core treat the requested document as eligible for any
 /// debugger lifecycle record.

@@ -13,6 +13,197 @@ import Darwin
 
 @MainActor
 final class BrowserUITests: XCTestCase {
+    func testNativeOSSetDragImageExportsTheActualCorePreviewAndPayload() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch()
+        let main = app.windows["browser-window"]
+        let url = fixture.origin + "/native-drag-image"
+        enter(url); waitValue(main.textFields["address"],url)
+        XCTAssertTrue(main.staticTexts["Custom preview ready"].waitForExistence(timeout: 15))
+        positionTabDragWindow(main,x: 40)
+        let fixtureURL = Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("DragInteropFixture.app")
+        let external = XCUIApplication(url: fixtureURL)
+        external.launch(); addTeardownBlock { external.terminate() }
+        XCTAssertTrue(external.windows.firstMatch.waitForExistence(timeout: 10))
+        positionOwnedWindow(external.windows.firstMatch,x: 820)
+        let target = external.textViews["external-destination"]
+        func checkOSPreviewGeometry() throws {
+            let value = try XCTUnwrap(external.staticTexts["preview-result"].value as? String)
+            XCTAssertTrue(value.hasPrefix("Preview 100x48 hotspot "),value)
+            let parts = value.components(separatedBy: "hotspot ")
+            guard parts.count == 2 else { throw CocoaError(.coderReadCorrupt) }
+            let point = parts[1].split(separator: ",").compactMap { Double($0) }
+            XCTAssertEqual(point.count,2)
+            guard point.count == 2 else { throw CocoaError(.coderReadCorrupt) }
+            // The independent native source sets exactly (12,8), but the
+            // receiver's cursor/image samples vary by one point on macOS.
+            // Core metadata and the generated bitmap retain exact checks.
+            XCTAssertLessThanOrEqual(abs(point[0]-12),1,value)
+            XCTAssertLessThanOrEqual(abs(point[1]-8),1,value)
+        }
+        let reference = external.buttons["native-preview-source"]
+        reference.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.5)).click(forDuration: 0.4,
+            thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.2)))
+        waitValue(target,"Native preview payload")
+        try checkOSPreviewGeometry()
+        target.click(); target.typeKey("a",modifierFlags: .command); target.typeKey(.delete,modifierFlags: [])
+        waitValue(target,"")
+        app.activate()
+        let source = main.staticTexts["Custom preview source"]
+        source.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24,dy: 10)).click(forDuration: 0.4,
+            thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.2)))
+        waitValue(target,"Custom preview payload")
+        try checkOSPreviewGeometry()
+        XCTAssertTrue(main.staticTexts["Custom preview started"].waitForExistence(timeout: 10))
+        XCTAssertEqual(fixture.requests,["/native-drag-image"])
+        let attachment = XCTAttachment(screenshot: external.windows.firstMatch.screenshot())
+        attachment.name = "macos-core-custom-drag-preview"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    func testNativeOSDragModifiersChooseCopyMoveLinkAndRefuseReadonlyMove() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
+        launch()
+        let main = app.windows["browser-window"]
+        let url = fixture.origin + "/native-drag-modifiers"
+        enter(url); waitValue(main.textFields["address"],url)
+        positionWindowForUnobstructedSheet(main)
+        let source = main.textFields["Modifier source"], target = main.textFields["Modifier target"]
+        XCTAssertTrue(source.waitForExistence(timeout: 10)); XCTAssertTrue(target.exists)
+        let text = "Modifier 中文 😀"
+        func clearTarget() {
+            target.click(); target.typeKey("a",modifierFlags: .command); target.typeKey(.delete,modifierFlags: [])
+            waitValue(target,"")
+        }
+        func drag(_ element: XCUIElement, flags: XCUIElement.KeyModifierFlags) {
+            element.click(); element.typeKey("a",modifierFlags: .command)
+            XCUIElement.perform(withKeyModifiers: flags) {
+                element.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24,dy: 10)).click(forDuration: 0.4,
+                    thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.5)))
+            }
+        }
+        for (flags,operation) in [(XCUIElement.KeyModifierFlags.option,"copy"),(.command,"move"),([.command,.option],"link")] {
+            clearTarget()
+            if source.value as? String != text { paste(text,into: source) }
+            drag(source,flags: flags)
+            waitValue(target,text)
+            waitValue(source,operation == "move" ? "" : text)
+            XCTAssertTrue(main.staticTexts["Ended " + operation].waitForExistence(timeout: 10))
+        }
+        clearTarget()
+        let readonly = main.textFields["Readonly modifier source"]
+        drag(readonly,flags: .command)
+        waitValue(target,""); waitValue(readonly,"Locked source")
+        XCTAssertTrue(main.staticTexts["Ended none"].waitForExistence(timeout: 10))
+        XCTAssertEqual(fixture.requests,["/native-drag-modifiers"])
+    }
+
+    func testNativeOSFileDragFulfillsPromisesInIndependentAppWithExactBytes() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let directory = assistantSettingsFile.deletingLastPathComponent().appendingPathComponent("file-promises",isDirectory: true)
+        try FileManager.default.createDirectory(at: directory,withIntermediateDirectories: false,attributes: [.posixPermissions: 0o700])
+        launch()
+        let main = app.windows["browser-window"]
+        let url = fixture.origin + "/native-file-promise"
+        enter(url); waitValue(main.textFields["address"],url)
+        XCTAssertTrue(main.staticTexts["File promise ready"].waitForExistence(timeout: 15))
+        positionTabDragWindow(main,x: 40)
+        let fixtureURL = Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("DragInteropFixture.app")
+        let external = XCUIApplication(url: fixtureURL)
+        external.launchArguments = ["--promise-directory",directory.path]
+        external.launch()
+        defer { external.terminate() }
+        let externalWindow = external.windows.firstMatch
+        XCTAssertTrue(externalWindow.waitForExistence(timeout: 10))
+        positionOwnedWindow(externalWindow,x: 820)
+        let target = external.buttons["external-file-destination"]
+        XCTAssertTrue(target.waitForExistence(timeout: 10))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path),[])
+        app.activate()
+        let source = main.staticTexts["File promise source"]
+        XCTAssertTrue(source.waitForExistence(timeout: 10))
+        source.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24,dy: 10)).click(forDuration: 0.4,
+            thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.5,dy: 0.5)))
+        XCTAssertTrue(external.staticTexts["Received export-中文.bin (7 bytes)"].waitForExistence(timeout: 15),external.debugDescription)
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("export-中文.bin")),Data([0,255,65,240,159,152,128]))
+        XCTAssertEqual(fixture.requests,["/native-file-promise"])
+        let attachment = XCTAttachment(screenshot: externalWindow.screenshot())
+        attachment.name = "macos-native-file-promise-exact-bytes"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    func testNativeOSPageTextDragCopiesAcrossInactiveWindowsAndKeepsSourceAlive() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        let started = Date(); launch()
+        let first = app.windows["browser-window"]
+        let url = fixture.origin + "/native-drop"
+        enter(url); waitValue(first.textFields["address"],url)
+        positionTabDragWindow(first,x: 40)
+        app.typeKey("n",modifierFlags: .command)
+        let second = app.windows["browser-window-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 15))
+        enter(url,in: second); waitValue(second.textFields["address"],url)
+        positionTabDragWindow(second,x: 820)
+        XCTAssertFalse(first.frame.intersects(second.frame))
+        activateWindow(1)
+        let source = first.staticTexts["DragSourceWord"]
+        let origin = source.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24,dy: 10))
+        origin.click(); app.typeKey("a",modifierFlags: .command)
+        let destination = second.textFields["Drop text"]
+        origin.click(forDuration: 0.4,thenDragTo: destination.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.5)))
+        waitValue(destination,"DragSourceWord")
+        let owned = try ownedHoverRuntime(started: started)
+        let data = try AutomaticUpdateFixture().inspectRepresentation(launcher: owned.launcher,
+            application: owned.application,context: 1,window: 2,tab: 2)
+        let page = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(page["url"] as? String,url)
+        let nodes = try XCTUnwrap(page["nodes"] as? [[String: Any]])
+        XCTAssertEqual((nodes.first { $0["name"] as? String == "Drop text" }?["state"] as? [String: Any])?["value"] as? String,"DragSourceWord")
+        XCTAssertTrue(source.exists)
+        activateWindow(1); first.buttons[XCUIIdentifierCloseWindow].click()
+        activateWindow(2); waitValue(destination,"DragSourceWord")
+        app.typeKey("z",modifierFlags: .command); waitValue(destination,"")
+        app.typeKey("z",modifierFlags: [.command,.shift]); waitValue(destination,"DragSourceWord")
+        XCTAssertEqual(fixture.requests,["/native-drop","/native-drop"])
+        let attachment = XCTAttachment(screenshot: second.screenshot())
+        attachment.name = "macos-page-drag-across-windows"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    func testNativeOSTextDragInteroperatesWithAnIndependentAppKitApplication() throws {
+        let fixture = try HTTPFixture(); defer { fixture.stop() }
+        launch()
+        let main = app.windows["browser-window"]
+        let url = fixture.origin + "/native-drop"
+        enter(url); waitValue(main.textFields["address"],url)
+        positionTabDragWindow(main,x: 40)
+        let fixtureURL = Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("DragInteropFixture.app")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fixtureURL.appendingPathComponent("Contents/MacOS/DragInteropFixture").path))
+        let external = XCUIApplication(url: fixtureURL)
+        external.launch()
+        defer { external.terminate() }
+        let externalWindow = external.windows.firstMatch
+        XCTAssertTrue(externalWindow.waitForExistence(timeout: 10))
+        positionOwnedWindow(externalWindow,x: 820)
+        XCTAssertFalse(main.frame.intersects(externalWindow.frame))
+        let externalSource = external.textViews["external-source"]
+        XCTAssertTrue(externalSource.waitForExistence(timeout: 10))
+        let externalOrigin = externalSource.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 30,dy: 12))
+        externalOrigin.click(); external.typeKey("a",modifierFlags: .command)
+        let target = main.textFields["Drop text"]
+        externalOrigin.click(forDuration: 0.4,thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.5)))
+        waitValue(target,"External 中文 😀")
+        app.activate()
+        let source = main.staticTexts["DragSourceWord"]
+        let origin = source.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 24,dy: 10))
+        origin.click(); app.typeKey("a",modifierFlags: .command)
+        let externalTarget = external.textViews["external-destination"]
+        origin.click(forDuration: 0.4,thenDragTo: externalTarget.coordinate(withNormalizedOffset: CGVector(dx: 0.2,dy: 0.2)))
+        waitValue(externalTarget,"DragSourceWord")
+        XCTAssertTrue(source.exists)
+        XCTAssertEqual(fixture.requests,["/native-drop"])
+        let attachment = XCTAttachment(screenshot: externalWindow.screenshot())
+        attachment.name = "macos-page-drag-independent-appkit"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
     private var printPanel: XCUIElement { app.sheets.containing(.menuButton,identifier: "PDF").firstMatch }
     func testNativeOSStationaryDragDispatchesSourceCancellationBeforeRelease() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
@@ -203,8 +394,14 @@ final class BrowserUITests: XCTestCase {
             let frame = window.frame
             let title = window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
                 .withOffset(CGVector(dx: frame.width / 2, dy: 12))
+            var dx = x - frame.minX, dy = y - frame.minY
+            // A small correction can remain below AppKit's drag threshold.
+            // Move far enough to start a drag, then recalibrate against the
+            // unchanged exact target on the next attempt if necessary.
+            if dx != 0 && abs(dx) < 4 { dx += dx > 0 ? 4 : -4 }
+            if dy != 0 && abs(dy) < 4 { dy += dy > 0 ? 4 : -4 }
             title.click(forDuration: 0.1, thenDragTo: title.withOffset(
-                CGVector(dx: x - frame.minX, dy: y - frame.minY)))
+                CGVector(dx: dx, dy: dy)))
             let reached = XCTWaiter.wait(for: [XCTNSPredicateExpectation(
                 predicate: NSPredicate { _, _ in atTarget() }, object: window)], timeout: 3)
             let actual = window.frame
@@ -1695,7 +1892,8 @@ final class BrowserUITests: XCTestCase {
         app.buttons["download-sftp-close"].click(); waitDownload(1,"Paused")
         let requestCount = fixture.requests.count
         app.buttons["downloads-close"].click(); quitNormallyForRelaunch()
-        launch(); app.buttons["downloads"].click(); waitDownload(1,"Paused")
+        launch(); positionWindowForUnobstructedSheet(app.windows["browser-window"])
+        app.buttons["downloads"].click(); waitDownload(1,"Paused")
         XCTAssertEqual(fixture.requests.count,requestCount,"Opening the stored catalog must not resume a transfer")
         app.buttons["download-sftp-files"].click()
         XCTAssertTrue(app.staticTexts["download-sftp-title"].waitForExistence(timeout: 10))
@@ -2354,7 +2552,7 @@ final class BrowserUITests: XCTestCase {
         let first = window.buttons["tab-1"], second = window.buttons["tab-2"], third = window.buttons["tab-3"]
         XCTAssertTrue(window.frame.contains(first.frame)); XCTAssertTrue(window.frame.contains(third.frame))
         XCTAssertEqual(try tabInsertionPixels(first, in: window), 0, "No insertion line is visible before a drag")
-        third.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).press(forDuration: 0.6,
+        third.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).click(forDuration: 0.6,
             thenDragTo: first.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
         let order = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             third.frame.minX < first.frame.minX && first.frame.minX < second.frame.minX
@@ -2396,14 +2594,14 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(group.waitForExistence(timeout: 10)); group.click()
         waitValue(group, "Collapsed, 1 tabs, contains selected tab")
         window.buttons["add-tab"].click(); waitValue(window.textFields["address"], "about:credits")
-        window.buttons["tab-2"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.6,
+        window.buttons["tab-2"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click(forDuration: 0.6,
             thenDragTo: group.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
         waitValue(group, "Collapsed, 2 tabs, contains selected tab")
         XCTAssertFalse(window.buttons["tab-1"].exists); XCTAssertFalse(window.buttons["tab-2"].exists)
         waitValue(window.textFields["address"], "about:credits")
         group.click(); waitValue(group, "Expanded, 2 tabs, contains selected tab")
         XCTAssertLessThan(window.buttons["tab-1"].frame.minX, window.buttons["tab-2"].frame.minX)
-        window.buttons["tab-2"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.6,
+        window.buttons["tab-2"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click(forDuration: 0.6,
             thenDragTo: window.buttons["add-tab"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
         waitValue(group, "Expanded, 1 tabs")
         XCTAssertLessThan(window.buttons["tab-2"].frame.minX, group.frame.minX)
@@ -2498,7 +2696,7 @@ final class BrowserUITests: XCTestCase {
         positionTabDragWindow(second, x: 820)
         let source = first.buttons["tab-1"], target = second.buttons["tab-2"]
         XCTAssertFalse(first.frame.intersects(second.frame))
-        source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.6,
+        source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click(forDuration: 0.6,
             thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
         waitValue(second.textFields["address"], fixture.origin + "/editing")
         let moved = second.groups["page"].textFields["Editor"]
@@ -2515,7 +2713,7 @@ final class BrowserUITests: XCTestCase {
         let other = app.windows["browser-window-3"]
         XCTAssertTrue(other.waitForExistence(timeout: 15)); waitValue(other.textFields["address"], "about:credits")
         positionTabDragWindow(other, x: 40)
-        second.buttons["tab-1"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.6,
+        second.buttons["tab-1"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click(forDuration: 0.6,
             thenDragTo: other.buttons["tab-3"].coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
         XCTAssertTrue(second.buttons["tab-1"].exists); XCTAssertFalse(other.buttons["tab-1"].exists)
         waitValue(other.textFields["address"], "about:credits")
@@ -3700,9 +3898,28 @@ final class BrowserUITests: XCTestCase {
     func testDocumentSelectAllCopyLinkDragPrivacyTabIsolationAndReload() throws {
         let fixture = try HTTPFixture(); defer { fixture.stop() }
         let saved = saveClipboard(); defer { NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects(saved) }
-        launch(); enter(fixture.origin + "/document-selection")
+        let started = Date(); launch(); enter(fixture.origin + "/document-selection")
         let page = app.groups["page"], first = page.staticTexts["Alpha bold 😀 é"]
         XCTAssertTrue(first.waitForExistence(timeout: 15))
+        let owned = try ownedHoverRuntime(started: started)
+        let observer = try AutomaticUpdateFixture()
+        func waitCoreSelection(_ stage: String, _ matches: @escaping ([String: Any]) -> Bool) {
+            var observed: [String: Any]?
+            var failure: Error?
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                do {
+                    let data = try observer.inspectTextInput(launcher: owned.launcher,
+                        application: owned.application, context: 1, window: 1, tab: 1)
+                    guard let state = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let document = state["document"] as? [String: Any] else { return false }
+                    observed = document
+                    return matches(document)
+                } catch { failure = error; return false }
+            }, object: nil)
+            let result = XCTWaiter.wait(for: [expectation], timeout: 15)
+            XCTAssertEqual(result, .completed,
+                "Core selection at \(stage): \(String(describing: observed)); observer error: \(String(describing: failure))")
+        }
         NSPasteboard.general.clearContents(); NSPasteboard.general.setString("document-copy-sentinel", forType: .string)
         first.click(); app.typeKey("a", modifierFlags: .command); app.typeKey("c", modifierFlags: .command)
         let expected = "Document selection\nAlpha bold 😀 é\nBeta 中文 selectable link\nVisit 1\nBottom finish"
@@ -3720,9 +3937,18 @@ final class BrowserUITests: XCTestCase {
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [collapsed], timeout: 15), .completed,
             "Clicking document text should collapse Select All before starting a new range")
+        // The clipboard sentinel already existed before the asynchronous click.
+        // Observe the actual collapse before starting the next OS gesture.
+        waitCoreSelection("collapsed") { document in
+            (document["selection"] as? [String: Any])?["length"] as? Int == 0
+        }
         let link = page.links["selectable link"]
-        first.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).press(forDuration: 0.1,
+        first.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).click(forDuration: 0.1,
             thenDragTo: link.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)))
+        waitCoreSelection("dragged") { document in
+            guard let text = document["selected_text"] as? String else { return false }
+            return text != expected && text.contains("bold") && text.contains("😀") && !text.contains("secret")
+        }
         app.typeKey("c", modifierFlags: .command)
         let dragged = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard let text = NSPasteboard.general.string(forType: .string) else { return false }

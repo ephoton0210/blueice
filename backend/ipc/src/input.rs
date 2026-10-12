@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 mod drag_drop;
 pub use drag_drop::{
-    NativeDragAction, NativeDragItem, NativeDragModifiers, NativeDragMouse, NativeDragOperation,
-    NativeDragState, MAX_DRAG_FORMATS, MAX_DRAG_ITEMS, MAX_DRAG_TEXT_BYTES,
+    NativeDragAction, NativeDragImage, NativeDragItem, NativeDragModifiers, NativeDragMouse,
+    NativeDragOperation, NativeDragState, MAX_DRAG_FORMATS, MAX_DRAG_ITEMS, MAX_DRAG_TEXT_BYTES,
 };
 
 pub const TEXT_INPUT_VERSION: u32 = 1;

@@ -914,6 +914,24 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 .synchronize_document_with_script_pump(prepared.document, &mut pump);
             self.finish_document(tab_id, identity, prepared.outcome, result);
         }
+        // Every inline declaration runs before a FileReader task can fire.
+        // Subsequent turns also service reads started by an earlier native
+        // action or by debugger execution that has just resumed.
+        let task_tabs: Vec<_> = tabs.ids().collect();
+        for tab_id in task_tabs {
+            if self
+                .flush_browser_tasks_serving_script(tabs, tab_id, Some(script_requests))
+                .is_err()
+            {
+                // A failed child turn must not stop Core or automatically
+                // replay the document's scripts on the next session poll.
+                let identity = self.live_documents.get(&tab_id).cloned();
+                self.close_page(tab_id);
+                if let Some(identity) = identity {
+                    self.live_documents.insert(tab_id, identity);
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1332,15 +1350,24 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
             &mut pump,
         )? {
             PageHostReply::DragDispatched {
-                tab_id,
+                tab_id: reply_tab,
                 document_generation,
                 kind: reply_kind,
-                outcome,
-            } if tab_id == target.tab_id
+                mut outcome,
+            } if reply_tab == target.tab_id
                 && document_generation == target.document_generation
                 && reply_kind == kind
                 && outcome.valid(kind) =>
             {
+                // Child wrappers carry opaque document-owned handles, never
+                // raw Core node IDs. Resolve a preview only through this
+                // exact live page's handle inventory before using geometry.
+                if let Some(image) = &mut outcome.image {
+                    image.node_id = tabs
+                        .get(tab_id)
+                        .and_then(|page| page.script_raw_node_for_handle(image.node_id))
+                        .ok_or_else(|| io::Error::other("Stale drag image handle"))?;
+                }
                 Ok(Some(outcome))
             }
             _ => Err(io::Error::other("Page host drag response invalid")),
@@ -1383,6 +1410,23 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
             }
             _ => Err(io::Error::other("Page host drag task response invalid")),
         }
+    }
+
+    fn flush_browser_tasks_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        tab_id: TabId,
+        script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        if !self.child.browser_tasks_available()
+            || !self.realm_stats.get(&tab_id).is_some_and(|stats| {
+                tabs.get(tab_id)
+                    .is_some_and(|page| stats.document_generation == page.document_generation())
+            })
+        {
+            return Ok(());
+        }
+        self.flush_drag_tasks_serving_script(tabs, tab_id, script_requests)
     }
 
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport> {

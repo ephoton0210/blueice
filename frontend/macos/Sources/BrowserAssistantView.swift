@@ -68,6 +68,9 @@ struct BrowserAssistantView: View {
                     Text(BrowserStrings.text(result.translated ? "From the translated page" : "From the original page")).font(.caption)
                     ScrollView {
                         Text(verbatim: result.text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                            // Selectable text's native accessibility wrapper can
+                            // retain its old value after a content replacement.
+                            .id(result.text)
                             .accessibilityIdentifier("assistant-result")
                     }.frame(maxHeight: .infinity)
                 } else { Spacer(minLength: 0) }

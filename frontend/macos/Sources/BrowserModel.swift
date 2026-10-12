@@ -479,6 +479,14 @@ final class BrowserModel: ObservableObject {
     private var accessibilityDeliveryJobs: [UInt64: (id: UUID, task: Task<Void, Never>)] = [:]
 
     private var frames: [UInt64: FramePixels] = [:]
+    var nativeDragFramePixels: FramePixels? {
+        guard let tab = selected, let frame = frames[tab], frame.generation == generation else { return nil }
+        return frame
+    }
+
+    func readNativeDragFrame(_ notice: FrameNotice) throws -> FramePixels {
+        try FramePixels.read(notice,directory: session.frameDirectory)
+    }
     private var histories: [UInt64: HistoryState] = [:]
     private var viewport = CGSize(width: 1024, height: 640)
     private var deviceScale = 1.0

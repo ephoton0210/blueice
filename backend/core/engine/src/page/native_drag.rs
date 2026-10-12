@@ -32,6 +32,7 @@ pub(crate) struct DragSource {
     pub items: Vec<NativeDragItem>,
     pub allowed: Vec<Operation>,
     pub edit: Option<SourceEdit>,
+    pub image: Option<blueice_ipc::page_host::PageHostDragImage>,
 }
 
 #[derive(Clone)]
@@ -381,6 +382,11 @@ impl Page {
             frame_source: source,
             document_generation: self.document_generation,
             frame_generation: self.frame_generation,
+            image: if active && items.is_some() {
+                self.native_drag_image(id, source)
+            } else {
+                None
+            },
             mouse,
             active,
             operation,
@@ -466,6 +472,7 @@ impl Page {
                 }],
                 allowed,
                 edit,
+                image: None,
             });
         }
         if let Some(text) = self.document_drag_text_at(point) {
@@ -483,6 +490,7 @@ impl Page {
                     .filter(|operation| *operation != Operation::Move)
                     .collect(),
                 edit: None,
+                image: None,
             });
         }
         if let Some(url) = self.native_activation_link(target) {
@@ -503,6 +511,7 @@ impl Page {
                 ],
                 allowed,
                 edit: None,
+                image: None,
             });
         }
         let mut node = Some(target);
@@ -518,6 +527,7 @@ impl Page {
                     items: Vec::new(),
                     allowed,
                     edit: None,
+                    image: None,
                 });
             }
             node = self.doc.parent(candidate);

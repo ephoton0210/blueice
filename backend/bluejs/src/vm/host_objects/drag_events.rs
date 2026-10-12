@@ -116,12 +116,20 @@ impl HostDragEventData {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HostDragImage {
+    pub element: HostObjectKey,
+    pub x: i32,
+    pub y: i32,
+}
+
 pub struct HostDragEventOutcome {
     pub default_prevented: bool,
     pub drop_effect: String,
     pub effect_allowed: String,
     /// Owner-readable dragstart edits; empty for other event kinds.
     pub items: Vec<HostDragItem>,
+    pub image: Option<HostDragImage>,
 }
 
 impl Vm {
@@ -385,6 +393,26 @@ impl Vm {
                 drop_effect: store.drop_effect.to_utf8().expect("admitted operation"),
                 effect_allowed: store.effect_allowed.to_utf8().expect("admitted operation"),
                 items,
+                image: if input.kind == HostDragEventKind::DragStart {
+                    store
+                        .image
+                        .map(|(element, x, y)| {
+                            let element = self.host_object_families[family.index as usize]
+                                .keys_by_wrapper
+                                .get(&element)
+                                .copied()
+                                .filter(|key| key.matches_owner(path[0].owner, path[0].generation))
+                                .ok_or_else(|| {
+                                    RuntimeError::TypeError(
+                                        "Drag image belongs to another document".into(),
+                                    )
+                                })?;
+                            Ok::<_, RuntimeError>(HostDragImage { element, x, y })
+                        })
+                        .transpose()?
+                } else {
+                    None
+                },
             })
         })();
         self.active_host_drag_event = None;

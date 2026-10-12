@@ -15,6 +15,63 @@ mod browser;
 use browser::{scoped, Browser};
 
 #[test]
+fn native_custom_preview_uses_live_public_core_bounds_and_refuses_protected_elements() {
+    for protected in [false, true] {
+        let choice = Arc::new(Mutex::new(0));
+        let mut browser = Browser::with_executor(Some(Box::new(ImageChooser(choice.clone()))));
+        let candidate = browser.node(if protected {
+            "Protected source"
+        } else {
+            "Read only drop"
+        });
+        *choice.lock().unwrap() = candidate["id"].as_u64().unwrap();
+        let point = browser.select_source("Owned preview");
+        let state = browser
+            .drag(json!({"Start":{"drag_id":99,"point":point,"allowed_operations":["Copy"]}}))
+            .unwrap();
+        if protected {
+            assert!(state["image"].is_null());
+        } else {
+            assert_eq!(state["image"]["hotspot"], json!({"x":4.0,"y":8.0}));
+            assert_eq!(state["image"]["regions"][0], candidate["bounds"]);
+        }
+    }
+}
+
+struct ImageChooser(Arc<Mutex<u64>>);
+impl PageJavaScriptExecutor for ImageChooser {
+    fn synchronize_and_execute(&mut self, _: &TabManager) -> std::io::Result<()> {
+        Ok(())
+    }
+    fn drain_reports_for_tab(&mut self, _: TabId) -> Vec<JavaScriptPageExecutionReport> {
+        Vec::new()
+    }
+    fn dispatch_drag_serving_script(
+        &mut self,
+        _: &mut TabManager,
+        _: TabId,
+        _: u64,
+        event: PageHostDragEvent,
+        _: Option<&blueice_engine::script::ScriptRequestReceiver>,
+    ) -> std::io::Result<Option<PageHostDragOutcome>> {
+        if event.kind != PageHostDragKind::DragStart {
+            return Ok(None);
+        }
+        Ok(Some(PageHostDragOutcome {
+            default_prevented: false,
+            operation: event.operation,
+            effect_allowed: event.effect_allowed,
+            items: event.items,
+            image: Some(blueice_ipc::page_host::PageHostDragImage {
+                node_id: *self.0.lock().unwrap(),
+                x: 4,
+                y: 8,
+            }),
+        }))
+    }
+}
+
+#[test]
 fn native_drag_enters_new_target_before_leaving_old_target_with_scoped_related_target() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let mut browser = Browser::with_executor(Some(Box::new(DragRecorder {

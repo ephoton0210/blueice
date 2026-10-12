@@ -65,7 +65,7 @@ def interrupted(signum, frame):
     raise SystemExit(128 + signum)
 
 
-def read_core_representation(runtime, context, window, tab):
+def read_core_representation(runtime, context, window, tab, text_input=False):
     """Read shared core state through the ordinary scoped protocol only."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(2)
@@ -103,9 +103,11 @@ def read_core_representation(runtime, context, window, tab):
                 return reply["message"]
             raise TimeoutError("core observation reply count")
         assert exchange({"Hello": {"protocol_version": 2}}, 1, False) == {"Hello": {"protocol_version": 2}}
-        message = exchange("GetRepresentation", 2, True)
-        assert message["Representation"]["tab_id"] == tab
-        return message["Representation"]
+        operation = "GetTextInputState" if text_input else "GetRepresentation"
+        key = "TextInputState" if text_input else "Representation"
+        message = exchange(operation, 2, True)
+        assert message[key]["tab_id"] == tab
+        return message[key]
 
 
 assert len(sys.argv) >= 3, "Provide the real service bundle and xcodebuild command"
@@ -140,7 +142,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(400)
             return
         route = urlsplit(self.path).path
-        if route in ("/runtime", "/hover"):
+        if route in ("/runtime", "/hover", "/text-input"):
             try:
                 query = parse_qs(urlsplit(self.path).query, strict_parsing=True)
                 assert set(query) == ({"launcher", "application"} if route == "/runtime" else {"launcher", "application", "context", "window", "tab"})
@@ -168,10 +170,11 @@ class Handler(BaseHTTPRequestHandler):
                 info = runtime.stat()
                 assert info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700
                 assert parent_pid() == application
-                if route == "/hover":
+                if route in ("/hover", "/text-input"):
                     context, window, tab = (int(query[name][0]) for name in ("context", "window", "tab"))
                     assert all(0 < value < 2**64 for value in (context, window, tab))
-                    data = json.dumps(read_core_representation(runtime, context, window, tab)).encode()
+                    data = json.dumps(read_core_representation(runtime, context, window, tab,
+                                                               text_input=route == "/text-input")).encode()
                 else:
                     data = json.dumps({"runtime": str(runtime), "launcher": launcher, "application": application}).encode()
                 self.send_response(200)

@@ -250,6 +250,13 @@ impl BlueJsHostBindingRegistrar<'_> {
     pub fn create_host_object_family(&mut self) -> Result<HostObjectFamily, RuntimeError> {
         self.vm.create_host_object_family()
     }
+    pub fn install_host_element_validator(
+        &mut self,
+        family: HostObjectFamily,
+        validator: impl Fn(HostObjectKey) -> bool + 'static,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_element_validator(family, validator)
+    }
 
     /// Installs a global factory that turns child-private keys into stable JS
     /// wrapper objects. No key or VM object handle crosses to page code.
@@ -1090,14 +1097,16 @@ impl BlueJsPageRuntime {
         Ok(result)
     }
 
-    /// Called after core has completed the enclosing drag default action.
-    /// Drag string callbacks are tasks, separate from microtask checkpoints.
+    /// One browser turn, after document scripts or the enclosing native default
+    /// action. The private transport retains its earlier drag-task name.
+    /// Pending reads survive a bounded yield or a debugger pause.
     pub fn flush_drag_tasks(&mut self, tab_id: u64) -> Result<(), BlueJsPageRuntimeError> {
         self.realms
             .get_mut(&tab_id)
             .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
             .vm
-            .run_drag_tasks_bounded(64)
+            .run_browser_task_turn(64)
+            .map(|_| ())
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 

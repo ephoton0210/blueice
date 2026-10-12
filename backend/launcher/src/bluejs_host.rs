@@ -29,9 +29,9 @@ use blueice_bluets::{
     Contract, ContractPlan, ContractValue, RuntimePolicy, ValidationLimits,
 };
 use blueice_bluets_bluejs::page_host_typings::{
-    page_host_document_runtime_bindings_v1, page_host_dom_drag_runtime_bindings_v1,
-    page_host_dom_event_runtime_bindings_v1, page_host_dom_file_runtime_bindings_v1,
-    page_host_dom_mutation_runtime_bindings_v1, page_host_dom_text_runtime_bindings_v1,
+    page_host_document_runtime_bindings_v1, page_host_dom_event_runtime_bindings_v1,
+    page_host_dom_file_runtime_bindings_v1, page_host_dom_mutation_runtime_bindings_v1,
+    page_host_dom_stream_runtime_bindings_v4, page_host_dom_text_runtime_bindings_v1,
     PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
@@ -1016,14 +1016,14 @@ fn install_document_snapshot_bindings(
         PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text(),
         PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation(),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event(),
-        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_drag(),
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_stream(),
     };
     let expected_bindings = match page_dom_profile {
         PageDomProfile::Snapshot => page_host_document_runtime_bindings_v1().to_vec(),
         PageDomProfile::Text => page_host_dom_text_runtime_bindings_v1().to_vec(),
         PageDomProfile::Mutation => page_host_dom_mutation_runtime_bindings_v1().to_vec(),
         PageDomProfile::Event => page_host_dom_event_runtime_bindings_v1().to_vec(),
-        PageDomProfile::File => page_host_dom_drag_runtime_bindings_v1().to_vec(),
+        PageDomProfile::File => page_host_dom_stream_runtime_bindings_v4().to_vec(),
     };
     artifact
         .verify_runtime_bindings(&expected_bindings)
@@ -1139,6 +1139,12 @@ fn install_document_snapshot_bindings(
                 Rc::new(RefCell::new(ScriptDomClient::new(capability)))
             };
             let family = bindings.create_host_object_family()?;
+            let element_ids = Rc::new(RefCell::new(std::collections::HashSet::new()));
+            let image_elements = Rc::clone(&element_ids);
+            bindings.install_host_element_validator(family, move |key| {
+                key.matches_owner(tab_id, document_generation)
+                    && image_elements.borrow().contains(&key.object())
+            })?;
             let document = if page_dom_profile == PageDomProfile::File {
                 let root = client
                     .borrow_mut()
@@ -1153,6 +1159,7 @@ fn install_document_snapshot_bindings(
                 bindings.install_global_object("document")?
             };
             let lookup_client = Rc::clone(&client);
+            let lookup_elements = Rc::clone(&element_ids);
             bindings.install_host_object_factory_method(
                 document,
                 "getElementById",
@@ -1160,13 +1167,21 @@ fn install_document_snapshot_bindings(
                 family,
                 move |arguments: &[HostValue]| {
                     let id = dom_lookup_id(arguments, "document.getElementById")?;
-                    lookup_client
+                    let result = lookup_client
                         .borrow_mut()
                         .get_element_by_id(target, id)
                         .map(|node| {
                             node.map(|node| HostObjectKey::new(tab_id, document_generation, node))
                         })
-                        .map_err(|_| HostFunctionError::new("child DOM lookup unavailable"))
+                        .map_err(|_| HostFunctionError::new("child DOM lookup unavailable"))?;
+                    if let Some(key) = result {
+                        let mut elements = lookup_elements.borrow_mut();
+                        if elements.len() >= 4096 && !elements.contains(&key.object()) {
+                            return Err(HostFunctionError::new("DOM element inventory limit"));
+                        }
+                        elements.insert(key.object());
+                    }
+                    Ok(result)
                 },
             )?;
             let read_client = Rc::clone(&client);
@@ -1211,6 +1226,7 @@ fn install_document_snapshot_bindings(
                 PageDomProfile::Mutation | PageDomProfile::Event | PageDomProfile::File
             ) {
                 let element_client = Rc::clone(&client);
+                let created_elements = Rc::clone(&element_ids);
                 bindings.install_host_object_factory_method(
                     document,
                     "createElement",
@@ -1218,13 +1234,20 @@ fn install_document_snapshot_bindings(
                     family,
                     move |arguments: &[HostValue]| {
                         let tag_name = dom_string_argument(arguments, "document.createElement")?;
-                        element_client
+                        if created_elements.borrow().len() >= 4096 {
+                            return Err(HostFunctionError::new("DOM element inventory limit"));
+                        }
+                        let result = element_client
                             .borrow_mut()
                             .create_element(target, tag_name)
                             .map(|node| Some(HostObjectKey::new(tab_id, document_generation, node)))
                             .map_err(|_| {
                                 HostFunctionError::new("child DOM element creation unavailable")
-                            })
+                            })?;
+                        if let Some(key) = result {
+                            created_elements.borrow_mut().insert(key.object());
+                        }
+                        Ok(result)
                     },
                 )?;
                 let text_client = Rc::clone(&client);
@@ -1344,7 +1367,7 @@ fn install_document_snapshot_bindings(
                     installed_bindings
                         .extend_from_slice(&page_host_dom_file_runtime_bindings_v1()[10..]);
                     installed_bindings
-                        .extend_from_slice(&page_host_dom_drag_runtime_bindings_v1()[16..]);
+                        .extend_from_slice(&page_host_dom_stream_runtime_bindings_v4()[16..]);
                 }
             } else {
                 installed_bindings

@@ -61,7 +61,15 @@ final class AutomaticUpdateFixture {
     }
 
     func inspectRepresentation(launcher: pid_t, application: pid_t, context: UInt64, window: UInt64, tab: UInt64) throws -> Data {
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/hover?launcher=\(launcher)&application=\(application)&context=\(context)&window=\(window)&tab=\(tab)")!)
+        try inspectPageState("hover", launcher: launcher, application: application, context: context, window: window, tab: tab)
+    }
+
+    func inspectTextInput(launcher: pid_t, application: pid_t, context: UInt64, window: UInt64, tab: UInt64) throws -> Data {
+        try inspectPageState("text-input", launcher: launcher, application: application, context: context, window: window, tab: tab)
+    }
+
+    private func inspectPageState(_ route: String, launcher: pid_t, application: pid_t, context: UInt64, window: UInt64, tab: UInt64) throws -> Data {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/\(route)?launcher=\(launcher)&application=\(application)&context=\(context)&window=\(window)&tab=\(tab)")!)
         request.httpMethod = "POST"; request.httpBody = Data(); request.timeoutInterval = 5
         request.setValue("Bearer " + token,forHTTPHeaderField: "Authorization")
         let done = DispatchSemaphore(value: 0), reply = Reply()

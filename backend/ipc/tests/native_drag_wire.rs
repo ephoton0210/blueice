@@ -66,6 +66,7 @@ fn native_drag_wire_preserves_fractional_mouse_coordinates_exactly() {
             allowed_operations: vec![NativeDragOperation::Copy],
             mouse: Some(observed),
             items: None,
+            image: None,
         });
         bytes.clear();
         blueice_ipc::write_server_message_with_ids(&mut bytes, tab, request, &reply).unwrap();

@@ -13,6 +13,7 @@ fn browser_vm(config: VmConfig) -> Vm {
     let mut vm = Vm::new(config).unwrap();
     vm.install_web_file_api().unwrap();
     let family = vm.create_host_object_family().unwrap();
+    vm.install_host_element_validator(family, |_| true).unwrap();
     vm.install_host_file_selection_event_methods(family)
         .unwrap();
     vm.install_host_object_factory("dragTarget", 0, family, |_: &[HostValue]| {
@@ -20,6 +21,57 @@ fn browser_vm(config: VmConfig) -> Vm {
     })
     .unwrap();
     vm
+}
+
+#[test]
+fn set_drag_image_checks_brands_and_converts_hotspot_arguments_in_order() {
+    assert_eq!(
+        run(&mut browser_vm(VmConfig::default()), r#"
+            const transfer = new DataTransfer();
+            const target = dragTarget();
+            let order = '';
+            const x = {valueOf() { order += 'x'; return 4.9; }};
+            const y = {valueOf() { order += 'y'; return -3.1; }};
+            const result = transfer.setDragImage(target, x, y);
+            let forged = 0;
+            try { transfer.setDragImage({}, 0, 0); } catch (e) { if (e instanceof TypeError) forged++; }
+            try { DataTransfer.prototype.setDragImage.call({}, target, 0, 0); } catch (e) { if (e instanceof TypeError) forged++; }
+            result === undefined && order === 'xy' && forged === 2 && DataTransfer.prototype.setDragImage.length === 3
+        "#).unwrap(),
+        Value::Bool(true),
+    );
+}
+
+#[test]
+fn drag_image_requires_an_owner_classified_element_not_a_text_or_document_wrapper() {
+    let mut vm = Vm::new(VmConfig::default()).unwrap();
+    vm.install_web_file_api().unwrap();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_element_validator(family, |key| key.object() == 11)
+        .unwrap();
+    for (name, node) in [("element", 11), ("text", 12), ("document", 13)] {
+        vm.install_host_family_object(name, family, HostObjectKey::new(7, 2, node))
+            .unwrap();
+    }
+    assert_eq!(
+        run(
+            &mut vm,
+            r#"
+            const transfer = new DataTransfer();
+            let rejected = 0, conversions = 0;
+            const x = { valueOf() { conversions++; return 0; } };
+            for (const node of [text, document, Object.create(Object.getPrototypeOf(element))]) {
+                node.nodeType = 1;
+                try { transfer.setDragImage(node, x, 0); }
+                catch (error) { if (error instanceof TypeError) rejected++; }
+            }
+            transfer.setDragImage(element, x, 0);
+            rejected === 3 && conversions === 1
+        "#
+        )
+        .unwrap(),
+        Value::Bool(true),
+    );
 }
 
 #[test]

@@ -137,6 +137,14 @@ pub enum NativeDragAction {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct NativeDragImage {
+    /// CSS viewport rectangles. Disjoint selections are masked separately.
+    pub regions: Vec<crate::Bounds>,
+    pub hotspot: PointerPoint,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NativeDragState {
     pub version: u32,
     pub drag_id: u64,
@@ -151,4 +159,7 @@ pub struct NativeDragState {
     /// Present only for an explicit source Start, never a hover observation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub items: Option<Vec<NativeDragItem>>,
+    /// Present only for a source Start and bound to this reply's frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<NativeDragImage>,
 }

@@ -1026,6 +1026,22 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                     }
                                 }
                                 if result.is_ok() {
+                                    if let Some(executor) =
+                                        page_script_runtime.javascript_executor.as_deref_mut()
+                                    {
+                                        if executor
+                                            .flush_browser_tasks_serving_script(
+                                                tabs,
+                                                target,
+                                                requests.script,
+                                            )
+                                            .is_err()
+                                        {
+                                            result = Err("Page file reading unavailable".into());
+                                        }
+                                    }
+                                }
+                                if result.is_ok() {
                                     result = tabs
                                         .get(target)
                                         .ok_or_else(|| {

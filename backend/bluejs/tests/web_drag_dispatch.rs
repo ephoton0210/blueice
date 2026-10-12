@@ -18,6 +18,7 @@ fn browser_vm() -> (Vm, HostObjectFamily, HostObjectKey) {
     let mut vm = Vm::new(config).unwrap();
     vm.install_web_file_api().unwrap();
     let family = vm.create_host_object_family().unwrap();
+    vm.install_host_element_validator(family, |_| true).unwrap();
     vm.install_host_file_selection_event_methods(family)
         .unwrap();
     let key = HostObjectKey::new(7, 2, 11);
@@ -26,6 +27,43 @@ fn browser_vm() -> (Vm, HostObjectFamily, HostObjectKey) {
     })
     .unwrap();
     (vm, family, key)
+}
+
+#[test]
+fn drag_image_export_keeps_owned_identity_gc_and_readwrite_scope() {
+    let (mut vm, family, key) = browser_vm();
+    run(
+        &mut vm,
+        r#"
+        let retained;
+        dragTarget().addEventListener('dragstart', function(event) {
+            retained = event.dataTransfer;
+            event.dataTransfer.setDragImage(dragTarget(), 4294967300.9, -3.1);
+            const garbage = []; for (let i=0;i<80;i++) garbage.push({value:i});
+        });
+        dragTarget().addEventListener('dragover', function(event) {
+            event.dataTransfer.setDragImage(dragTarget(), 8, 9);
+        });
+    "#,
+    );
+    let input = HostDragEventData::new(HostDragEventKind::DragStart, 1.0, 2.0);
+    let result = vm.dispatch_host_drag_event(family, &[key], &input).unwrap();
+    let image = result.image.unwrap();
+    assert_eq!(image.element, key);
+    assert_eq!((image.x, image.y), (4, -3));
+    assert_eq!(
+        run(
+            &mut vm,
+            "retained.setDragImage(dragTarget(), 5, 6) === undefined"
+        ),
+        Value::Bool(true)
+    );
+    let input = HostDragEventData::new(HostDragEventKind::DragOver, 1.0, 2.0);
+    assert!(vm
+        .dispatch_host_drag_event(family, &[key], &input)
+        .unwrap()
+        .image
+        .is_none());
 }
 
 #[test]

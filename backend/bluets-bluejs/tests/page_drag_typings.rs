@@ -28,6 +28,95 @@ fn compile_drag(source: &str) -> Result<DirectScript, BridgeError> {
 }
 
 #[test]
+fn stream_profile_preserves_reader_profile_and_checks_locking_and_byob_types() {
+    use blueice_bluets_bluejs::page_host_typings::page_host_dom_stream_runtime_bindings_v4;
+    let old = PageHostDocumentTypingsV1::generate_dom_file_reader();
+    let profile = PageHostDocumentTypingsV1::generate_dom_stream();
+    let bindings = page_host_dom_stream_runtime_bindings_v4();
+    assert_eq!(bindings.len(), 33);
+    assert!(!old
+        .declaration_source
+        .contains("declare const ReadableStream:"));
+    assert!(profile.verify_runtime_bindings(&bindings[..32]).is_err());
+    let ambient = profile
+        .verified_dom_stream_ambient_module(&bindings)
+        .unwrap();
+    for (source,accepted) in [
+        ("function consume(blob: BlueIceBlob): void { const stream = blob.stream(); const reader = stream.getReader(); reader.read(); reader.releaseLock(); }",true),
+        ("function consume(reader: BlueIceReadableStreamBYOBReader, view: BlueIceArrayBufferView): void { reader.read(view, {min: 2}); }",true),
+        ("function bad(reader: BlueIceReadableStreamBYOBReader): void { reader.read('bytes'); }",false),
+        ("function bad(stream: BlueIceReadableStream): void { stream.locked = true; }",false),
+    ] {
+        let result=compile_direct_script("memory:///streams.ts",&MapLoader::from([ModuleSource::new("memory:///streams.ts",source)]),CompilerOptions {
+            runtime_policy:RuntimePolicy::Checked,require_declared_global_calls:true,ambient_declaration_modules:vec![ambient.clone()],..CompilerOptions::default()
+        });assert_eq!(result.is_ok(),accepted,"{source}: {:?}",result.as_ref().err());
+    }
+}
+
+#[test]
+fn file_reader_profile_checks_events_and_readonly_state_with_an_exact_inventory() {
+    use blueice_bluets_bluejs::page_host_typings::page_host_dom_file_reader_runtime_bindings_v3;
+    let old = PageHostDocumentTypingsV1::generate_dom_drag_image();
+    let profile = PageHostDocumentTypingsV1::generate_dom_file_reader();
+    let bindings = page_host_dom_file_reader_runtime_bindings_v3();
+    assert_eq!(bindings.len(), 27);
+    assert!(profile.verify_runtime_bindings(&bindings[..26]).is_err());
+    assert!(!old.declaration_source.contains("declare const FileReader:"));
+    let ambient = profile
+        .verified_dom_file_reader_ambient_module(&bindings)
+        .unwrap();
+    for (source, accepted) in [
+        ("function progress(event: BlueIceProgressEvent): void { const loaded: number = event.loaded; } function read(reader: BlueIceFileReader, blob: BlueIceBlob): void { reader.readAsText(blob, 'big5'); reader.onload = progress; reader.addEventListener('progress', progress); }", true),
+        ("function read(reader: BlueIceFileReader): void { reader.readAsText('not a Blob'); }", false),
+        ("function forge(reader: BlueIceFileReader): void { reader.readyState = 2; }", false),
+        ("function dispatch(target: BlueIceEventTarget, event: BlueIceEvent): boolean { return target.dispatchEvent(event); }", true),
+    ] {
+        let result = compile_direct_script("memory:///reader.ts", &MapLoader::from([ModuleSource::new("memory:///reader.ts", source)]), CompilerOptions {
+            runtime_policy: RuntimePolicy::Checked,
+            require_declared_global_calls: true,
+            ambient_declaration_modules: vec![ambient.clone()],
+            ..CompilerOptions::default()
+        });
+        assert_eq!(result.is_ok(), accepted, "{source}: {:?}", result.as_ref().err());
+    }
+    assert_eq!(
+        old.declaration_hash,
+        PageHostDocumentTypingsV1::generate_dom_drag_image().declaration_hash
+    );
+}
+
+#[test]
+fn image_profile_adds_checked_set_drag_image_without_changing_the_v1_profile() {
+    let original = PageHostDocumentTypingsV1::generate_dom_drag();
+    assert!(!original.declaration_source.contains("setDragImage("));
+    let image = PageHostDocumentTypingsV1::generate_dom_drag_image();
+    let bindings =
+        blueice_bluets_bluejs::page_host_typings::page_host_dom_drag_image_runtime_bindings_v2();
+    let ambient = image
+        .verified_dom_drag_image_ambient_module(&bindings)
+        .unwrap();
+    for source in [
+        "new DataTransfer().setDragImage(document.getElementById('source')!, 4, 8);",
+        "new DataTransfer().setDragImage('source', 4, 8);",
+    ] {
+        let result = compile_direct_script(
+            "memory:///image.ts",
+            &MapLoader::from([ModuleSource::new("memory:///image.ts", source)]),
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::Checked,
+                require_declared_global_calls: true,
+                ambient_declaration_modules: vec![ambient.clone()],
+                ..CompilerOptions::default()
+            },
+        );
+        assert_eq!(
+            result.is_ok(),
+            source.starts_with("new DataTransfer().setDragImage(document")
+        );
+    }
+}
+
+#[test]
 fn drag_profile_has_an_exact_inventory_and_preserves_the_earlier_file_profile() {
     let file = PageHostDocumentTypingsV1::generate_dom_file();
     let drag = PageHostDocumentTypingsV1::generate_dom_drag();

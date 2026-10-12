@@ -162,6 +162,9 @@ impl PageHostConnection {
 }
 
 impl PageHostClient for PageHostConnection {
+    fn browser_tasks_available(&self) -> bool {
+        true
+    }
     fn dispatch_drag_with_script_pump(
         &mut self,
         tab_id: u64,

@@ -128,11 +128,23 @@ impl PageHostDragEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct PageHostDragImage {
+    /// The child wire carries an opaque document-owned DOM handle. Core
+    /// resolves it in the exact live document before consulting raw geometry.
+    pub node_id: u64,
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PageHostDragOutcome {
     pub default_prevented: bool,
     pub operation: NativeDragOperation,
     pub effect_allowed: String,
     pub items: Vec<NativeDragItem>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<PageHostDragImage>,
 }
 
 impl PageHostDragOutcome {
@@ -140,6 +152,10 @@ impl PageHostDragOutcome {
         valid_effect_allowed(&self.effect_allowed)
             && valid_items(&self.items)
             && (kind == PageHostDragKind::DragStart || self.items.is_empty())
+            && self
+                .image
+                .as_ref()
+                .is_none_or(|image| kind == PageHostDragKind::DragStart && image.node_id != 0)
     }
 }
 

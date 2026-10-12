@@ -62,6 +62,7 @@ impl Vm {
                 ("getData", 1, DragNative::GetData),
                 ("setData", 2, DragNative::SetData),
                 ("clearData", 0, DragNative::ClearData),
+                ("setDragImage", 3, DragNative::SetDragImage),
             ] {
                 self.install_native(
                     transfer,
@@ -257,6 +258,23 @@ impl Vm {
             DragNative::IllegalConstructor => Err(RuntimeError::TypeError(
                 "Illegal drag item constructor".into(),
             )),
+            DragNative::SetDragImage => {
+                let id = self.drag_receiver(receiver)?;
+                let element = native::argument(args, 0)
+                    .object_id()
+                    .filter(|object| self.is_host_element(*object))
+                    .ok_or_else(|| {
+                        RuntimeError::TypeError("setDragImage requires an owned DOM element".into())
+                    })?;
+                let x = primitive::to_int32(self.coerce_number(native::argument(args, 1))?);
+                let y = primitive::to_int32(self.coerce_number(native::argument(args, 2))?);
+                let mut store = self.heap.drag_store(id)?.clone();
+                if store.mode == DragStoreMode::ReadWrite {
+                    store.image = Some((element, x, y));
+                    self.with_roots(|heap| heap.replace_drag_store(id, store))?;
+                }
+                Ok(Value::Undefined)
+            }
             DragNative::Items | DragNative::Files | DragNative::Types => {
                 let id = self.drag_receiver(receiver)?;
                 self.drag_collection(id, native)
@@ -697,64 +715,17 @@ impl Vm {
         self.drag_named_error("InvalidStateError", "The drag data store is not writable")
     }
 
-    fn drag_named_error(&mut self, name: &str, message: &str) -> Result<Value, RuntimeError> {
+    pub(super) fn drag_named_error(
+        &mut self,
+        name: &str,
+        message: &str,
+    ) -> Result<Value, RuntimeError> {
         let prototype = self.globals["%WebDOMException%"];
         let error =
             Value::Object(self.with_roots(|heap| {
                 heap.alloc_dom_exception(name.into(), message.into(), prototype)
             })?);
         Err(RuntimeError::Thrown(error))
-    }
-
-    fn queue_drag_string_task(
-        &mut self,
-        callback: ObjectId,
-        text: JsString,
-    ) -> Result<(), RuntimeError> {
-        let bytes = self
-            .drag_string_tasks
-            .iter()
-            .fold(text.byte_len(), |total, (_, text, _)| {
-                total.saturating_add(text.byte_len())
-            });
-        if self.drag_string_tasks.len() >= 64 || bytes > 1_048_576 {
-            return Err(RuntimeError::RangeError(
-                "Drag string task queue limit exceeded".into(),
-            ));
-        }
-        let root = self.heap.root(callback)?;
-        self.drag_string_tasks.push_back((callback, text, root));
-        Ok(())
-    }
-
-    /// Runs queued drag string tasks after the enclosing event/task has
-    /// returned. This queue is distinct from the Promise microtask queue.
-    pub fn run_drag_tasks_bounded(&mut self, max_tasks: usize) -> Result<(), RuntimeError> {
-        self.ensure_no_debugger_continuation()?;
-        for _ in 0..max_tasks {
-            let Some((callback, text, root)) = self.drag_string_tasks.pop_front() else {
-                return Ok(());
-            };
-            self.remaining_instructions = self.config.instruction_budget;
-            let result = self.call_native(
-                Value::Object(callback),
-                Value::Undefined,
-                vec![Value::String(text)],
-                false,
-            );
-            self.heap.unroot(root)?;
-            if let Err(error) = result {
-                if !drag_page_exception(&error) {
-                    return Err(error);
-                }
-            }
-            self.run_promise_jobs_bounded(1024)?;
-        }
-        if self.drag_string_tasks.is_empty() {
-            Ok(())
-        } else {
-            Err(RuntimeError::InstructionLimit)
-        }
     }
 }
 

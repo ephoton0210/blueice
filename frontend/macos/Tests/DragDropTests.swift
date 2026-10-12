@@ -8,6 +8,158 @@ import XCTest
 
 @MainActor
 final class DragDropTests: XCTestCase {
+    func testRealCoreDragStartReturnsTheCustomImageAndItsUpdatedOwnedFrame() async throws {
+        try await withDropDocument(path: "/native-drag-image") { fixture in
+            try await fixture.waitUntil { fixture.model.representation?.nodes.contains { $0.name == "Custom preview ready" } == true }
+            let node = try XCTUnwrap(fixture.model.representation?.nodes.first { $0.name == "Custom preview source" })
+            let owner = try XCTUnwrap(fixture.model.nativeDragOwner)
+            let point = CGPoint(x: node.bounds.x+24,y: node.bounds.y+10)
+            let state = try XCTUnwrap(fixture.model.startNativeDrag(.start(801,point,[.copy]),owner: owner))
+            XCTAssertTrue(state.active)
+            let metadata = try XCTUnwrap(state.image,"Core must export the script-selected preview geometry")
+            XCTAssertEqual(metadata.regions.count,1)
+            XCTAssertEqual(metadata.regions[0].width,100)
+            XCTAssertEqual(metadata.regions[0].height,48)
+            XCTAssertEqual(metadata.hotspot.x,12)
+            XCTAssertEqual(metadata.hotspot.y,8)
+            let notice = try XCTUnwrap(state.sourceFrame,"dragstart mutated painted text, requiring its new frame")
+            XCTAssertEqual(notice.generation,state.frame_generation)
+            let frame = try fixture.model.readNativeDragFrame(notice)
+            let preview = try XCTUnwrap(try metadata.preview(frame,cssSize: owner.cssSize))
+            XCTAssertEqual(preview.image.size,CGSize(width: 100,height: 48))
+            XCTAssertEqual(preview.hotspot,CGPoint(x: 12,y: 8))
+            var rect = CGRect(origin: .zero,size: preview.image.size)
+            let bitmap = try XCTUnwrap(preview.image.cgImage(forProposedRect: &rect,context: nil,hints: nil))
+            let bytes = try XCTUnwrap(bitmap.dataProvider?.data) as Data
+            let center = (bitmap.height/2*bitmap.width+bitmap.width/2)*4
+            XCTAssertEqual(Array(bytes[center..<center+4]),[0,204,102,255])
+            _ = await fixture.model.nativeDrag(.end(801,.none),owner: owner)
+        }
+    }
+
+    func testCorePreviewMaskPreservesPixelOrientationAndExcludesUnselectedGaps() throws {
+        let metadata = Data(#"{"regions":[{"x":0,"y":0,"width":1,"height":1},{"x":3,"y":0,"width":1,"height":1}],"hotspot":{"x":0,"y":0}}"#.utf8)
+        let image = try JSONDecoder().decode(NativeDragImage.self,from: metadata)
+        let frame = FramePixels(data: Data([255,0,0,255, 0,255,0,255, 0,0,255,255, 255,255,0,255]),width: 4,height: 1,generation: 7)
+        let preview = try XCTUnwrap(try image.preview(frame,cssSize: CGSize(width: 4,height: 1)))
+        var rect = CGRect(origin: .zero,size: preview.image.size)
+        let bitmap = try XCTUnwrap(preview.image.cgImage(forProposedRect: &rect,context: nil,hints: nil))
+        let data = try XCTUnwrap(bitmap.dataProvider?.data)
+        let bytes = [UInt8](data as Data)
+        XCTAssertEqual(Array(bytes[0..<4]),[255,0,0,255])
+        XCTAssertEqual(Array(bytes[4..<12]),Array(repeating: 0,count: 8))
+        XCTAssertEqual(Array(bytes[12..<16]),[255,255,0,255])
+        XCTAssertEqual(preview.hotspot,.zero)
+    }
+
+    func testCorePreviewClippingAndZoomKeepTheHotspotAndVerticalPixelOrder() throws {
+        let metadata = Data(#"{"regions":[{"x":-1,"y":0,"width":3,"height":2}],"hotspot":{"x":2,"y":1}}"#.utf8)
+        let image = try JSONDecoder().decode(NativeDragImage.self,from: metadata)
+        let frame = FramePixels(data: Data([
+            255,0,0,255, 0,255,0,255,
+            0,0,255,255, 255,255,0,255
+        ]),width: 2,height: 2,generation: 8)
+        let preview = try XCTUnwrap(try image.preview(frame,cssSize: CGSize(width: 2,height: 2),viewSize: CGSize(width: 4,height: 4)))
+        XCTAssertEqual(preview.image.size,CGSize(width: 4,height: 4))
+        XCTAssertEqual(preview.hotspot,CGPoint(x: 2,y: 2))
+        var rect = CGRect(origin: .zero,size: preview.image.size)
+        let bitmap = try XCTUnwrap(preview.image.cgImage(forProposedRect: &rect,context: nil,hints: nil))
+        XCTAssertEqual(bitmap.width,2); XCTAssertEqual(bitmap.height,2)
+        XCTAssertEqual(try XCTUnwrap(bitmap.dataProvider?.data) as Data,frame.data)
+    }
+
+    func testModifierPolicyChoosesOnlyCoreAdvertisedOperations() {
+        let mask: NSDragOperation = [.copy,.move,.link]
+        XCTAssertEqual(NativeDragOperation.allowed(mask,modifiers: .init(.option)),[.copy])
+        XCTAssertEqual(NativeDragOperation.allowed(mask,modifiers: .init(.command)),[.move])
+        XCTAssertEqual(NativeDragOperation.allowed(mask,modifiers: .init([.command,.option])),[.link])
+        XCTAssertEqual(NativeDragOperation.allowed([.copy,.link],modifiers: .init(.command)),[])
+        XCTAssertEqual(NativeDragOperation.allowed(.copy,modifiers: .init([.command,.option])),[])
+        XCTAssertEqual(NativeDragOperation.allowed(mask,modifiers: .init([.capsLock,.shift])),[.copy,.move,.link])
+    }
+
+    func testFilePromiseProviderRetainsItsDelegateAndWritesOnlyOnExplicitFulfillment() throws {
+        let file = SelectedFile(name: "export-中文.bin",media_type: "application/octet-stream",bytes: [0,255,65])
+        let payload = NativeDragPayload(values: [:],files: [file])
+        let provider = NativeDragFilePromises.provider(file,index: 0,payload: payload)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("bi-promise-"+UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory,withIntermediateDirectories: false,attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let delegate = try XCTUnwrap(provider.delegate)
+        XCTAssertEqual(delegate.filePromiseProvider(provider,fileNameForType: provider.fileType),file.name)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path),[])
+        let url = directory.appendingPathComponent(file.name)
+        var called = 0
+        delegate.filePromiseProvider(provider,writePromiseTo: url) { error in XCTAssertNil(error); called += 1 }
+        XCTAssertEqual(called,1)
+        XCTAssertEqual(try Data(contentsOf: url),Data(file.bytes))
+    }
+
+    func testRevokedFilePromiseCannotMaterializeBytesOrOverwriteAnExistingFile() throws {
+        let file = SelectedFile(name: "owned.bin",media_type: "application/octet-stream",bytes: [0,255])
+        let payload = NativeDragPayload(values: [:],files: [file])
+        let provider = NativeDragFilePromises.provider(file,index: 0,payload: payload)
+        let delegate = try XCTUnwrap(provider.delegate)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("bi-promise-"+UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory,withIntermediateDirectories: false,attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let existing = directory.appendingPathComponent("existing.bin")
+        try Data([42]).write(to: existing)
+        delegate.filePromiseProvider(provider,writePromiseTo: existing) { XCTAssertNotNil($0) }
+        XCTAssertEqual(try Data(contentsOf: existing),Data([42]))
+        let symbolic = directory.appendingPathComponent("symbolic.bin")
+        try FileManager.default.createSymbolicLink(at: symbolic,withDestinationURL: existing)
+        delegate.filePromiseProvider(provider,writePromiseTo: symbolic) { XCTAssertNotNil($0) }
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: symbolic.path),existing.path)
+        XCTAssertEqual(try Data(contentsOf: existing),Data([42]))
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains { $0.hasPrefix(".blueice-file-promise-") })
+        payload.revoke()
+        let refused = directory.appendingPathComponent(file.name)
+        delegate.filePromiseProvider(provider,writePromiseTo: refused) { XCTAssertEqual(($0 as? CocoaError)?.code,.userCancelled) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: refused.path))
+        XCTAssertNil(payload.fileSnapshot(0))
+    }
+
+    func testNativeDropAcceptsVisibleInactiveDestinationWithoutTakingKeyboardFocus() async throws {
+        try await withDropDocument { fixture in
+            let window = try XCTUnwrap(fixture.window as? DropDocumentWindow)
+            window.reportsKeyWindow = false
+            XCTAssertTrue(window.isVisible)
+            XCTAssertFalse(window.isKeyWindow)
+            let node = try XCTUnwrap(fixture.model.representation?.nodes.first { $0.name == "Drop text" })
+            let info = try fixture.drag(to: node,text: "Inactive window 中文 😀",sequence: 91)
+            XCTAssertEqual(fixture.view.draggingEntered(info),.copy)
+            XCTAssertTrue(fixture.view.prepareForDragOperation(info))
+            XCTAssertTrue(fixture.view.performDragOperation(info))
+            try await fixture.waitForValue("Inactive window 中文 😀",node: node.id)
+            XCTAssertFalse(window.isKeyWindow,"A drop must not steal the destination's keyboard focus")
+            XCTAssertEqual(fixture.http.requests,["/native-drop"])
+        }
+    }
+
+    func testNativeDropRefusesForeignAndHiddenDestinationWindows() async throws {
+        try await withDropDocument { fixture in
+            let node = try XCTUnwrap(fixture.model.representation?.nodes.first { $0.name == "Drop text" })
+            let info = try fixture.drag(to: node,text: "Refused payload",sequence: 92)
+            let foreign = NSWindow(contentRect: fixture.view.bounds,styleMask: [.borderless],backing: .buffered,defer: false)
+            foreign.isReleasedWhenClosed = false
+            defer { foreign.close() }
+            let foreignPasteboard = NSPasteboard.withUniqueName()
+            XCTAssertTrue(foreignPasteboard.setString("Refused payload",forType: .string))
+            let unrelated = DropDocumentInfo(window: foreign,location: info.draggingLocation,
+                pasteboard: foreignPasteboard,sequence: info.draggingSequenceNumber)
+            XCTAssertEqual(fixture.view.draggingEntered(unrelated),[])
+            XCTAssertFalse(fixture.view.prepareForDragOperation(unrelated))
+            fixture.window.orderOut(nil)
+            XCTAssertFalse(fixture.window.isVisible)
+            XCTAssertEqual(fixture.view.draggingEntered(info),[])
+            XCTAssertFalse(fixture.view.performDragOperation(info))
+            let actual = try await fixture.readCore()
+            XCTAssertEqual(actual.nodes.first { $0.id == node.id }?.state.value,"")
+            XCTAssertEqual(fixture.http.requests,["/native-drop"])
+        }
+    }
+
     func testActualStaleHoverReplyPreservesDenialButUnownedErrorsRemainVisible() async throws {
         try await withDropDocument { fixture in
             let model = fixture.model, session = fixture.workspace.session
@@ -450,7 +602,8 @@ private struct DropDocumentFixture {
 @MainActor
 private final class DropDocumentWindow: NSWindow {
     // Direct AppKit dispatch is distinct from the required actual OS drag UI test.
-    override var isKeyWindow: Bool { isVisible }
+    var reportsKeyWindow = true
+    override var isKeyWindow: Bool { reportsKeyWindow && isVisible }
 }
 
 private final class HoverFrameReplyGate: @unchecked Sendable {

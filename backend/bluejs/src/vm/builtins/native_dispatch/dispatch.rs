@@ -106,6 +106,20 @@ impl Vm {
             NativeFunction::WebEvent(native) => {
                 self.web_event_call(native, &receiver, &args, construct)
             }
+            NativeFunction::WebTarget(native) => {
+                self.web_target_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::WebReader(native) => {
+                self.web_reader_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::WebStream(native) => {
+                self.web_stream_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::StreamReaction {
+                stream,
+                action,
+                rejected,
+            } => self.stream_reaction(stream, action, rejected, first.clone()),
             NativeFunction::FileListIteratorNext => self.web_file_list_iterator_next(&receiver),
             NativeFunction::HostSelectionCurrentTarget => {
                 self.host_selection_current_target(&receiver)

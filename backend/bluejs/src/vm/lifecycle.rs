@@ -168,7 +168,7 @@ impl Vm {
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
             promise_jobs: VecDeque::new(),
-            drag_string_tasks: VecDeque::new(),
+            browser_tasks: VecDeque::new(),
             test262_done: None,
             test262_agent_host: None,
             test262_agent_control: None,

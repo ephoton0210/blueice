@@ -9,7 +9,13 @@ use super::*;
 use crate::heap::DragEventState;
 use crate::native::EventNative;
 
-const EVENT_NAMES: [&str; 4] = ["Event", "UIEvent", "MouseEvent", "DragEvent"];
+const EVENT_NAMES: [&str; 5] = [
+    "Event",
+    "UIEvent",
+    "MouseEvent",
+    "DragEvent",
+    "ProgressEvent",
+];
 const MODIFIERS: [(&str, &str); 14] = [
     ("Alt", "altKey"),
     ("Control", "ctrlKey"),
@@ -28,6 +34,60 @@ const MODIFIERS: [(&str, &str); 14] = [
 ];
 
 impl Vm {
+    pub(super) fn install_web_progress_events(&mut self) -> Result<(), RuntimeError> {
+        if self.globals.contains_key("%WebProgressEvent%") {
+            return Ok(());
+        }
+        let global = self.global("globalThis")?.object_id().unwrap();
+        if self.heap.get_own(global, "ProgressEvent")?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "ProgressEvent global already defined".into(),
+            ));
+        }
+        let base = self.stack.len();
+        let result = (|| {
+            let parent = self.globals["%WebEvent%"];
+            let function = self.function_prototype()?;
+            let prototype = self.with_roots(|heap| heap.alloc_object(Some(parent)))?;
+            self.stack.push(Value::Object(prototype));
+            for name in ["lengthComputable", "loaded", "total"] {
+                self.event_getter(prototype, function, name, 4, true)?;
+            }
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("ProgressEvent".into()),
+                false,
+                false,
+                true,
+            )?;
+            let constructor = self.web_file_constructor(
+                "ProgressEvent",
+                1,
+                NativeFunction::WebEvent(EventNative::Constructor(4)),
+                self.heap
+                    .get_own(parent, "constructor")?
+                    .and_then(|value| value.object_id())
+                    .expect("installed Event constructor"),
+                prototype,
+            )?;
+            self.stack.push(Value::Object(constructor));
+            self.define_data(
+                global,
+                "ProgressEvent",
+                Value::Object(constructor),
+                true,
+                false,
+                true,
+            )?;
+            self.heap.root(prototype)?;
+            self.globals.insert("%WebProgressEvent%".into(), prototype);
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     pub(super) fn install_web_events(&mut self) -> Result<(), RuntimeError> {
         if self.globals.contains_key("%WebEvent%") {
             return Ok(());
@@ -257,11 +317,11 @@ impl Vm {
             "timeStamp",
             Value::Number(self.event_time_origin.elapsed().as_secs_f64() * 1000.0),
         );
-        if rank >= 1 {
+        if (1..=3).contains(&rank) {
             state.set("view", Value::Null);
             state.set("detail", Value::Number(0.0));
         }
-        if rank >= 2 {
+        if (2..=3).contains(&rank) {
             for field in [
                 "clientX", "clientY", "screenX", "screenY", "button", "buttons",
             ] {
@@ -307,7 +367,7 @@ impl Vm {
                     state.set(field, Value::Bool(value));
                 }
             }
-            if rank >= 1 {
+            if (1..=3).contains(&rank) {
                 let detail = self.event_init_value(&options, "detail")?;
                 let detail = self.event_integer(&detail, 32, true)?;
                 state.set("detail", Value::Number(detail));
@@ -319,7 +379,7 @@ impl Vm {
                     ));
                 }
             }
-            if rank >= 2 {
+            if (2..=3).contains(&rank) {
                 for field in [
                     "altKey",
                     "ctrlKey",
@@ -374,6 +434,16 @@ impl Vm {
                         })?;
                     self.stack.push(Value::Object(object));
                     state.transfer = Some(object);
+                }
+            }
+            if rank == 4 {
+                let value = self.event_init_value(&options, "lengthComputable")?;
+                let value = self.to_boolean(&value)?;
+                state.set("lengthComputable", Value::Bool(value));
+                for field in ["loaded", "total"] {
+                    let value = self.event_init_value(&options, field)?;
+                    let value = self.event_integer(&value, 64, false)?;
+                    state.set(field, Value::Number(value));
                 }
             }
             let default = self.globals[&format!("%Web{}%", EVENT_NAMES[rank as usize])];
@@ -443,7 +513,9 @@ impl Vm {
         rank: u8,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        if self.heap.drag_event(object)?.interface < rank {
+        if self.heap.drag_event(object)?.interface < rank
+            || (self.heap.drag_event(object)?.interface == 4 && rank > 0)
+        {
             return Err(RuntimeError::TypeError(
                 "Invalid event interface receiver".into(),
             ));
@@ -546,7 +618,7 @@ impl Vm {
         let mut state = self.heap.drag_event(object)?.clone();
         match native {
             EventNative::Get(name, rank) => {
-                if state.interface < rank {
+                if state.interface < rank || (state.interface == 4 && (1..=3).contains(&rank)) {
                     return Err(RuntimeError::TypeError(
                         "Invalid event interface receiver".into(),
                     ));
@@ -589,7 +661,7 @@ impl Vm {
                 })
             }
             EventNative::GetModifierState => {
-                if state.interface < 2 {
+                if state.interface < 2 || state.interface == 4 {
                     return Err(RuntimeError::TypeError(
                         "Invalid MouseEvent receiver".into(),
                     ));

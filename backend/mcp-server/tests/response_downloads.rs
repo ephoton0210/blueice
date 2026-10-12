@@ -42,6 +42,7 @@ fn representation_ignores_correlated_native_drag_payloads() {
                 operation: blueice_ipc::input::NativeDragOperation::Copy,
                 allowed_operations: vec![blueice_ipc::input::NativeDragOperation::Copy],
                 mouse: None,
+                image: None,
                 items: Some(vec![blueice_ipc::input::NativeDragItem::Text {
                     format: "text/plain".into(),
                     data: "native-only-drag-payload".into(),

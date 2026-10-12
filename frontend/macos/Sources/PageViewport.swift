@@ -238,9 +238,10 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
                         }
                         if !owned.isKeyWindow || owned.attachedSheet != nil || notification.name == NSWindow.willCloseNotification {
                             self.model?.clearNativeHover()
-                            self.pageDragging.invalidate()
                         }
-                        if owned.attachedSheet != nil || notification.name == NSWindow.willCloseNotification { self.pageDragging.cancelSource() }
+                        if owned.attachedSheet != nil || notification.name == NSWindow.willCloseNotification {
+                            self.pageDragging.invalidate(); self.pageDragging.cancelSource()
+                        }
                         self.replayPendingKeys()
                     }
                 }
@@ -591,6 +592,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         guard bounds.contains(point), window?.isKeyWindow == true, window?.firstResponder === self else { return }
         model?.queueDocumentClick(x: x, y: y, cssSize: gesture.cssSize, tab: gesture.tab, epoch: gesture.epoch, document: gesture.document)
     }
+
 
     override func scrollWheel(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)

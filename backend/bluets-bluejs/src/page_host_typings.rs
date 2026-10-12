@@ -14,6 +14,9 @@
 use blueice_bluets::ModuleSource;
 use std::fmt;
 
+mod file_reader;
+mod streams;
+
 /// The profile identity shared by the core binding catalog and the isolated
 /// page-host child.  A page request contains no profile selector.
 pub const PAGE_HOST_DOCUMENT_CONTEXT_PROFILE_V1: &str = "core-script-document-context-v1";
@@ -57,6 +60,15 @@ pub const PAGE_HOST_DOM_DRAG_PROFILE_V1: &str = "core-script-dom-drag-v1";
 pub const PAGE_HOST_DOM_DRAG_DECLARATION_MODULE_ID_V1: &str =
     "blueice:///profiles/core-script-dom-drag-v1/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_DRAG_HOST_API_VERSION_V1: &str = "blueice-core-script-v6";
+pub const PAGE_HOST_DOM_DRAG_IMAGE_PROFILE_V2: &str = "core-script-dom-drag-image-v2";
+pub const PAGE_HOST_DOM_DRAG_IMAGE_DECLARATION_MODULE_ID_V2: &str =
+    "blueice:///profiles/core-script-dom-drag-image-v2/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_FILE_READER_PROFILE_V3: &str = "core-script-dom-file-reader-v3";
+pub const PAGE_HOST_DOM_FILE_READER_DECLARATION_MODULE_ID_V3: &str =
+    "blueice:///profiles/core-script-dom-file-reader-v3/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_STREAM_PROFILE_V4: &str = "core-script-dom-stream-v4";
+pub const PAGE_HOST_DOM_STREAM_DECLARATION_MODULE_ID_V4: &str =
+    "blueice:///profiles/core-script-dom-stream-v4/lib.blueice.d.ts";
 
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
 
@@ -468,6 +480,34 @@ pub fn page_host_dom_drag_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 24
     })
 }
 
+const PAGE_HOST_DOM_DRAG_IMAGE_BINDINGS_V2: [PageHostDocumentBindingV1; 24] = {
+    let mut bindings = PAGE_HOST_DOM_DRAG_BINDINGS_V1;
+    bindings[20].declaration = "interface BlueIceDataTransferTypes { readonly length: number; includes(format: string, fromIndex?: number): boolean; join(separator?: string): string; }\ninterface BlueIceDataTransfer { dropEffect: string; effectAllowed: string; readonly items: BlueIceDataTransferItemList; readonly files: BlueIceFileList; readonly types: BlueIceDataTransferTypes; getData(format: string): string; setData(format: string, data: string): void; clearData(format?: string): void; setDragImage(image: BlueIceNode, x: number, y: number): void; }\ndeclare const DataTransfer: { new(): BlueIceDataTransfer; readonly prototype: BlueIceDataTransfer; };";
+    bindings[20].first_host_api_version = "blueice-core-script-v7";
+    bindings
+};
+
+pub fn page_host_dom_drag_image_runtime_bindings_v2() -> [PageHostRuntimeBindingV1; 24] {
+    PAGE_HOST_DOM_DRAG_IMAGE_BINDINGS_V2.map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
+pub fn page_host_dom_file_reader_runtime_bindings_v3() -> [PageHostRuntimeBindingV1; 27] {
+    file_reader::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
+pub fn page_host_dom_stream_runtime_bindings_v4() -> [PageHostRuntimeBindingV1; 33] {
+    streams::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -541,6 +581,23 @@ impl PageHostDocumentTypingsV1 {
             PAGE_HOST_DOM_DRAG_PROFILE_V1,
             &PAGE_HOST_DOM_DRAG_BINDINGS_V1,
         )
+    }
+    pub fn generate_dom_drag_image() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_DRAG_IMAGE_PROFILE_V2,
+            &PAGE_HOST_DOM_DRAG_IMAGE_BINDINGS_V2,
+        )
+    }
+
+    pub fn generate_dom_file_reader() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_FILE_READER_PROFILE_V3,
+            &file_reader::bindings(),
+        )
+    }
+
+    pub fn generate_dom_stream() -> Self {
+        Self::generate_from(PAGE_HOST_DOM_STREAM_PROFILE_V4, &streams::bindings())
     }
 
     fn generate_from(profile: &'static str, bindings: &[PageHostDocumentBindingV1]) -> Self {
@@ -651,6 +708,38 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_drag(),
             PAGE_HOST_DOM_DRAG_DECLARATION_MODULE_ID_V1,
+            installed_bindings,
+        )
+    }
+    pub fn verified_dom_drag_image_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_drag_image(),
+            PAGE_HOST_DOM_DRAG_IMAGE_DECLARATION_MODULE_ID_V2,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_file_reader_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_file_reader(),
+            PAGE_HOST_DOM_FILE_READER_DECLARATION_MODULE_ID_V3,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_stream_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_stream(),
+            PAGE_HOST_DOM_STREAM_DECLARATION_MODULE_ID_V4,
             installed_bindings,
         )
     }

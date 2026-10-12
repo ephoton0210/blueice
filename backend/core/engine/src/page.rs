@@ -986,6 +986,11 @@ impl Page {
             .then(|| self.script_handle_for_node(node))
     }
 
+    #[cfg(unix)]
+    pub(crate) fn script_raw_node_for_handle(&self, handle: u64) -> Option<u64> {
+        self.script_node(handle).ok().map(|node| node.as_u64())
+    }
+
     /// Checks whether a child-private node handle still belongs to this
     /// document. Detached nodes remain valid until their subtree is removed.
     pub(crate) fn script_validate_node(&self, node: u64) -> Result<(), String> {
@@ -1316,6 +1321,7 @@ mod file_input;
 mod find;
 mod form_submission;
 pub(crate) mod native_drag;
+mod native_drag_image;
 mod native_editing;
 mod native_forms;
 mod native_interaction;

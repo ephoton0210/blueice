@@ -20,6 +20,345 @@ fn web_vm() -> Vm {
 }
 
 #[test]
+fn file_reader_is_an_event_target_with_readonly_state_and_branded_read_methods() {
+    assert_eq!(run(&mut web_vm(), r#"
+        const reader = new FileReader();
+        reader.readyState = 99; reader.result = 'forged'; reader.error = 'forged';
+        const initial = reader instanceof EventTarget && reader.readyState === FileReader.EMPTY
+            && reader.EMPTY === 0 && reader.LOADING === 1 && reader.DONE === 2
+            && reader.result === null && reader.error === null && reader.onload === null;
+        let rejected = 0;
+        for (const action of [
+            () => FileReader(),
+            () => FileReader.prototype.readAsText.call({}, new Blob(['x'])),
+            () => reader.readAsText({size:1})
+        ]) { try { action(); } catch(error) { if(error instanceof TypeError) rejected++; } }
+        reader.readAsArrayBuffer(new Blob([new Uint8Array([0,255])]));
+        let busy = false;
+        try { reader.readAsText(new Blob(['second'])); }
+        catch(error) { busy = error instanceof DOMException && error.name === 'InvalidStateError' && error.code === 11; }
+        initial && rejected === 3 && busy && reader.readyState === 1 && reader.result === null
+    "#).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn file_reader_abort_before_the_first_task_emits_only_terminal_events() {
+    assert_eq!(
+        run(
+            &mut web_vm(),
+            r#"
+        const reader = new FileReader(), events = [];
+        for (const type of ['loadstart','progress','load','abort','loadend']) {
+            reader.addEventListener(type, event => events.push(event.type));
+        }
+        reader.readAsText(new Blob(['Cancelled 中文']));
+        reader.abort(); reader.abort();
+        events.join(',') === 'abort,loadend' && reader.readyState === reader.DONE
+            && reader.result === null && reader.error === null
+    "#
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn file_reader_abort_handler_new_read_prevents_the_old_loadend_event() {
+    assert_eq!(run(&mut web_vm(), r#"
+        const reader = new FileReader(), events = [];
+        reader.onabort = function(event) {
+            events.push(event.type);
+            reader.readAsText(new Blob(['Replacement']));
+        };
+        reader.onloadend = event => events.push(event.type);
+        reader.readAsText(new Blob(['Original']));
+        reader.abort();
+        events.join(',') === 'abort' && reader.readyState === reader.LOADING && reader.result === null
+    "#).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn file_reader_reads_real_binary_text_and_data_urls_as_separate_tasks() {
+    let mut vm = web_vm();
+    assert_eq!(run(&mut vm, r#"
+        const blob = new Blob([new Uint8Array([0,255,65])], {type:'application/octet-stream'});
+        const binary = new FileReader(), buffer = new FileReader(), url = new FileReader();
+        let results = '';
+        binary.onload = () => { results += Array.from(binary.result, c => c.charCodeAt(0)).join(',') + ';'; };
+        buffer.onload = () => { results += Array.from(new Uint8Array(buffer.result)).join(',') + ';'; };
+        url.onload = () => { results += url.result; };
+        binary.readAsBinaryString(blob); buffer.readAsArrayBuffer(blob); url.readAsDataURL(blob);
+        results === '' && binary.readyState === 1 && buffer.result === null
+    "#).unwrap(), Value::Bool(true));
+    vm.run_drag_tasks_bounded(64).unwrap();
+    assert_eq!(
+        run(
+            &mut vm,
+            "results === '0,255,65;0,255,65;data:application/octet-stream;base64,AP9B'"
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn file_reader_progress_events_order_microtasks_and_keep_real_target_state() {
+    let mut vm = web_vm();
+    run(
+        &mut vm,
+        r#"
+        const reader = new FileReader(), events = [];
+        let valid = true;
+        for (const type of ['loadstart','progress','load','loadend']) {
+            reader.addEventListener(type, function(event) {
+                valid = valid && event instanceof ProgressEvent && event instanceof Event
+                    && event.target === reader && event.currentTarget === reader && this === reader
+                    && event.isTrusted && !event.bubbles && !event.cancelable
+                    && event.lengthComputable && event.total === 3;
+                events.push(type + ':' + event.loaded + ':' + reader.readyState);
+                Promise.resolve().then(() => events.push('micro:' + type));
+            });
+        }
+        Promise.resolve().then(() => events.push('micro:before'));
+        reader.readAsText(new Blob(['abc']));
+    "#,
+    )
+    .unwrap();
+    vm.run_drag_tasks_bounded(64).unwrap();
+    assert_eq!(run(&mut vm, r#"
+        valid && reader.result === 'abc' && events.join(',') ===
+        'micro:before,loadstart:0:1,micro:loadstart,progress:3:1,micro:progress,load:3:2,loadend:3:2,micro:load,micro:loadend'
+    "#).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn file_reader_encoding_labels_mime_charset_and_bom_decode_actual_cjk_bytes() {
+    let mut vm = web_vm();
+    run(&mut vm, r#"
+        const big5 = new FileReader(), utf16 = new FileReader(), latin = new FileReader();
+        big5.readAsText(new Blob([new Uint8Array([164,164,164,229])], {type:'text/plain; charset="big5"'}));
+        utf16.readAsText(new Blob([new Uint8Array([255,254,45,78,135,101])]), 'utf-8');
+        latin.readAsText(new Blob([new Uint8Array([128])]), 'windows-1252');
+    "#).unwrap();
+    vm.run_drag_tasks_bounded(64).unwrap();
+    assert_eq!(
+        run(
+            &mut vm,
+            "big5.result === '中文' && utf16.result === '中文' && latin.result === '€'"
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn file_reader_load_chaining_suppresses_old_loadend_and_preserves_handler_order() {
+    let mut vm = web_vm();
+    run(
+        &mut vm,
+        r#"
+        const reader = new FileReader(), events = [];
+        reader.addEventListener('load', () => events.push('first:' + reader.result));
+        reader.onload = () => events.push('obsolete');
+        reader.addEventListener('load', () => events.push('last'));
+        reader.onload = () => {
+            events.push('handler:' + reader.result);
+            if (reader.result === 'one') reader.readAsText(new Blob(['two']));
+        };
+        reader.onloadend = () => events.push('end:' + reader.result);
+        reader.readAsText(new Blob(['one']));
+    "#,
+    )
+    .unwrap();
+    vm.run_drag_tasks_bounded(64).unwrap();
+    assert_eq!(
+        run(
+            &mut vm,
+            "events.join(',') === 'first:one,handler:one,last,first:two,handler:two,last,end:two'"
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn file_reader_abort_from_loadstart_prevents_progress_and_load_and_keeps_gc_roots() {
+    let mut config = VmConfig::default();
+    config.heap.nursery_capacity = 1;
+    let mut vm = Vm::new(config).unwrap();
+    vm.install_web_file_api().unwrap();
+    run(&mut vm, r#"
+        let reader = new FileReader(), retained = reader, events = [];
+        reader.onloadstart = () => {
+            for (let i=0;i<80;i++) new Blob(['GC ' + i]);
+            retained.abort();
+        };
+        for (const type of ['progress','load','abort','loadend']) retained.addEventListener(type, e => events.push(e.type));
+        reader.readAsText(new Blob(['Never delivered'])); reader = null;
+    "#).unwrap();
+    vm.run_drag_tasks_bounded(64).unwrap();
+    assert_eq!(run(&mut vm, "events.join(',') === 'abort,loadend' && retained.readyState === 2 && retained.result === null").unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn file_reader_packaging_error_chains_a_new_read_without_the_old_loadend() {
+    let config = VmConfig {
+        max_string_bytes: 128,
+        ..VmConfig::default()
+    };
+    let mut vm = Vm::new(config).unwrap();
+    vm.install_web_file_api().unwrap();
+    run(&mut vm, r#"
+        const reader = new FileReader(), events = [];
+        reader.onerror = event => {
+            events.push(reader.error instanceof DOMException && reader.error.name === 'NotReadableError'
+                && reader.result === null && reader.readyState === 2 && event.isTrusted ? 'error' : 'bad');
+            reader.readAsText(new Blob(['retry']));
+        };
+        reader.onload = () => events.push(reader.result);
+        reader.onloadend = () => events.push('end');
+        reader.readAsDataURL(new Blob([new Uint8Array(192)]));
+    "#).unwrap();
+    vm.run_browser_tasks_bounded(64).unwrap();
+    assert_eq!(
+        run(
+            &mut vm,
+            "events.join(',') === 'error,retry,end' && reader.error === null"
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn file_reader_pending_task_retains_a_reader_without_a_script_reference() {
+    let mut config = VmConfig::default();
+    config.heap.nursery_capacity = 1;
+    let mut vm = Vm::new(config).unwrap();
+    vm.install_web_file_api().unwrap();
+    run(
+        &mut vm,
+        r#"
+        let delivered = null;
+        (() => {
+            const reader = new FileReader();
+            reader.onload = event => { delivered = event.target.result; };
+            reader.readAsText(new Blob(['rooted 中文']));
+        })();
+        for (let i=0;i<100;i++) new Blob(['unrelated ' + i]);
+    "#,
+    )
+    .unwrap();
+    vm.run_browser_tasks_bounded(64).unwrap();
+    assert_eq!(
+        run(&mut vm, "delivered === 'rooted 中文'").unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn file_reader_abort_at_the_loadstart_microtask_checkpoint_cancels_queued_progress() {
+    let mut vm = web_vm();
+    run(&mut vm, r#"
+        const reader = new FileReader(), events = [];
+        reader.onloadstart = () => Promise.resolve().then(() => reader.abort());
+        for (const type of ['progress','load','abort','loadend']) reader.addEventListener(type, e => events.push(e.type));
+        reader.readAsText(new Blob(['cancelled']));
+    "#).unwrap();
+    vm.run_browser_tasks_bounded(1).unwrap();
+    vm.run_browser_tasks_bounded(64).unwrap();
+    assert_eq!(run(&mut vm, "events.join(',') === 'abort,loadend' && reader.result === null && reader.readyState === 2").unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn progress_event_inherits_event_without_mouse_attributes_and_checks_getter_brands() {
+    assert_eq!(run(&mut web_vm(), r#"
+        const event = new ProgressEvent('progress', {lengthComputable:true, loaded:3.9, total:7});
+        let rejected = 0;
+        try { Object.getOwnPropertyDescriptor(ProgressEvent.prototype, 'loaded').get.call(new Event('x')); }
+        catch (error) { if(error instanceof TypeError) rejected++; }
+        try { Object.getOwnPropertyDescriptor(MouseEvent.prototype, 'screenX').get.call(event); }
+        catch (error) { if(error instanceof TypeError) rejected++; }
+        Object.getPrototypeOf(ProgressEvent) === Event && event instanceof Event
+            && event.lengthComputable && event.loaded === 3 && event.total === 7
+            && !event.isTrusted && !('screenX' in event) && rejected === 2
+            && Object.getPrototypeOf(FileReader) === EventTarget
+    "#).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn file_reader_bounded_turn_yields_without_discarding_pending_reads() {
+    let mut vm = web_vm();
+    run(&mut vm, "const readers = []; for(let i=0;i<40;i++){const r=new FileReader();r.readAsText(new Blob(['read '+i]));readers.push(r);}").unwrap();
+    assert!(!vm.run_browser_task_turn(1).unwrap());
+    assert_eq!(
+        run(
+            &mut vm,
+            "readers.every(r=>r.readyState===1 && r.result===null)"
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.run_browser_task_turn(128).unwrap());
+    assert_eq!(
+        run(
+            &mut vm,
+            "readers.every((r,i)=>r.readyState===2 && r.result==='read '+i)"
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn file_reader_handler_retains_noncallable_objects_without_invoking_handle_event() {
+    assert_eq!(run(&mut web_vm(), r#"
+        const reader = new FileReader(); let lookups=0;
+        const object={ get handleEvent() { lookups++; return ()=>{throw 'not an EventListener';}; } };
+        reader.onload=object;
+        const retained=reader.onload===object;
+        reader.dispatchEvent(new Event('load'));
+        reader.onload=123;
+        retained && reader.onload===null && lookups===0
+    "#).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn file_reader_handler_return_false_cancels_only_cancelable_synthetic_events() {
+    assert_eq!(
+        run(
+            &mut web_vm(),
+            r#"
+        const reader = new FileReader();
+        reader.onload=()=>false;
+        const event=new Event('load',{cancelable:true}), fixed=new Event('load');
+        !reader.dispatchEvent(event) && event.defaultPrevented
+            && reader.dispatchEvent(fixed) && !fixed.defaultPrevented
+    "#
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn file_reader_mime_charset_ignores_quoted_semicolons_and_invalid_essences_and_first_labels() {
+    let mut vm = web_vm();
+    run(&mut vm, r#"
+        const readers=[];
+        for(const type of ['text/plain;note="x;charset=big5";charset=utf-8',
+            'invalid;charset=big5', 'text/plain;charset=unknown-label;charset=big5']) {
+            const reader=new FileReader();reader.readAsText(new Blob(['中文'],{type}));readers.push(reader);
+        }
+    "#).unwrap();
+    vm.run_browser_tasks_bounded(64).unwrap();
+    assert_eq!(
+        run(&mut vm, "readers.every(reader=>reader.result==='中文')").unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn blob_and_file_are_branded_and_normalize_metadata() {
     assert_eq!(
         run(

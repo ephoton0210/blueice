@@ -24,6 +24,15 @@ enum NativeDragOperation: String, Codable, Hashable, Sendable {
     static func allowed(_ mask: NSDragOperation) -> [Self] {
         [.copy, .move, .link].filter { mask.contains($0.appKit) }
     }
+    static func allowed(_ mask: NSDragOperation,modifiers: NativeDragMouse.Modifiers) -> [Self] {
+        let supported = allowed(mask)
+        let requested: Self?
+        if modifiers.meta && modifiers.alt { requested = .link }
+        else if modifiers.meta { requested = .move }
+        else if modifiers.alt { requested = .copy }
+        else { requested = nil }
+        return requested.map { supported.contains($0) ? [$0] : [] } ?? supported
+    }
 }
 
 enum NativeDragItem: Codable, Sendable {
@@ -149,12 +158,18 @@ struct NativeDragState: Decodable, Sendable {
     let allowed_operations: [NativeDragOperation]
     let items: [NativeDragItem]?
     let mouse: NativeDragMouse?
+    let image: NativeDragImage?
+    var sourceFrame: FrameNotice? = nil
+    private enum CodingKeys: String, CodingKey {
+        case version,drag_id,frame_source,document_generation,frame_generation,active,operation,allowed_operations,items,mouse,image
+    }
     var valid: Bool {
         version == 1 && drag_id > 0 && allowed_operations.count <= 3
             && !allowed_operations.contains(.none) && Set(allowed_operations).count == allowed_operations.count
             && (operation == .none || allowed_operations.contains(operation))
             && items.map(NativeDragItem.valid) != false
             && mouse?.valid != false
+            && image?.valid != false
     }
 }
 
@@ -185,6 +200,7 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
         let allowed: [NativeDragOperation]
         let payload: NativeDragPayload
         let provider: NativeDragPasteboardProvider
+        var fileProviders: [NSFilePromiseProvider] = []
         var session: NSDraggingSession?
         var pasteboardChangeCount: Int?
         var heartbeat: NativeDragHeartbeat?
@@ -216,7 +232,7 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
         init(id: UInt64,info: NSDraggingInfo,model: BrowserModel,owner: NativeDragOwner,viewSize: CGSize,point: CGPoint,types: [String],mouse: NativeDragMouse) {
             self.id = id; self.model = model; sequence = info.draggingSequenceNumber; self.owner = owner; self.viewSize = viewSize
             pasteboard = info.draggingPasteboard; changeCount = pasteboard.changeCount
-            self.types = types; allowed = NativeDragOperation.allowed(info.draggingSourceOperationMask); self.point = point; self.mouse = mouse
+            self.types = types; allowed = NativeDragOperation.allowed(info.draggingSourceOperationMask,modifiers: mouse.modifiers); self.point = point; self.mouse = mouse
         }
     }
     private weak var view: CorePageView?
@@ -273,14 +289,16 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
         let writer = NSPasteboardItem()
         var formats: [String] = []
         var values: [String: Data] = [:]
+        var files: [SelectedFile] = []
         for item in items {
-            guard case .text(let format,let data) = item else {
-                Task { _ = await model.nativeDrag(.end(id,.none),owner: press.owner) }; return true
+            switch item {
+            case .text(let format,let data):
+                values[Self.pasteboardType(format).rawValue] = Data(data.utf8)
+                formats.append(format)
+            case .file(let file): files.append(file)
             }
-            values[Self.pasteboardType(format).rawValue] = Data(data.utf8)
-            formats.append(format)
         }
-        let payload = NativeDragPayload(values: values)
+        let payload = NativeDragPayload(values: values,files: files)
         let source = Source(id: id,owner: press.owner,model: model,allowed: state.allowed_operations,payload: payload)
         guard values.isEmpty || writer.setDataProvider(source.provider,forTypes: values.keys.map { NSPasteboard.PasteboardType($0) }) else {
             payload.revoke()
@@ -290,7 +308,13 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
             payload.revoke()
             Task { _ = await model.nativeDrag(.end(id,.none),owner: press.owner) }; return true
         }
-        let dragging = NSDraggingItem(pasteboardWriter: writer)
+        var draggingItems: [NSDraggingItem] = []
+        if !values.isEmpty || files.isEmpty { draggingItems.append(NSDraggingItem(pasteboardWriter: writer)) }
+        for (index,file) in files.enumerated() {
+            let provider = NativeDragFilePromises.provider(file,index: index,payload: payload)
+            source.fileProviders.append(provider)
+            draggingItems.append(NSDraggingItem(pasteboardWriter: provider))
+        }
         let label = items.compactMap { item -> String? in
             if case .text(let format,let text) = item, format == "text/plain" { return String(text.prefix(32)) }; return nil
         }.first ?? "BlueIce"
@@ -299,13 +323,26 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
             (label as NSString).draw(in: rect.insetBy(dx: 4,dy: 3),withAttributes: [.font: NSFont.systemFont(ofSize: 12),.foregroundColor: NSColor.selectedTextColor])
             return true
         }
-        dragging.setDraggingFrame(NSRect(x: point.x-4,y: point.y-12,width: 128,height: 24),contents: preview)
+        let pixels: FramePixels?
+        if let notice = state.sourceFrame, notice.generation == state.frame_generation {
+            pixels = try? model.readNativeDragFrame(notice)
+        } else if model.generation == state.frame_generation {
+            pixels = model.nativeDragFramePixels
+        } else { pixels = nil }
+        let sourcePreview = pixels.flatMap { frame in try? state.image?.preview(frame,cssSize: press.owner.cssSize,viewSize: press.viewSize) }
+        for (index,dragging) in draggingItems.enumerated() {
+            if let sourcePreview {
+                dragging.setDraggingFrame(NSRect(origin: CGPoint(x: point.x-sourcePreview.hotspot.x,y: point.y-sourcePreview.hotspot.y),size: sourcePreview.image.size),contents: sourcePreview.image)
+            } else {
+                dragging.setDraggingFrame(NSRect(x: point.x-4,y: point.y-12+CGFloat(index*4),width: 128,height: 24),contents: preview)
+            }
+        }
         guard model.retainNativeDragPayload(payload,id: id,owner: press.owner) else {
             payload.revoke()
             Task { _ = await model.nativeDrag(.end(id,.none),owner: press.owner) }; return true
         }
         self.source = source
-        let session = view.beginDraggingSession(with: [dragging],event: event,source: self)
+        let session = view.beginDraggingSession(with: draggingItems,event: event,source: self)
         if self.source === source {
             source.session = session
             source.pasteboardChangeCount = source.pasteboardChangeCount ?? session.draggingPasteboard.changeCount
@@ -330,8 +367,13 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
         guard source.model?.nativeDragIsCurrent(source.owner) == true else {
             cancelSource(); return []
         }
-        return source.allowed.reduce([]) { $0.union($1.appKit) }
+        let mask = source.allowed.reduce(NSDragOperation()) { $0.union($1.appKit) }
+        return NativeDragOperation.allowed(mask,modifiers: .init(NSEvent.modifierFlags)).reduce([]) { $0.union($1.appKit) }
     }
+    // AppKit's additional legacy Command filter can remove the declared Move
+    // operation. BlueIce selects from Core's allowed mask once, for both local
+    // and external receivers, using the standard Option/Command policy.
+    func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
     func draggingSession(_ session: NSDraggingSession,willBeginAt screenPoint: NSPoint) {
         if let source, source.session == nil || source.session === session {
             source.session = session
@@ -436,7 +478,7 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
               let id = model.nextNativeDragID() else { return [] }
         let types = Self.advertisedTypes(info.draggingPasteboard)
         guard !types.isEmpty || Self.metadataTypes(info.draggingPasteboard) != nil,
-              !NativeDragOperation.allowed(info.draggingSourceOperationMask).isEmpty else { return [] }
+              !NativeDragOperation.allowed(info.draggingSourceOperationMask,modifiers: mouse.modifiers).isEmpty else { return [] }
         let drag = Destination(id: id,info: info,model: model,owner: owner,viewSize: view.bounds.size,point: point,types: types,mouse: mouse)
         destination = drag; negotiate(mouse,drag: drag,model: model)
         return drag.decisionMouse == mouse && drag.decisionFrame == model.generation ? drag.operation : []
@@ -448,7 +490,7 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
               let mouse = mouse(info,view: view,point: point) else {
             invalidate(); return []
         }
-        if NativeDragOperation.allowed(info.draggingSourceOperationMask) != drag.allowed {
+        if NativeDragOperation.allowed(info.draggingSourceOperationMask,modifiers: mouse.modifiers) != drag.allowed {
             invalidate(); return entered(info)
         }
         if drag.point != point || drag.mouse != mouse {
@@ -461,8 +503,8 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
         guard let view, let model = view.model, let drag = destination,
               current(info,drag: drag,view: view,model: model),
               let point = point(info,view: view,owner: drag.owner),
-              mouse(info,view: view,point: point)?.sameNegotiation(as: drag.decisionMouse) == true,
-              NativeDragOperation.allowed(info.draggingSourceOperationMask) == drag.allowed, !drag.operation.isEmpty,
+              let mouse = mouse(info,view: view,point: point), mouse.sameNegotiation(as: drag.decisionMouse),
+              NativeDragOperation.allowed(info.draggingSourceOperationMask,modifiers: mouse.modifiers) == drag.allowed, !drag.operation.isEmpty,
               drag.decisionFrame == model.generation else { return false }
         drag.prepared = true; return true
     }
@@ -471,7 +513,7 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
               current(info,drag: drag,view: view,model: model),
               let point = point(info,view: view,owner: drag.owner),
               let mouse = mouse(info,view: view,point: point), mouse.sameNegotiation(as: drag.decisionMouse),
-              NativeDragOperation.allowed(info.draggingSourceOperationMask) == drag.allowed,
+              NativeDragOperation.allowed(info.draggingSourceOperationMask,modifiers: mouse.modifiers) == drag.allowed,
               drag.decisionFrame == model.generation, !drag.operation.isEmpty else { return false }
         // Payload access is confined to this explicit OS drop callback.
         let items: [NativeDragItem]
@@ -503,7 +545,7 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
     }
     private func negotiate(_ mouse: NativeDragMouse,drag: Destination,model: BrowserModel) {
         guard !drag.ended, let view, destination === drag, view.model === model,
-              view.window?.isVisible == true, view.window?.isKeyWindow == true,
+              view.window?.isVisible == true,
               view.window?.attachedSheet == nil, view.bounds.size == drag.viewSize,
               model.nativeDragIsCurrent(drag.owner) else { return }
         let reply = model.negotiateNativeDrag(.enter(drag.id,mouse.point,drag.types,drag.allowed),owner: drag.owner,mouse: mouse)
@@ -519,7 +561,10 @@ final class BrowserPageDragging: NSObject, NSDraggingSource {
                   source.session?.draggingSequenceNumber == info.draggingSequenceNumber,
                   source.model?.nativeDragIsCurrent(source.owner) == true else { return false }
         }
-        return info.draggingDestinationWindow === window && window.isVisible && window.isKeyWindow && window.attachedSheet == nil
+        // AppKit delivers user drags to visible inactive windows, including
+        // when the source belongs to another application. Keyboard focus is
+        // independent from the destination's document and displayed frame.
+        return info.draggingDestinationWindow === window && window.isVisible && window.attachedSheet == nil
     }
     private func current(_ info: NSDraggingInfo,drag: Destination,view: CorePageView,model: BrowserModel) -> Bool {
         !drag.ended && usable(info,view: view) && drag.sequence == info.draggingSequenceNumber
@@ -621,6 +666,7 @@ enum BrowserNativeDragCommit {
         DispatchQueue.global().asyncAfter(deadline: .now() + 5,execute: timeout)
         defer { deadline.cancel(); timeout.cancel() }
         var request = UInt64.random(in: (1 << 48)...(1 << 63))
+        var sourceFrame: FrameNotice?
         func roundTrip(_ command: BrowserCommand,scoped: Bool) throws -> BrowserMessage {
             request += 1
             let wrapped = scoped ? BrowserCommand.browserContext(.command(owner.browserContext,.window(.command(owner.window,command)))) : command
@@ -637,7 +683,8 @@ enum BrowserNativeDragCommit {
                 if case .error(let message) = reply.message { throw BrowserFailure.invalid(message) }
                 if case .nativeDrag = command {
                     switch reply.message {
-                    case .frame, .viewportState, .displayPreferences: continue
+                    case .frame(let notice): sourceFrame = notice; continue
+                    case .viewportState, .displayPreferences: continue
                     default: break
                     }
                 }
@@ -656,11 +703,12 @@ enum BrowserNativeDragCommit {
             throw BrowserFailure.invalid("The native drop document has changed.")
         }
         try input.validate()
-        guard case .nativeDragState(let state) = try roundTrip(.nativeDrag(owner.context,expectedFrame ?? input.frame_generation,action,mouse: mouse),scoped: true),
+        guard case .nativeDragState(var state) = try roundTrip(.nativeDrag(owner.context,expectedFrame ?? input.frame_generation,action,mouse: mouse),scoped: true),
               state.drag_id == action.id, state.frame_source == owner.context.frame_source,
               state.document_generation == owner.context.document_generation, state.mouse == mouse else {
             throw BrowserFailure.invalid("Invalid native drop acknowledgement.")
         }
+        if sourceFrame?.generation == state.frame_generation { state.sourceFrame = sourceFrame }
         return state
     }
 }

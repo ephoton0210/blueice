@@ -228,6 +228,17 @@ pub trait PageJavaScriptExecutor {
         Ok(())
     }
 
+    /// Runs a bounded browser turn after all document scripts or after a
+    /// native event/default sequence. Implementations keep their own realms.
+    fn flush_browser_tasks_serving_script(
+        &mut self,
+        _tabs: &mut TabManager,
+        _tab_id: TabId,
+        _script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        Ok(())
+    }
+
     /// Drains one tab's reports without exposing or consuming another tab's
     /// records.
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport>;

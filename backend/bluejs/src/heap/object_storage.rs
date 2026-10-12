@@ -386,6 +386,9 @@ impl Heap {
                 ObjectKind::WebFileList(files) => files.len().saturating_mul(size_of::<ObjectId>()),
                 ObjectKind::WebDataTransfer(store) => store.bytes(),
                 ObjectKind::WebDragEvent(state) => state.bytes(),
+                ObjectKind::WebEventTarget(state) => state.bytes(),
+                ObjectKind::WebFileReader(state) => state.bytes(),
+                ObjectKind::WebStream(state) => state.bytes(),
                 ObjectKind::WebDOMException { name, message } => {
                     name.byte_len().saturating_add(message.byte_len())
                 }

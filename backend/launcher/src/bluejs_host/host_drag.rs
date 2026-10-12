@@ -99,6 +99,13 @@ impl BlueJsChildHost {
             default_prevented: result.default_prevented,
             operation,
             effect_allowed: result.effect_allowed,
+            image: result
+                .image
+                .map(|image| blueice_ipc::page_host::PageHostDragImage {
+                    node_id: image.element.object(),
+                    x: image.x,
+                    y: image.y,
+                }),
             items: result
                 .items
                 .into_iter()
@@ -137,14 +144,8 @@ impl BlueJsChildHost {
         if document.generation != document_generation {
             return stale_document();
         }
-        if self
-            .script_dom_capability
-            .as_ref()
-            .map(ScriptDomCapability::profile)
-            != Some(PageDomProfile::File)
-        {
-            return invalid_request();
-        }
+        // Scheduling an existing realm's jobs does not install a capability.
+        // All profiles retain their own globals and exact-document callbacks.
         if self.runtime.flush_drag_tasks(tab_id).is_err() {
             return host_failure();
         }
