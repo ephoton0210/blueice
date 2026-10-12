@@ -662,6 +662,11 @@ column and the expression-end boundary; edits that rewrite text or splice a
 token still use conservative range anchors. TypeScript also removes this
 fixture's outer parentheses, so generated-byte and full mapping-set parity for
 this expression remain open, as do broader internal rewrites and the K.0 gate.
+A sixth pinned fixture composes one class decorator with two method decorators.
+The relocated expressions and method helper already mapped correctly, but the
+class helper inherited the method anchor; it now uses the `class` keyword
+token in the checked header. Other class/member orders, generated helper
+families, full mapping-set parity and the complete K.0 gate remain open.
 
 ### K.12 Projects — M10 — gap G-M2
 

@@ -38,6 +38,7 @@ use super::{Module, TextEdit};
 use crate::compiler::{CompilerOptions, EcmaTarget};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{ClassDeclaration, ClassMemberKind, ClassMemberShell, Declaration, Decorator};
+use crate::syntax::lex;
 use crate::{Token, TokenKind};
 
 /// The version of the emitted decorator helper text; part of the build fingerprint.
@@ -151,6 +152,17 @@ pub(super) fn relocated(start: usize, end: usize) -> String {
 
 fn source_anchor(offset: usize) -> String {
     format!("\u{0}A{offset}\u{0}")
+}
+
+fn class_keyword_start(class: &ClassDeclaration, source: &str) -> usize {
+    // The declaration span can begin at an export or decorator. The class
+    // keyword is the last such token before the checked class name; lexing
+    // the header avoids mistaking the word `class` in trivia for that token.
+    source
+        .get(class.span.start..class.name_span.start)
+        .and_then(|header| lex("<class-header>", header).ok())
+        .and_then(|tokens| tokens.into_iter().rfind(|token| token.is("class")))
+        .map_or(class.span.start, |token| class.span.start + token.start)
 }
 
 /// Whether the emitter lowers this class's decorators or auto-accessors (so the
@@ -680,8 +692,9 @@ impl Lowerer<'_, '_> {
             }
         }
         if class_decorated {
+            let anchor = source_anchor(class_keyword_start(class, &self.module.source));
             leading.push_str(&format!(
-                "{ES_DECORATE}(null, {class_descriptor} = {{ value: {class_this} }}, {class_decorators}, {{ kind: \"class\", name: {class_this}.name, metadata: {metadata} }}, null, {class_extra}); {} = {class_this} = {class_descriptor}.value; ",
+                "{anchor}{ES_DECORATE}(null, {class_descriptor} = {{ value: {class_this} }}, {class_decorators}, {{ kind: \"class\", name: {class_this}.name, metadata: {metadata} }}, null, {class_extra}); {} = {class_this} = {class_descriptor}.value; ",
                 class.name
             ));
         }

@@ -8877,3 +8877,24 @@ retains them, so this oracle deliberately compares the common surviving token
 and expression end, not the full generated token set. Other edited-expression
 transforms, additional helper families, multi-decorator composition, complete
 K.0 and final-source hosted CI remain open.
+
+### K.11 class/member decorator anchor composition (2026-10-12)
+
+A sixth pinned TypeScript 5.9.3 fixture combines a class decorator with two
+method decorators. Native and BlueTS both execute the application order as
+`inner`, `outer`, `class`, then `42`; all three relocated expression tokens,
+the method array boundary and the method helper call map to the same original
+columns. The public oracle exposed a distinct defect: the BlueTS class helper
+call inherited the preceding method's source anchor, while Native maps it to
+the `class` keyword. A class declaration's overall span can begin at its
+decorator, so the emitter lexes the checked class header and anchors the class
+helper at its exact `class` keyword, without enlarging the class AST.
+Source-map instrumentation does not alter JavaScript bytes. All five pinned
+K.11 oracle tests, both standard and legacy decorator runtime oracles, 251
+BlueTS library tests and 162 BlueJS
+bridge library tests pass.
+
+This closes the measured class-plus-two-method-decorator anchor case, not all
+multi-decorator combinations. Other class/member orders, field/accessor and
+computed-key interactions, helper families, full mapping-set parity, complete
+K.0 and final-source hosted CI remain open.
