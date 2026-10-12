@@ -17,6 +17,9 @@ public static class BlueIceWindow {
     [DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr window, int x, int y, int width, int height, bool repaint);
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("dwmapi.dll")] public static extern int DwmFlush();
 }
@@ -109,7 +112,22 @@ try {
     $results.Add("PASS visible rendered page pixels ($darkPixels dark samples)")
     $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($process.Id)" | Where-Object { $_.Name -eq 'blueice-core.exe' })
     $directories = @($children | ForEach-Object { if ($_.CommandLine -match '--frame-dir\s+("[^"]+"|\S+)') { $matches[1].Trim('"') } })
-    $window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
+    $closePattern = $null
+    if ($window.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$closePattern)) {
+        $closePattern.Close()
+    } else {
+        # Some WinUI providers omit WindowPattern. Send the ordinary close
+        # message only after proving this HWND still belongs to our app.
+        $handle = [IntPtr]$window.Current.NativeWindowHandle
+        [uint32]$windowOwner = 0
+        [BlueIceWindow]::GetWindowThreadProcessId($handle, [ref]$windowOwner) | Out-Null
+        if ($process.HasExited -or -not [BlueIceWindow]::IsWindow($handle) -or $windowOwner -ne $process.Id) {
+            throw 'Owned WinUI window identity changed before close'
+        }
+        if (-not [BlueIceWindow]::PostMessage($handle, 16, [UIntPtr]::Zero, [IntPtr]::Zero)) {
+            throw 'Could not request ordinary close of the owned WinUI window'
+        }
+    }
     WaitFor { $process.HasExited } 'frontend exit after window closes'
     foreach ($child in $children) { if (Get-Process -Id $child.ProcessId -ErrorAction SilentlyContinue) { throw 'Owned core process survived window close' } }
     foreach ($directory in $directories) { if (Test-Path $directory) { throw 'Frame directory survived window close' } }
