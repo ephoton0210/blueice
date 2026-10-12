@@ -126,6 +126,16 @@ impl Vm {
                 action,
                 rejected,
             } => self.stream_reaction(stream, action, rejected, first.clone()),
+            NativeFunction::TeePull { tee, branch } => self.tee_pull(tee, branch),
+            NativeFunction::TeeCancel { tee, branch } => {
+                self.tee_cancel(tee, branch, first.clone())
+            }
+            NativeFunction::TeeReaction {
+                tee,
+                reader,
+                action,
+                rejected,
+            } => self.tee_reaction(tee, reader, action, rejected, first.clone()),
             NativeFunction::FileListIteratorNext => self.web_file_list_iterator_next(&receiver),
             NativeFunction::HostSelectionCurrentTarget => {
                 self.host_selection_current_target(&receiver)

@@ -50,6 +50,7 @@ impl Heap {
             remembered: HashSet::new(),
             roots: HashMap::new(),
             scoped_roots: Vec::new(),
+            scoped_owned_edges: Vec::new(),
             managed_bytes: 0,
             next_major_bytes: config.major_threshold_bytes,
             minor_collections: 0,

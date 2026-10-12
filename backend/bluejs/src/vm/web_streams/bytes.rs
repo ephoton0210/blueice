@@ -6,9 +6,16 @@
 use super::*;
 
 impl Vm {
-    fn stream_view_info(
+    pub(super) fn stream_view_info(
         &self,
         view: &Value,
+    ) -> Result<(ObjectId, usize, usize, Option<TypedArrayKind>), RuntimeError> {
+        self.stream_view_info_allow_empty(view, false)
+    }
+    fn stream_view_info_allow_empty(
+        &self,
+        view: &Value,
+        allow_empty: bool,
     ) -> Result<(ObjectId, usize, usize, Option<TypedArrayKind>), RuntimeError> {
         let id = view
             .object_id()
@@ -29,7 +36,7 @@ impl Vm {
         };
         if self.heap.buffer_is_detached(buffer)?
             || self.heap.is_shared_array_buffer(buffer)?
-            || length == 0
+            || length == 0 && !allow_empty
         {
             return Err(RuntimeError::TypeError(
                 "View is empty, detached or shared".into(),
@@ -69,6 +76,7 @@ impl Vm {
         let buffer = self.stream_transfer_buffer(buffer)?;
         Ok(PullInto {
             buffer,
+            buffer_length: self.heap.buffer_byte_length(buffer)?,
             offset,
             length,
             filled: 0,
@@ -81,6 +89,7 @@ impl Vm {
         let buffer = self.with_roots(|heap| heap.alloc_array_buffer(length, Some(prototype)))?;
         Ok(PullInto {
             buffer,
+            buffer_length: length,
             offset: 0,
             length,
             filled: 0,
@@ -440,18 +449,15 @@ impl Vm {
             .and_then(|r| r.into.as_mut())
             .ok_or_else(|| RuntimeError::TypeError("Missing BYOB read".into()))?;
         let count = if new_view {
-            let (buffer, offset, length, _) = self.stream_view_info(value)?;
+            let (buffer, offset, length, _) = self.stream_view_info_allow_empty(value, true)?;
             if offset != into.offset + into.filled
                 || length > into.length - into.filled
-                || self.heap.buffer_byte_length(buffer)?
-                    != self.heap.buffer_byte_length(into.buffer)?
+                || self.heap.buffer_byte_length(buffer)? != into.buffer_length
             {
                 return Err(RuntimeError::RangeError(
                     "Replacement BYOB view does not match".into(),
                 ));
             }
-            let bytes = self.heap.array_buffer_copy(buffer, offset, length)?;
-            self.heap.array_buffer_write(into.buffer, offset, &bytes)?;
             length
         } else {
             let n = self.coerce_number(value)?;
@@ -475,7 +481,7 @@ impl Vm {
         // Respond transfers the writable backing before exposing the result.
         self.heap.array_buffer_is_detached(into.buffer)?;
         let buffer = if new_view {
-            self.stream_view_info(value)?.0
+            self.stream_view_info_allow_empty(value, true)?.0
         } else {
             self.stream_view_info(&Value::Object(view))?.0
         };
@@ -502,7 +508,7 @@ impl Vm {
         self.stack.truncate(base);
         result
     }
-    fn stream_bytes_value(&mut self, bytes: &[u8]) -> Result<Value, RuntimeError> {
+    pub(super) fn stream_bytes_value(&mut self, bytes: &[u8]) -> Result<Value, RuntimeError> {
         let prototype = self.buffer_prototype("ArrayBuffer")?;
         let buffer =
             self.with_roots(|heap| heap.alloc_array_buffer(bytes.len(), Some(prototype)))?;

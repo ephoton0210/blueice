@@ -9,6 +9,7 @@ use crate::heap::{PullInto, StreamData, StreamRead, StreamReader, TypedArrayKind
 use crate::native::StreamNative;
 
 mod bytes;
+mod tee;
 use StreamNative::*;
 const NAMES: [&str; 6] = [
     "ReadableStream",
@@ -47,7 +48,11 @@ impl Vm {
                     _ => &[("view", View)],
                 };
                 let methods: &[(&str, u32, StreamNative)] = match rank {
-                    0 => &[("getReader", 0, GetReader), ("cancel", 0, Cancel)],
+                    0 => &[
+                        ("getReader", 0, GetReader),
+                        ("cancel", 0, Cancel),
+                        ("tee", 0, Tee),
+                    ],
                     1 | 2 => &[
                         ("read", if rank == 1 { 0 } else { 1 }, Read),
                         ("cancel", 0, Cancel),
@@ -213,6 +218,7 @@ impl Vm {
             return self.allocate_stream(state).map(Value::Object);
         }
         match native {
+            Tee => self.tee_stream(id),
             Locked => Ok(Value::Bool(self.stream_data(id)?.reader.is_some())),
             GetReader => {
                 let options = native::argument(args, 0);
@@ -396,6 +402,9 @@ impl Vm {
             }
             let stream = self.allocate_stream(state)?;
             self.stack.push(Value::Object(stream));
+            let prototype =
+                self.constructor_prototype_for(self.globals["%ReadableStream%"], None)?;
+            self.heap.set_prototype(stream, Some(prototype))?;
             let controller = self.stream_data(stream)?.controller.unwrap();
             let start = if callbacks[0] == Value::Undefined {
                 Value::Undefined

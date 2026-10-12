@@ -594,14 +594,21 @@ impl Vm {
             .ok_or(RuntimeError::TypeError(
                 "Promise.prototype.then receiver".into(),
             ))?;
-        let target = self.new_promise()?;
-        self.perform_promise_then(
-            promise,
-            native::argument(args, 0).clone(),
-            native::argument(args, 1).clone(),
-            ReactionTarget::Native(target),
-        )?;
-        Ok(Value::Object(target))
+        let base = self.stack.len();
+        self.stack.push(receiver.clone());
+        self.stack.extend(args.iter().cloned());
+        let result = (|| {
+            let target = self.new_promise()?;
+            self.perform_promise_then(
+                promise,
+                native::argument(args, 0).clone(),
+                native::argument(args, 1).clone(),
+                ReactionTarget::Native(target),
+            )?;
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// SpeciesConstructor ( promise, %Promise% ).

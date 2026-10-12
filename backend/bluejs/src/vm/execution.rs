@@ -6,9 +6,8 @@
 
 use super::*;
 
-/// Appends the object ids among `values`, skipping every primitive.
-/// The heap values a reaction target keeps alive. A native target's promise is
-/// already rooted through `Vm::promises`, so only a capability adds any.
+/// The heap values a capability target keeps alive. Native promise targets
+/// are object ids and must be traced separately by each caller.
 fn reaction_target_values(target: &ReactionTarget) -> Vec<&Value> {
     match target {
         ReactionTarget::Native(_) => Vec::new(),
@@ -1334,6 +1333,7 @@ impl Vm {
         // hash insert and removal per root on every allocating native call,
         // which dominated the run time of array-heavy scripts.
         let mut roots = Vec::with_capacity(self.stack.len() + self.cells.len() + 32);
+        let mut owned_edges = Vec::with_capacity(self.promises.len());
         {
             push_object_roots(&mut roots, &self.stack);
             push_object_roots(&mut roots, self.bindings.iter().flatten());
@@ -1398,26 +1398,37 @@ impl Vm {
             // the ordinary operand stack while paused, so make every object
             // edge visible to the heap before this allocation safepoint.
             roots.extend(self.debugger_continuation_references());
+            roots.extend(self.module_import_waiters.values().flatten().copied());
+            for waiter in &self.deferred_import_waiters {
+                roots.extend([waiter.promise, waiter.namespace]);
+            }
             for (&promise, record) in &self.promises {
-                roots.push(promise);
+                let mut references = Vec::new();
                 if matches!(record.status, PromiseStatus::Pending) {
                     for reaction in &record.reactions {
+                        if let PromiseReaction::Then(PromiseThenReaction {
+                            target: ReactionTarget::Native(target),
+                            ..
+                        }) = reaction
+                        {
+                            references.push(*target);
+                        }
                         if let PromiseReaction::AsyncGeneratorYield {
                             generator,
                             target,
                             result,
                         } = reaction
                         {
-                            roots.push(*generator);
-                            roots.push(*target);
-                            roots.push(*result);
+                            references.push(*generator);
+                            references.push(*target);
+                            references.push(*result);
                         }
                         if let PromiseReaction::AsyncGeneratorDelegate {
                             generator, target, ..
                         } = reaction
                         {
-                            roots.push(*generator);
-                            roots.push(*target);
+                            references.push(*generator);
+                            references.push(*target);
                         }
                     }
                 }
@@ -1445,9 +1456,10 @@ impl Vm {
                 };
                 for value in values {
                     if let Value::Object(id) = value {
-                        roots.push(*id);
+                        references.push(*id);
                     }
                 }
+                owned_edges.push((promise, references));
             }
             for resource in self
                 .disposable_stacks
@@ -1547,9 +1559,21 @@ impl Vm {
                 roots.push(*id);
             }
         }
-        self.heap.push_scoped_roots(roots);
+        let collections = (
+            self.heap.stats().minor_collections,
+            self.heap.stats().major_collections,
+        );
+        self.heap.push_scoped_roots(roots, owned_edges);
         let result = operation(&mut self.heap);
         self.heap.pop_scoped_roots();
+        if collections
+            != (
+                self.heap.stats().minor_collections,
+                self.heap.stats().major_collections,
+            )
+        {
+            self.promises.retain(|id, _| self.heap.contains(*id));
+        }
         result.map_err(RuntimeError::from)
     }
 

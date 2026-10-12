@@ -1484,6 +1484,7 @@ impl Vm {
         close_on_rejection: bool,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
+        self.stack.extend([Value::Object(record), result.clone()]);
         let outcome = (|| {
             if !matches!(result, Value::Object(_)) {
                 return Err(RuntimeError::TypeError(
@@ -1510,9 +1511,11 @@ impl Vm {
                     return Err(error);
                 }
             };
+            // The wrapper is only a local until registered as a reaction
+            // owner. Allocating the target can collect it in that interval.
+            self.stack.push(value_wrapper.clone());
             let target = self.new_promise()?;
-            self.stack
-                .extend([value_wrapper.clone(), Value::Object(target)]);
+            self.stack.push(Value::Object(target));
             let fulfilled = self
                 .async_from_sync_handler(NativeFunction::AsyncFromSyncFulfill { target, done })?;
             // Each later allocation (the other handler, the derived

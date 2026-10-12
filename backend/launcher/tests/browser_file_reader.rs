@@ -90,6 +90,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
             "<div id=initial>before</div><div id=selected>none</div><div id=streamed>pending</div>",
             "<input id=upload type=file aria-label=Upload><div id=cancelled>pending</div>",
             "<div id=custom>pending</div>",
+            "<div id=tee>pending</div>",
             "<section id=event-parent><span id=event-child>event</span><input id=synthetic-file type=file></section>",
             "<div id=node-events>pending</div><div id=synthetic-grant>pending</div><div id=native-capture>pending</div>",
             "<script>",
@@ -97,8 +98,10 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
             "initial.onload=()=>{if(!lateReady) throw 'task ran before later scripts';};",
             "initial.onloadend=()=>{document.getElementById('initial').textContent=initial.result+':'+lateObserved;};",
             "initial.readAsText(new Blob(['initial 中文']));",
-            "const byteReader=new Blob([new Uint8Array([7,0,255])]).stream().getReader();",
-            "byteReader.read().then(result=>{document.getElementById('streamed').textContent='stream:'+Array.from(result.value).join(',');});",
+            "const byteBranches=new Blob([new Uint8Array([7,0,255])]).stream().tee();",
+            "const byteReader=byteBranches[0].getReader({mode:'byob'});",
+            "byteReader.read(new Uint8Array(8)).then(result=>{document.getElementById('streamed').textContent='stream:'+Array.from(result.value).join(',');result.value[0]=99;});",
+            "byteBranches[1].getReader().read().then(result=>{document.getElementById('tee').textContent='tee:'+Array.from(result.value).join(',');});",
             "const upload=document.getElementById('upload'), events=[]; let selected=null;",
             "const cancellation=new AbortController();let cancelledInput=0,cancelledLoad=0;",
             "upload.addEventListener('input',()=>cancelledInput++,{signal:cancellation.signal});",
@@ -167,6 +170,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
     };
     assert!(dom.contains("\"initial 中文:true\""), "{dom}");
     assert!(dom.contains("\"stream:7,0,255\""), "{dom}");
+    assert!(dom.contains("\"tee:7,0,255\""), "{dom}");
     assert!(dom.contains("\"custom 中文:false\""), "{dom}");
     assert!(
         dom.contains("\"doc-c:1,parent-c:1,node 中文:2:false,parent-b:3,doc-b:3\""),

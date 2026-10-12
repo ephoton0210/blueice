@@ -973,8 +973,19 @@ impl Vm {
             PromiseJob::DynamicImport { target, .. } => {
                 self.stack.push(Value::Object(*target));
             }
-            PromiseJob::ModuleAwait { value, .. } | PromiseJob::AsyncAwait { value, .. } => {
+            PromiseJob::ModuleAwait { value, .. } => {
                 self.stack.push(value.clone());
+            }
+            PromiseJob::AsyncAwait {
+                continuation,
+                value,
+                ..
+            } => {
+                self.stack.push(value.clone());
+                if let Some(state) = self.async_continuations.get(continuation) {
+                    self.stack.push(Value::Object(state.target));
+                    self.stack.extend(state.generator.map(Value::Object));
+                }
             }
             PromiseJob::AsyncGeneratorYield {
                 generator,
@@ -999,6 +1010,16 @@ impl Vm {
                 self.stack.push(value.clone());
             }
         }
+        // Module/async execution can temporarily replace the operand stack.
+        // A popped job must remain rooted throughout that displacement too.
+        let references: Vec<_> = self.stack[root_base..]
+            .iter()
+            .filter_map(Value::object_id)
+            .collect();
+        let job_roots: Vec<_> = references
+            .into_iter()
+            .map(|id| self.root_new_object(id))
+            .collect();
         let result: Result<(), RuntimeError> = (|| {
             match job {
                 PromiseJob::Reaction {
@@ -1141,6 +1162,9 @@ impl Vm {
             Ok(())
         })();
         self.stack.truncate(root_base);
+        for root in job_roots {
+            self.release_root(root);
+        }
         result?;
         Ok(true)
     }

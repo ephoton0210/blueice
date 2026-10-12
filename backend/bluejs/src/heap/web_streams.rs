@@ -34,6 +34,7 @@ pub(crate) struct StreamData {
 #[derive(Clone)]
 pub(crate) struct PullInto {
     pub buffer: ObjectId,
+    pub buffer_length: usize,
     pub offset: usize,
     pub length: usize,
     pub filled: usize,
@@ -52,8 +53,25 @@ pub(crate) struct StreamReader {
     pub byob: bool,
     pub reads: VecDeque<StreamRead>,
 }
+
+#[derive(Clone)]
+pub(crate) struct StreamTee {
+    pub source: ObjectId,
+    pub reader: ObjectId,
+    pub branches: [Option<ObjectId>; 2],
+    pub cancel_promise: ObjectId,
+    pub canceled: [bool; 2],
+    pub reasons: [Value; 2],
+    pub reading: bool,
+    pub read_again: [bool; 2],
+    pub finished: bool,
+    pub byte_stream: bool,
+    pub pending: Value,
+    pub pending_branch: Option<u8>,
+}
 #[derive(Clone)]
 pub(crate) enum WebStreamState {
+    Tee(Box<StreamTee>),
     Stream(Box<StreamData>),
     Reader(StreamReader),
     Controller {
@@ -69,6 +87,18 @@ pub(crate) enum WebStreamState {
 impl WebStreamState {
     pub fn references(&self) -> Vec<ObjectId> {
         match self {
+            Self::Tee(state) => std::iter::once(state.source)
+                .chain(Some(state.reader))
+                .chain(state.branches.into_iter().flatten())
+                .chain(Some(state.cancel_promise))
+                .chain(
+                    state
+                        .reasons
+                        .iter()
+                        .chain(std::iter::once(&state.pending))
+                        .filter_map(Value::object_id),
+                )
+                .collect(),
             Self::Stream(state) => state
                 .controller
                 .into_iter()
@@ -109,6 +139,15 @@ impl WebStreamState {
     pub fn bytes(&self) -> usize {
         size_of::<Self>()
             + match self {
+                Self::Tee(state) => {
+                    size_of::<StreamTee>()
+                        + state
+                            .reasons
+                            .iter()
+                            .chain(std::iter::once(&state.pending))
+                            .map(value_bytes)
+                            .sum::<usize>()
+                }
                 Self::Stream(state) => {
                     size_of::<StreamData>()
                         + state.text_tail.len()
@@ -134,11 +173,7 @@ impl WebStreamState {
     }
 }
 fn value_bytes(value: &Value) -> usize {
-    if let Value::String(value) = value {
-        value.byte_len()
-    } else {
-        0
-    }
+    value.payload_bytes()
 }
 
 impl Heap {

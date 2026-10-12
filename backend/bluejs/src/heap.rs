@@ -60,7 +60,9 @@ pub(crate) use web_abort::{AbortData, AbortHook};
 pub(crate) use web_drag_drop::{DragEventState, DragItem, DragItemData, DragStore, DragStoreMode};
 pub(crate) use web_event_target::{WebListener, WebTargetData};
 pub(crate) use web_file_reader::{FileReadKind, FileReaderState};
-pub(crate) use web_streams::{PullInto, StreamData, StreamRead, StreamReader, WebStreamState};
+pub(crate) use web_streams::{
+    PullInto, StreamData, StreamRead, StreamReader, StreamTee, WebStreamState,
+};
 
 /// A persistent root registration, independent of other registrations
 /// of the same object. Release it with [`Heap::unroot`]. Copying or
@@ -1667,6 +1669,8 @@ pub struct Heap {
     /// Batches of temporary roots, innermost last. A VM safepoint registers
     /// everything it holds as one batch instead of one `roots` entry each.
     scoped_roots: Vec<Vec<ObjectId>>,
+    /// VM side-table edges, traced only while their heap owner is live.
+    scoped_owned_edges: Vec<Vec<(ObjectId, Vec<ObjectId>)>>,
     managed_bytes: usize,
     next_major_bytes: usize,
     minor_collections: u64,

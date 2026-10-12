@@ -174,6 +174,7 @@ pub(crate) enum StreamNative {
     View,
     Respond(bool),
     Blob(bool),
+    Tee,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -301,6 +302,20 @@ pub(crate) enum NativeFunction {
     WebStream(StreamNative),
     StreamReaction {
         stream: ObjectId,
+        action: u8,
+        rejected: bool,
+    },
+    TeePull {
+        tee: ObjectId,
+        branch: u8,
+    },
+    TeeCancel {
+        tee: ObjectId,
+        branch: u8,
+    },
+    TeeReaction {
+        tee: ObjectId,
+        reader: ObjectId,
         action: u8,
         rejected: bool,
     },
@@ -955,6 +970,8 @@ impl NativeFunction {
         match self {
             Self::ProxyRevoker(proxy) => vec![proxy],
             Self::StreamReaction { stream, .. } => vec![stream],
+            Self::TeePull { tee, .. } | Self::TeeCancel { tee, .. } => vec![tee],
+            Self::TeeReaction { tee, reader, .. } => vec![tee, reader],
             Self::PromiseResolvingFunction { promise, state, .. } => vec![promise, state],
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
             Self::ArrayFromAsyncResume { state, .. } => vec![state],

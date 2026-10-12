@@ -99,6 +99,19 @@ impl Vm {
         &mut self,
         call: ClosureCall,
     ) -> Result<Value, RuntimeError> {
+        let mut async_root = None;
+        let result = self.call_closure_rooted(call, &mut async_root);
+        if let Some(root) = async_root {
+            self.release_root(root);
+        }
+        result
+    }
+
+    fn call_closure_rooted(
+        &mut self,
+        call: ClosureCall,
+        async_root: &mut Option<crate::heap::RootId>,
+    ) -> Result<Value, RuntimeError> {
         let ClosureCall {
             code,
             captures,
@@ -155,6 +168,12 @@ impl Vm {
         // the body.  If the body reaches await, that same promise owns the
         // saved continuation; otherwise its immediate completion settles it.
         let async_promise = async_function.then(|| self.new_promise()).transpose()?;
+        if let Some(promise) = async_promise {
+            // The return capability has no heap owner until this call
+            // suspends or returns. Keep it live through body allocations,
+            // frame restoration and abrupt-completion error creation.
+            *async_root = Some(self.root_new_object(promise));
+        }
         let receiver = if construct && code.derived_constructor {
             Value::Undefined
         } else if construct {

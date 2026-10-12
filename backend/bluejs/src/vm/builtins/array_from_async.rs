@@ -80,13 +80,15 @@ impl Vm {
         self.stack.push(Value::Object(promise));
         self.stack.push(receiver.clone());
         self.stack.extend(args.iter().cloned());
-        let outcome = self.array_from_async_start(promise, receiver, args);
+        let outcome = (|| {
+            if let Err(error) = self.array_from_async_start(promise, receiver, args) {
+                let error = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+            }
+            Ok(Value::Object(promise))
+        })();
         self.stack.truncate(base);
-        if let Err(error) = outcome {
-            let error = self.error_value(error)?;
-            self.settle_promise(promise, PromiseStatus::Rejected(error))?;
-        }
-        Ok(Value::Object(promise))
+        outcome
     }
 
     /// Everything up to the first Await; an error here rejects the promise.

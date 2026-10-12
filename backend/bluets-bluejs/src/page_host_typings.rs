@@ -20,6 +20,7 @@ mod file_reader;
 mod node_events;
 mod object_urls;
 mod streams;
+mod tee;
 
 /// The profile identity shared by the core binding catalog and the isolated
 /// page-host child.  A page request contains no profile selector.
@@ -87,6 +88,10 @@ pub const PAGE_HOST_DOM_CUSTOM_EVENT_DECLARATION_MODULE_ID_V7: &str =
     "blueice:///profiles/core-script-dom-custom-event-v7/lib.blueice.d.ts";
 
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
+
+pub const PAGE_HOST_DOM_TEE_PROFILE_V9: &str = "core-script-dom-stream-tee-v9";
+pub const PAGE_HOST_DOM_TEE_DECLARATION_MODULE_ID_V9: &str =
+    "blueice:///profiles/core-script-dom-stream-tee-v9/lib.blueice.d.ts";
 
 pub const PAGE_HOST_DOM_NODE_EVENT_PROFILE_V8: &str = "core-script-dom-node-event-v8";
 pub const PAGE_HOST_DOM_NODE_EVENT_DECLARATION_MODULE_ID_V8: &str =
@@ -556,6 +561,13 @@ pub fn page_host_dom_node_event_runtime_bindings_v8() -> [PageHostRuntimeBinding
     })
 }
 
+pub fn page_host_dom_tee_runtime_bindings_v9() -> [PageHostRuntimeBindingV1; 39] {
+    tee::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -671,6 +683,10 @@ impl PageHostDocumentTypingsV1 {
             PAGE_HOST_DOM_NODE_EVENT_PROFILE_V8,
             &node_events::bindings(),
         )
+    }
+
+    pub fn generate_dom_tee() -> Self {
+        Self::generate_from(PAGE_HOST_DOM_TEE_PROFILE_V9, &tee::bindings())
     }
 
     fn generate_from(profile: &'static str, bindings: &[PageHostDocumentBindingV1]) -> Self {
@@ -857,6 +873,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_node_event(),
             PAGE_HOST_DOM_NODE_EVENT_DECLARATION_MODULE_ID_V8,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_tee_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_tee(),
+            PAGE_HOST_DOM_TEE_DECLARATION_MODULE_ID_V9,
             installed_bindings,
         )
     }
