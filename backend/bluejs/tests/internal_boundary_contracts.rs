@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_remaining_region_boundary_contracts() {
+    blueice_bluejs::Vm::verify_remaining_region_boundary_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_test262_assertion_boundary_contracts() {
     blueice_bluejs::Vm::verify_test262_assertion_boundary_contracts();
 }

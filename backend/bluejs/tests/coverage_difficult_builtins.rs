@@ -7,6 +7,50 @@
 use blueice_bluejs::{compile, parse, HostValue, RuntimeError, Value, Vm, VmConfig};
 
 #[test]
+fn retained_function_set_and_date_callbacks_preserve_foreign_and_html_dda_values() {
+    let source = r#"
+        (() => {
+            const realm = $262.createRealm();
+            const foreign = realm.global.eval('(function Target(a, b) {})');
+            const bound = Function.prototype.bind.call(foreign, null, 1);
+            if (bound.length !== 1 || bound.name !== 'bound Target' || !(new bound() instanceof foreign)) throw 'bind';
+            const hook = {[Symbol.hasInstance]() {$262.gc(); return $262.IsHTMLDDA;}};
+            if ({} instanceof hook) throw 'HTMLDDA truthiness';
+            const other = {
+                size: 1,
+                get has() {$262.gc(); return realm.global.eval('(value => value === 2)');},
+                get keys() {$262.gc(); return realm.global.eval('(function* () {yield 2;})');}
+            };
+            if (!new Set([2]).isSubsetOf(other) || !new Set([1]).union(other).has(2)) throw 'Set callbacks';
+            const primitive = {
+                get valueOf() {$262.gc(); return realm.global.eval('(() => 7)');},
+                get toString() {$262.gc(); return realm.global.eval('(() => "date")');}
+            };
+            if (Date.prototype[Symbol.toPrimitive].call(primitive, 'number') !== 7) throw 'Date conversion';
+            const json = {valueOf() {return 7;}, get toISOString() {$262.gc(); return realm.global.eval('(() => "ISO")');}};
+            return Date.prototype.toJSON.call(json) === 'ISO';
+        })()
+    "#;
+    let code = compile(&parse(source).unwrap()).unwrap();
+    for nursery_capacity in [1, VmConfig::default().heap.nursery_capacity] {
+        let mut config = VmConfig::default();
+        config.heap.nursery_capacity = nursery_capacity;
+        let mut vm = Vm::new(config).unwrap();
+        vm.install_test262_harness().unwrap();
+        vm.install_test262_is_html_dda().unwrap();
+        let result = vm.execute_script(&code);
+        if let Err(RuntimeError::Thrown(Value::Object(error))) = &result {
+            panic!(
+                "callback threw {:?}: {:?}",
+                vm.heap().get_own(*error, "name"),
+                vm.heap().get_own(*error, "message")
+            );
+        }
+        assert_eq!(result, Ok(Value::Bool(true)));
+    }
+}
+
+#[test]
 fn nested_proxy_invariants_propagate_the_targets_internal_method_errors() {
     let source = r#"
         var sentinel = {}, passed = 0;

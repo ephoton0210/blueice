@@ -126,6 +126,9 @@ impl BlueJsPageDebuggerLinkedFrame {
         self.dependency_program
     }
 
+    // Retain this getter's ordinary-library coverage mapping after LLVM
+    // optimization, including when callers would otherwise inline it.
+    #[cfg_attr(coverage, inline(never))]
     pub fn code_unit_ordinal(self) -> u32 {
         self.code_unit_ordinal
     }

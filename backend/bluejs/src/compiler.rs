@@ -303,8 +303,20 @@ fn compile_with_limit_and_mode(
                 Stmt::FunctionDecl(function) => function.name.as_deref(),
                 _ => None,
             }?;
-            let slot = *compiler.names.first()?.get(name)?;
-            (compiler.bytecode.bindings.get(slot as usize)?.name == name).then_some(slot)
+            let slot = *compiler
+                .names
+                .first()
+                .expect("successful top-level compilation retains its root scope")
+                .get(name)
+                .expect("a direct variable or named function declaration has a root binding");
+            (compiler
+                .bytecode
+                .bindings
+                .get(slot as usize)
+                .expect("declared binding slots index the compiler's binding table")
+                .name
+                == name)
+                .then_some(slot)
         })
         .collect();
     compiler.bytecode.root_statement_offsets = root_statement_offsets;

@@ -26,6 +26,32 @@ fn total_compile_bytes(code: &Bytecode) -> usize {
 }
 
 #[test]
+fn root_declaration_slots_survive_shadowing_and_repeated_declarations() {
+    for source in [
+        "var first; var first; function selected() {} function selected() {} { let first; }",
+        "let first; const second = 2; function selected() { let first; } var [third] = [3]; var fourth, fifth;",
+    ] {
+        let script = compile(&parse(source).unwrap()).unwrap();
+        let mut code_units = vec![script];
+        if source.starts_with("let first") {
+            code_units.push(compile_module(&parse_module(source).unwrap()).unwrap());
+        }
+        for code in code_units {
+            let slots = code.root_declaration_binding_slots();
+            assert_eq!(slots.len(), 5);
+            assert!(slots[..3].iter().all(Option::is_some));
+            if source.starts_with("var first") {
+                assert_eq!(slots[0], slots[1]);
+                assert_eq!(slots[2], slots[3]);
+            } else {
+                assert!(slots[3].is_none());
+            }
+            assert!(slots[4].is_none());
+        }
+    }
+}
+
+#[test]
 fn module_top_level_using_declarations_compile_with_disposal() {
     for source in ["using resource = null;", "await using resource = null;"] {
         let module = parse_module(source).unwrap();

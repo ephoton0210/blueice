@@ -5,6 +5,10 @@
 use super::*;
 use crate::heap::BoundFunction;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/remaining_region_boundaries.rs"]
+mod boundary_contracts;
+
 impl Vm {
     pub(super) fn bind_function(
         &mut self,
@@ -15,12 +19,17 @@ impl Vm {
             return Err(RuntimeError::TypeError("bind requires a callable".into()));
         }
         let id = target.object_id().unwrap();
-        let prototype = self.heap.prototype(id)?;
+        let prototype = self
+            .heap
+            .prototype(id)
+            .expect("IsCallable validated the target without running user code");
         let bound = BoundFunction {
             target: id,
             this: native::argument(args, 0).clone(),
             args: args.iter().skip(1).cloned().collect(),
-            constructible: self.is_constructor(&target)?,
+            constructible: self
+                .is_constructor(&target)
+                .expect("IsCallable validated this unchanged target"),
         };
         let count = bound.args.len();
         let function = self.with_roots(|heap| heap.alloc_bound_function(bound, prototype))?;
@@ -92,13 +101,17 @@ impl Vm {
                         // to the current Realm's value and prototype chain.
                         let native = self
                             .heap
-                            .native_function(id)?
+                            .native_function(id)
+                            .expect("GetMethod returned a live callable object")
                             .or(self.test262_foreign_native_function(id)?);
                         if native != Some(NativeFunction::HasInstance) {
                             let result = self.call_native(method, target, vec![value], false)?;
                             return self.to_boolean(&result);
                         }
-                    } else if !self.is_callable(&target)? {
+                    } else if !self
+                        .is_callable(&target)
+                        .expect("GetMethod validated and retained this target")
+                    {
                         return Err(RuntimeError::TypeError(
                             "instanceof target must be callable".into(),
                         ));
@@ -107,7 +120,11 @@ impl Vm {
                 if !self.is_callable(&target)? {
                     return Ok(false);
                 }
-                if let Some(bound) = self.heap.bound_function(target.object_id().unwrap())? {
+                if let Some(bound) = self
+                    .heap
+                    .bound_function(target.object_id().unwrap())
+                    .expect("IsCallable validated this unchanged target")
+                {
                     target = Value::Object(bound.target);
                     self.stack[base + 1] = target.clone();
                     ordinary = false;

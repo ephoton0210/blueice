@@ -214,8 +214,11 @@ def render_report(data, root, report_path):
     out.extend(["## Difficulty ranking of the remaining incomplete files", ""])
     ranking = data.get("ranking", {})
     missing = sorted((name for name in raw if not complete(raw[name])), key=lambda n: (-ranking.get(n, -1), -(raw[n]["regions"]["count"] - raw[n]["regions"]["covered"]), n))
-    table(["Rank", "Difficulty", "Source file", "Missing lines", "Missing functions", "Missing regions"],
-          [[i, f"D{ranking[name]}" if name in ranking else "Unranked", source(name), *[raw[name][key]["count"] - raw[name][key]["covered"] for key in METRICS]] for i, name in enumerate(missing, 1)])
+    if missing:
+        table(["Rank", "Difficulty", "Source file", "Missing lines", "Missing functions", "Missing regions"],
+              [[i, f"D{ranking[name]}" if name in ranking else "Unranked", source(name), *[raw[name][key]["count"] - raw[name][key]["covered"] for key in METRICS]] for i, name in enumerate(missing, 1)])
+    else:
+        out.extend([f"None. All {len(raw)} instrumented files have 100% raw line, function and region coverage.", ""])
     out.extend(["## Reproduce the current inventory", "", "```sh", "python3 -m backend.bluejs.selftest run --mode pipeline --workspace", "```", "",
                 "The pipeline runs affected tests first, then the full current inventory and fresh coverage. "
                 "A partial or stale run cannot publish this report.", ""])
