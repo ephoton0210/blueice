@@ -760,6 +760,156 @@ fn class_and_method_decorators_keep_distinct_source_anchors() {
     );
 }
 
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to pinned TypeScript 5.9.3"]
+fn legacy_decorator_helpers_keep_generated_and_source_frames_distinct() {
+    let tsc = PathBuf::from(
+        env::var_os("BLUEICE_BLUETSC_ORACLE")
+            .expect("set BLUEICE_BLUETSC_ORACLE to pinned TypeScript 5.9.3"),
+    );
+    let version = Command::new(&tsc).arg("--version").output().unwrap();
+    assert!(version.status.success());
+    assert_eq!(
+        String::from_utf8(version.stdout).unwrap().trim(),
+        "Version 5.9.3"
+    );
+
+    let source = include_str!("fixtures/k11_source_maps/legacy_decorated.ts");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = env::temp_dir().join(format!(
+        "blueice-k11-legacy-frames-{}-{nonce}",
+        std::process::id()
+    ));
+    let native = directory.join("native");
+    let blueice = directory.join("blueice");
+    fs::create_dir_all(&native).unwrap();
+    fs::create_dir_all(&blueice).unwrap();
+    let input = directory.join("main.ts");
+    fs::write(&input, source).unwrap();
+    let compile_native = Command::new(&tsc)
+        .args([
+            "--target",
+            "ES2022",
+            "--module",
+            "ES2022",
+            "--strict",
+            "--pretty",
+            "false",
+            "--experimentalDecorators",
+            "--sourceMap",
+            "--inlineSources",
+            "--outDir",
+        ])
+        .arg(&native)
+        .arg(&input)
+        .output()
+        .unwrap();
+    assert!(
+        compile_native.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compile_native.stderr)
+    );
+    let module = "memory:///main.ts";
+    let compilation = compile(
+        module,
+        &MapLoader::from([ModuleSource::new(module, source)]),
+        CompilerOptions {
+            experimental_decorators: true,
+            source_map: true,
+            inline_sources: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    let output = compilation.output.unwrap();
+    let artifact = &output.artifacts[module];
+    let native_javascript = fs::read_to_string(native.join("main.js")).unwrap();
+    let native_map: Value =
+        serde_json::from_str(&fs::read_to_string(native.join("main.js.map")).unwrap()).unwrap();
+    let blue_map: Value =
+        serde_json::from_str(&artifact.source_map.as_ref().unwrap().to_json()).unwrap();
+    assert_eq!(blue_map["names"], native_map["names"]);
+    assert_eq!(blue_map["sourcesContent"], native_map["sourcesContent"]);
+    let plain = compile(
+        module,
+        &MapLoader::from([ModuleSource::new(module, source)]),
+        CompilerOptions {
+            experimental_decorators: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!plain.has_errors(), "{:#?}", plain.diagnostics);
+    assert_eq!(
+        artifact.javascript,
+        plain.output.unwrap().artifacts[module].javascript,
+        "legacy source-map markers must not change JavaScript"
+    );
+
+    let node = env::var_os("BLUEICE_NODE_ORACLE").unwrap_or_else(|| "node".into());
+    fs::write(blueice.join("main.js"), &artifact.javascript).unwrap();
+    let native_run = Command::new(&node)
+        .arg(native.join("main.js"))
+        .output()
+        .unwrap();
+    let blue_run = Command::new(&node)
+        .arg(blueice.join("main.js"))
+        .output()
+        .unwrap();
+    assert!(
+        native_run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&native_run.stderr)
+    );
+    assert!(
+        blue_run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&blue_run.stderr)
+    );
+    assert_eq!(blue_run.stdout, native_run.stdout);
+    assert_eq!(blue_run.stdout, b"method\nclass\n42\n");
+
+    let native_mappings = decode_mappings(native_map["mappings"].as_str().unwrap());
+    let blue_mappings = decode_mappings(blue_map["mappings"].as_str().unwrap());
+    let positions = |javascript: &str, helper: &str| {
+        let definition = javascript.find(&format!("var {helper}")).unwrap();
+        let body = javascript.find("let Example").unwrap();
+        let method_call = body + javascript[body..].find(&format!("{helper}([")).unwrap();
+        let class_call = method_call
+            + 1
+            + javascript[method_call + 1..]
+                .find(&format!("{helper}(["))
+                .unwrap();
+        [
+            definition,
+            method_call,
+            method_call + javascript[method_call..].find("methodDecor").unwrap(),
+            class_call,
+            class_call + javascript[class_call..].find("classDecor").unwrap(),
+        ]
+    };
+    let native_sites = positions(&native_javascript, "__decorate")
+        .map(|offset| mapped_source_at(&native_javascript, &native_mappings, offset));
+    let blue_sites = positions(&artifact.javascript, "__bluetsDecorate")
+        .map(|offset| mapped_source_at(&artifact.javascript, &blue_mappings, offset));
+    fs::remove_dir_all(&directory).unwrap();
+    let source_site = |offset| {
+        let (line, column) = source_position(source, offset);
+        Some((0, line, column, None))
+    };
+    let expected = [
+        None,
+        source_site(source.find("method()").unwrap()),
+        source_site(source.find("@methodDecor").unwrap() + 1),
+        source_site(source.find("class Example").unwrap() + "class Example".len()),
+        source_site(source.find("@classDecor").unwrap() + 1),
+    ];
+    assert_eq!(native_sites, expected, "pinned TypeScript legacy frames");
+    assert_eq!(blue_sites, native_sites, "legacy generated and user frames");
+}
+
 fn source_position(text: &str, offset: usize) -> (i64, i64) {
     let prefix = &text[..offset];
     let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as i64;

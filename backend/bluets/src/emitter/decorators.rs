@@ -150,7 +150,7 @@ pub(super) fn relocated(start: usize, end: usize) -> String {
     format!("\u{0}M{start},{end}\u{0}")
 }
 
-fn source_anchor(offset: usize) -> String {
+pub(super) fn source_anchor(offset: usize) -> String {
     format!("\u{0}A{offset}\u{0}")
 }
 

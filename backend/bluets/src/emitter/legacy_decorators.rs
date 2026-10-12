@@ -36,6 +36,10 @@ const DECORATE_HELPER: &str = "var __bluetsDecorate = function (decorators, targ
 const PARAM_HELPER: &str = "var __bluetsParam = function (index, decorator) { return function (target, key) { decorator(target, key, index); }; };";
 const METADATA_HELPER: &str = "var __bluetsMetadata = function (key, value) { if (typeof Reflect === \"object\" && typeof Reflect.metadata === \"function\") return Reflect.metadata(key, value); };";
 
+pub(super) fn is_helper_insertion(edit: &TextEdit) -> bool {
+    edit.start == edit.end && edit.replacement.starts_with(DECORATE_HELPER)
+}
+
 fn unsupported(span: &SourceSpan, message: impl Into<String>) -> Diagnostic {
     Diagnostic::error(DiagnosticCode::UnsupportedSyntax, span.clone(), message)
 }
@@ -290,8 +294,11 @@ impl Lowerer<'_, '_> {
                 } else {
                     "null"
                 };
+                let anchor = super::decorators::source_anchor(
+                    shell.key.first().map_or(shell.span.start, |key| key.start),
+                );
                 statements.push_str(&format!(
-                    " __bluetsDecorate([{}], {target}, {}, {descriptor});",
+                    " {anchor}__bluetsDecorate([{}], {target}, {}, {descriptor});",
                     entries.join(", "),
                     quoted(&name)
                 ));
@@ -319,8 +326,9 @@ impl Lowerer<'_, '_> {
             ));
         }
         if class_decorated {
+            let anchor = super::decorators::source_anchor(class.name_span.end);
             statements.push_str(&format!(
-                " {0} = __bluetsDecorate([{1}], {0});",
+                " {0} = {anchor}__bluetsDecorate([{1}], {0});",
                 class.name,
                 class_entries.join(", ")
             ));

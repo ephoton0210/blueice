@@ -604,7 +604,10 @@ fn apply_edits_with_provenance(
             // Preserve physical lines so line-level source maps, diagnostics,
             // and ordinary text diffs remain stable after type erasure.
             emitted.preserve_line_breaks(&source[edit.start..edit.end], edit.start);
-        } else if segment_limit.is_some() && decorators::is_helper_insertion(&edit) {
+        } else if segment_limit.is_some()
+            && (decorators::is_helper_insertion(&edit)
+                || legacy_decorators::is_helper_insertion(&edit))
+        {
             emitted.insert_unmapped(&replacement);
         } else if let Some(parts) = parts {
             let mut anchored = false;
