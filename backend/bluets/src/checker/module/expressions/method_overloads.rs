@@ -17,6 +17,9 @@ pub(super) fn supports_callback_method_receiver(
     aliases: &BTreeMap<String, TypeDefinition>,
     limit: usize,
 ) -> bool {
+    if limit == 0 {
+        return false;
+    }
     match receiver {
         Type::Record(_) => true,
         Type::Named { .. } => {
@@ -32,8 +35,12 @@ pub(super) fn supports_callback_method_receiver(
                 supports_callback_method_receiver(&expanded, aliases, limit.saturating_sub(1))
             })
         }
-        // Inherited interfaces and intersected receivers are excluded from
-        // this first method overload form.
+        Type::Intersection(parts) => {
+            !parts.is_empty()
+                && parts
+                    .iter()
+                    .all(|part| supports_callback_method_receiver(part, aliases, limit - 1))
+        }
         _ => false,
     }
 }
@@ -62,23 +69,35 @@ pub(super) fn select_callback_method_overload<'a>(
     }
     let mut groups = Vec::with_capacity(overloads.len());
     let mut seen = HashSet::new();
+    let mut fallback: Option<&Type> = None;
     for overload in overloads {
         let tags = callback_method_tags(overload, aliases, limit)
             .ok_or(MethodOverloadError::Unsupported)?;
-        for tag in &tags {
-            if !seen.insert(*tag) {
+        if let Some(tags) = &tags {
+            for tag in tags {
+                if !seen.insert(*tag) {
+                    return Err(MethodOverloadError::Unsupported);
+                }
+            }
+        } else if let Some(previous) = fallback {
+            if !same_callback_signature(previous, overload, limit) {
                 return Err(MethodOverloadError::Unsupported);
             }
+        } else {
+            fallback = Some(overload);
         }
         groups.push(tags);
     }
     let Some(actual_tags) = actuals.first().and_then(literal_string_tags) else {
-        return Err(MethodOverloadError::NoMatch);
+        return fallback.ok_or(MethodOverloadError::NoMatch);
     };
     for (overload, tags) in overloads.iter().zip(groups) {
-        if actual_tags.iter().all(|tag| tags.contains(tag)) {
+        if tags.is_some_and(|tags| actual_tags.iter().all(|tag| tags.contains(tag))) {
             return Ok(overload);
         }
+    }
+    if let Some(fallback) = fallback {
+        return Ok(fallback);
     }
     if actual_tags.iter().all(|tag| seen.contains(tag)) {
         Err(MethodOverloadError::Ambiguous)
@@ -91,7 +110,7 @@ fn callback_method_tags<'a>(
     value: &'a Type,
     aliases: &BTreeMap<String, TypeDefinition>,
     limit: usize,
-) -> Option<Vec<&'a str>> {
+) -> Option<Option<Vec<&'a str>>> {
     let Type::Function { parameters, result } = value else {
         return None;
     };
@@ -115,7 +134,63 @@ fn callback_method_tags<'a>(
             return None;
         }
     }
-    literal_string_tags(tag.annotation.as_ref()?)
+    let tag = tag.annotation.as_ref()?;
+    if tag == &Type::String {
+        Some(None)
+    } else {
+        literal_string_tags(tag).map(Some)
+    }
+}
+
+fn same_callback_signature(left: &Type, right: &Type, limit: usize) -> bool {
+    if limit == 0 {
+        return false;
+    }
+    let (
+        Type::Function {
+            parameters: left,
+            result: left_result,
+        },
+        Type::Function {
+            parameters: right,
+            result: right_result,
+        },
+    ) = (left, right)
+    else {
+        return false;
+    };
+    left_result == right_result
+        && left.len() == right.len()
+        && left.iter().zip(right).all(|(left, right)| {
+            let same_annotation = match (&left.annotation, &right.annotation) {
+                (Some(left), Some(right)) => same_signature_type(left, right, limit - 1),
+                (None, None) => true,
+                _ => false,
+            };
+            same_annotation
+                && left.optional == right.optional
+                && left.rest == right.rest
+                && left.default == right.default
+        })
+}
+
+fn same_signature_type(left: &Type, right: &Type, limit: usize) -> bool {
+    if limit == 0 {
+        return false;
+    }
+    match (left, right) {
+        (Type::Function { .. }, Type::Function { .. }) => {
+            same_callback_signature(left, right, limit - 1)
+        }
+        (Type::Union(left), Type::Union(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(left, right)| same_signature_type(left, right, limit - 1))
+        }
+        _ => left == right,
+    }
 }
 
 fn supports_event_callback(

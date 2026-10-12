@@ -133,11 +133,31 @@ fn inherited_callback_method_overloads_do_not_choose_a_parent_signature() {
     assert!(
         result.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == DiagnosticCode::TypeMismatch
-                && diagnostic.message == "unsupported overload set for method visit"
+                && diagnostic
+                    .message
+                    .contains("property `visit` is not compatible with the inherited type")
         }),
         "{:#?}",
         result.diagnostics
     );
+}
+
+#[test]
+fn inherited_event_overloads_preserve_the_base_signature_and_check_string_fallbacks() {
+    let ambient=ModuleSource::new("memory:///events.d.ts",
+        "interface Event { readonly type: string; } interface Progress extends Event { readonly loaded: number; } interface Base { listen(kind: string, callback: (event: Event) => void): void; } interface Reader extends Base { listen(kind: 'progress', callback: (event: Progress) => void): void; listen(kind: string, callback: (event: Event) => void): void; } declare const reader: Reader;");
+    for (source, valid) in [
+        ("function progress(event: Progress): void {} reader.listen('progress', progress);", true),
+        ("function base(event: Event): void {} reader.listen('other', base);", true),
+        ("function base(event: Event): void {} function wire(kind: string): void { reader.listen(kind, base); }", true),
+        ("function progress(event: Progress): void {} reader.listen('other', progress);", false),
+        ("function base(event: Event): void {} reader.listen(3, base);", false),
+    ] {
+        let result=crate::compile("memory:///main.ts", &MapLoader::from([ModuleSource::new("memory:///main.ts",source)]), CompilerOptions {
+            ambient_declaration_modules:vec![ambient.clone()],require_declared_global_calls:true,..CompilerOptions::default()
+        });
+        assert_eq!(!result.has_errors(),valid,"{source}: {:?}",result.diagnostics);
+    }
 }
 
 #[test]

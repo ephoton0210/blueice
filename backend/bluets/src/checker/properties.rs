@@ -135,7 +135,12 @@ pub(super) fn property_type(
                         if !found.is_empty() && !budget.consume() {
                             return PropertyType::Exhausted;
                         }
-                        found.push(value);
+                        // Interface heritage can contribute an overload group
+                        // beside another group; expose one flat intersection.
+                        match value {
+                            Type::Intersection(values) => found.extend(values),
+                            value => found.push(value),
+                        }
                         readonly |= part_readonly;
                     }
                     PropertyType::Missing => {}
