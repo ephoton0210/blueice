@@ -1,0 +1,3 @@
+case	verdict	file
+k11-basic-copy	accept	basic.ts
+k11-erased-annotation	accept	erased.ts

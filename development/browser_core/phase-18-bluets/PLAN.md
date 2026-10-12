@@ -8759,3 +8759,22 @@ and [38103087207](https://github.com/ephoton0210/blueice/actions/runs/3810308720
 also completed successfully. This closes the hosted gate for the measured
 K.5–K.10 delivery; K.11–K.14 and the recorded broader compatibility gaps
 remain open, so no full-`tsc`-parity claim follows.
+
+### K.11 token source-map baseline (2026-10-12)
+
+The pinned TypeScript 5.9.3 oracle accepts two uniquely named K.11 fixtures:
+an exported script copied without type erasure and another with erased type
+annotations. Both BlueTSC and `tsc` emit executable JavaScript with the same
+Node output, and
+both maps retain the same inline source and `names` array. The new public
+ignored oracle decodes Source Map v3 VLQ segments, aligns equivalent emitted
+tokens despite formatting differences, and compares each token's mapped
+source UTF-16 coordinate and optional name index. It does not compare map
+encoding or JavaScript whitespace. It is red against the exact current
+emitter: the copied fixture has 32 Native mappings versus 7 BlueTSC mappings;
+the erased fixture has 39 versus 10. The current emitter marks copy/replace
+boundaries and line breaks, not each mapped token. These measurements are a
+test-only baseline, not K.11 acceptance or permission to weaken map checks.
+Next work must preserve existing source-map budgets and debugger provenance
+while implementing token-level mappings, then add generated helper-frame and
+relocated decorator coverage before the complete K.0 gate and hosted CI.

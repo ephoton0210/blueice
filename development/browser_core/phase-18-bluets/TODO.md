@@ -634,6 +634,14 @@ Token-level mappings with `names` and `sourcesContent`; compared with `tsc` by d
 comparing the mapping sets for the supported constructs (not the text); debugger mappings for generated
 helper frames and the relocated decorator text.
 
+*K.11 test-first baseline (2026-10-12):* The pinned 5.9.3 checker accepts two
+unique fixtures, and Native/BlueTSC Node output, inline source content and
+`names` agree. The decoded, token-aligned mapping oracle is deliberately red
+(32 versus 7 raw segments for copied code; 39 versus 10 for erased
+annotations). Token-level emission, generated helper/decorator provenance
+and the complete K.0 gate
+remain open; see PLAN.md.
+
 ### K.12 Projects — M10 — gap G-M2
 
 - [ ] **K.12.1 References and build (XL).** `references`, `composite`, `--build` with `.tsbuildinfo`
