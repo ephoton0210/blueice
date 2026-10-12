@@ -76,9 +76,17 @@ def render_report(data, root, report_path):
         return os.path.relpath(root / path, report_path.parent)
     def source(name):
         return f"[`{name}`]({link('backend/bluejs/src/' + name)})"
+    def format_percentage(covered, total):
+        if covered == 0:
+            return "0%"
+        if covered == total:
+            return "100%"
+        return f"{100 * covered / total:.3f}%"
     def metric(value):
         n, c = value["count"], value["covered"]
-        return f"{c:,} / {n:,} ({100 * c / n:.6f}%)" if n else "No counters"
+        if not n:
+            return "No counters"
+        return f"{c:,} / {n:,} ({format_percentage(c, n)})"
     def table(headers, rows):
         out.extend(["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"])
         out.extend("| " + " | ".join(map(str, row)) + " |" for row in rows)
@@ -96,7 +104,8 @@ def render_report(data, root, report_path):
         for name, prefixes in selections:
             values = counts(prefixes)
             total = sum(values.values())
-            records.append([name, f"{total:,}", *[f"{values[k]:,}" for k in statuses], f"{100 * values['pass'] / total:.3f}%" if total else "No scheduled modes"])
+            percentage = format_percentage(values['pass'], total) if total else "No scheduled modes"
+            records.append([name, f"{total:,}", *[f"{values[k]:,}" for k in statuses], percentage])
         table([label, "Scheduled", "Pass", "Fail", "Unsupported", "Excluded", "Stale corpus", "Timeout", "Harness error", "Raw pass rate"], records)
     selected = data["selected"]
     # The reviewed manifest distinguishes test/type-only sources from a
@@ -149,24 +158,19 @@ def render_report(data, root, report_path):
     results([(name, [f"built-ins/Temporal/{name}/", f"intl402/Temporal/{name}/"]) for name in temporal]
             + [("Temporal root files", temporal_roots), ("**Total Temporal**", ["built-ins/Temporal/", "intl402/Temporal/"])], "Temporal type")
     out.extend(["## BlueJS per-file coverage", "", "All counters come from fresh atomic LLVM profiles for the current full run. Completion requires 100% raw lines, functions and regions.", ""])
-    table(["Metric", "Covered / instrumented"], [[key.capitalize(), metric(totals[key])] for key in METRICS])
-    out.extend([f"**{complete_count} / {len(raw)} instrumented files are complete; {len(raw) - complete_count} remain incomplete.**", ""])
+    preserved = data["preserved"]
+    table(["Metric", "Current result"], [[key.capitalize(), metric(totals[key])] for key in METRICS] + [
+        ["Complete instrumented files", f"{complete_count} / {len(raw)}"],
+        ["Incomplete instrumented files", len(raw) - complete_count],
+        ["Originally complete files preserved", f"{preserved['passed']} / {preserved['total']}"],
+        ["Per-file coverage percentage regressions", len(data["coverage_regressions"])],
+        ["Modified production files complete", f"{sum(name in raw and complete(raw[name]) for name in modified)} / {len(modified)}"],
+    ])
     source_paths = sorted(p.relative_to(root / "backend/bluejs/src").as_posix() for p in (root / "backend/bluejs/src").rglob("*.rs"))
     table(["Source file", "Raw lines", "Raw functions", "Raw regions", "Status", "Note"],
           [[source(name), *[metric(raw[name][key]) if name in raw else "—" for key in METRICS],
             "Complete" if name in raw and complete(raw[name]) else ("Incomplete" if name in raw else "No executable counters"),
             "" if name in raw else data.get("no_counters", {}).get(name, "Audited source without executable counters")] for name in source_paths])
-    preserved = data["preserved"]
-    out.extend(["### Preservation of previously complete files", "",
-                f"{preserved['passed']} / {preserved['total']} original complete files remain complete. "
-                f"The raw comparison records {len(data['coverage_regressions'])} per-file coverage percentage regressions.", "",
-                "## Nine most difficult and thirteen difficult files", ""])
-    table(["Difficulty", "Selected source", "Raw lines", "Raw functions", "Raw regions", "Status"],
-          [[f"D{level}", source(name), *[metric(raw[name][key]) if name in raw else "Missing counters" for key in METRICS],
-            "Complete" if name in raw and complete(raw[name]) else "Incomplete"] for name, level in sorted(selected.items(), key=lambda p: (-p[1], p[0]))])
-    out.extend([f"Selected files complete: **{sum(name in raw and complete(raw[name]) for name in selected)} / {len(selected)}**. "
-                f"Modified production files complete: **{sum(name in raw and complete(raw[name]) for name in modified)} / {len(modified)}**.", "",
-                ])
     if audited_modified:
         out.extend(["Changed sources in the reviewed no-counter manifest remain separately audited:", ""])
         table(["Source file", "Reviewed classification"],
@@ -178,7 +182,7 @@ def render_report(data, root, report_path):
                                        ["Semantic comparison", f"{data['contracts']['compared_modes']:,} mode contracts; {data['contracts']['contract_changes']} changes" if data['contracts'].get('comparison_available') else "No prior complete inventory available"],
                                        ["Workspace runtime and Rustdoc", "Passed" if data["workspace"] else "Not verified for this snapshot"]])
     if data.get("gates"):
-        table(["Current gate", "Pass", "Fail", "Ignored", "Seconds"],
+        table(["Current gate", "Pass", "Fail", "Ignored", "Wall seconds"],
               [[gate["label"], *[f"{c:,}" for c in gate["counts"]], f"{gate['elapsed_seconds']:.3f}"] for gate in data["gates"]])
     static = data.get("static_gates", {})
     static_current = static.get("snapshot") == data["snapshot"]
@@ -187,14 +191,15 @@ def render_report(data, root, report_path):
            for name, key in (("Task Rust formatting", "rustfmt"), ("Diff whitespace", "diff_check"), ("Workspace Clippy, warnings denied", "workspace_clippy"))])
     incomplete_modified = sorted(name for name in modified if name not in raw or not complete(raw[name]))
     out.extend(["### Remaining modified production files", ""])
-    table(["Source file", "Missing lines", "Missing functions", "Missing regions"],
-          [[source(name), *[raw[name][key]["count"] - raw[name][key]["covered"] if name in raw else "Missing counters" for key in METRICS]] for name in incomplete_modified])
-    out.extend(["### Coverage percentage regressions", ""])
+    if incomplete_modified:
+        table(["Source file", "Missing lines", "Missing functions", "Missing regions"],
+              [[source(name), *[raw[name][key]["count"] - raw[name][key]["covered"] if name in raw else "Missing counters" for key in METRICS]] for name in incomplete_modified])
+    else:
+        out.extend([f"None. All {len(modified)} modified instrumented production files are complete.", ""])
     if data["coverage_regressions"]:
+        out.extend(["### Coverage percentage regressions", ""])
         table(["Source file", "Current raw lines", "Current raw functions", "Current raw regions"],
               [[source(name), *[metric(raw[name][key]) for key in METRICS]] for name in data["coverage_regressions"]])
-    else:
-        out.extend(["Zero per-file percentage regressions against the retained verified comparison thresholds.", ""])
     achieved = (not incomplete_modified and all(name in raw and complete(raw[name]) for name in selected)
                 and preserved["passed"] == preserved["total"] and not data["coverage_regressions"] and data["workspace"]
                 and rust["counts"][1] == 0 and data["contracts"].get("comparison_available")

@@ -416,6 +416,32 @@ class MeasurementContracts(unittest.TestCase):
             self.assertIn("| **Total Temporal** | 2 | 2 |", report)
             self.assertIn("| **Total ECMA-402** | 2 | 2 |", report)
             self.assertIn("| Top-level Intl fixtures and locale methods on other built-ins | 1 | 1 |", report)
+            self.assertIn("| Metric | Current result |", report)
+            self.assertIn("| Complete instrumented files | 1 / 1 |", report)
+            self.assertIn("| Incomplete instrumented files | 0 |", report)
+            self.assertIn("| Originally complete files preserved | 1 / 1 |", report)
+            self.assertIn("| Per-file coverage percentage regressions | 0 |", report)
+            self.assertIn("| Modified production files complete | 1 / 1 |", report)
+            self.assertEqual(report.count("| [`a.rs`]"), 1)
+            self.assertNotIn("Nine most difficult and thirteen difficult files", report)
+            self.assertNotIn("Preservation of previously complete files", report)
+            self.assertNotRegex(report, r"100\.0+%")
+            self.assertIn("1 / 1 (100%)", report)
+            partial_values = {"lines": {"count": 7, "covered": 1},
+                              "functions": {"count": 3, "covered": 0},
+                              "regions": {"count": 3, "covered": 2}}
+            partial_data = {**data, "files": {"a.rs": partial_values}, "totals": partial_values,
+                            "test262": {**data["test262"], "results": {"pass": len(paths) - 1, "fail": 1}},
+                            "outcomes": [{**row, "status": "fail" if index == 0 else "pass"}
+                                         for index, row in enumerate(data["outcomes"])]}
+            partial_report = render_report(partial_data, root, root / "report.md")
+            self.assertIn("1 / 7 (14.286%)", partial_report)
+            self.assertIn("0 / 3 (0%)", partial_report)
+            self.assertIn("2 / 3 (66.667%)", partial_report)
+            self.assertIn("| `language/` | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0% |", partial_report)
+            self.assertIn("75.000%", partial_report)
+            self.assertIn("83.333%", partial_report)
+            self.assertNotRegex(partial_report, r"\b(?:0|100)\.0+%")
             self.assertIn("completion gates are not yet satisfied", report)
             data["workspace"] = True
             data["static_gates"] = {"snapshot": "older", **{key: {"status": "passed"} for key in ("rustfmt", "diff_check", "workspace_clippy")}}
@@ -428,12 +454,12 @@ class MeasurementContracts(unittest.TestCase):
             data["modified"].append("heap/tests.rs")
             data["no_counters"] = {"heap/tests.rs": "Test source; not a coverage target"}
             audited = render_report(data, root, root / "report.md")
-            self.assertIn("Modified production files complete: **1 / 1**", audited)
+            self.assertIn("| Modified production files complete | 1 / 1 |", audited)
             self.assertIn("Test source; not a coverage target", audited)
             self.assertIn("completion gates are satisfied", audited)
             data["modified"].append("missing.rs")
             unreviewed = render_report(data, root, root / "report.md")
-            self.assertIn("Modified production files complete: **1 / 2**", unreviewed)
+            self.assertIn("| Modified production files complete | 1 / 2 |", unreviewed)
             self.assertIn("Missing counters", unreviewed)
             self.assertIn("completion gates are not yet satisfied", unreviewed)
 

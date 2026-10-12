@@ -1,8 +1,8 @@
 {
-  "adapter_sha256": "fa968b40b1e64c5e13f2c05094bce70c783d7870ffd3c4068ce8aa13f10d3d42",
+  "adapter_sha256": "83e9d1dc1e4c1dbaa47780eb1028bbca1af1faeb55e05d1cfc216cbb19885644",
   "complete_inventory": true,
   "discovered_js": 53876,
-  "elapsed_seconds": 394.89,
+  "elapsed_seconds": 517.275,
   "exclude": "",
   "features": {
     "AggregateError": {
@@ -631,7 +631,7 @@
   "instruction_budget": 100000,
   "iterator_zip_basic_matrix_instruction_budget": 10000000,
   "iterator_zip_basic_matrix_timeout_seconds": 15,
-  "jobs": 8,
+  "jobs": 4,
   "limitations": [
     "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
     "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
@@ -639,7 +639,7 @@
     "native overrides for sta.js and assert.js (propertyHelper.js and isConstructor.js run their upstream source), the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
     "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets"
   ],
-  "regex_worker_sha256": "84957ff577690ee954b1e0d30cc5a4dc6fdb92f99b64b31ae6657ffe9a724210",
+  "regex_worker_sha256": "04de5863d2d233eb94383276f9554c9ae97d6e2ecb7bdb4c4ecb55dc61a22bfe",
   "results": {
     "excluded": 4,
     "pass": 102921,
@@ -650,7 +650,7 @@
   "scheduling": [
     {
       "group": "ordinary",
-      "jobs": 8,
+      "jobs": 4,
       "test_files": 53573
     },
     {
