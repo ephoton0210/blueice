@@ -652,6 +652,10 @@ A third pinned fixture now verifies one standard decorator's relocated token,
 unmapped helper definition and method-anchored helper call. Other helper
 families, non-exact relocation, multi-decorator composition and the full gate
 remain open.
+A fourth pinned fixture now matches Native token columns through whitespace-
+compacted parenthesized relocation; changed-token rewrites retain conservative
+range anchors. Other internal rewrites, helper families, multi-decorator
+composition and the full gate remain open.
 
 ### K.12 Projects — M10 — gap G-M2
 

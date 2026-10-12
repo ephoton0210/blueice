@@ -8831,3 +8831,26 @@ output-option and System-map regressions pass.
 K.11 is still open: this fixture does not cover other generated helper families,
 compacted/non-exact relocated expressions, multiple decorator interactions or
 broader syntax. The complete K.0 gate and final-source hosted CI are pending.
+
+### K.11 whitespace-compacted decorator relocation (2026-10-12)
+
+A fourth pinned TypeScript 5.9.3 fixture covers a parenthesized decorator
+expression whose original spacing is compacted while it moves into the emitted
+decorator array. Native maps the identifier, closing parenthesis and array
+boundary to three distinct original UTF-16 columns. The new public oracle first
+measured BlueTS incorrectly mapping both expression tokens to its opening
+parenthesis and the array boundary to the class header; the corrected compiler
+now matches all three Native locations, inline source content, names and Node
+output. When original and compacted expressions lex to the same ordered token
+spellings, relocation emission carries their distinct source token boundaries;
+the generated suffix inherits the expression-end mark until an explicit
+generated-call anchor. If internal rewriting changes the token sequence, the
+emitter retains only conservative range anchors rather than claiming copied
+token columns. That fallback has a focused regression. The logic resides in
+`emitter/relocations.rs`, keeping `emitter.rs` below the 1,200-line review
+threshold. All three K.11 pinned oracle tests and both existing decorator
+runtime oracles pass.
+
+This is measured whitespace compaction, not general edited-expression parity.
+Internal rewrites, additional helper families, multi-decorator source-map
+composition, complete K.0 and hosted CI remain open.

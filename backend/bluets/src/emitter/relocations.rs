@@ -4,7 +4,8 @@
 
 //! Expand decorator relocation markers without discarding their source ranges.
 
-use super::{compact_expression, TextEdit};
+use super::{compact_expression, token_maps, ProvenanceEmitter, TextEdit};
+use crate::syntax::{lex, TokenKind};
 
 pub(super) enum Part {
     Generated(String),
@@ -78,4 +79,71 @@ pub(super) fn expand(replacement: &str, source: &str, edits: &[TextEdit]) -> Vec
         parts.push(Part::Generated(rest.to_string()));
     }
     parts
+}
+
+impl ProvenanceEmitter<'_> {
+    pub(super) fn relocate(&mut self, value: &str, source_start: usize, source_end: usize) {
+        if value == &self.source[source_start..source_end] {
+            self.copy(value, source_start);
+            self.mark(source_end);
+            return;
+        }
+        if self.segment_limit.is_none() {
+            self.replace(value, source_start);
+            self.mark(source_end);
+            return;
+        }
+        let source_tokens = self
+            .tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| {
+                token.start >= source_start
+                    && token.end <= source_end
+                    && token.kind != TokenKind::Eof
+            })
+            .collect::<Vec<_>>();
+        let Ok(generated_tokens) = lex("<relocated>", value) else {
+            self.replace(value, source_start);
+            self.mark(source_end);
+            return;
+        };
+        let generated_tokens = generated_tokens
+            .iter()
+            .filter(|token| token.kind != TokenKind::Eof)
+            .collect::<Vec<_>>();
+        if source_tokens.len() != generated_tokens.len()
+            || source_tokens
+                .iter()
+                .zip(&generated_tokens)
+                .any(|((_, source), generated)| source.text != generated.text)
+        {
+            self.replace(value, source_start);
+            self.mark(source_end);
+            return;
+        }
+        let mut marks = Vec::with_capacity(source_tokens.len().saturating_mul(2));
+        for ((index, source), generated) in source_tokens.into_iter().zip(generated_tokens) {
+            if token_maps::mark_start(self.source, &self.tokens, index) {
+                marks.push((generated.start, source.start));
+            }
+            if token_maps::mark_end(source) {
+                marks.push((generated.end, source.end));
+            }
+        }
+        marks.sort_by_key(|(generated, _)| *generated);
+        self.mark(source_start);
+        let mut marks = marks.into_iter().peekable();
+        let mut characters = value.char_indices().peekable();
+        while let Some((offset, character)) = characters.next() {
+            while marks
+                .peek()
+                .is_some_and(|(generated, _)| *generated == offset)
+            {
+                self.mark(marks.next().unwrap().1);
+            }
+            self.push(character, characters.peek().map(|(_, next)| *next));
+        }
+        self.mark(source_end);
+    }
 }

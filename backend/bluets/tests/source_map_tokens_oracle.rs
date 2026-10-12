@@ -324,6 +324,147 @@ fn decorator_relocation_and_helper_frames_match_pinned_typescript() {
     );
 }
 
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to pinned TypeScript 5.9.3"]
+fn compacted_decorator_relocation_keeps_token_columns() {
+    let tsc = PathBuf::from(
+        env::var_os("BLUEICE_BLUETSC_ORACLE")
+            .expect("set BLUEICE_BLUETSC_ORACLE to pinned TypeScript 5.9.3"),
+    );
+    let version = Command::new(&tsc).arg("--version").output().unwrap();
+    assert!(version.status.success());
+    assert_eq!(
+        String::from_utf8(version.stdout).unwrap().trim(),
+        "Version 5.9.3"
+    );
+    let source = include_str!("fixtures/k11_source_maps/decorated_parenthesized.ts");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = env::temp_dir().join(format!(
+        "blueice-k11-decorator-space-{}-{nonce}",
+        std::process::id()
+    ));
+    let native = directory.join("native");
+    let blueice = directory.join("blueice");
+    fs::create_dir_all(&native).unwrap();
+    fs::create_dir_all(&blueice).unwrap();
+    let input = directory.join("main.ts");
+    fs::write(&input, source).unwrap();
+    let compile_native = Command::new(&tsc)
+        .args([
+            "--target",
+            "ES2022",
+            "--module",
+            "ES2022",
+            "--strict",
+            "--pretty",
+            "false",
+            "--sourceMap",
+            "--inlineSources",
+            "--outDir",
+        ])
+        .arg(&native)
+        .arg(&input)
+        .output()
+        .unwrap();
+    assert!(
+        compile_native.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compile_native.stderr)
+    );
+    let module = "memory:///main.ts";
+    let compilation = compile(
+        module,
+        &MapLoader::from([ModuleSource::new(module, source)]),
+        CompilerOptions {
+            source_map: true,
+            inline_sources: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    let output = compilation.output.unwrap();
+    let artifact = &output.artifacts[module];
+    let native_javascript = fs::read_to_string(native.join("main.js")).unwrap();
+    let native_map: Value =
+        serde_json::from_str(&fs::read_to_string(native.join("main.js.map")).unwrap()).unwrap();
+    let blue_map: Value =
+        serde_json::from_str(&artifact.source_map.as_ref().unwrap().to_json()).unwrap();
+    assert_eq!(blue_map["names"], native_map["names"]);
+    assert_eq!(blue_map["sourcesContent"], native_map["sourcesContent"]);
+    let node = env::var_os("BLUEICE_NODE_ORACLE").unwrap_or_else(|| "node".into());
+    fs::write(blueice.join("main.js"), &artifact.javascript).unwrap();
+    let native_run = Command::new(&node)
+        .arg(native.join("main.js"))
+        .output()
+        .unwrap();
+    let blue_run = Command::new(&node)
+        .arg(blueice.join("main.js"))
+        .output()
+        .unwrap();
+    assert!(
+        native_run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&native_run.stderr)
+    );
+    assert!(
+        blue_run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&blue_run.stderr)
+    );
+    assert_eq!(blue_run.stdout, native_run.stdout);
+    assert_eq!(blue_run.stdout, b"42\n");
+
+    let native_mappings = decode_mappings(native_map["mappings"].as_str().unwrap());
+    let blue_mappings = decode_mappings(blue_map["mappings"].as_str().unwrap());
+    let original = source.find("@(  decoSite  )").unwrap();
+    let source_name = original + "@(  ".len();
+    let expected_name = source_position(source, source_name);
+    let expected_name_end = source_position(source, source_name + "decoSite".len());
+    let expected_expression_end = source_position(source, original + "@(  decoSite  )".len());
+    let positions = |javascript: &str| {
+        let array =
+            javascript.find("_method_decorators = [").unwrap() + "_method_decorators = [".len();
+        let bracket = array + javascript[array..].find(']').unwrap();
+        let expression = &javascript[array..bracket];
+        (
+            array + expression.find("decoSite").unwrap(),
+            array + expression.rfind(')').unwrap(),
+            bracket,
+        )
+    };
+    let (native_name, native_close, native_bracket) = positions(&native_javascript);
+    let (blue_name, blue_close, blue_bracket) = positions(&artifact.javascript);
+    let native_sites = [native_name, native_close, native_bracket]
+        .map(|offset| mapped_source_at(&native_javascript, &native_mappings, offset));
+    let blue_sites = [blue_name, blue_close, blue_bracket]
+        .map(|offset| mapped_source_at(&artifact.javascript, &blue_mappings, offset));
+    fs::remove_dir_all(&directory).unwrap();
+    assert_eq!(
+        native_sites[0],
+        Some((0, expected_name.0, expected_name.1, None))
+    );
+    assert_eq!(
+        native_sites[1],
+        Some((0, expected_name_end.0, expected_name_end.1, None))
+    );
+    assert_eq!(
+        native_sites[2],
+        Some((
+            0,
+            expected_expression_end.0,
+            expected_expression_end.1,
+            None
+        ))
+    );
+    assert_eq!(
+        blue_sites, native_sites,
+        "compacted decorator token boundaries"
+    );
+}
+
 fn source_position(text: &str, offset: usize) -> (i64, i64) {
     let prefix = &text[..offset];
     let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as i64;

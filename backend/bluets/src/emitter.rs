@@ -621,15 +621,9 @@ fn apply_edits_with_provenance(
                             anchored = true;
                         }
                     }
-                    relocations::Part::Relocated { text, start, end }
-                        if text == source[start..end] =>
-                    {
-                        emitted.copy(&text, start);
-                        anchored = false;
-                    }
-                    relocations::Part::Relocated { text, start, .. } => {
-                        emitted.replace(&text, start);
-                        anchored = false;
+                    relocations::Part::Relocated { text, start, end } => {
+                        emitted.relocate(&text, start, end);
+                        anchored = true;
                     }
                 }
             }

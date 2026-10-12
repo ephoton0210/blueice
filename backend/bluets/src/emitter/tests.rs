@@ -36,6 +36,19 @@ fn incremental_source_positions_match_crlf_and_utf16_columns() {
 }
 
 #[test]
+fn rewritten_relocation_does_not_claim_copied_token_columns() {
+    let source = "original";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(8));
+    emitter.relocate("rewritten", 0, source.len());
+    let emitted = emitter.finish();
+    assert_eq!(emitted.javascript, "rewritten");
+    assert_eq!(
+        decode_mappings(&encode_mappings(&emitted.provenance)),
+        vec![(0, 0, 0, 0), (0, 9, 0, 8)]
+    );
+}
+
+#[test]
 fn erases_types_and_rewrites_typescript_module_specifiers() {
     let loader = MapLoader::from([
         ModuleSource::new(
