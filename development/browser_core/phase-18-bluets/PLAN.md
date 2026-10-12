@@ -8743,4 +8743,19 @@ K.9.3 final-source hosted run [38095139376](https://github.com/ephoton0210/bluei
 
 The immutable 13,605-file Linux snapshot passes format, warnings-denied all-target Clippy for BlueTS, the bridge and BlueJS, all 1,163 ordinary tests and every one of the 214 ignored oracles: 1,377 passing tests in 144 groups per pass. All 13,455 backend/Cargo/workflow hashes match the final implementation, including all 243 unchanged Native files. All sixty configurations agree on verdicts, exact declarations, selected inputs, output inventories, primary diagnostics and four related records; all 32 accepted physical outputs execute. The focused 63-test replay includes every one of the 58 affected caller tests. Evidence: `blueice-k103-full-k0-first-proof.json`, its frozen-source/status records and `blueice-k103-diagnostics-fourth-proof.json`.
 
-Shared decorator type construction, bounded compatibility checking and rejected diagnostic presentation reside in separate modules. Largest changed production source is type_relations.rs at 1,124 lines, followed by checker.rs at 1,075; no changed production source reaches the 1,200-line review threshold. The generated refusal inventory remains 213 sites in eleven areas. Post-gate updates change phase documentation only; every backend/Cargo/workflow byte remains the tested source. K.5–K.10 are complete within the recorded subsets. Exact final-source hosted workspace/platform/coverage confirmation remains pending. K.11 and later work remains outside the requested scope; full parity stays off and the broader gaps above remain explicit.
+Shared decorator type construction, bounded compatibility checking and rejected diagnostic presentation reside in separate modules. Largest changed production source is type_relations.rs at 1,124 lines, followed by checker.rs at 1,075; no changed production source reaches the 1,200-line review threshold. The generated refusal inventory remains 213 sites in eleven areas. Post-gate updates change phase documentation only; every backend/Cargo/workflow byte remains the tested source. K.5–K.10 are complete within the recorded subsets. Exact final-source hosted workspace/platform/coverage confirmation was pending at this gate and is recorded below. K.11 and later work remained outside that delivery scope; full parity stays off and the broader gaps above remain explicit.
+
+### K.5–K.10 exact final-source hosted CI (2026-10-11)
+
+The exact K.10.3 source commit `87ebda8c7dcfaa442973257b87b52d7fb80f1c3b`
+completed [CI run 38106557070](https://github.com/ephoton0210/blueice/actions/runs/38106557070)
+with all 29 jobs successful: 25 platform build/test/lint jobs, both complete
+pinned TypeScript oracle jobs, Coverage, and the final CI gate. The Coverage
+job reports 94.77% workspace line coverage (211,821 lines, 11,086 missed)
+and 99.30% independently measured BlueJS line coverage (81,848 lines, 572
+missed). The earlier K.10.1 and K.10.2 source runs
+[38099764983](https://github.com/ephoton0210/blueice/actions/runs/38099764983)
+and [38103087207](https://github.com/ephoton0210/blueice/actions/runs/38103087207)
+also completed successfully. This closes the hosted gate for the measured
+K.5–K.10 delivery; K.11–K.14 and the recorded broader compatibility gaps
+remain open, so no full-`tsc`-parity claim follows.
