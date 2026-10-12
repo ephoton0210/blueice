@@ -726,9 +726,16 @@ final class BrowserUITests: XCTestCase {
         try wasm.write(to: root.appendingPathComponent("extension.wasm"))
         return manifest
     }
+    private func permissionApplication() -> XCUIApplication {
+        // A bundle identifier can resolve a different checkout's app. Follow
+        // the current test runner's products, as for the drag reference app.
+        let applicationURL = Bundle.main.bundleURL.deletingLastPathComponent()
+            .appendingPathComponent("BlueIce.app/Contents/MacOS/BlueIcePanels.app")
+        return XCUIApplication(url: applicationURL)
+    }
     private func openPermissionPanel(in window: XCUIElement? = nil) -> XCUIApplication {
         (window ?? app).buttons["permissions"].click()
-        let panels = XCUIApplication(bundleIdentifier: "cc.blueice.BlueIcePanels")
+        let panels = permissionApplication()
         XCTAssertTrue(panels.windows["permissions-window"].waitForExistence(timeout: 10), panels.debugDescription)
         return panels
     }
@@ -4258,7 +4265,7 @@ final class BrowserUITests: XCTestCase {
         activateWindow(2); app.typeKey("l", modifierFlags: .command)
         app.typeText(String(repeating: "\t", count: 6))
         app.typeKey(.return, modifierFlags: [])
-        let panels = XCUIApplication(bundleIdentifier: "cc.blueice.BlueIcePanels")
+        let panels = permissionApplication()
         XCTAssertTrue(panels.windows["permissions-window"].waitForExistence(timeout: 10))
         XCTAssertTrue(panels.staticTexts["permissions-empty"].waitForExistence(timeout: 10))
         XCTAssertEqual(panels.state, .runningForeground)

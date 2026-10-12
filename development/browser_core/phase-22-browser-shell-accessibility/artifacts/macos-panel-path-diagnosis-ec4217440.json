@@ -1,0 +1,33 @@
+{
+  "source_commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+  "status": "diagnosed-live-failure",
+  "test": "testBrowserServiceRecoveryDiscardsPendingAssistantResultAndInstruction",
+  "expected_app": "/private/tmp/blueice-followup-integration-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app",
+  "running_pid": 40642,
+  "state": "running foreground",
+  "xctest_selected_app": "/Users/ephoton/git/blueice-downloads/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app",
+  "xctest_selected_pid": 0,
+  "cause": "XCUIApplication(bundleIdentifier:) resolves older same-identifier bundle in another worktree.",
+  "source_diagnostic": "/private/tmp/blueice-followup-20261012/native-ec4217440-20261013.xcresult/Staging/1_Test/Diagnostics/BrowserUITests-C39CEAE8-4E0A-4680-88A9-0506F3C85EA6-Configuration-Test Scheme Action-Iteration-1/BrowserUITests-8FEE18FB-FBCD-402E-BCB8-089AADC0D4A4/Session-BrowserUITests-2026-10-13_025505-PdT9Oj.log",
+  "evidence": [
+    "02:58:31.050 BrowserUITests-Runner[39808:4115953] -[XCTRunnerDaemonSession(XCTMessagingRole_UIApplicationStateUpdating) _XCT_applicationDidUpdateState:] cc.blueice.BlueIcePanels@/private/tmp/blueice-followup-integration-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app processName: blueicepanels pid: 40642 state: running foreground activation policy: accessory event: 155",
+    "02:58:31.050 BrowserUITests-Runner[39808:4115923] [AM:155] Processing state snapshot cc.blueice.BlueIcePanels@/private/tmp/blueice-followup-integration-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app processName: blueicepanels pid: 40642 state: running foreground activation policy: accessory event: 155",
+    "02:58:31.050 BrowserUITests-Runner[39808:4115953] -[XCTRunnerDaemonSession(XCTMessagingRole_UIApplicationStateUpdating) _XCT_applicationDidUpdateState:] cc.blueice.BlueIcePanels@/private/tmp/blueice-followup-integration-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app processName: blueicepanels pid: 40642 state: running foreground activation policy: accessory event: 156",
+    "02:58:31.051 BrowserUITests-Runner[39808:4115923] [AM:156] Processing state snapshot cc.blueice.BlueIcePanels@/private/tmp/blueice-followup-integration-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app processName: blueicepanels pid: 40642 state: running foreground activation policy: accessory event: 156",
+    "02:58:31.073 BrowserUITests-Runner[39808:4115923] XCUIApplicationImplDepot: Creating XCUIApplicationImpl for identifier: /Users/ephoton/git/blueice-downloads/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app:cc.blueice.BlueIcePanels",
+    "02:58:31.074 BrowserUITests-Runner[39808:4115955] -[XCTRunnerDaemonSession(XCTMessagingRole_UIApplicationStateUpdating) _XCT_applicationDidUpdateState:] cc.blueice.BlueIcePanels@/Users/ephoton/git/blueice-downloads/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app pid: 0 state: not running",
+    "02:58:31.074 BrowserUITests-Runner[39808:4115923] [AM:0] Processing state snapshot cc.blueice.BlueIcePanels@/Users/ephoton/git/blueice-downloads/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app pid: 0 state: not running",
+    "02:58:31.075 BrowserUITests-Runner[39808:4115955] -[XCTRunnerDaemonSession(XCTMessagingRole_UIApplicationStateUpdating) _XCT_applicationDidUpdateState:] cc.blueice.BlueIcePanels@/Users/ephoton/git/blueice-downloads/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app pid: 0 state: not running",
+    "02:58:31.076 BrowserUITests-Runner[39808:4115923] [AM:0] Processing state snapshot cc.blueice.BlueIcePanels@/Users/ephoton/git/blueice-downloads/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app pid: 0 state: not running",
+    "02:58:32.084 BrowserUITests-Runner[39808:4115923] Error (com.apple.dt.xctest.ui-testing.error) 10001, userInfo keys: (null): Application cc.blueice.BlueIcePanels is not running",
+    "02:58:32.084 BrowserUITests-Runner[39808:4115923] Error (com.apple.dt.xctest.ui-testing.error) 10001, userInfo keys: (null): Application cc.blueice.BlueIcePanels is not running",
+    "02:58:32.085 BrowserUITests-Runner[39808:4115923] Error (com.apple.dt.xctest.ui-testing.error) 10001, userInfo keys: (null): Application cc.blueice.BlueIcePanels is not running"
+  ],
+  "fix": "Construct XCUIApplication(url:) from the current runner products for both panel queries.",
+  "validation": {
+    "swift_parse_exit": 0,
+    "diff_check_exit": 0,
+    "focused_native": "Pending existing full native run termination and cleanup",
+    "full_native": "Existing ec4217440 run is still active and retains failures"
+  }
+}

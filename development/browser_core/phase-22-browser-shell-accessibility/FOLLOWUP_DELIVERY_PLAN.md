@@ -227,3 +227,14 @@ scope, strict Clippy and complete all-target build; its full Rust and
 WinUI gates remain running. The larger target cap and retained first stop
 are documented in [test storage](WINDOWS_TEST_STORAGE.md). Physical
 Zhuyin/VoiceOver/monitor/printer acceptance remains open.
+
+The current native permissions-window failure is diagnosed from the actual
+XCTest session: Panels PID 40642 is foreground at the current temporary
+checkout, while the bundle-ID-only test proxy selects the older main
+checkout's app with PID 0. The
+[diagnosis](artifacts/macos-panel-path-diagnosis-ec4217440.json) preserves
+both paths and exact daemon state. Both test queries now select the Panels
+URL beside the current runner products, matching the drag-reference fixture
+pattern. Swift parsing and diff checks pass; focused and complete native
+verification of this test-only correction remain pending. The product's
+launcher-group and exact-bundle ownership checks are unchanged.
