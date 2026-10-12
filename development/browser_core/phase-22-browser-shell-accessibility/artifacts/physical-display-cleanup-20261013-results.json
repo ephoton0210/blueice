@@ -1,0 +1,17 @@
+{
+  "utc": "2026-10-12T23:06:35.653736+00:00",
+  "application_pid": 6713,
+  "launcher_pid": 6718,
+  "normal_owned_app_termination": true,
+  "owned_processes_gone": true,
+  "browser_runtime_removed": true,
+  "own_fixture_directory_removed": true,
+  "own_preferences_domain_removed": true,
+  "preferences_cleanup_note": "defaults delete succeeded but plist remained; exact owned UUID file removed after non-reparse/UID/regular-file verification and app termination",
+  "physical_mode_restored": 89,
+  "voiceover_restored": {
+    "enabled": false,
+    "readerCount": 0
+  },
+  "scope": "Only this owned physical-test app, private runtime/preferences/fixture; unrelated apps and settings untouched"
+}

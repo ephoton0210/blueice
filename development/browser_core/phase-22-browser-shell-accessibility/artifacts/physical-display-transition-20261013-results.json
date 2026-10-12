@@ -1,0 +1,2145 @@
+{
+  "utc": "2026-10-12T22:47:33.627145+00:00",
+  "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "native_test_fixture_source_commit": "12bc507720b82fc85b3b0ce2946cf3d8c982ef89",
+  "physical_display_id": 2,
+  "physical_display_name": "PA279CRV",
+  "physical_mode_before": {
+    "height": 1080,
+    "id": 89,
+    "pixel_height": 2160,
+    "pixel_width": 3840,
+    "refresh_rate": 60,
+    "width": 1920
+  },
+  "physical_transition": {
+    "display": 2,
+    "lease_seconds": 15,
+    "operation": "changed",
+    "original": {
+      "height": 1080,
+      "id": 89,
+      "pixel_height": 2160,
+      "pixel_width": 3840,
+      "refresh_rate": 60,
+      "width": 1920
+    },
+    "owner_pid": 6713,
+    "requested": {
+      "height": 2160,
+      "id": 159,
+      "pixel_height": 2160,
+      "pixel_width": 3840,
+      "refresh_rate": 60,
+      "width": 3840
+    }
+  },
+  "physical_restoration": {
+    "actual": {
+      "height": 1080,
+      "id": 89,
+      "pixel_height": 2160,
+      "pixel_width": 3840,
+      "refresh_rate": 60,
+      "width": 1920
+    },
+    "display": 2,
+    "initial_mode": 89,
+    "operation": "restored",
+    "release": {
+      "poll_events": 17,
+      "poll_result": 1,
+      "release_reason": "stdin"
+    },
+    "result": 0
+  },
+  "physical_mode_after": {
+    "height": 1080,
+    "id": 89,
+    "pixel_height": 2160,
+    "pixel_width": 3840,
+    "refresh_rate": 60,
+    "width": 1920
+  },
+  "actual_owned_core_before": {
+    "application": 6713,
+    "launcher": 6718,
+    "representation": {
+      "accessibility": {
+        "acknowledged_revision": 0,
+        "announcements": [],
+        "delivery_version": 1,
+        "document_generation": 1,
+        "hidden_nodes": [],
+        "names": [],
+        "revision": 0,
+        "truncated": false
+      },
+      "frame_source": 1323068099283041513,
+      "generation": 4,
+      "nodes": [
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 0.0
+          },
+          "children": [],
+          "id": 8,
+          "name": "About BlueIce",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 1
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 38.4
+          },
+          "children": [],
+          "id": 10,
+          "name": "BlueIce is a browser engine written from scratch in Rust.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 57.599999999999994
+          },
+          "children": [],
+          "id": 12,
+          "name": "Technical references",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 57.599999999999994,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 86.39999999999999
+          },
+          "children": [],
+          "id": 14,
+          "name": "BlueIce is not a clean-room implementation: the Gecko (Firefox) and Chromium/Blink source trees are read directly as technical reference and a porting basis during development. This page credits both projects and reproduces the notice Chromium's license requires for binary distribution.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 144.0
+          },
+          "children": [],
+          "id": 16,
+          "name": "Chromium",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 172.8
+          },
+          "children": [],
+          "id": 18,
+          "name": "Copyright 2015 The Chromium Authors",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 192.0
+          },
+          "children": [],
+          "id": 20,
+          "name": "Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 96.0,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 230.4
+          },
+          "children": [
+            23,
+            25,
+            27
+          ],
+          "id": 22,
+          "name": null,
+          "name_from": null,
+          "occluded": true,
+          "occluded_by": 25,
+          "occluded_fraction": 0.4,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "List",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 230.4
+          },
+          "children": [],
+          "id": 23,
+          "name": "Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": 22,
+          "role": "ListItem",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 249.6
+          },
+          "children": [],
+          "id": 25,
+          "name": "Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": 22,
+          "role": "ListItem",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 288.0
+          },
+          "children": [],
+          "id": 27,
+          "name": "Neither the name of Google LLC nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": 22,
+          "role": "ListItem",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 134.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 326.4
+          },
+          "children": [],
+          "id": 29,
+          "name": "THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 460.79999999999995
+          },
+          "children": [],
+          "id": 31,
+          "name": "Mozilla Firefox (Gecko)",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 489.59999999999997
+          },
+          "children": [],
+          "id": 33,
+          "name": "Mozilla Firefox (Gecko) is licensed under the Mozilla Public License, v. 2.0. A copy of the license is available at https://mozilla.org/MPL/2.0/.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 508.79999999999995
+          },
+          "children": [],
+          "id": 35,
+          "name": "Fonts",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 537.5999999999999
+          },
+          "children": [],
+          "id": 37,
+          "name": "This application bundles the DejaVu Sans font family, derived from Bitstream Vera.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 556.8
+          },
+          "children": [],
+          "id": 39,
+          "name": "Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc. DejaVu changes are in the public domain.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 96.0,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 595.1999999999999
+          },
+          "children": [],
+          "id": 41,
+          "name": "Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license (\"Fonts\") and associated documentation files (the \"Font Software\"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions: the above copyright and trademark notices and this permission notice shall be included in all copies of one or more of the Font Software typefaces.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        }
+      ],
+      "scroll_y": 0.0,
+      "tab_id": 1,
+      "url": "about:credits"
+    },
+    "scope": "Read-only actual owned Core state",
+    "viewport": {
+      "backing_scale": 2.0,
+      "css_height": 680.0,
+      "css_width": 1120.0,
+      "device_scale": 2.0,
+      "frame_generation": 4,
+      "frame_source": 1323068099283041513,
+      "height": 680.0,
+      "pixel_height": 1360,
+      "pixel_width": 2240,
+      "tab_id": 1,
+      "width": 1120.0,
+      "zoom": 1.0
+    }
+  },
+  "actual_owned_core_changed": {
+    "application": 6713,
+    "launcher": 6718,
+    "representation": {
+      "accessibility": {
+        "acknowledged_revision": 0,
+        "announcements": [],
+        "delivery_version": 1,
+        "document_generation": 1,
+        "hidden_nodes": [],
+        "names": [],
+        "revision": 0,
+        "truncated": false
+      },
+      "frame_source": 1323068099283041513,
+      "generation": 5,
+      "nodes": [
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 0.0
+          },
+          "children": [],
+          "id": 8,
+          "name": "About BlueIce",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 1
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 38.4
+          },
+          "children": [],
+          "id": 10,
+          "name": "BlueIce is a browser engine written from scratch in Rust.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 57.599999999999994
+          },
+          "children": [],
+          "id": 12,
+          "name": "Technical references",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 57.599999999999994,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 86.39999999999999
+          },
+          "children": [],
+          "id": 14,
+          "name": "BlueIce is not a clean-room implementation: the Gecko (Firefox) and Chromium/Blink source trees are read directly as technical reference and a porting basis during development. This page credits both projects and reproduces the notice Chromium's license requires for binary distribution.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 144.0
+          },
+          "children": [],
+          "id": 16,
+          "name": "Chromium",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 172.8
+          },
+          "children": [],
+          "id": 18,
+          "name": "Copyright 2015 The Chromium Authors",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 192.0
+          },
+          "children": [],
+          "id": 20,
+          "name": "Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 96.0,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 230.4
+          },
+          "children": [
+            23,
+            25,
+            27
+          ],
+          "id": 22,
+          "name": null,
+          "name_from": null,
+          "occluded": true,
+          "occluded_by": 25,
+          "occluded_fraction": 0.4,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "List",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 230.4
+          },
+          "children": [],
+          "id": 23,
+          "name": "Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": 22,
+          "role": "ListItem",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 249.6
+          },
+          "children": [],
+          "id": 25,
+          "name": "Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": 22,
+          "role": "ListItem",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 288.0
+          },
+          "children": [],
+          "id": 27,
+          "name": "Neither the name of Google LLC nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": 22,
+          "role": "ListItem",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 134.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 326.4
+          },
+          "children": [],
+          "id": 29,
+          "name": "THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 460.79999999999995
+          },
+          "children": [],
+          "id": 31,
+          "name": "Mozilla Firefox (Gecko)",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 489.59999999999997
+          },
+          "children": [],
+          "id": 33,
+          "name": "Mozilla Firefox (Gecko) is licensed under the Mozilla Public License, v. 2.0. A copy of the license is available at https://mozilla.org/MPL/2.0/.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 508.79999999999995
+          },
+          "children": [],
+          "id": 35,
+          "name": "Fonts",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 537.5999999999999
+          },
+          "children": [],
+          "id": 37,
+          "name": "This application bundles the DejaVu Sans font family, derived from Bitstream Vera.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 556.8
+          },
+          "children": [],
+          "id": 39,
+          "name": "Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc. DejaVu changes are in the public domain.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 96.0,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 595.1999999999999
+          },
+          "children": [],
+          "id": 41,
+          "name": "Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license (\"Fonts\") and associated documentation files (the \"Font Software\"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions: the above copyright and trademark notices and this permission notice shall be included in all copies of one or more of the Font Software typefaces.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        }
+      ],
+      "scroll_y": 0.0,
+      "tab_id": 1,
+      "url": "about:credits"
+    },
+    "scope": "Read-only actual owned Core state",
+    "viewport": {
+      "backing_scale": 1.0,
+      "css_height": 680.0,
+      "css_width": 1120.0,
+      "device_scale": 1.0,
+      "frame_generation": 5,
+      "frame_source": 1323068099283041513,
+      "height": 680.0,
+      "pixel_height": 680,
+      "pixel_width": 1120,
+      "tab_id": 1,
+      "width": 1120.0,
+      "zoom": 1.0
+    }
+  },
+  "actual_owned_core_restored": {
+    "application": 6713,
+    "launcher": 6718,
+    "representation": {
+      "accessibility": {
+        "acknowledged_revision": 0,
+        "announcements": [],
+        "delivery_version": 1,
+        "document_generation": 1,
+        "hidden_nodes": [],
+        "names": [],
+        "revision": 0,
+        "truncated": false
+      },
+      "frame_source": 1323068099283041513,
+      "generation": 6,
+      "nodes": [
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 0.0
+          },
+          "children": [],
+          "id": 8,
+          "name": "About BlueIce",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 1
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 38.4
+          },
+          "children": [],
+          "id": 10,
+          "name": "BlueIce is a browser engine written from scratch in Rust.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 57.599999999999994
+          },
+          "children": [],
+          "id": 12,
+          "name": "Technical references",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 57.599999999999994,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 86.39999999999999
+          },
+          "children": [],
+          "id": 14,
+          "name": "BlueIce is not a clean-room implementation: the Gecko (Firefox) and Chromium/Blink source trees are read directly as technical reference and a porting basis during development. This page credits both projects and reproduces the notice Chromium's license requires for binary distribution.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 144.0
+          },
+          "children": [],
+          "id": 16,
+          "name": "Chromium",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 172.8
+          },
+          "children": [],
+          "id": 18,
+          "name": "Copyright 2015 The Chromium Authors",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 192.0
+          },
+          "children": [],
+          "id": 20,
+          "name": "Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 96.0,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 230.4
+          },
+          "children": [
+            23,
+            25,
+            27
+          ],
+          "id": 22,
+          "name": null,
+          "name_from": null,
+          "occluded": true,
+          "occluded_by": 25,
+          "occluded_fraction": 0.4,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "List",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 230.4
+          },
+          "children": [],
+          "id": 23,
+          "name": "Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": 22,
+          "role": "ListItem",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 249.6
+          },
+          "children": [],
+          "id": 25,
+          "name": "Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": 22,
+          "role": "ListItem",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 288.0
+          },
+          "children": [],
+          "id": 27,
+          "name": "Neither the name of Google LLC nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": 22,
+          "role": "ListItem",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 134.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 326.4
+          },
+          "children": [],
+          "id": 29,
+          "name": "THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 460.79999999999995
+          },
+          "children": [],
+          "id": 31,
+          "name": "Mozilla Firefox (Gecko)",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 489.59999999999997
+          },
+          "children": [],
+          "id": 33,
+          "name": "Mozilla Firefox (Gecko) is licensed under the Mozilla Public License, v. 2.0. A copy of the license is available at https://mozilla.org/MPL/2.0/.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 28.799999999999997,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 508.79999999999995
+          },
+          "children": [],
+          "id": 35,
+          "name": "Fonts",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 2
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 537.5999999999999
+          },
+          "children": [],
+          "id": 37,
+          "name": "This application bundles the DejaVu Sans font family, derived from Bitstream Vera.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 556.8
+          },
+          "children": [],
+          "id": 39,
+          "name": "Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc. DejaVu changes are in the public domain.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 96.0,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 595.1999999999999
+          },
+          "children": [],
+          "id": 41,
+          "name": "Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license (\"Fonts\") and associated documentation files (the \"Font Software\"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions: the above copyright and trademark notices and this permission notice shall be included in all copies of one or more of the Font Software typefaces.",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Paragraph",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        }
+      ],
+      "scroll_y": 0.0,
+      "tab_id": 1,
+      "url": "about:credits"
+    },
+    "scope": "Read-only actual owned Core state",
+    "viewport": {
+      "backing_scale": 2.0,
+      "css_height": 680.0,
+      "css_width": 1120.0,
+      "device_scale": 2.0,
+      "frame_generation": 6,
+      "frame_source": 1323068099283041513,
+      "height": 680.0,
+      "pixel_height": 1360,
+      "pixel_width": 2240,
+      "tab_id": 1,
+      "width": 1120.0,
+      "zoom": 1.0
+    }
+  },
+  "display_helper_source_sha256": "5705451f7b61c6104dfbdfc26538a87a49e2e70a49c7127d8aeb383131f6a17f",
+  "display_helper_binary_sha256": "5541cdeabbf84d249945b712c47015ad8ba7c26d86039a53fd0785ffd78c9316",
+  "real_physical_mode_transition_accepted": true,
+  "single_display_only": true,
+  "scope": "Actual physical PA279CRV2x->1x->2x mode change and restoration, exact owned foreground BlueIce, real Core viewport/frame generations and same document; multi-monitor transfer and printer/IME/VoiceOver remain separate incomplete requirements."
+}

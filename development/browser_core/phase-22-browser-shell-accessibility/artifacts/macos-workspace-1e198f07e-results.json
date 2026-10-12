@@ -1,0 +1,22 @@
+{
+  "utc": "2026-10-12T23:11:11.266928+00:00",
+  "source_commit": "1e198f07e86b8669c92a4705015b873961d69aaa",
+  "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "status": "complete-test-results-verified",
+  "rust_counts": {
+    "groups": 516,
+    "passed": 7610,
+    "failed": 0,
+    "ignored": 69
+  },
+  "unix_launcher_core_cases_passed": 7,
+  "source_inputs_verified": 1902,
+  "changed_inputs": [],
+  "cargo_pid": 80688,
+  "cargo_process_gone": true,
+  "process_exit_code": null,
+  "process_exit_code_note": "Original exec session handle was lost at tool output compaction; do not invent a direct OS exit code. All516resultgroups, finaldoctests andnoCargo errors are retained, withprocessgone andinputhashes matching.",
+  "documentation_draft_note": "WinUI README was briefly drafted then restored byte-for-byte during the run; no Rust/production source changed. Coarse snapshot includes that README.",
+  "log_sha256": "251e789531917ce5e5f4d4117808e8eb483420df1fef0aabeff519cc1e36d37c",
+  "required_remaining_check": "Capture actual exit of strict complete workspace/alltargetClippy and formatting on latest merged unchangedRustsource."
+}
