@@ -169,7 +169,8 @@ fn assignment_end(tokens: &[Token], start: usize) -> usize {
 }
 
 pub(super) fn mapped_edits(previous: EmittedJavaScript, edits: Vec<TextEdit>) -> EmittedJavaScript {
-    let mut next = apply_edits(&previous.javascript, edits);
+    let mut next = apply_edits_with_provenance(&previous.javascript, edits, previous.segment_limit);
+    next.overflowed |= previous.overflowed;
     for segment in &mut next.provenance {
         let key = (segment.source_line, segment.source_column);
         let index = previous

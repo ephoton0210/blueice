@@ -641,8 +641,13 @@ unique fixtures, and Native/BlueTSC Node output, inline source content and
 annotations). Token-level emission, generated helper/decorator provenance
 and the complete K.0 gate
 remain open; see PLAN.md.
-The map structure and VLQ encoder now carry optional named segments with a
-passing serialization regression; existing emitted maps remain byte-stable.
+The earlier map-structure and VLQ-encoder change added optional named segments
+with a passing serialization regression; that prerequisite alone left emitted
+maps byte-stable.
+The two original pinned token-aligned fixtures now pass with copied-token
+provenance and bounded segment retention. Generated helper/decorator mappings,
+broader syntax, actual named marks, the complete K.0 gate and hosted CI remain
+open; see PLAN.md for the measured slice and historical red baseline.
 
 ### K.12 Projects — M10 — gap G-M2
 

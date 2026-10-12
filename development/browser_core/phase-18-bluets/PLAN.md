@@ -8790,3 +8790,23 @@ emitter, declaration-map, CLI publication, module-wrapper, and System-map
 tests pass. This is an internal prerequisite, not K.11 acceptance: no current
 production mark assigns a name, the token-aligned Native oracle remains red,
 and future named marks must stay inside the source-map resource envelope.
+
+### K.11 copied-token provenance draft (2026-10-12)
+
+The two original pinned TypeScript 5.9.3 token-aligned fixtures now pass:
+unchanged exported statements and statements with erased parameter, return
+and variable annotations map the same emitted tokens back to the same source
+UTF-16 coordinates. Copied text gains lexical token-boundary marks only when
+a JavaScript source map is requested. Erasures keep the preceding node anchor
+across whitespace/operators, while an adjacent closing token claims its own
+original coordinate. The old unit assertion that mapped an assignment operator
+to its own post-annotation column was replaced by a copied-value assertion;
+the former did not represent the pinned Native map. Segment preflight now
+accounts for potential token marks, and emission stops retaining provenance
+once the owner segment limit is exceeded, returning a resource diagnostic.
+
+This measured slice is not K.11 acceptance. The original oracle scanner covers
+only its two ASCII fixtures; generated helper frames, relocated decorator
+text, broader syntax, production named mappings, complete K.0 and hosted CI
+remain open. The earlier red measurements above remain the test-first baseline,
+not the current result for these two fixtures.

@@ -30,6 +30,8 @@ pub(super) fn relocate(
     let mut output = EmittedJavaScript {
         javascript: String::new(),
         provenance: Vec::new(),
+        segment_limit: emitted.segment_limit,
+        overflowed: emitted.overflowed,
     };
     let (mut line, mut column) = (0, 0);
     let mut append = |text: &str, range: Option<(usize, usize)>| {
@@ -49,7 +51,14 @@ pub(super) fn relocate(
                 } else {
                     segment.generated_column
                 };
-                output.provenance.push(moved);
+                if output
+                    .segment_limit
+                    .is_some_and(|limit| output.provenance.len() >= limit)
+                {
+                    output.overflowed = true;
+                } else {
+                    output.provenance.push(moved);
+                }
             }
         }
         output.javascript.push_str(text);

@@ -44,6 +44,7 @@ mod private_lowering;
 mod reexports;
 mod system;
 mod targets;
+mod token_maps;
 mod type_elision;
 
 use declarations::{
@@ -165,6 +166,8 @@ pub(crate) fn emit(
                     EmittedJavaScript {
                         javascript: String::new(),
                         provenance: Vec::new(),
+                        segment_limit: None,
+                        overflowed: false,
                     },
                     None,
                 )
@@ -178,7 +181,8 @@ pub(crate) fn emit(
             };
             if options.source_map
                 && !options.emit_declaration_only
-                && emitted.provenance.len() > options.limits.max_source_map_segments
+                && (emitted.overflowed
+                    || emitted.provenance.len() > options.limits.max_source_map_segments)
             {
                 return Err(Diagnostic::error(
                     DiagnosticCode::ResourceLimit,
@@ -252,9 +256,9 @@ pub(crate) fn emit(
     })
 }
 
-/// Rejects a source-map request before allocating an unbounded provenance
-/// vector. The bound is conservative: erased/replaced spans and physical line
-/// boundaries are the only sites that can add a mapping segment.
+/// Preflight the copied-source token marks, edit boundaries and physical lines
+/// before emitting a map. Later generated transforms have their own final
+/// segment-count check because helper expansion is not bounded by source tokens.
 pub(crate) fn validate_source_map_limits(
     checked: &CheckedProject,
     options: &CompilerOptions,
@@ -272,6 +276,9 @@ pub(crate) fn validate_source_map_limits(
                 .filter(|character| matches!(character, '\r' | '\n'))
                 .count()
                 .saturating_add(1);
+            let token_marks = crate::syntax::lex(id, &module.source)
+                .map(|tokens| tokens.len().saturating_mul(2))
+                .unwrap_or(0);
             let rewritten_imports = module
                 .declarations
                 .iter()
@@ -299,7 +306,7 @@ pub(crate) fn validate_source_map_limits(
             } else {
                 1usize.saturating_add(strict_functions.iter().sum::<usize>())
             };
-            let bound = physical_lines.saturating_add(
+            let bound = physical_lines.saturating_add(token_marks).saturating_add(
                 module
                     .edits
                     .len()
@@ -323,6 +330,8 @@ pub(crate) fn validate_source_map_limits(
 struct EmittedJavaScript {
     javascript: String,
     provenance: Vec<ProvenanceSegment>,
+    segment_limit: Option<usize>,
+    overflowed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -451,8 +460,18 @@ fn emit_javascript(
         edits.extend(strict_edits);
         strict_runtime = Some(record);
     }
-    let emitted =
-        decorators::targets::lower(apply_edits(&module.source, edits), module, project, options)?;
+    let emitted = decorators::targets::lower(
+        apply_edits_with_provenance(
+            &module.source,
+            edits,
+            options
+                .source_map
+                .then_some(options.limits.max_source_map_segments),
+        ),
+        module,
+        project,
+        options,
+    )?;
     let emitted = targets::lower(emitted, module, options)?;
     let emitted = targets::es5::lower(emitted, module, options, &lexical)?;
     helper_selection::validate(&emitted, module, options)?;
@@ -586,13 +605,21 @@ fn expand_relocations(replacement: &str, source: &str, edits: &[TextEdit]) -> St
     output
 }
 
-fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
+fn apply_edits(source: &str, edits: Vec<TextEdit>) -> EmittedJavaScript {
+    apply_edits_with_provenance(source, edits, None)
+}
+
+fn apply_edits_with_provenance(
+    source: &str,
+    mut edits: Vec<TextEdit>,
+    segment_limit: Option<usize>,
+) -> EmittedJavaScript {
     edits.sort_by_key(|edit| (edit.start, edit.end));
     // A replacement may carry relocation markers (see `decorators::relocated`):
     // the text of another source range, with the edits inside it applied.
     let relocating = edits.iter().any(|edit| edit.replacement.contains('\u{0}'));
     let snapshot = relocating.then(|| edits.clone());
-    let mut emitted = ProvenanceEmitter::new(source, source.len());
+    let mut emitted = ProvenanceEmitter::new(source, source.len(), segment_limit);
     let mut cursor = 0usize;
     for edit in edits {
         if edit.start < cursor || edit.end < edit.start || edit.end > source.len() {
@@ -614,7 +641,9 @@ fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
         } else {
             emitted.replace(&replacement, edit.start);
         }
-        emitted.mark(edit.end);
+        if segment_limit.is_none() || !replacement.is_empty() {
+            emitted.mark(edit.end);
+        }
         cursor = edit.end;
     }
     emitted.copy(&source[cursor..], cursor);
@@ -774,25 +803,62 @@ struct ProvenanceEmitter<'a> {
     provenance: Vec<ProvenanceSegment>,
     generated_line: usize,
     generated_column: usize,
+    segment_limit: Option<usize>,
+    overflowed: bool,
+    tokens: Vec<crate::syntax::Token>,
+    source_cursor: usize,
+    source_line: usize,
+    source_column: usize,
 }
 
 impl<'a> ProvenanceEmitter<'a> {
-    fn new(source: &'a str, capacity: usize) -> Self {
+    fn new(source: &'a str, capacity: usize, segment_limit: Option<usize>) -> Self {
         Self {
             source,
             javascript: String::with_capacity(capacity),
             provenance: Vec::new(),
             generated_line: 0,
             generated_column: 0,
+            segment_limit,
+            overflowed: false,
+            tokens: if segment_limit.is_some() {
+                crate::syntax::lex("<source-map>", source).unwrap_or_default()
+            } else {
+                Vec::new()
+            },
+            source_cursor: 0,
+            source_line: 0,
+            source_column: 0,
         }
     }
 
     fn copy(&mut self, value: &str, source_offset: usize) {
-        self.mark(source_offset);
+        let mut token_index = self
+            .tokens
+            .partition_point(|token| token.end <= source_offset);
+        if self.segment_limit.is_none() || source_offset == 0 {
+            self.mark(source_offset);
+        }
         let mut characters = value.char_indices().peekable();
         while let Some((offset, character)) = characters.next() {
+            let position = source_offset + offset;
+            if let Some(token) = self.tokens.get(token_index) {
+                if token.start == position
+                    && token_maps::mark_start(self.source, &self.tokens, token_index)
+                {
+                    self.mark(position);
+                }
+            }
             let next = characters.peek().map(|(_, character)| *character);
             self.push(character, next);
+            if let Some(token) = self.tokens.get(token_index) {
+                if token.end == position + character.len_utf8() {
+                    if token_maps::mark_end(token) {
+                        self.mark(token.end);
+                    }
+                    token_index += 1;
+                }
+            }
             if is_line_break(character, next) {
                 self.mark(source_offset + offset + character.len_utf8());
             }
@@ -825,7 +891,7 @@ impl<'a> ProvenanceEmitter<'a> {
     }
 
     fn mark(&mut self, source_offset: usize) {
-        let (source_line, source_column) = source_line_column(self.source, source_offset);
+        let (source_line, source_column) = self.source_location(source_offset);
         let segment = ProvenanceSegment {
             generated_line: self.generated_line,
             generated_column: self.generated_column,
@@ -839,7 +905,42 @@ impl<'a> ProvenanceEmitter<'a> {
         }) {
             self.provenance.pop();
         }
+        if self.overflowed
+            || self
+                .segment_limit
+                .is_some_and(|limit| self.provenance.len() >= limit)
+        {
+            self.overflowed = true;
+            return;
+        }
         self.provenance.push(segment);
+    }
+
+    fn source_location(&mut self, offset: usize) -> (usize, usize) {
+        if offset < self.source_cursor {
+            self.source_cursor = 0;
+            self.source_line = 0;
+            self.source_column = 0;
+        }
+        let skip_leading_lf = self.source_cursor > 0
+            && self.source[..self.source_cursor].ends_with('\r')
+            && self.source[self.source_cursor..offset].starts_with('\n');
+        let mut characters = self.source[self.source_cursor..offset].chars().peekable();
+        let mut first = true;
+        while let Some(character) = characters.next() {
+            let next = characters.peek().copied();
+            if !(first && skip_leading_lf && character == '\n') {
+                if is_line_break(character, next) {
+                    self.source_line += 1;
+                    self.source_column = 0;
+                } else {
+                    self.source_column += character.len_utf16();
+                }
+            }
+            first = false;
+        }
+        self.source_cursor = offset;
+        (self.source_line, self.source_column)
     }
 
     fn push(&mut self, character: char, next: Option<char>) {
@@ -856,6 +957,8 @@ impl<'a> ProvenanceEmitter<'a> {
         EmittedJavaScript {
             javascript: self.javascript,
             provenance: self.provenance,
+            segment_limit: self.segment_limit,
+            overflowed: self.overflowed,
         }
     }
 }
@@ -864,6 +967,7 @@ fn is_line_break(character: char, next: Option<char>) -> bool {
     character == '\n' || (character == '\r' && next != Some('\n'))
 }
 
+#[cfg(test)]
 fn source_line_column(source: &str, offset: usize) -> (usize, usize) {
     let prefix = &source[..offset];
     let mut line = 0usize;

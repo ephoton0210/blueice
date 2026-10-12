@@ -7,7 +7,33 @@ use crate::{
     SourceSpan, StrictRuntimeBoundary,
 };
 
-use super::{encode_mappings, source_line_column, ProvenanceSegment, SourceMap};
+use super::{encode_mappings, source_line_column, ProvenanceEmitter, ProvenanceSegment, SourceMap};
+
+#[test]
+fn copied_token_provenance_stops_at_the_owner_segment_limit() {
+    let source = "export const answer = 42;";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(2));
+    emitter.copy(source, 0);
+    let emitted = emitter.finish();
+    assert_eq!(emitted.javascript, source);
+    assert!(emitted.provenance.len() <= 2);
+    assert!(emitted.overflowed);
+}
+
+#[test]
+fn incremental_source_positions_match_crlf_and_utf16_columns() {
+    let source = "a\r\n😀b\rx";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), None);
+    for offset in [0, 1, 2, 3, 7, 8, 9, 10] {
+        emitter.mark(offset);
+        let point = emitter.provenance.last().unwrap();
+        assert_eq!(
+            (point.source_line, point.source_column),
+            source_line_column(source, offset),
+            "offset {offset}"
+        );
+    }
+}
 
 #[test]
 fn erases_types_and_rewrites_typescript_module_specifiers() {
@@ -114,7 +140,7 @@ fn source_map_serializes_named_segments_and_escaped_names() {
 }
 
 #[test]
-fn source_map_tracks_columns_across_erased_annotations() {
+fn source_map_tracks_copied_value_across_erased_annotations() {
     let source = "export const label: string = 'value';";
     let loader = MapLoader::from([ModuleSource::new("memory:///columns.ts", source)]);
     let output = compile(
@@ -128,12 +154,12 @@ fn source_map_tracks_columns_across_erased_annotations() {
     .output
     .unwrap();
     let artifact = &output.artifacts["memory:///columns.ts"];
-    let generated_equals = artifact.javascript.find('=').unwrap();
-    let source_equals = source.find('=').unwrap();
-    let expected_generated_column = artifact.javascript[..generated_equals]
+    let generated_value = artifact.javascript.find("'value'").unwrap();
+    let source_value = source.find("'value'").unwrap();
+    let expected_generated_column = artifact.javascript[..generated_value]
         .encode_utf16()
         .count();
-    let expected_source_column = source[..source_equals].encode_utf16().count();
+    let expected_source_column = source[..source_value].encode_utf16().count();
     let mappings = decode_mappings(&artifact.source_map.as_ref().unwrap().mappings);
     assert!(mappings
         .iter()
@@ -207,7 +233,7 @@ fn strict_calls_keep_ingress_and_egress_source_map_positions() {
         CompilerOptions {
             source_map: true,
             limits: CompilerLimits {
-                max_source_map_segments: 10,
+                max_source_map_segments: 256,
                 ..CompilerLimits::default()
             },
             ..CompilerOptions::default()
