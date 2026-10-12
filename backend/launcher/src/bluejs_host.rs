@@ -30,10 +30,10 @@ use blueice_bluets::{
 };
 use blueice_bluets_bluejs::page_host_typings::{
     page_host_document_runtime_bindings_v1, page_host_dom_abort_runtime_bindings_v6,
-    page_host_dom_event_runtime_bindings_v1, page_host_dom_file_runtime_bindings_v1,
-    page_host_dom_mutation_runtime_bindings_v1, page_host_dom_object_url_runtime_bindings_v5,
-    page_host_dom_stream_runtime_bindings_v4, page_host_dom_text_runtime_bindings_v1,
-    PageHostDocumentTypingsV1,
+    page_host_dom_custom_event_runtime_bindings_v7, page_host_dom_event_runtime_bindings_v1,
+    page_host_dom_file_runtime_bindings_v1, page_host_dom_mutation_runtime_bindings_v1,
+    page_host_dom_object_url_runtime_bindings_v5, page_host_dom_stream_runtime_bindings_v4,
+    page_host_dom_text_runtime_bindings_v1, PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
@@ -1017,14 +1017,14 @@ fn install_document_snapshot_bindings(
         PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text(),
         PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation(),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event(),
-        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_abort(),
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_custom_event(),
     };
     let expected_bindings = match page_dom_profile {
         PageDomProfile::Snapshot => page_host_document_runtime_bindings_v1().to_vec(),
         PageDomProfile::Text => page_host_dom_text_runtime_bindings_v1().to_vec(),
         PageDomProfile::Mutation => page_host_dom_mutation_runtime_bindings_v1().to_vec(),
         PageDomProfile::Event => page_host_dom_event_runtime_bindings_v1().to_vec(),
-        PageDomProfile::File => page_host_dom_abort_runtime_bindings_v6().to_vec(),
+        PageDomProfile::File => page_host_dom_custom_event_runtime_bindings_v7().to_vec(),
     };
     artifact
         .verify_runtime_bindings(&expected_bindings)
@@ -1376,6 +1376,8 @@ fn install_document_snapshot_bindings(
                         .extend_from_slice(&page_host_dom_object_url_runtime_bindings_v5()[33..]);
                     installed_bindings
                         .extend_from_slice(&page_host_dom_abort_runtime_bindings_v6()[34..]);
+                    installed_bindings
+                        .extend_from_slice(&page_host_dom_custom_event_runtime_bindings_v7()[36..]);
                 }
             } else {
                 installed_bindings

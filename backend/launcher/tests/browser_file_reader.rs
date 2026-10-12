@@ -87,6 +87,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
         let body = concat!(
             "<div id=initial>before</div><div id=selected>none</div><div id=streamed>pending</div>",
             "<input id=upload type=file aria-label=Upload><div id=cancelled>pending</div>",
+            "<div id=custom>pending</div>",
             "<script>",
             "let lateReady=false, lateObserved=false; const initial=new FileReader();",
             "initial.onload=()=>{if(!lateReady) throw 'task ran before later scripts';};",
@@ -99,6 +100,9 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
             "upload.addEventListener('input',()=>cancelledInput++,{signal:cancellation.signal});",
             "initial.addEventListener('load',()=>cancelledLoad++,{signal:cancellation.signal});",
             "cancellation.abort('removed');",
+            "const customTarget=new EventTarget(), customPayload={message:'custom 中文'};",
+            "customTarget.addEventListener('data',event=>{document.getElementById('custom').textContent=event.detail.message+':'+event.isTrusted;});",
+            "customTarget.dispatchEvent(new CustomEvent('data',{detail:customPayload}));",
             "upload.addEventListener('input', ()=>{events.push('input');const reader=new FileReader();",
             "for(const type of ['loadstart','progress','load','loadend']) reader.addEventListener(type, ()=>events.push(type));",
             "reader.onload=()=>{selected=Array.from(new Uint8Array(reader.result));};",
@@ -145,6 +149,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
     };
     assert!(dom.contains("\"initial 中文:true\""), "{dom}");
     assert!(dom.contains("\"stream:7,0,255\""), "{dom}");
+    assert!(dom.contains("\"custom 中文:false\""), "{dom}");
     let ServerMessage::Representation(snapshot) =
         reply(&mut stream, &ClientMessage::GetRepresentation, 3)
     else {

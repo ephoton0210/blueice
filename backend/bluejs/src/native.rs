@@ -212,6 +212,7 @@ pub(crate) enum EventNative {
     InitEvent,
     InitUIEvent,
     InitMouseEvent,
+    InitCustomEvent,
     GetModifierState,
 }
 

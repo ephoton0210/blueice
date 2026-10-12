@@ -144,10 +144,7 @@ impl DragEventState {
             |bytes, (_, value)| {
                 bytes
                     .saturating_add(size_of::<(&str, Value)>())
-                    .saturating_add(match value {
-                        Value::String(string) => string.byte_len(),
-                        _ => 0,
-                    })
+                    .saturating_add(value.payload_bytes())
             },
         )
     }

@@ -1162,6 +1162,7 @@ impl Vm {
         self.install_web_drag_drop()?;
         self.install_web_event_target()?;
         self.install_web_progress_events()?;
+        self.install_web_custom_events()?;
         self.install_web_file_reader()?;
         self.install_web_streams()?;
         self.install_web_abort()

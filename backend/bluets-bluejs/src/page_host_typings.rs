@@ -15,6 +15,7 @@ use blueice_bluets::ModuleSource;
 use std::fmt;
 
 mod abort;
+mod custom_events;
 mod file_reader;
 mod object_urls;
 mod streams;
@@ -79,6 +80,10 @@ pub const PAGE_HOST_DOM_OBJECT_URL_DECLARATION_MODULE_ID_V5: &str =
 pub const PAGE_HOST_DOM_ABORT_PROFILE_V6: &str = "core-script-dom-abort-v6";
 pub const PAGE_HOST_DOM_ABORT_DECLARATION_MODULE_ID_V6: &str =
     "blueice:///profiles/core-script-dom-abort-v6/lib.blueice.d.ts";
+
+pub const PAGE_HOST_DOM_CUSTOM_EVENT_PROFILE_V7: &str = "core-script-dom-custom-event-v7";
+pub const PAGE_HOST_DOM_CUSTOM_EVENT_DECLARATION_MODULE_ID_V7: &str =
+    "blueice:///profiles/core-script-dom-custom-event-v7/lib.blueice.d.ts";
 
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
 
@@ -532,6 +537,13 @@ pub fn page_host_dom_abort_runtime_bindings_v6() -> [PageHostRuntimeBindingV1; 3
     })
 }
 
+pub fn page_host_dom_custom_event_runtime_bindings_v7() -> [PageHostRuntimeBindingV1; 37] {
+    custom_events::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -633,6 +645,13 @@ impl PageHostDocumentTypingsV1 {
 
     pub fn generate_dom_abort() -> Self {
         Self::generate_from(PAGE_HOST_DOM_ABORT_PROFILE_V6, &abort::bindings())
+    }
+
+    pub fn generate_dom_custom_event() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_CUSTOM_EVENT_PROFILE_V7,
+            &custom_events::bindings(),
+        )
     }
 
     fn generate_from(profile: &'static str, bindings: &[PageHostDocumentBindingV1]) -> Self {
@@ -797,6 +816,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_abort(),
             PAGE_HOST_DOM_ABORT_DECLARATION_MODULE_ID_V6,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_custom_event_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_custom_event(),
+            PAGE_HOST_DOM_CUSTOM_EVENT_DECLARATION_MODULE_ID_V7,
             installed_bindings,
         )
     }

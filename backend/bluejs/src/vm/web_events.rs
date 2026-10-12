@@ -9,12 +9,13 @@ use super::*;
 use crate::heap::DragEventState;
 use crate::native::EventNative;
 
-const EVENT_NAMES: [&str; 5] = [
+const EVENT_NAMES: [&str; 6] = [
     "Event",
     "UIEvent",
     "MouseEvent",
     "DragEvent",
     "ProgressEvent",
+    "CustomEvent",
 ];
 const MODIFIERS: [(&str, &str); 14] = [
     ("Alt", "altKey"),
@@ -35,14 +36,33 @@ const MODIFIERS: [(&str, &str); 14] = [
 
 impl Vm {
     pub(super) fn install_web_progress_events(&mut self) -> Result<(), RuntimeError> {
-        if self.globals.contains_key("%WebProgressEvent%") {
+        self.install_web_event_subtype(4, &["lengthComputable", "loaded", "total"], &[])
+    }
+
+    pub(super) fn install_web_custom_events(&mut self) -> Result<(), RuntimeError> {
+        self.install_web_event_subtype(
+            5,
+            &["detail"],
+            &[("initCustomEvent", 1, EventNative::InitCustomEvent)],
+        )
+    }
+
+    fn install_web_event_subtype(
+        &mut self,
+        rank: u8,
+        fields: &[&'static str],
+        methods: &[(&str, u32, EventNative)],
+    ) -> Result<(), RuntimeError> {
+        let name = EVENT_NAMES[rank as usize];
+        let key = format!("%Web{name}%");
+        if self.globals.contains_key(&key) {
             return Ok(());
         }
         let global = self.global("globalThis")?.object_id().unwrap();
-        if self.heap.get_own(global, "ProgressEvent")?.is_some() {
-            return Err(RuntimeError::TypeError(
-                "ProgressEvent global already defined".into(),
-            ));
+        if self.heap.get_own(global, name)?.is_some() {
+            return Err(RuntimeError::TypeError(format!(
+                "{name} global already defined"
+            )));
         }
         let base = self.stack.len();
         let result = (|| {
@@ -50,21 +70,40 @@ impl Vm {
             let function = self.function_prototype()?;
             let prototype = self.with_roots(|heap| heap.alloc_object(Some(parent)))?;
             self.stack.push(Value::Object(prototype));
-            for name in ["lengthComputable", "loaded", "total"] {
-                self.event_getter(prototype, function, name, 4, true)?;
+            for field in fields {
+                self.event_getter(prototype, function, field, rank, true)?;
+            }
+            for (method, length, native) in methods {
+                self.install_native(
+                    prototype,
+                    function,
+                    method,
+                    *length,
+                    NativeFunction::WebEvent(*native),
+                )?;
+                self.with_roots(|heap| {
+                    heap.define_own_property(
+                        prototype,
+                        *method,
+                        PropertyDescriptor {
+                            enumerable: Some(true),
+                            ..Default::default()
+                        },
+                    )
+                })?;
             }
             self.define_data(
                 prototype,
                 JsSymbol::well_known("toStringTag"),
-                Value::String("ProgressEvent".into()),
+                Value::String(name.into()),
                 false,
                 false,
                 true,
             )?;
             let constructor = self.web_file_constructor(
-                "ProgressEvent",
+                name,
                 1,
-                NativeFunction::WebEvent(EventNative::Constructor(4)),
+                NativeFunction::WebEvent(EventNative::Constructor(rank)),
                 self.heap
                     .get_own(parent, "constructor")?
                     .and_then(|value| value.object_id())
@@ -72,16 +111,9 @@ impl Vm {
                 prototype,
             )?;
             self.stack.push(Value::Object(constructor));
-            self.define_data(
-                global,
-                "ProgressEvent",
-                Value::Object(constructor),
-                true,
-                false,
-                true,
-            )?;
+            self.define_data(global, name, Value::Object(constructor), true, false, true)?;
             self.heap.root(prototype)?;
-            self.globals.insert("%WebProgressEvent%".into(), prototype);
+            self.globals.insert(key, prototype);
             Ok(())
         })();
         self.stack.truncate(base);
@@ -446,6 +478,16 @@ impl Vm {
                     state.set(field, Value::Number(value));
                 }
             }
+            if rank == 5 {
+                let detail = self.event_init_value(&options, "detail")?;
+                let detail = if detail == Value::Undefined {
+                    Value::Null
+                } else {
+                    detail
+                };
+                self.stack.push(detail.clone());
+                state.set("detail", detail);
+            }
             let default = self.globals[&format!("%Web{}%", EVENT_NAMES[rank as usize])];
             let prototype = self.constructor_prototype_for(default, None)?;
             let event = self.with_roots(|heap| heap.alloc_drag_event(state, prototype))?;
@@ -513,9 +555,7 @@ impl Vm {
         rank: u8,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        if self.heap.drag_event(object)?.interface < rank
-            || (self.heap.drag_event(object)?.interface == 4 && rank > 0)
-        {
+        if !event_interface_matches(self.heap.drag_event(object)?.interface, rank) {
             return Err(RuntimeError::TypeError(
                 "Invalid event interface receiver".into(),
             ));
@@ -618,7 +658,7 @@ impl Vm {
         let mut state = self.heap.drag_event(object)?.clone();
         match native {
             EventNative::Get(name, rank) => {
-                if state.interface < rank || (state.interface == 4 && (1..=3).contains(&rank)) {
+                if !event_interface_matches(state.interface, rank) {
                     return Err(RuntimeError::TypeError(
                         "Invalid event interface receiver".into(),
                     ));
@@ -661,7 +701,7 @@ impl Vm {
                 })
             }
             EventNative::GetModifierState => {
-                if state.interface < 2 || state.interface == 4 {
+                if !(2..=3).contains(&state.interface) {
                     return Err(RuntimeError::TypeError(
                         "Invalid MouseEvent receiver".into(),
                     ));
@@ -701,6 +741,28 @@ impl Vm {
             EventNative::InitEvent => self.initialize_web_event(object, 0, args),
             EventNative::InitUIEvent => self.initialize_web_event(object, 1, args),
             EventNative::InitMouseEvent => self.initialize_web_event(object, 2, args),
+            EventNative::InitCustomEvent => {
+                if state.interface != 5 {
+                    return Err(RuntimeError::TypeError(
+                        "Invalid CustomEvent receiver".into(),
+                    ));
+                }
+                self.initialize_web_event(object, 0, args)?;
+                let mut state = self.heap.drag_event(object)?.clone();
+                if state.phase == 0 {
+                    let detail = native::argument(args, 3).clone();
+                    state.set(
+                        "detail",
+                        if detail == Value::Undefined {
+                            Value::Null
+                        } else {
+                            detail
+                        },
+                    );
+                    self.with_roots(|heap| heap.set_drag_event_state(object, state))?;
+                }
+                Ok(Value::Undefined)
+            }
             EventNative::PreventDefault
             | EventNative::StopPropagation(_)
             | EventNative::SetCancellation(_) => {
@@ -728,4 +790,10 @@ impl Vm {
             EventNative::Constructor(_) => unreachable!(),
         }
     }
+}
+
+fn event_interface_matches(interface: u8, required: u8) -> bool {
+    required == 0
+        || ((1..=3).contains(&required) && (required..=3).contains(&interface))
+        || (required >= 4 && interface == required)
 }

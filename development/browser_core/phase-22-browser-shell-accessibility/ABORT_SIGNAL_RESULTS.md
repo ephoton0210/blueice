@@ -37,7 +37,8 @@ workspace format check passes. The [receipt](artifacts/abort-signal-results.json
 records final hashes and retained failed attempts. New complete workspace/native/
 Windows acceptance remains pending after integration.
 
-Further DOM work includes general synthetic node events, CustomEvent and broader
+The subsequent [CustomEvent increment](CUSTOM_EVENT_RESULTS.md) is recorded
+separately. Further DOM work includes general synthetic node events and broader
 lifecycle/tree APIs, followed by additional WPT coverage and resource/Fetch
 cancellation integration. Actual physical-system acceptance is independent.
 Behavioral reference: [DOM Standard](https://dom.spec.whatwg.org/#aborting-ongoing-activities).
