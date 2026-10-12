@@ -7,8 +7,12 @@ new 2 TB disk on 2026-10-12. The provisioned capacity is 320 GiB
 ## Host and guest layout
 
 - Host: `pb60g.bravotekcorp.cc`, existing ext4 `/data` on `/dev/sda1`.
-- Image: `/data/vms/blueice-test-320g.qcow2`, created with `preallocation=falloc`;
-  the host reserves the full capacity rather than relying on sparse growth.
+- Image: `/data/vms/blueice-test-320g.qcow2`, created with `preallocation=falloc`.
+  Initial allocation was 343,650,058,240 bytes. The live disk uses
+  `discard=unmap`, so guest discard can release those physical blocks; this is
+  not a permanent host-space reservation. A later observation recorded
+  31,545,245,696 allocated bytes and 1,659,417,358,336 bytes free on `/data`.
+  Windows still receives the full 320 GiB virtual capacity.
 - VM: `omnisolve-winui-automation`, live and persistent VirtIO disk `vda`.
 - Identity: serial `BLUEICE_TEST_320G`; Windows disk 2 was verified RAW, empty,
   exactly 320 GiB and neither the boot nor system disk before initialization.
@@ -80,3 +84,22 @@ The final probe records C: with 6.75 GiB free and B: with 292.21 GiB free. The
 original 4 GiB C: acceptance guard now passes without lowering it, rebooting
 the VM or changing the system pagefile. The [storage receipt](artifacts/windows-test-storage-results.json)
 records exact capacities, verification counts, hashes and actual commands.
+
+## Same-source acceptance follow-up
+
+The committed `83436f846` checkout on B: passed all 25 workspace package
+format checks. Its first full acceptance attempt stopped during Clippy when
+the budget scanner encountered a Cargo temporary directory that disappeared
+during enumeration. That attempt remains in `acceptance-20261012`.
+
+The corrected scanner tolerates only missing files/directories, and NTFS
+delete-pending access errors whose exact path is subsequently proven absent.
+Other errors still stop validation; B: 50 GiB, C: 4 GiB and target 24 GiB
+limits are unchanged. An actual guest regression completed 2,117 scans during
+1,370 directory replacements and separately verified permission-error
+propagation. The corrected scripts also pass the guest PowerShell parser.
+
+The separate `acceptance-20261012-retry1` attempt has passed workspace format
+and strict workspace/all-target Clippy and is building all targets. Full Rust
+and WinUI acceptance are still pending. The tracked follow-up receipt retains
+the original stop reason, helper source hash and regression evidence.

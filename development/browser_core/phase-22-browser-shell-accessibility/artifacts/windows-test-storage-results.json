@@ -16,7 +16,19 @@
     "guest_number": 2,
     "guest_volume": "B:",
     "label": "BlueIceTests320",
-    "live_and_persistent": true
+    "live_and_persistent": true,
+    "host_allocation_observation": {
+      "observed_utc": "2026-10-12T11:58:39Z",
+      "allocated_bytes": 31545245696,
+      "host_volume_free_bytes": 1659417358336,
+      "discard": "unmap",
+      "initial_allocation_is_permanent_reservation": false,
+      "commands": [
+        "df -B1 /data",
+        "du -B1 /data/vms/blueice-test-320g.qcow2",
+        "virsh dumpxml omnisolve-winui-automation"
+      ]
+    }
   },
   "final_free_bytes": {
     "c": 7251255296,

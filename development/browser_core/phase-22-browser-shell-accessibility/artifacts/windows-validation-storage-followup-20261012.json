@@ -1,0 +1,87 @@
+{
+  "scope": "Validation infrastructure follow-up; full Rust and WinUI acceptance pending",
+  "source_commit": "83436f8461c6f681df183473ecb7dcbe83423605",
+  "source_files": 2112,
+  "program_files": 1863,
+  "first_attempt": {
+    "status": "stopped",
+    "error": "Could not find a part of the path 'B:\\BlueIce\\workspaces\\blueice-downloads\\target\\debug\\deps\\rmetaoI51WC'.",
+    "started": "2026-10-12T11:34:16.4558299Z",
+    "finished": "2026-10-12T11:44:04.6651451Z",
+    "directory": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012"
+  },
+  "regression": {
+    "status": "passed",
+    "concurrent_scans": 2117,
+    "concurrent_directory_replacements": 1370,
+    "stable_bytes": 4096,
+    "permission_error_preserved": true,
+    "parser_scripts": 5,
+    "guest_result": {
+      "status": "budget-race-regression-passed",
+      "stable_bytes": 4096,
+      "concurrent_scans": 2117,
+      "concurrent_directory_replacements": {
+        "value": 1370,
+        "PSComputerName": "localhost",
+        "RunspaceId": "3bf8d27d-c918-4903-bfd5-4bc4ee8dcd7c",
+        "PSShowComputerName": false
+      },
+      "permission_error_preserved": true,
+      "parser_scripts": 5
+    }
+  },
+  "helper": {
+    "path": "windows-budget-probe-20261012.ps1",
+    "sha256": "56e7529afdfd544d127cd7adc8a7e9230f764361148448c531ca11102e41485c"
+  },
+  "retry": {
+    "directory": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1",
+    "status_at_observation": "running",
+    "stage_at_observation": "rust-build",
+    "completed_steps": [
+      {
+        "name": "rust-fmt",
+        "command": "& 'B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\format-workspace28.ps1'",
+        "exit_code": 0,
+        "seconds": 38.996249,
+        "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-fmt.log",
+        "log_sha256": "02a92ed809a18e00b21625860e1bd4b9f2577cfd38bb25872f2b5eab7bcc10be",
+        "rust_counts": {
+          "ignored": 0,
+          "groups": 0,
+          "failed": 0,
+          "passed": 0
+        }
+      },
+      {
+        "name": "rust-clippy",
+        "command": "& cargo +1.96.0-x86_64-pc-windows-msvc clippy --workspace --all-targets --locked -- -D warnings",
+        "exit_code": 0,
+        "seconds": 132.0144367,
+        "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-clippy.log",
+        "log_sha256": "9c247cfe2251edcd8b7b8be313d1f463a1023ecf9b37003a549c007c59f396e5",
+        "rust_counts": {
+          "ignored": 0,
+          "groups": 0,
+          "failed": 0,
+          "passed": 0
+        }
+      }
+    ],
+    "disk_at_observation": {
+      "free_b": 312113254400,
+      "free_c": 7258038272,
+      "target_bytes": 806492061,
+      "max_target_bytes": 25769803776,
+      "min_free_b": 53687091200,
+      "min_free_c": 4294967296
+    }
+  },
+  "evidence": {
+    "windows-acceptance-83436f846-first-stopped.json": "cdb77cece3551e8e422aecfb3576e3391f8c686f9747f1b831cc6ca5d4e46f23",
+    "windows-retry1-current.json": "f24e24ea5e0d77bc30d49119b910e51276cfff9818de7cf1216c63e92c29bcf5",
+    "windows-budget-probe.ps1": "56e7529afdfd544d127cd7adc8a7e9230f764361148448c531ca11102e41485c",
+    "windows-budget-regression-passed.json": "3a1c65f69a55ac5260127643a765e169d8ce0f738ac15552759c3a182fa2160d"
+  }
+}
