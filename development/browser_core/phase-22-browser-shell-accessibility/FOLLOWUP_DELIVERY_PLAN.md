@@ -194,7 +194,12 @@ All 1,863 frozen inputs are unchanged; the SFTP and update wrappers confirm
 owned-process/fixture cleanup. Physical input-method/hardware acceptance is
 still open.
 Windows uses the independently hashed B: archive of that same committed source.
-After the storage-scanner race correction, its format, strict all-target Clippy
-and complete all-target build have passed; complete Rust and WinUI execution
-remain pending. See the Windows storage follow-up receipt for the retained
+After the storage-scanner race correction, format, strict all-target Clippy,
+complete all-target build and complete Rust execution have passed. Windows
+reports 5,670 passed, zero failed and 64 ignored across 495 result groups. Its
+WinUI build first selected the GNU toolchain through `cargo +1.96.0` and failed
+to find `gcc.exe`; the build script now pins the accepted MSVC triple. The
+separate WinUI follow-up verifies and reuses the same-source complete Rust
+receipts, then builds/tests unchanged Rust/C# inputs with an explicit MSVC
+helper. WinUI protocol and logged-in desktop acceptance remain pending. See the Windows storage follow-up receipt for the retained
 failed preparation and the separate retry directory.

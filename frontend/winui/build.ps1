@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Push-Location $root
 try {
-    $cargoArguments = @('+1.96.0','build','-p','blueice-engine','--bin','blueice-core','--locked')
+    $cargoArguments = @('+1.96.0-x86_64-pc-windows-msvc','build','-p','blueice-engine','--bin','blueice-core','--locked')
     if ($Configuration -eq 'Release') { $cargoArguments += '--release' }
     & cargo @cargoArguments
     if ($LASTEXITCODE -ne 0) { throw 'Core build failed' }

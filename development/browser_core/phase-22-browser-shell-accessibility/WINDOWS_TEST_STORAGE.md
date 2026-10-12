@@ -100,6 +100,10 @@ limits are unchanged. An actual guest regression completed 2,117 scans during
 propagation. The corrected scripts also pass the guest PowerShell parser.
 
 The separate `acceptance-20261012-retry1` attempt has passed workspace format
-and strict workspace/all-target Clippy and is building all targets. Full Rust
-and WinUI acceptance are still pending. The tracked follow-up receipt retains
+and strict workspace/all-target Clippy, complete all-target build and complete
+Rust execution: 5,670 passed, zero failed and 64 ignored. WinUI acceptance is
+still pending. Its initial build selected the GNU toolchain via `+1.96.0`;
+`build.ps1` now selects `+1.96.0-x86_64-pc-windows-msvc`. A separate follow-up
+uses an explicitly pinned helper against the unchanged frozen Rust/C# source
+and verifies all previously completed Rust receipt hashes before reuse. The tracked follow-up receipt retains
 the original stop reason, helper source hash and regression evidence.
