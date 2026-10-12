@@ -8810,3 +8810,24 @@ only its two ASCII fixtures; generated helper frames, relocated decorator
 text, broader syntax, production named mappings, complete K.0 and hosted CI
 remain open. The earlier red measurements above remain the test-first baseline,
 not the current result for these two fixtures.
+
+### K.11 decorator relocation and helper-frame draft (2026-10-12)
+
+A third pinned TypeScript 5.9.3 fixture executes a standard method decorator
+and independently checks its source map at the debugger-facing sites. Native
+leaves the generated helper definition unmapped, maps the relocated decorator
+identifier to its original `@decoSite` expression, and maps the generated
+helper invocation to the decorated method key. BlueTS now matches all three
+sites, as well as Native/BlueTS Node output (`42`), `names` and inline source
+content. The new source-map encoder retains one-field unmapped segments without
+advancing source/name deltas. Decorator relocation expansion preserves exact
+copied source spans as separate parts; a generated source-anchor marker gives
+the helper call its method origin without changing emitted JavaScript bytes.
+The versioned decorator helper insertion carries an unmapped segment, and the
+existing owner segment limit still caps the emitted provenance. The two earlier
+token-aligned fixtures remain green. Focused emitter, standard/legacy decorator,
+output-option and System-map regressions pass.
+
+K.11 is still open: this fixture does not cover other generated helper families,
+compacted/non-exact relocated expressions, multiple decorator interactions or
+broader syntax. The complete K.0 gate and final-source hosted CI are pending.

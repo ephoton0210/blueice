@@ -177,6 +177,10 @@ pub(super) fn mapped_edits(previous: EmittedJavaScript, edits: Vec<TextEdit>) ->
             .provenance
             .partition_point(|mapping| (mapping.generated_line, mapping.generated_column) <= key);
         if let Some(mapping) = previous.provenance.get(index.saturating_sub(1)) {
+            if !mapping.mapped {
+                segment.mapped = false;
+                continue;
+            }
             let column = if mapping.generated_line == segment.source_line {
                 segment
                     .source_column

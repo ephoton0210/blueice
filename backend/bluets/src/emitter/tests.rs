@@ -109,6 +109,7 @@ fn source_map_serializes_named_segments_and_escaped_names() {
             generated_column: 0,
             source_line: 0,
             source_column: 0,
+            mapped: true,
             name_index: Some(0),
         },
         ProvenanceSegment {
@@ -116,6 +117,7 @@ fn source_map_serializes_named_segments_and_escaped_names() {
             generated_column: 6,
             source_line: 0,
             source_column: 7,
+            mapped: true,
             name_index: Some(1),
         },
     ]);
@@ -137,6 +139,44 @@ fn source_map_serializes_named_segments_and_escaped_names() {
         .collect::<Vec<_>>();
     assert_eq!(segments[0], vec![0, 0, 0, 0, 0]);
     assert_eq!(segments[1], vec![6, 0, 0, 7, 1]);
+}
+
+#[test]
+fn source_map_unmapped_segments_do_not_advance_source_or_name_deltas() {
+    let mappings = encode_mappings(&[
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 0,
+            source_line: 0,
+            source_column: 0,
+            mapped: true,
+            name_index: Some(0),
+        },
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 5,
+            source_line: 0,
+            source_column: 0,
+            mapped: false,
+            name_index: None,
+        },
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 10,
+            source_line: 1,
+            source_column: 2,
+            mapped: true,
+            name_index: Some(1),
+        },
+    ]);
+    let segments = mappings
+        .split(',')
+        .map(decode_vlq_fields)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        segments,
+        vec![vec![0, 0, 0, 0, 0], vec![5], vec![5, 0, 1, 2, 1]]
+    );
 }
 
 #[test]
@@ -646,6 +686,10 @@ fn decode_mappings(value: &str) -> Vec<(usize, usize, usize, usize)> {
         let mut generated_column = 0i64;
         for segment in line.split(',').filter(|segment| !segment.is_empty()) {
             let values = decode_vlq_fields(segment);
+            if values.len() == 1 {
+                generated_column += values[0];
+                continue;
+            }
             assert_eq!(values.len(), 4);
             generated_column += values[0];
             source_index += values[1];

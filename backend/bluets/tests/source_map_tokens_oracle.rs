@@ -178,6 +178,181 @@ fn decoded_token_maps_match_pinned_typescript() {
     assert!(differences.is_empty(), "{}", differences.join("\n"));
 }
 
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to pinned TypeScript 5.9.3"]
+fn decorator_relocation_and_helper_frames_match_pinned_typescript() {
+    let tsc = PathBuf::from(
+        env::var_os("BLUEICE_BLUETSC_ORACLE")
+            .expect("set BLUEICE_BLUETSC_ORACLE to pinned TypeScript 5.9.3"),
+    );
+    let version = Command::new(&tsc).arg("--version").output().unwrap();
+    assert!(version.status.success());
+    assert_eq!(
+        String::from_utf8(version.stdout).unwrap().trim(),
+        "Version 5.9.3"
+    );
+    let source = include_str!("fixtures/k11_source_maps/decorated.ts");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = env::temp_dir().join(format!(
+        "blueice-k11-decorated-{}-{nonce}",
+        std::process::id()
+    ));
+    let native = directory.join("native");
+    let blueice = directory.join("blueice");
+    fs::create_dir_all(&native).unwrap();
+    fs::create_dir_all(&blueice).unwrap();
+    let input = directory.join("main.ts");
+    fs::write(&input, source).unwrap();
+    let compile_native = Command::new(&tsc)
+        .args([
+            "--target",
+            "ES2022",
+            "--module",
+            "ES2022",
+            "--strict",
+            "--pretty",
+            "false",
+            "--sourceMap",
+            "--inlineSources",
+            "--outDir",
+        ])
+        .arg(&native)
+        .arg(&input)
+        .output()
+        .unwrap();
+    assert!(
+        compile_native.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compile_native.stderr)
+    );
+    let module = "memory:///main.ts";
+    let compilation = compile(
+        module,
+        &MapLoader::from([ModuleSource::new(module, source)]),
+        CompilerOptions {
+            source_map: true,
+            inline_sources: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    let output = compilation.output.unwrap();
+    let artifact = &output.artifacts[module];
+    let native_javascript = fs::read_to_string(native.join("main.js")).unwrap();
+    let native_map: Value =
+        serde_json::from_str(&fs::read_to_string(native.join("main.js.map")).unwrap()).unwrap();
+    let blue_map: Value =
+        serde_json::from_str(&artifact.source_map.as_ref().unwrap().to_json()).unwrap();
+    assert_eq!(blue_map["names"], native_map["names"]);
+    assert_eq!(blue_map["sourcesContent"], native_map["sourcesContent"]);
+    let node = env::var_os("BLUEICE_NODE_ORACLE").unwrap_or_else(|| "node".into());
+    fs::write(blueice.join("main.js"), &artifact.javascript).unwrap();
+    let native_run = Command::new(&node)
+        .arg(native.join("main.js"))
+        .output()
+        .unwrap();
+    let blue_run = Command::new(&node)
+        .arg(blueice.join("main.js"))
+        .output()
+        .unwrap();
+    assert!(
+        native_run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&native_run.stderr)
+    );
+    assert!(
+        blue_run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&blue_run.stderr)
+    );
+    assert_eq!(blue_run.stdout, native_run.stdout);
+    assert_eq!(blue_run.stdout, b"42\n");
+
+    let native_mappings = decode_mappings(native_map["mappings"].as_str().unwrap());
+    let blue_mappings = decode_mappings(blue_map["mappings"].as_str().unwrap());
+    let source_decorator = source.find("@decoSite").unwrap() + 1;
+    let expected = source_position(source, source_decorator);
+    let native_decorator = native_javascript
+        .find("_method_decorators = [decoSite]")
+        .unwrap()
+        + "_method_decorators = [".len();
+    let blue_decorator = artifact
+        .javascript
+        .find("_method_decorators = [decoSite]")
+        .unwrap()
+        + "_method_decorators = [".len();
+    let native_decorator_site =
+        mapped_source_at(&native_javascript, &native_mappings, native_decorator);
+    let blue_decorator_site =
+        mapped_source_at(&artifact.javascript, &blue_mappings, blue_decorator);
+    let native_helper = native_javascript.find("var __esDecorate").unwrap();
+    let blue_helper = artifact.javascript.find("var __bluetsEsDecorate").unwrap();
+    let native_helper_site = mapped_source_at(&native_javascript, &native_mappings, native_helper);
+    let blue_helper_site = mapped_source_at(&artifact.javascript, &blue_mappings, blue_helper);
+    let native_call = native_javascript.find("__esDecorate(this, null").unwrap();
+    let blue_call = artifact
+        .javascript
+        .find("__bluetsEsDecorate(this, null")
+        .unwrap();
+    let native_call_site = mapped_source_at(&native_javascript, &native_mappings, native_call);
+    let blue_call_site = mapped_source_at(&artifact.javascript, &blue_mappings, blue_call);
+    let method = source_position(source, source.find("method()").unwrap());
+    fs::remove_dir_all(&directory).unwrap();
+    assert_eq!(
+        native_decorator_site,
+        Some((0, expected.0, expected.1, None))
+    );
+    assert_eq!(
+        blue_decorator_site, native_decorator_site,
+        "relocated decorator expression"
+    );
+    assert_eq!(
+        native_helper_site, None,
+        "Native helper definition is unmapped"
+    );
+    assert_eq!(
+        blue_helper_site, native_helper_site,
+        "generated helper definition must not impersonate user source"
+    );
+    assert_eq!(native_call_site, Some((0, method.0, method.1, None)));
+    assert_eq!(
+        blue_call_site, native_call_site,
+        "generated helper invocation"
+    );
+}
+
+fn source_position(text: &str, offset: usize) -> (i64, i64) {
+    let prefix = &text[..offset];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as i64;
+    let column = prefix.rsplit('\n').next().unwrap().encode_utf16().count() as i64;
+    (line, column)
+}
+
+fn mapped_source_at(
+    javascript: &str,
+    mappings: &BTreeSet<Mapping>,
+    offset: usize,
+) -> Option<(i64, i64, i64, Option<i64>)> {
+    let (line, column) = source_position(javascript, offset);
+    mappings
+        .iter()
+        .rfind(|mapping| {
+            mapping.generated_line == line as usize && mapping.generated_column <= column
+        })
+        .filter(|mapping| mapping.source_index >= 0)
+        .map(|mapping| {
+            (
+                mapping.source_index,
+                mapping.source_line,
+                mapping.source_column,
+                mapping.name_index,
+            )
+        })
+}
+
 fn decode_mappings(encoded: &str) -> BTreeSet<Mapping> {
     let mut mappings = BTreeSet::new();
     let mut source_index = 0i64;
@@ -189,10 +364,21 @@ fn decode_mappings(encoded: &str) -> BTreeSet<Mapping> {
         for segment in line.split(',').filter(|segment| !segment.is_empty()) {
             let fields = decode_vlq(segment);
             assert!(
-                matches!(fields.len(), 4 | 5),
-                "invalid mapped segment: {segment}"
+                matches!(fields.len(), 1 | 4 | 5),
+                "invalid segment: {segment}"
             );
             generated_column += fields[0];
+            if fields.len() == 1 {
+                mappings.insert(Mapping {
+                    generated_line,
+                    generated_column,
+                    source_index: -1,
+                    source_line: -1,
+                    source_column: -1,
+                    name_index: None,
+                });
+                continue;
+            }
             source_index += fields[1];
             source_line += fields[2];
             source_column += fields[3];

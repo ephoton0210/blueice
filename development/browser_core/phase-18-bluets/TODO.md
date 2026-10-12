@@ -648,6 +648,10 @@ The two original pinned token-aligned fixtures now pass with copied-token
 provenance and bounded segment retention. Generated helper/decorator mappings,
 broader syntax, actual named marks, the complete K.0 gate and hosted CI remain
 open; see PLAN.md for the measured slice and historical red baseline.
+A third pinned fixture now verifies one standard decorator's relocated token,
+unmapped helper definition and method-anchored helper call. Other helper
+families, non-exact relocation, multi-decorator composition and the full gate
+remain open.
 
 ### K.12 Projects — M10 — gap G-M2
 

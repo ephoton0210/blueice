@@ -42,6 +42,7 @@ mod namespaces;
 mod output_options;
 mod private_lowering;
 mod reexports;
+mod relocations;
 mod system;
 mod targets;
 mod token_maps;
@@ -340,6 +341,7 @@ struct ProvenanceSegment {
     generated_column: usize,
     source_line: usize,
     source_column: usize,
+    mapped: bool,
     /// Index into `SourceMap::names`; absent for unnamed segments.
     name_index: Option<usize>,
 }
@@ -567,44 +569,6 @@ fn compact_expression(text: &str) -> String {
     output
 }
 
-/// Replaces each `\0M<start>,<end>\0` marker with the text of that source
-/// range after the edits that lie inside it, on one line.
-fn expand_relocations(replacement: &str, source: &str, edits: &[TextEdit]) -> String {
-    let mut output = String::new();
-    let mut rest = replacement;
-    while let Some(open) = rest.find("\u{0}M") {
-        output.push_str(&rest[..open]);
-        let after = &rest[open + 2..];
-        let Some(close) = after.find('\u{0}') else {
-            output.push_str(&rest[open..]);
-            return output;
-        };
-        let range = &after[..close];
-        rest = &after[close + 1..];
-        let Some((start, end)) = range.split_once(',').and_then(|(start, end)| {
-            Some((start.parse::<usize>().ok()?, end.parse::<usize>().ok()?))
-        }) else {
-            continue;
-        };
-        let mut text = String::new();
-        let mut cursor = start;
-        for edit in edits.iter().filter(|edit| {
-            edit.start >= start && edit.end <= end && !edit.replacement.contains('\u{0}')
-        }) {
-            if edit.start < cursor {
-                continue;
-            }
-            text.push_str(&source[cursor..edit.start]);
-            text.push_str(&expand_relocations(&edit.replacement, source, edits));
-            cursor = edit.end;
-        }
-        text.push_str(&source[cursor..end]);
-        output.push_str(&compact_expression(&text));
-    }
-    output.push_str(rest);
-    output
-}
-
 fn apply_edits(source: &str, edits: Vec<TextEdit>) -> EmittedJavaScript {
     apply_edits_with_provenance(source, edits, None)
 }
@@ -628,16 +592,47 @@ fn apply_edits_with_provenance(
             continue;
         }
         emitted.copy(&source[cursor..edit.start], cursor);
-        let replacement = match &snapshot {
-            Some(all) if edit.replacement.contains('\u{0}') => {
-                expand_relocations(&edit.replacement, source, all)
-            }
-            _ => edit.replacement.clone(),
-        };
+        let parts = snapshot
+            .as_deref()
+            .filter(|_| edit.replacement.contains('\u{0}'))
+            .map(|all| relocations::expand(&edit.replacement, source, all));
+        let replacement = parts.as_ref().map_or_else(
+            || edit.replacement.clone(),
+            |parts| parts.iter().map(relocations::Part::text).collect(),
+        );
         if replacement.is_empty() {
             // Preserve physical lines so line-level source maps, diagnostics,
             // and ordinary text diffs remain stable after type erasure.
             emitted.preserve_line_breaks(&source[edit.start..edit.end], edit.start);
+        } else if segment_limit.is_some() && decorators::is_helper_insertion(&edit) {
+            emitted.insert_unmapped(&replacement);
+        } else if let Some(parts) = parts {
+            let mut anchored = false;
+            for part in parts {
+                match part {
+                    relocations::Part::Generated(text) if anchored => {
+                        emitted.append_generated(&text);
+                        anchored = false;
+                    }
+                    relocations::Part::Generated(text) => emitted.replace(&text, edit.start),
+                    relocations::Part::Anchor(offset) => {
+                        if segment_limit.is_some() {
+                            emitted.mark(offset);
+                            anchored = true;
+                        }
+                    }
+                    relocations::Part::Relocated { text, start, end }
+                        if text == source[start..end] =>
+                    {
+                        emitted.copy(&text, start);
+                        anchored = false;
+                    }
+                    relocations::Part::Relocated { text, start, .. } => {
+                        emitted.replace(&text, start);
+                        anchored = false;
+                    }
+                }
+            }
         } else {
             emitted.replace(&replacement, edit.start);
         }
@@ -890,15 +885,38 @@ impl<'a> ProvenanceEmitter<'a> {
         }
     }
 
+    fn insert_unmapped(&mut self, value: &str) {
+        self.push_segment(ProvenanceSegment {
+            generated_line: self.generated_line,
+            generated_column: self.generated_column,
+            source_line: 0,
+            source_column: 0,
+            mapped: false,
+            name_index: None,
+        });
+        self.append_generated(value);
+    }
+
+    fn append_generated(&mut self, value: &str) {
+        let mut characters = value.chars().peekable();
+        while let Some(character) = characters.next() {
+            self.push(character, characters.peek().copied());
+        }
+    }
+
     fn mark(&mut self, source_offset: usize) {
         let (source_line, source_column) = self.source_location(source_offset);
-        let segment = ProvenanceSegment {
+        self.push_segment(ProvenanceSegment {
             generated_line: self.generated_line,
             generated_column: self.generated_column,
             source_line,
             source_column,
+            mapped: true,
             name_index: None,
-        };
+        });
+    }
+
+    fn push_segment(&mut self, segment: ProvenanceSegment) {
         if self.provenance.last().is_some_and(|previous| {
             previous.generated_line == segment.generated_line
                 && previous.generated_column == segment.generated_column
@@ -1038,20 +1056,22 @@ fn encode_mappings(segments: &[ProvenanceSegment]) -> String {
             mappings.push_str(&base64_vlq(
                 segment.generated_column as i64 - previous_generated_column,
             ));
-            mappings.push('A');
-            mappings.push_str(&base64_vlq(
-                segment.source_line as i64 - previous_source_line,
-            ));
-            mappings.push_str(&base64_vlq(
-                segment.source_column as i64 - previous_source_column,
-            ));
-            if let Some(name_index) = segment.name_index {
-                mappings.push_str(&base64_vlq(name_index as i64 - previous_name_index));
-                previous_name_index = name_index as i64;
+            if segment.mapped {
+                mappings.push('A');
+                mappings.push_str(&base64_vlq(
+                    segment.source_line as i64 - previous_source_line,
+                ));
+                mappings.push_str(&base64_vlq(
+                    segment.source_column as i64 - previous_source_column,
+                ));
+                if let Some(name_index) = segment.name_index {
+                    mappings.push_str(&base64_vlq(name_index as i64 - previous_name_index));
+                    previous_name_index = name_index as i64;
+                }
+                previous_source_line = segment.source_line as i64;
+                previous_source_column = segment.source_column as i64;
             }
             previous_generated_column = segment.generated_column as i64;
-            previous_source_line = segment.source_line as i64;
-            previous_source_column = segment.source_column as i64;
             index += 1;
         }
     }

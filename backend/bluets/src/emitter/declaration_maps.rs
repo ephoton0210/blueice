@@ -203,6 +203,7 @@ pub(super) fn build(
                     generated_column,
                     source_line,
                     source_column,
+                    mapped: true,
                     name_index: None,
                 }
             },
