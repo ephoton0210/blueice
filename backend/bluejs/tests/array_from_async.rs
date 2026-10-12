@@ -171,3 +171,20 @@ fn from_async_over_sync_iterables_survives_collection_on_every_allocation() {
          failed(Array.fromAsync(g()), e => e instanceof RangeError && e.message === 'gen');",
     );
 }
+
+#[test]
+fn a_fresh_iterator_close_result_survives_major_collection_before_await() {
+    let mut config = VmConfig::default();
+    config.heap.nursery_capacity = 1;
+    config.heap.major_threshold_bytes = 1;
+    let script = "var closed = 0, thenReads = 0; var reason = { message: 'mapper failed' };\
+        var iterable = { [Symbol.asyncIterator]() { return {\
+            next() { return Promise.resolve({ value: 1, done: false }); },\
+            return() { closed++; return { get then() { thenReads++; return undefined; } }; }\
+        }; } };\
+        failed(Array.fromAsync(iterable, () => { throw reason; }),\
+            error => error === reason && closed === 1 && thenReads === 1);";
+    if let Err(error) = run_with(config, script) {
+        panic!("{script}\n=> {error}");
+    }
+}

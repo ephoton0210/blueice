@@ -421,6 +421,9 @@ impl Vm {
         })();
         match closing {
             Ok(Some(result)) => {
+                // Saving the original error may collect the fresh return
+                // value before Await adopts it.
+                self.stack.push(result.clone());
                 self.fa_set(state, "error", error)?;
                 self.fa_await(state, Phase::Closing, result)
             }

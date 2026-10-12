@@ -1,0 +1,66 @@
+{
+  "status": "focused-passed-full-platform-pending",
+  "base_commit": "ff4479d8406ce00f02ed8f5bfd541777ce123f97",
+  "red_existing": {
+    "exit_code": 101,
+    "failed": 1,
+    "ceiling_bytes": 376704,
+    "log_sha256": "206efc610e9e0cb456ddefb56bfcbf70b0420569af6d9d2cdce7160b2bd32932"
+  },
+  "green": {
+    "exit_code": 0,
+    "groups": 3,
+    "passed": 48,
+    "failed": 0,
+    "ignored": 0,
+    "targets": [
+      "array_from_async",
+      "cov_g2_final",
+      "promise_gc_lifecycle"
+    ],
+    "log_sha256": "1e7118b79e9d074d7398b4388a2050130d4f5960b0a222ec8d8f42eb26427766",
+    "command": "CARGO_TARGET_DIR=/private/tmp/blueice-array-from-async-target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 rustup run 1.96.0 cargo test -p blueice-bluejs --test cov_g2_final --test array_from_async --test promise_gc_lifecycle --locked"
+  },
+  "source_inputs": {
+    "backend/bluejs/src/vm/builtins/array_from_async.rs": "2cda07d8f32c6a50e0221d8ee159eef357369fdbdaf8886f4692c609cc42e5e0",
+    "backend/bluejs/tests/array_from_async.rs": "0361ba70b0fda7902e19a102291e977bd007e488779d1d0ca0ee8565a8bfc4dd"
+  },
+  "changed_during_gate": [],
+  "fmt_exit": 0,
+  "clippy": {
+    "exit_code": 0,
+    "scope": "blueice-bluejs all targets with -D warnings",
+    "command": "CARGO_TARGET_DIR=/private/tmp/blueice-array-from-async-target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 rustup run 1.96.0 cargo clippy -p blueice-bluejs --all-targets --locked -- -D warnings",
+    "log_sha256": "f9bfd0ad3c912ffa7f6a78d4263160273db84ce3de2050182ec6d41175b52c25"
+  },
+  "fmt": {
+    "exit_code": 0,
+    "command": "cargo fmt --all -- --check"
+  },
+  "windows_red": {
+    "source_commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+    "scope": "Failure in active complete Windows workspace run; run not yet terminal",
+    "test": "array_from_async_allocations_after_a_user_hook",
+    "failure_details": [
+      "failures:\n\n---- array_from_async_allocations_after_a_user_hook stdout ----\n\nthread 'array_from_async_allocations_after_a_user_hook' (13796) panicked at backend\\bluejs\\tests\\cov_g2_sweep\\mod.rs:262:9:\nceiling 376704: (function () { var iterable = { [Symbol.asyncIterator]() { return {\n    next() { return Promise.resolve({ value: 1, done: false }); }, return() { return {}; } }; } }; var big = 'e'.repeat(1500);\n             b(); Array.fromAsync(5); b(); Array.fromAsync(true);\n             b(); Array.fromAsync(iterable, () => { b(); throw big; });\n             return true; })(): Err(Heap(InvalidObject(ObjectId { heap: 16643, serial: 307 })))\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    array_from_async_allocations_after_a_user_hook\n\ntest result: FAILED. 28 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 141.85s"
+    ],
+    "probe_utc": "2026-10-12T19:23:23.4942546Z"
+  },
+  "new_semantic_case": {
+    "name": "a_fresh_iterator_close_result_survives_major_collection_before_await",
+    "checks": [
+      "original rejection reason identity",
+      "one iterator return call",
+      "one returned object then-getter read"
+    ],
+    "passed_before_fix": true,
+    "note": "The existing allocation-ceiling sweep, not this additional semantic case, reproduces the regression."
+  },
+  "remaining": [
+    "Current ec421 full Mac Rust and Windows Rust runs contain the pre-fix failure and must finish with retained results",
+    "Integrate after frozen program-input verification at terminal completion",
+    "Required complete Rust/native/Windows gates for corrected source",
+    "Native panel test URL correction requires focused and complete native execution",
+    "Physical Zhuyin/VoiceOver/monitor/printer acceptance remains open"
+  ]
+}

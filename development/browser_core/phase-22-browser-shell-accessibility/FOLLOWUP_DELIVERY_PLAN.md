@@ -238,3 +238,11 @@ URL beside the current runner products, matching the drag-reference fixture
 pattern. Swift parsing and diff checks pass; focused and complete native
 verification of this test-only correction remain pending. The product's
 launcher-group and exact-bundle ownership checks are unchanged.
+
+The complete current Windows Rust run also exposes an Array.fromAsync
+iterator-close GC regression at a 376,704-byte heap ceiling. It is
+reproduced on macOS and corrected in an isolated follow-up; all 48
+related cases, strict BlueJS all-target Clippy and format checks pass.
+The [GC follow-up](ARRAY_FROM_ASYNC_GC_RESULTS.md) preserves the existing
+red regression, additional semantic coverage and pending complete gates.
+The active pre-fix complete runs still contain that failure.
