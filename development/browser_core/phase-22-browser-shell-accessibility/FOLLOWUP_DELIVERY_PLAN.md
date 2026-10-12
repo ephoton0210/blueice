@@ -12,6 +12,29 @@ case scope, failures/skips and owned-process cleanup.
 | Physical system acceptance | Actual CJK/Zhuyin composition/commit/cancel, VoiceOver navigation/action and physical monitor/printer transitions | The completed native gate retains one real Zhuyin skip for missing Runner Accessibility permission. Direct CoreGraphics/NSScreen inspection identifies one online PA279CRV, 3840x2160 pixels at 2x/1920x1080 points, with 101 modes. The actual PA279CRV mode89→159→89 transition now passes: real owned Core backing scale2→1→2 and frame generation4→5→6 preserve the document/frame source, and normal app/runtime/preferences cleanup plus physical mode restoration pass. See [actual display result](artifacts/physical-display-transition-20261013-results.json) and [cleanup](artifacts/physical-display-cleanup-20261013-results.json). This proves one physical monitor mode change; a second monitor transfer remains unverified. Unsandboxed CUPS reports no configured/default printer. Actual system VoiceOver was enabled through its standard shortcut and startup UI, but cursor/last-phrase AppleEvents fail with -1728 then time out(-1712); navigation/action/speech remain unaccepted. VoiceOver was restored off and its process exited. See [actual attempt](artifacts/physical-voiceover-attempt-20261013-results.json). Actual Runner grant and printer connection information have been requested. See [capability evidence](artifacts/physical-capabilities-20261013-results.json). |
 | Web platform APIs | Actual FileReader lifecycle and data reads; actual stream objects and readers; origin/document-scoped object URLs; broader DOM/event behavior and accurate host typings | FileReader, EventTarget, ProgressEvent and drag/event interfaces pass 58 VM cases plus five typing cases. Readable streams, default/BYOB readers and Blob byte/text streams pass 20 stream cases and six host-profile cases. Actual Core/BlueJS document, selected-byte and stream DOM integration passes, as does failed-task acknowledgement containment without script replay. The affected BlueTS crate passes all 354 cases with 60 optional oracle cases ignored. The [object URL increment](OBJECT_URL_RESULTS.md) adds actual retained bytes, document/context fencing, staged IPC, URL/BlueTS bindings and local Core navigation with preserved script origin. The [abort increment](ABORT_SIGNAL_RESULTS.md) adds real signal reasons, weak dependent graphs, timeout tasks and cancellation of native/generic listeners, with an 88-case final cohort and actual selected-byte integration. The [CustomEvent increment](CUSTOM_EVENT_RESULTS.md) adds branded arbitrary detail, dispatch-safe legacy initialization, GC retention and an additive 37-binding profile; 102 VM/type cases and actual Core/child DOM integration pass. The [node-event increment](NODE_EVENT_RESULTS.md) adds Core-backed arbitrary node dispatch, capture/target/bubble, trusted native base events and properly scoped nested named callbacks; 70 VM/type/compiler cases, nine Core/IPC cases and actual Core/child integration pass. The [tee increment](STREAM_TEE_RESULTS.md) adds two actual branches, independent byte/BYOB data, cancellation/error propagation and collectible Promise state; 1,093 BlueJS and 146 bridge cases pass. The [iteration increment](STREAM_ITERATION_RESULTS.md) adds serialized native values/next/return, real for-await cleanup, keyword-method typing/lowering and a consistent 40-binding classic/module profile; 1,110 BlueJS, 148 bridge and 357 compiler cases pass, with 60 optional compiler oracle cases ignored. Native/full/cross-platform gates, writable/transform/pipe streams and conformance, broader URL/subresource behavior and DOM/event work remain required. |
 
+## Physical input and VoiceOver preflight
+
+The 2026-10-13 read-only input-source probe confirms that
+`com.apple.inputmethod.TCIM.Zhuyin` is installed, enabled and selectable;
+the current input source is ABC. This establishes availability, not physical
+composition/commit/cancel acceptance. See the
+[TIS result](artifacts/physical-input-source-availability-20261013.json) and
+[retained probe](artifacts/physical-input-source-probe.swift).
+
+Read-only inspection of the installed VoiceOver Utility finds its explicit
+AppleScript enablement-marker check. The marker is currently absent, supporting
+script control being unavailable; its actual checkbox/authorization UI has not
+yet been inspected. This is stronger evidence than interpreting the earlier
+AppleEvent timeout alone, but does not establish successful VoiceOver use.
+See the [installed-system result](artifacts/voiceover-script-control-readonly-20261013.json)
+and [Apple's macOS 26 General settings](https://support.apple.com/guide/voiceover/general-category-cpvougen/10/mac/26).
+After complete native UI cleanup, the next physical attempt can use documented
+VoiceOver keyboard navigation/actions and its
+[last spoken phrase command](https://support.apple.com/guide/voiceover/vo2725/mac),
+with exact owned-application guards and preservation of the clipboard and
+initial reader/input-source state. No system permission or scripting gate was
+changed by this inspection.
+
 ## Drag acceptance
 
 Destination keyboard focus must be independent from an explicit OS drag. A

@@ -1,0 +1,21 @@
+{
+  "current": {
+    "enabled": true,
+    "id": "com.apple.keylayout.ABC",
+    "name": "ABC",
+    "selectable": true,
+    "selected": true
+  },
+  "enabled_zhuyin_count": 1,
+  "physical_ime_accepted": false,
+  "scope": "Read-only system TIS input source inspection; no source selection or key injection",
+  "zhuyin_candidates": [
+    {
+      "enabled": true,
+      "id": "com.apple.inputmethod.TCIM.Zhuyin",
+      "name": "Zhuyin – Traditional",
+      "selectable": true,
+      "selected": false
+    }
+  ]
+}

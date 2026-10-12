@@ -1,0 +1,24 @@
+{
+  "utc": "2026-10-12T23:40:12.323776+00:00",
+  "scope": "Read-only installed system VoiceOver scripting capability and gate inspection; no utility UI, permission change or VoiceOver activation",
+  "voiceover_bundle_version": "993",
+  "voiceover_info_NSAppleScriptEnabled": true,
+  "utility_sha256": "a77e84335cc1b7eb66c8c3d9a3b2492036dc7208fc0fef7ba8d94dbf72d01fe7",
+  "observed_utility_symbols": [
+    "SCRAppleScriptControlEntitlement",
+    "appleScriptEnabledFileExists",
+    "createAppleScriptEnabledFileOnSuccess:onError:",
+    "removeAppleScriptEnabledFileOnSuccess:onError:",
+    "/var/db/Accessibility/.VoiceOverAppleScriptEnabled"
+  ],
+  "script_control_marker": {
+    "path": "/var/db/Accessibility/.VoiceOverAppleScriptEnabled",
+    "exists": false
+  },
+  "interpretation": "Installed utility explicitly checks an AppleScript enablement marker. Marker absent now; this supports script control being unavailable. Checkbox and authorization UI state have not yet been inspected. Prior -1712 timeout alone does not establish the cause.",
+  "official_reference": "https://support.apple.com/guide/voiceover/general-category-cpvougen/10/mac/26",
+  "physical_voiceover_accepted": false,
+  "settings_modified": false,
+  "keyboard_reference": "https://support.apple.com/guide/voiceover/vo2725/mac",
+  "next": "After full native UI cleanup, verify actual VoiceOver navigation/action with documented OS keyboard commands and capture its last spoken phrase. Scripting gate and shortcut preparation do not count as physical acceptance."
+}
