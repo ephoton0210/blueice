@@ -567,6 +567,24 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5),panels.debugDescription)
         XCTAssertTrue(field.isHittable,panels.debugDescription); field.click()
         field.typeKey("a", modifierFlags: .command); field.typeText(text)
+        waitPermissionValue(field,text)
+    }
+    private func reviewAssistantSettings(_ panels: XCUIApplication) {
+        let button = panels.buttons["assistant-settings-review"]
+        let editor = panels.scrollViews["assistant-settings-editor"]
+        guard button.waitForExistence(timeout: 5), editor.exists else {
+            XCTFail(panels.debugDescription); return
+        }
+        for _ in 0..<4 {
+            if button.isHittable && editor.frame.insetBy(dx: 1,dy: 1).contains(button.frame) { break }
+            let delta: CGFloat = button.frame.minY < editor.frame.minY ? 220 : -220
+            editor.scroll(byDeltaX: 0,deltaY: delta)
+        }
+        guard button.isEnabled, button.isHittable,
+              editor.frame.insetBy(dx: 1,dy: 1).contains(button.frame) else {
+            XCTFail("Review control must be fully visible before clicking: " + panels.debugDescription); return
+        }
+        button.click()
     }
     func testNativeAssistantSettingsReviewCancelApplyAndRelaunch() throws {
         launch()
@@ -574,16 +592,16 @@ final class BrowserUITests: XCTestCase {
         waitPermissionValue(panels.staticTexts["assistant-settings-current"], "In force: Off · idle 600 seconds · niceness 10")
         XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path), "Inspection never persists a setting")
         editAssistantField(panels, "assistant-idle", "29")
-        panels.buttons["assistant-settings-review"].click()
+        reviewAssistantSettings(panels)
         XCTAssertTrue(panels.staticTexts["assistant-settings-notice"].waitForExistence(timeout: 5))
         XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists)
         editAssistantField(panels, "assistant-idle", "630")
-        panels.buttons["assistant-settings-review"].click()
+        reviewAssistantSettings(panels)
         XCTAssertTrue(panels.buttons["assistant-settings-confirm"].waitForExistence(timeout: 5))
         XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
         panels.buttons["assistant-settings-cancel"].click()
         XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
-        panels.buttons["assistant-settings-review"].click(); panels.buttons["assistant-settings-confirm"].click()
+        reviewAssistantSettings(panels); panels.buttons["assistant-settings-confirm"].click()
         waitPermissionValue(panels.staticTexts["assistant-settings-notice"], "Assistant settings applied.")
         XCTAssertEqual(try persistedAssistant()["idle_timeout_secs"] as? Int, 630)
         XCTAssertEqual(try persistedAssistant()["backend"] as? String, "none")
@@ -637,12 +655,12 @@ final class BrowserUITests: XCTestCase {
         waitPermissionValue(panels.popUpButtons["assistant-backend"],"Loopback server")
         editAssistantField(panels, "assistant-model", "local-model")
         editAssistantField(panels, "assistant-base-url", "http://example.com:11434/v1/")
-        panels.buttons["assistant-settings-review"].click()
+        reviewAssistantSettings(panels)
         XCTAssertTrue(panels.staticTexts["assistant-settings-notice"].waitForExistence(timeout: 5))
         XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists)
         XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
         editAssistantField(panels, "assistant-base-url", "http://127.0.0.1:11434/v1/")
-        panels.buttons["assistant-settings-review"].click()
+        reviewAssistantSettings(panels)
         XCTAssertTrue(panels.buttons["assistant-settings-confirm"].waitForExistence(timeout: 5))
         XCTAssertTrue(panels.buttons["assistant-settings-confirm"].isHittable)
         panels.windows["permissions-window"].buttons[XCUIIdentifierCloseWindow].click()
@@ -654,7 +672,7 @@ final class BrowserUITests: XCTestCase {
         panels.popUpButtons["assistant-backend"].click(); panels.menuItems["Loopback server"].click()
         waitPermissionValue(panels.popUpButtons["assistant-backend"],"Loopback server")
         editAssistantField(panels, "assistant-model", "local-model")
-        panels.buttons["assistant-settings-review"].click(); panels.buttons["assistant-settings-confirm"].click()
+        reviewAssistantSettings(panels); panels.buttons["assistant-settings-confirm"].click()
         waitPermissionValue(panels.staticTexts["assistant-settings-notice"], "Assistant settings applied.")
         let persisted = try persistedAssistant()
         XCTAssertEqual(persisted["backend"] as? String, "loopback")
@@ -673,7 +691,7 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(panels.buttons["permission-confirm-one-shot"].waitForExistence(timeout: 5))
         panels.radioButtons["Assistant Settings"].click()
         XCTAssertTrue(panels.staticTexts["assistant-settings-current"].waitForExistence(timeout: 10))
-        editAssistantField(panels, "assistant-nice", "11"); panels.buttons["assistant-settings-review"].click()
+        editAssistantField(panels, "assistant-nice", "11"); reviewAssistantSettings(panels)
         XCTAssertTrue(panels.buttons["assistant-settings-confirm"].waitForExistence(timeout: 5))
         panels.radioButtons["Permissions"].click()
         XCTAssertTrue(panels.buttons["permission-review-document"].waitForExistence(timeout: 5))
