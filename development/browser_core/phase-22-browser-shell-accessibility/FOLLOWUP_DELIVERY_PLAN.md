@@ -7,9 +7,9 @@ case scope, failures/skips and owned-process cleanup.
 
 | Track | Required outcome | Current state |
 | --- | --- | --- |
-| Windows acceptance | Same source snapshot; complete Rust workspace, strict Clippy, all-target build, full formatter scope, WinUI protocol tests and actual logged-in desktop UI/pixels/cleanup | The owner's dedicated 320 GiB test disk on the Linux 2 TB `/data` volume is attached live/persistently as Windows B: `BlueIceTests320`. BlueIce evidence and tool caches are copied; 2,077 archived inputs and 1,181 toolchain files pass SHA256 checks. Subsequent workspaces, build products, tool caches and process TEMP/TMP use `B:\BlueIce`. C: now has 6.75 GiB free, passing the original 4 GiB guard after verified toolchain relocation with a compatible old-path junction. Six file-free temporary trees were removed. No VM reboot or pagefile-policy change occurred. Frozen `83436f846` full Windows acceptance now passes: 5,670 Rust cases, zero failures/64 ignored, strict Clippy, all-target build/formatter, WinUI build, five protocol cases and seven actual desktop cases. Task/bootstrap exit zero, frozen source hashes match and owned runtime cleanup passes; see [complete receipt](artifacts/windows-83436f846-results.json) and [storage delivery](WINDOWS_TEST_STORAGE.md). Later API increments still need current-source complete Windows gates. |
+| Windows acceptance | Same source snapshot; complete Rust workspace, strict Clippy, all-target build, full formatter scope, WinUI protocol tests and actual logged-in desktop UI/pixels/cleanup | The owner's dedicated 320 GiB test disk on the Linux 2 TB `/data` volume is attached live/persistently as Windows B: `BlueIceTests320`. BlueIce evidence and tool caches are copied; 2,077 archived inputs and 1,181 toolchain files pass SHA256 checks. Subsequent workspaces, build products, tool caches and process TEMP/TMP use `B:\BlueIce`. C: now has 6.75 GiB free, passing the original 4 GiB guard after verified toolchain relocation with a compatible old-path junction. Six file-free temporary trees were removed. No VM reboot or pagefile-policy change occurred. Frozen `83436f846` full Windows acceptance now passes: 5,670 Rust cases, zero failures/64 ignored, strict Clippy, all-target build/formatter, WinUI build, five protocol cases and seven actual desktop cases. Task/bootstrap exit zero, frozen source hashes match and owned runtime cleanup passes; see [complete receipt](artifacts/windows-83436f846-results.json) and [storage delivery](WINDOWS_TEST_STORAGE.md). Integrated `ec4217440` complete Rust execution ended with 5,764 passed, two GC failures and 64 ignored; unchanged 2,186-source/log hashes and idle cleanup are verified. Both regressions are corrected in `504eeb924`, whose fresh complete Rust/WinUI gate is running on B: with a 60 GiB target cap and unchanged B: 50 GiB/C: 4 GiB free-space guards. See [failed full gate](artifacts/windows-ec4217440-failed-results.json). |
 | Drag interoperability | Actual OS drags between live windows and an independent application; file export/promises, default/custom drag images, `setDragImage` and modifier-selected operations | [Related native acceptance](MACOS_DRAG_INTEROP_RESULTS.md) now passes 29 cases, zero failures/skips, including actual cross-window/external text, binary file-promise export, Copy/Move/Link, Core-backed custom images and stationary-source cancellation. This snapshot precedes FileReader changes. Full native acceptance and broader promise acceptance remain required. |
-| Physical system acceptance | Actual CJK/Zhuyin composition/commit/cancel, VoiceOver navigation/action and physical monitor/printer transitions | System Zhuyin test still skips because the Runner lacks Accessibility permission. The hardware report omits display details and lists no configured printers; the actual recorded desktop is 1920x1080 points. Physical device availability and Runner authorization are pending. VoiceOver has not been accepted. |
+| Physical system acceptance | Actual CJK/Zhuyin composition/commit/cancel, VoiceOver navigation/action and physical monitor/printer transitions | The completed native gate retains one real Zhuyin skip for missing Runner Accessibility permission. Direct CoreGraphics/NSScreen inspection identifies one online PA279CRV, 3840x2160 pixels at 2x/1920x1080 points, with 101 modes. A guarded 15-second mode/restore lease and a real owned Core viewport observer are prepared; no mode change has occurred. Unsandboxed CUPS reports no configured/default printer. Installed VoiceOver scripting and a compiled owned driver are available, but actual reader navigation/action/speech and scripting permission are unproven. Actual Runner grant and printer connection information have been requested. See [capability evidence](artifacts/physical-capabilities-20261013-results.json). |
 | Web platform APIs | Actual FileReader lifecycle and data reads; actual stream objects and readers; origin/document-scoped object URLs; broader DOM/event behavior and accurate host typings | FileReader, EventTarget, ProgressEvent and drag/event interfaces pass 58 VM cases plus five typing cases. Readable streams, default/BYOB readers and Blob byte/text streams pass 20 stream cases and six host-profile cases. Actual Core/BlueJS document, selected-byte and stream DOM integration passes, as does failed-task acknowledgement containment without script replay. The affected BlueTS crate passes all 354 cases with 60 optional oracle cases ignored. The [object URL increment](OBJECT_URL_RESULTS.md) adds actual retained bytes, document/context fencing, staged IPC, URL/BlueTS bindings and local Core navigation with preserved script origin. The [abort increment](ABORT_SIGNAL_RESULTS.md) adds real signal reasons, weak dependent graphs, timeout tasks and cancellation of native/generic listeners, with an 88-case final cohort and actual selected-byte integration. The [CustomEvent increment](CUSTOM_EVENT_RESULTS.md) adds branded arbitrary detail, dispatch-safe legacy initialization, GC retention and an additive 37-binding profile; 102 VM/type cases and actual Core/child DOM integration pass. The [node-event increment](NODE_EVENT_RESULTS.md) adds Core-backed arbitrary node dispatch, capture/target/bubble, trusted native base events and properly scoped nested named callbacks; 70 VM/type/compiler cases, nine Core/IPC cases and actual Core/child integration pass. The [tee increment](STREAM_TEE_RESULTS.md) adds two actual branches, independent byte/BYOB data, cancellation/error propagation and collectible Promise state; 1,093 BlueJS and 146 bridge cases pass. The [iteration increment](STREAM_ITERATION_RESULTS.md) adds serialized native values/next/return, real for-await cleanup, keyword-method typing/lowering and a consistent 40-binding classic/module profile; 1,110 BlueJS, 148 bridge and 357 compiler cases pass, with 60 optional compiler oracle cases ignored. Native/full/cross-platform gates, writable/transform/pipe streams and conformance, broader URL/subresource behavior and DOM/event work remain required. |
 
 ## Drag acceptance
@@ -255,3 +255,39 @@ event root on success or error. All 138 related cases and the four
 original fixture/mode executions pass, as do strict Clippy and formatting.
 The next complete acceptance must use this final correction rather than
 the earlier `33dfdb3b7` package. Physical requirements remain open.
+
+## Completed failure gates and corrected-source acceptance
+
+The complete `ec4217440` native gate ends with 295 passed, 14 failed and
+one physical Zhuyin skip. All 1,902 program inputs and eight backend
+binaries match; XCResult/log totals agree and both live fixture wrappers
+confirm cleanup, independently followed by process absence. Every failure
+is in the exact permissions/assistant/recovery cohort whose bundle-ID-only
+proxy selected an older checkout's app. The
+[failed receipt](artifacts/macos-native-ec4217440-failed-results.json) is retained.
+
+The `504eeb924` correction passes all 14 of those actual UI methods, with
+zero failures/skips and unchanged source/backend hashes. Both wrappers
+and owned process cleanup pass; see the
+[focused receipt](artifacts/macos-panel-focused-504eeb924-results.json).
+Complete native acceptance is now running through the same live wrappers
+without a method restriction. Current-source drag recordings still need
+the scoped preview verifier.
+
+The complete Windows `ec4217440` Rust run ends with 5,764 passed, two
+failed and 64 ignored across 516 result groups, stopping before WinUI.
+All 2,186 original source files and four step-log hashes remain unchanged,
+and no related runtime remains. The
+[failed receipt](artifacts/windows-ec4217440-failed-results.json) records
+Array.fromAsync iterator-close and Atomics.waitAsync host-root failures.
+Both are corrected with red/green public-boundary evidence. Fresh
+`504eeb924` complete Rust/WinUI acceptance is running after staging and
+verifying 2,192 source files, 1,902 program inputs, the B: corpus junction
+and nine helper hashes/parser results. The 60 GiB target cap and original
+free-space guards remain enforced.
+
+The original `ec4217440` macOS full Rust gate is still running with its
+two known GC failures; its program sources remain frozen until terminal
+completion. Main integration and fresh corrected-source complete macOS
+Rust checks follow that boundary. Focused tests, ongoing gates, direct
+hardware inventory and compiled helpers do not establish full completion.

@@ -131,6 +131,11 @@ The separate `acceptance-20261013-ec4217440-retry1` controller raises only
 the target cap to 60 GiB for this 320 GiB volume. The B: 50 GiB and C: 4 GiB
 free-space guards remain enforced. It verifies unchanged source and receipt
 hashes before reusing the completed formatter and Clippy gates. The complete
-all-target build now exits zero; full Rust execution and WinUI acceptance
-are still running. These intermediate results do not establish acceptance
-of the current source. All caches and temporary files continue to use B:.
+all-target build exits zero. Full Rust execution subsequently ends with
+5,764 passed, two GC failures and 64 ignored, stopping before WinUI; the
+[failed receipt](artifacts/windows-ec4217440-failed-results.json) retains
+source/log hash and idle-runtime verification. Corrected `504eeb924`
+complete Rust/WinUI acceptance is now running with fresh formatter,
+Clippy, build and execution gates after all 2,192 staged files and corpus
+hashes pass. Ongoing gates do not establish current-source acceptance.
+All caches and temporary files continue to use B:.

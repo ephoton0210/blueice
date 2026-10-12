@@ -1,0 +1,47 @@
+{
+  "source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "session_id": 57839,
+  "exit_code": 0,
+  "passed": 14,
+  "failed": 0,
+  "skipped": 0,
+  "case_names": [
+    "testBrowserServiceRecoveryDiscardsPendingAssistantResultAndInstruction",
+    "testBrowserServiceRecoveryNeverReplaysPostOrRestoresItsPrivateBody",
+    "testBrowserServiceRestartRestoresVolatileWindowsHistoryAndZoomWithoutSaving",
+    "testChromeKeyboardActionsStayInActiveWindowAndOpenOwnedPermissions",
+    "testNativeAssistantLoopbackEditorAndClosingUnconfirmedChanges",
+    "testNativeAssistantProposalCannotApplyWithoutExactHumanConfirmation",
+    "testNativeAssistantSettingsReviewCancelApplyAndRelaunch",
+    "testNativeOneShotLongURLKeepsConfirmationReachable",
+    "testNativeOneShotReviewCancelAndStaleDocumentRejection",
+    "testNativePermissionChildExitClosesTheOwnedServiceConnection",
+    "testNativePermissionGrantCancelRevokeAndRefreshRetainPage",
+    "testNativePermissionPanelEmptyStateAndCloseKeepBrowserAlive",
+    "testRuntimeLanguageSwitchPreservesPageEditorsPrivatePanelsAndRelaunch",
+    "testSwitchingTrustedPanelsCancelsSettingsAndOneShotConfirmation"
+  ],
+  "program_files_verified": 1902,
+  "backend_binaries_unchanged": 8,
+  "changed_inputs": [],
+  "changed_binaries": [],
+  "wrapper_cleanup": {
+    "SFTP_FIXTURE_CLEANUP": {
+      "root_removed": true,
+      "helper_exit": 0,
+      "helper_group_gone": true,
+      "server_group_gone": true
+    },
+    "AUTOMATIC_UPDATE_FIXTURE_SERVER_CLEANUP": {
+      "root_removed": true,
+      "server_thread_gone": true,
+      "owned_pids": {},
+      "remaining_owned_pids": [],
+      "owned_group_gone": true,
+      "command_group_gone": true
+    }
+  },
+  "log_sha256": "2efdd15fee53fe744aff8d9079bc8a296095f319905a585f17ce842f11f80d75",
+  "summary_sha256": "c584c1885faf61e39bdea15f84464de6b33e288d756a1b7fb88666aa6d238875",
+  "complete_native_acceptance": false
+}
