@@ -8854,3 +8854,26 @@ runtime oracles pass.
 This is measured whitespace compaction, not general edited-expression parity.
 Internal rewrites, additional helper families, multi-decorator source-map
 composition, complete K.0 and hosted CI remain open.
+
+### K.11 erased decorator assertion provenance (2026-10-12)
+
+A fifth pinned TypeScript 5.9.3 fixture erases `as any` within a relocated
+standard decorator expression. The public oracle first observed BlueTS mapping
+the surviving `decoSite` identifier to the preceding opening parenthesis; the
+corrected emitter matches Native's original identifier column and the
+expression-end array boundary, with equal inline source content, names and
+Node output. Relocation expansion now carries the exact ranges of zero-text
+edits. Token-level marks are retained only when every surviving generated
+token has the same ordered spelling as an original token and each erasure
+removes whole tokens. Nonempty rewrites, partial-token splices and unmatched
+tokens keep conservative source-range anchors. Focused tests cover both a
+whole-token erasure and a partial-token refusal. All four pinned K.11 oracle
+tests, both standard and legacy decorator runtime oracles, 251 BlueTS library
+tests, 162 BlueJS bridge library tests, format and warnings-denied two-crate
+all-target Clippy pass.
+
+TypeScript removes the outer parentheses in this assertion case while BlueTS
+retains them, so this oracle deliberately compares the common surviving token
+and expression end, not the full generated token set. Other edited-expression
+transforms, additional helper families, multi-decorator composition, complete
+K.0 and final-source hosted CI remain open.

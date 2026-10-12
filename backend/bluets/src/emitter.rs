@@ -621,8 +621,14 @@ fn apply_edits_with_provenance(
                             anchored = true;
                         }
                     }
-                    relocations::Part::Relocated { text, start, end } => {
-                        emitted.relocate(&text, start, end);
+                    relocations::Part::Relocated {
+                        text,
+                        start,
+                        end,
+                        erased,
+                        rewritten,
+                    } => {
+                        emitted.relocate(&text, start, end, &erased, rewritten);
                         anchored = true;
                     }
                 }

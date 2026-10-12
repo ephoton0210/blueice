@@ -39,12 +39,50 @@ fn incremental_source_positions_match_crlf_and_utf16_columns() {
 fn rewritten_relocation_does_not_claim_copied_token_columns() {
     let source = "original";
     let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(8));
-    emitter.relocate("rewritten", 0, source.len());
+    emitter.relocate("rewritten", 0, source.len(), &[], false);
     let emitted = emitter.finish();
     assert_eq!(emitted.javascript, "rewritten");
     assert_eq!(
         decode_mappings(&encode_mappings(&emitted.provenance)),
         vec![(0, 0, 0, 0), (0, 9, 0, 8)]
+    );
+}
+
+#[test]
+fn nonempty_relocation_edit_keeps_conservative_range_anchors() {
+    let source = "(deco as any)";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32));
+    emitter.relocate("(deco)", 0, source.len(), &[], true);
+    let emitted = emitter.finish();
+    assert_eq!(emitted.javascript, "(deco)");
+    assert_eq!(
+        decode_mappings(&encode_mappings(&emitted.provenance)),
+        vec![(0, 0, 0, 0), (0, 6, 0, 13)]
+    );
+}
+
+#[test]
+fn erased_relocation_maps_surviving_tokens_to_their_original_columns() {
+    let source = "(deco as any)";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32));
+    emitter.relocate("(deco)", 0, source.len(), &[(5, 12)], false);
+    let emitted = emitter.finish();
+    let mappings = decode_mappings(&encode_mappings(&emitted.provenance));
+    assert_eq!(emitted.javascript, "(deco)");
+    assert!(mappings.contains(&(0, 1, 0, 1)), "{mappings:?}");
+    assert!(mappings.contains(&(0, 6, 0, 13)), "{mappings:?}");
+}
+
+#[test]
+fn relocation_spliced_through_a_token_uses_range_anchors_only() {
+    let source = "(deco as any)";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32));
+    emitter.relocate("(dec)", 0, source.len(), &[(4, 12)], false);
+    let emitted = emitter.finish();
+    assert_eq!(emitted.javascript, "(dec)");
+    assert_eq!(
+        decode_mappings(&encode_mappings(&emitted.provenance)),
+        vec![(0, 0, 0, 0), (0, 5, 0, 13)]
     );
 }
 

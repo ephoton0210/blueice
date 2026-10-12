@@ -14,6 +14,8 @@ pub(super) enum Part {
         text: String,
         start: usize,
         end: usize,
+        erased: Vec<(usize, usize)>,
+        rewritten: bool,
     },
 }
 
@@ -56,6 +58,8 @@ pub(super) fn expand(replacement: &str, source: &str, edits: &[TextEdit]) -> Vec
         };
         let mut text = String::new();
         let mut cursor = start;
+        let mut erased = Vec::new();
+        let mut rewritten = false;
         for edit in edits.iter().filter(|edit| {
             edit.start >= start && edit.end <= end && !edit.replacement.contains('\u{0}')
         }) {
@@ -63,6 +67,13 @@ pub(super) fn expand(replacement: &str, source: &str, edits: &[TextEdit]) -> Vec
                 continue;
             }
             text.push_str(&source[cursor..edit.start]);
+            if edit.replacement.is_empty() {
+                if edit.start != edit.end {
+                    erased.push((edit.start, edit.end));
+                }
+            } else {
+                rewritten = true;
+            }
             for part in expand(&edit.replacement, source, edits) {
                 text.push_str(part.text());
             }
@@ -73,6 +84,8 @@ pub(super) fn expand(replacement: &str, source: &str, edits: &[TextEdit]) -> Vec
             text: compact_expression(&text),
             start,
             end,
+            erased,
+            rewritten,
         });
     }
     if !rest.is_empty() {
@@ -82,13 +95,20 @@ pub(super) fn expand(replacement: &str, source: &str, edits: &[TextEdit]) -> Vec
 }
 
 impl ProvenanceEmitter<'_> {
-    pub(super) fn relocate(&mut self, value: &str, source_start: usize, source_end: usize) {
+    pub(super) fn relocate(
+        &mut self,
+        value: &str,
+        source_start: usize,
+        source_end: usize,
+        erased: &[(usize, usize)],
+        rewritten: bool,
+    ) {
         if value == &self.source[source_start..source_end] {
             self.copy(value, source_start);
             self.mark(source_end);
             return;
         }
-        if self.segment_limit.is_none() {
+        if self.segment_limit.is_none() || rewritten {
             self.replace(value, source_start);
             self.mark(source_end);
             return;
@@ -101,6 +121,28 @@ impl ProvenanceEmitter<'_> {
                 token.start >= source_start
                     && token.end <= source_end
                     && token.kind != TokenKind::Eof
+            })
+            .collect::<Vec<_>>();
+        // Only whole erased tokens may be omitted. A splice through a token
+        // changes its spelling, so the surviving token sequence cannot claim
+        // byte-for-byte provenance even if a later token happens to match.
+        if source_tokens.iter().any(|(_, token)| {
+            erased.iter().any(|&(start, end)| {
+                token.start < end
+                    && start < token.end
+                    && !(start <= token.start && token.end <= end)
+            })
+        }) {
+            self.replace(value, source_start);
+            self.mark(source_end);
+            return;
+        }
+        let source_tokens = source_tokens
+            .into_iter()
+            .filter(|(_, token)| {
+                !erased
+                    .iter()
+                    .any(|&(start, end)| start <= token.start && token.end <= end)
             })
             .collect::<Vec<_>>();
         let Ok(generated_tokens) = lex("<relocated>", value) else {

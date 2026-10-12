@@ -656,6 +656,12 @@ A fourth pinned fixture now matches Native token columns through whitespace-
 compacted parenthesized relocation; changed-token rewrites retain conservative
 range anchors. Other internal rewrites, helper families, multi-decorator
 composition and the full gate remain open.
+A fifth pinned fixture now covers a type assertion erased inside a relocated
+decorator expression. BlueTS preserves the surviving identifier's Native source
+column and the expression-end boundary; edits that rewrite text or splice a
+token still use conservative range anchors. TypeScript also removes this
+fixture's outer parentheses, so generated-byte and full mapping-set parity for
+this expression remain open, as do broader internal rewrites and the K.0 gate.
 
 ### K.12 Projects — M10 — gap G-M2
 
