@@ -7,6 +7,12 @@
 use super::*;
 
 pub(super) enum BrowserTask {
+    AbortTimeout {
+        signal: ObjectId,
+        started: std::time::Instant,
+        delay: std::time::Duration,
+        root: Option<RootId>,
+    },
     DragString {
         callback: ObjectId,
         text: JsString,
@@ -78,6 +84,25 @@ impl Vm {
             };
             self.remaining_instructions = self.config.instruction_budget;
             let (result, root, next, report_page_exception) = match task {
+                BrowserTask::AbortTimeout {
+                    signal,
+                    started,
+                    delay,
+                    root,
+                } => match self.abort_timeout_task(signal, started, delay) {
+                    Ok(done) => (
+                        Ok(()),
+                        root,
+                        (!done).then_some(BrowserTask::AbortTimeout {
+                            signal,
+                            started,
+                            delay,
+                            root,
+                        }),
+                        false,
+                    ),
+                    Err(error) => (Err(error), root, None, false),
+                },
                 BrowserTask::DragString {
                     callback,
                     text,
@@ -91,7 +116,7 @@ impl Vm {
                             false,
                         )
                         .map(|_| ());
-                    (result, root, None, true)
+                    (result, Some(root), None, true)
                 }
                 BrowserTask::FileRead {
                     reader,
@@ -101,7 +126,7 @@ impl Vm {
                 } => match self.file_read_task(reader, epoch, stage) {
                     Ok(next) => (
                         Ok(()),
-                        root,
+                        Some(root),
                         next.map(|stage| BrowserTask::FileRead {
                             reader,
                             epoch,
@@ -110,12 +135,12 @@ impl Vm {
                         }),
                         false,
                     ),
-                    Err(error) => (Err(error), root, None, false),
+                    Err(error) => (Err(error), Some(root), None, false),
                 },
             };
             if let Some(next) = next {
                 self.browser_tasks.push_back(next);
-            } else {
+            } else if let Some(root) = root {
                 self.heap.unroot(root)?;
             }
             if let Err(error) = result {

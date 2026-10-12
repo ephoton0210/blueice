@@ -86,7 +86,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
     fixture.workers.push(thread::spawn(move || {
         let body = concat!(
             "<div id=initial>before</div><div id=selected>none</div><div id=streamed>pending</div>",
-            "<input id=upload type=file aria-label=Upload>",
+            "<input id=upload type=file aria-label=Upload><div id=cancelled>pending</div>",
             "<script>",
             "let lateReady=false, lateObserved=false; const initial=new FileReader();",
             "initial.onload=()=>{if(!lateReady) throw 'task ran before later scripts';};",
@@ -95,10 +95,15 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
             "const byteReader=new Blob([new Uint8Array([7,0,255])]).stream().getReader();",
             "byteReader.read().then(result=>{document.getElementById('streamed').textContent='stream:'+Array.from(result.value).join(',');});",
             "const upload=document.getElementById('upload'), events=[]; let selected=null;",
+            "const cancellation=new AbortController();let cancelledInput=0,cancelledLoad=0;",
+            "upload.addEventListener('input',()=>cancelledInput++,{signal:cancellation.signal});",
+            "initial.addEventListener('load',()=>cancelledLoad++,{signal:cancellation.signal});",
+            "cancellation.abort('removed');",
             "upload.addEventListener('input', ()=>{events.push('input');const reader=new FileReader();",
             "for(const type of ['loadstart','progress','load','loadend']) reader.addEventListener(type, ()=>events.push(type));",
             "reader.onload=()=>{selected=Array.from(new Uint8Array(reader.result));};",
-            "reader.onloadend=()=>{document.getElementById('selected').textContent=events.join(',')+':'+selected.join(',');};",
+            "reader.onloadend=()=>{document.getElementById('selected').textContent=events.join(',')+':'+selected.join(',');",
+            "document.getElementById('cancelled').textContent='cancelled:'+cancelledInput+':'+cancelledLoad+':'+cancellation.signal.reason;};",
             "reader.readAsArrayBuffer(upload.files[0]);});",
             "upload.addEventListener('change', ()=>events.push('change'));</script>",
             "<script>lateReady=true;initial.addEventListener('load',()=>{lateObserved=true;});</script>"
@@ -189,6 +194,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
         dom.contains("\"input,change,loadstart,progress,load,loadend:0,255,65\""),
         "{dom}"
     );
+    assert!(dom.contains("\"cancelled:0:0:removed\""), "{dom}");
     drop(stream);
     drop(core);
 }

@@ -217,6 +217,28 @@ impl Heap {
                 activate(entries, &marked, &mut waiting, &mut ephemeron_work);
             }
         }
+        // A dependent signal with observers stays alive only when at least
+        // one original source is independently live. The ordinary ephemeron
+        // worklist also handles sources discovered through WeakMap values.
+        for (dependent, object) in &self.objects {
+            let ObjectKind::WebAbortSignal(state) = &object.kind else {
+                continue;
+            };
+            if state.aborted() || !state.dependent || !state.observed() {
+                continue;
+            }
+            for source in state
+                .sources
+                .iter()
+                .filter(|source| self.objects.contains_key(source))
+            {
+                if key_is_live(source, &marked) {
+                    ephemeron_work.push(*dependent);
+                } else {
+                    waiting.entry(*source).or_default().push(*dependent);
+                }
+            }
+        }
         while let Some(id) = ephemeron_work.pop() {
             let obj = &self.objects[&id];
             if (young_only && !obj.young) || !marked.insert(id) {
@@ -296,6 +318,7 @@ impl Heap {
             }
         }
         self.remembered.clear();
+        self.clean_abort_weak_edges();
         self.minor_collections += 1;
     }
 
@@ -359,6 +382,7 @@ impl Heap {
             .saturating_mul(2)
             .max(self.config.major_threshold_bytes)
             .min(self.config.max_heap_bytes);
+        self.clean_abort_weak_edges();
         self.major_collections += 1;
     }
 }

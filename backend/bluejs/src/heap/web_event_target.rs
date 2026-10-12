@@ -15,6 +15,7 @@ pub(crate) struct WebListener {
     pub once: bool,
     pub passive: bool,
     pub handler: bool,
+    pub signal: Option<ObjectId>,
 }
 
 #[derive(Clone, Default)]
@@ -27,7 +28,7 @@ impl WebTargetData {
     pub fn references(&self) -> Vec<ObjectId> {
         self.listeners
             .iter()
-            .map(|listener| listener.callback)
+            .flat_map(|listener| std::iter::once(listener.callback).chain(listener.signal))
             .collect()
     }
 
@@ -54,6 +55,7 @@ impl Heap {
         match &self.object(object)?.kind {
             ObjectKind::WebEventTarget(state) => Ok(state),
             ObjectKind::WebFileReader(state) => Ok(&state.target),
+            ObjectKind::WebAbortSignal(state) => Ok(&state.target),
             _ => Err(HeapError::InvalidInternalSlot(object)),
         }
     }
@@ -80,6 +82,7 @@ impl Heap {
         match &mut entry.kind {
             ObjectKind::WebEventTarget(target) => **target = state,
             ObjectKind::WebFileReader(reader) => reader.target = state,
+            ObjectKind::WebAbortSignal(signal) => signal.target = state,
             _ => unreachable!("validated target"),
         }
         entry.bytes = entry.bytes - previous + bytes;

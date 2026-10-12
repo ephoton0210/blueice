@@ -845,6 +845,7 @@ impl Vm {
             Some(
                 NativeFunction::Function
                     | NativeFunction::WebUrl(crate::native::UrlNative::Constructor)
+                    | NativeFunction::WebAbort(crate::native::AbortNative::Controller | crate::native::AbortNative::Signal)
                     | NativeFunction::Blob
                     | NativeFunction::File
                     | NativeFunction::DOMException

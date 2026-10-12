@@ -94,6 +94,9 @@ impl Vm {
         };
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::WebAbort(native) => {
+                self.web_abort_call(native, &receiver, &args, construct)
+            }
             NativeFunction::WebUrl(native) => {
                 self.web_url_call(native, &receiver, &args, construct)
             }

@@ -130,6 +130,7 @@ impl Vm {
         let mut capture = false;
         let mut once = false;
         let mut passive = false;
+        let mut signal = None;
         if options.object_id().is_some() {
             let value = self.get_property(options, &"capture".into())?;
             capture = self.to_boolean(&value)?;
@@ -138,12 +139,8 @@ impl Vm {
                 once = self.to_boolean(&value)?;
                 let value = self.get_property(options, &"passive".into())?;
                 passive = self.to_boolean(&value)?;
-                let signal = self.get_property(options, &"signal".into())?;
-                if signal != Value::Undefined && signal != Value::Null {
-                    return Err(RuntimeError::TypeError(
-                        "Listener signal requires an AbortSignal".into(),
-                    ));
-                }
+                let value = self.get_property(options, &"signal".into())?;
+                signal = self.abort_signal_argument(&value)?;
             }
         } else if *options != Value::Undefined {
             capture = self.to_boolean(options)?;
@@ -151,6 +148,13 @@ impl Vm {
         let Some(callback) = callback else {
             return Ok(Value::Undefined);
         };
+        if signal.is_some_and(|signal| {
+            self.heap
+                .abort_signal(signal)
+                .is_ok_and(|state| state.aborted())
+        }) {
+            return Ok(Value::Undefined);
+        }
         let mut state = self.heap.web_event_target(object)?.clone();
         let existing = state.listeners.iter().position(|listener| {
             !listener.handler
@@ -161,11 +165,26 @@ impl Vm {
         match native {
             TargetNative::Remove => {
                 if let Some(index) = existing {
-                    state.listeners.remove(index);
+                    let removed = state.listeners.remove(index);
+                    if let Some(signal) = removed.signal {
+                        self.detach_abort_hook(
+                            signal,
+                            crate::heap::AbortHook::Web {
+                                target: object,
+                                serial: removed.serial,
+                            },
+                        )?;
+                    }
                 }
             }
             TargetNative::Add if existing.is_none() => {
-                if state.listeners.len() >= 4096 {
+                if state.listeners.len() >= 4096
+                    || signal.is_some_and(|signal| {
+                        self.heap
+                            .abort_signal(signal)
+                            .is_ok_and(|state| state.hooks.len() >= 4096)
+                    })
+                {
                     return Err(RuntimeError::RangeError(
                         "Event listener limit exceeded".into(),
                     ));
@@ -174,6 +193,7 @@ impl Vm {
                     RuntimeError::RangeError("Event listener identity exhausted".into())
                 })?;
                 state.listeners.push(WebListener {
+                    signal,
                     serial: state.next_serial,
                     name,
                     callback,
@@ -185,7 +205,22 @@ impl Vm {
             }
             _ => {}
         }
+        let added = if native == TargetNative::Add && existing.is_none() {
+            Some(state.next_serial)
+        } else {
+            None
+        };
         self.with_roots(|heap| heap.set_web_event_target(object, state))?;
+        if let (Some(signal), Some(serial)) = (signal, added) {
+            self.attach_abort_hook(
+                signal,
+                crate::heap::AbortHook::Web {
+                    target: object,
+                    serial,
+                },
+            )?;
+        }
+        self.refresh_abort_timer_roots(object)?;
         Ok(Value::Undefined)
     }
 
@@ -244,11 +279,21 @@ impl Vm {
                     self.stack.push(Value::Object(listener.callback));
                     let called = (|| {
                         if listener.once {
+                            if let Some(signal) = listener.signal {
+                                self.detach_abort_hook(
+                                    signal,
+                                    crate::heap::AbortHook::Web {
+                                        target,
+                                        serial: listener.serial,
+                                    },
+                                )?;
+                            }
                             let mut state = self.heap.web_event_target(target)?.clone();
                             state
                                 .listeners
                                 .retain(|candidate| candidate.serial != serial);
                             self.with_roots(|heap| heap.set_web_event_target(target, state))?;
+                            self.refresh_abort_timer_roots(target)?;
                         }
                         let mut state = self.heap.drag_event(event)?.clone();
                         state.passive = listener.passive;

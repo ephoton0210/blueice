@@ -276,6 +276,7 @@ impl Vm {
                     RuntimeError::RangeError("Event listener identity exhausted".into())
                 })?;
                 target.listeners.push(WebListener {
+                    signal: None,
                     serial: target.next_serial,
                     name: name.into(),
                     callback,

@@ -43,6 +43,7 @@ mod shadow_realm;
 mod temporal;
 mod test262;
 mod test262_agents;
+mod web_abort;
 mod web_dom_exception;
 mod web_drag_drop;
 mod web_event_target;
@@ -1162,7 +1163,8 @@ impl Vm {
         self.install_web_event_target()?;
         self.install_web_progress_events()?;
         self.install_web_file_reader()?;
-        self.install_web_streams()
+        self.install_web_streams()?;
+        self.install_web_abort()
     }
 
     /// Installs one non-constructable host function as an own property of
@@ -1735,6 +1737,7 @@ impl Vm {
                 function,
                 NativeFunction::String
                     | NativeFunction::WebUrl(crate::native::UrlNative::Constructor)
+                    | NativeFunction::WebAbort(crate::native::AbortNative::Controller | crate::native::AbortNative::Signal)
                     | NativeFunction::Blob
                     | NativeFunction::File
                     | NativeFunction::DOMException

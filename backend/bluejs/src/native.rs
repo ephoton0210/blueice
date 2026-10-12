@@ -271,7 +271,23 @@ pub(crate) enum UrlNative {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AbortNative {
+    Controller,
+    Signal,
+    ControllerSignal,
+    Abort,
+    Aborted,
+    Reason,
+    ThrowIfAborted,
+    StaticAbort,
+    Any,
+    Timeout,
+    Handler(bool),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
+    WebAbort(AbortNative),
     WebUrl(UrlNative),
     DOMException,
     DOMExceptionName,

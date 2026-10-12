@@ -392,6 +392,8 @@ impl Heap {
                 ObjectKind::WebDOMException { name, message } => {
                     name.byte_len().saturating_add(message.byte_len())
                 }
+                ObjectKind::WebAbortSignal(state) => state.bytes(),
+                ObjectKind::WebAbortController(_) => 0,
                 ObjectKind::WebUrl(url) => size_of::<url::Url>() + url.as_str().len(),
                 ObjectKind::WebBlob(blob) => blob
                     .bytes

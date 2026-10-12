@@ -161,6 +161,7 @@ pub(super) struct HostClickListener {
     key: HostObjectKey,
     callback: ObjectId,
     root: RootId,
+    signal: Option<(ObjectId, RootId)>,
     selection: Option<HostFileSelectionEvent>,
     drag: Option<HostDragEventKind>,
     capture: bool,
@@ -494,6 +495,7 @@ impl Vm {
             };
         let options = native::argument(args, 2);
         let (mut capture, mut once, mut passive) = (false, false, false);
+        let mut signal = None;
         if options.object_id().is_some() {
             let value = self.get_property(options, &"capture".into())?;
             capture = self.to_boolean(&value)?;
@@ -502,12 +504,8 @@ impl Vm {
                 once = self.to_boolean(&value)?;
                 let value = self.get_property(options, &"passive".into())?;
                 passive = self.to_boolean(&value)?;
-                let signal = self.get_property(options, &"signal".into())?;
-                if signal != Value::Undefined {
-                    return Err(RuntimeError::TypeError(
-                        "signal requires an owner-installed AbortSignal".into(),
-                    ));
-                }
+                let value = self.get_property(options, &"signal".into())?;
+                signal = self.abort_signal_argument(&value)?;
             }
         } else if *options != Value::Null && *options != Value::Undefined {
             capture = self.to_boolean(options)?;
@@ -515,6 +513,13 @@ impl Vm {
         let Some(callback) = callback else {
             return Ok(Value::Undefined);
         };
+        if signal.is_some_and(|signal| {
+            self.heap
+                .abort_signal(signal)
+                .is_ok_and(|state| state.aborted())
+        }) {
+            return Ok(Value::Undefined);
+        }
         let existing = self.host_click_listeners.iter().position(|listener| {
             listener.family_index == family_index
                 && listener.key == key
@@ -530,7 +535,13 @@ impl Vm {
                     .iter()
                     .filter(|listener| listener.family_index == family_index)
                     .count();
-                if count >= MAX_HOST_CLICK_LISTENERS_PER_FAMILY {
+                if count >= MAX_HOST_CLICK_LISTENERS_PER_FAMILY
+                    || signal.is_some_and(|signal| {
+                        self.heap
+                            .abort_signal(signal)
+                            .is_ok_and(|state| state.hooks.len() >= 4096)
+                    })
+                {
                     return Err(RuntimeError::RangeError(
                         "host click listener limit exceeded".into(),
                     ));
@@ -542,6 +553,7 @@ impl Vm {
                         RuntimeError::RangeError("listener identity exhausted".into())
                     })?;
                 let root = self.heap.root(callback)?;
+                let signal_root = signal.map(|signal| self.heap.root(signal)).transpose()?;
                 self.next_host_listener_serial = serial;
                 self.host_click_listeners.push(HostClickListener {
                     serial,
@@ -549,18 +561,38 @@ impl Vm {
                     key,
                     callback,
                     root,
+                    signal: signal.zip(signal_root),
                     selection,
                     drag,
                     capture,
                     once,
                     passive,
                 });
+                if let Some(signal) = signal {
+                    self.attach_abort_hook(signal, crate::heap::AbortHook::Host { serial })?;
+                }
             }
         } else if let Some(index) = existing {
-            let listener = self.host_click_listeners.remove(index);
-            self.heap.unroot(listener.root)?;
+            let serial = self.host_click_listeners[index].serial;
+            self.remove_host_listener_serial(serial)?;
         }
         Ok(Value::Undefined)
+    }
+
+    pub(super) fn remove_host_listener_serial(&mut self, serial: u64) -> Result<(), RuntimeError> {
+        if let Some(index) = self
+            .host_click_listeners
+            .iter()
+            .position(|listener| listener.serial == serial)
+        {
+            let listener = self.host_click_listeners.remove(index);
+            self.heap.unroot(listener.root)?;
+            if let Some((signal, root)) = listener.signal {
+                self.detach_abort_hook(signal, crate::heap::AbortHook::Host { serial })?;
+                self.heap.unroot(root)?;
+            }
+        }
+        Ok(())
     }
 
     fn invoke_host_listener(
@@ -577,8 +609,8 @@ impl Vm {
             return Ok(Value::Undefined);
         };
         if listener.once {
-            let removed = self.host_click_listeners.remove(index);
-            self.heap.unroot(removed.root)?;
+            let serial = self.host_click_listeners[index].serial;
+            self.remove_host_listener_serial(serial)?;
         }
         if self.heap.drag_event(event).is_ok() {
             let mut state = self.heap.drag_event(event)?.clone();

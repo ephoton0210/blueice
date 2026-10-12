@@ -49,12 +49,14 @@ mod lifecycle;
 mod object_storage;
 #[cfg(test)]
 mod tests;
+mod web_abort;
 mod web_drag_drop;
 mod web_event_target;
 mod web_file_api;
 mod web_file_reader;
 mod web_streams;
 mod web_url;
+pub(crate) use web_abort::{AbortData, AbortHook};
 pub(crate) use web_drag_drop::{DragEventState, DragItem, DragItemData, DragStore, DragStoreMode};
 pub(crate) use web_event_target::{WebListener, WebTargetData};
 pub(crate) use web_file_reader::{FileReadKind, FileReaderState};
@@ -890,6 +892,8 @@ enum ObjectKind {
         /// whose bytes nothing may write after that allocation.
         immutable: bool,
     },
+    WebAbortController(ObjectId),
+    WebAbortSignal(Box<AbortData>),
     WebUrl(Box<url::Url>),
     WebBlob(WebBlobData),
     WebFileList(Vec<ObjectId>),
@@ -1364,6 +1368,8 @@ impl Object {
                     .chain(bound.args.iter().filter_map(Value::object_id))
                     .collect(),
                 ObjectKind::NativeFunction { function, .. } => function.references(),
+                ObjectKind::WebAbortController(signal) => vec![*signal],
+                ObjectKind::WebAbortSignal(state) => state.references(),
                 ObjectKind::WebUrl(_) => Vec::new(),
                 ObjectKind::WebFileList(files) => files.clone(),
                 ObjectKind::WebDataTransfer(store) => store.references(),
