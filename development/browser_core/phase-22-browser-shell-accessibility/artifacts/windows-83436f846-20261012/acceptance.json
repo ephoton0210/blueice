@@ -1,0 +1,265 @@
+{
+    "status":  "windows-acceptance-passed",
+    "started":  "2026-10-12T14:54:19.8542318Z",
+    "pid":  13156,
+    "root":  "B:\\BlueIce\\workspaces\\blueice-downloads",
+    "parent_commit":  "83436f8461c6f681df183473ecb7dcbe83423605",
+    "manifest_sha256":  "0e34b26e4ef6e56796975f05653a6815c41f8be83997dee930f30f61d71b7eb3",
+    "steps":  [
+                  {
+                      "name":  "rust-fmt",
+                      "command":  "\u0026 \u0027B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\format-workspace28.ps1\u0027",
+                      "exit_code":  0,
+                      "seconds":  38.996249,
+                      "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-fmt.log",
+                      "log_sha256":  "02a92ed809a18e00b21625860e1bd4b9f2577cfd38bb25872f2b5eab7bcc10be",
+                      "rust_counts":  {
+                                          "ignored":  0,
+                                          "groups":  0,
+                                          "failed":  0,
+                                          "passed":  0
+                                      }
+                  },
+                  {
+                      "name":  "rust-clippy",
+                      "command":  "\u0026 cargo +1.96.0-x86_64-pc-windows-msvc clippy --workspace --all-targets --locked -- -D warnings",
+                      "exit_code":  0,
+                      "seconds":  132.0144367,
+                      "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-clippy.log",
+                      "log_sha256":  "9c247cfe2251edcd8b7b8be313d1f463a1023ecf9b37003a549c007c59f396e5",
+                      "rust_counts":  {
+                                          "ignored":  0,
+                                          "groups":  0,
+                                          "failed":  0,
+                                          "passed":  0
+                                      }
+                  },
+                  {
+                      "name":  "rust-build",
+                      "command":  "\u0026 cargo +1.96.0-x86_64-pc-windows-msvc build --workspace --all-targets --locked",
+                      "exit_code":  0,
+                      "seconds":  2377.3336096,
+                      "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-build.log",
+                      "log_sha256":  "8b2466fa9ca6a01fcf3f4bf8babda3a599f2dc04ed3c761a70db9b6d9469afb0",
+                      "rust_counts":  {
+                                          "ignored":  0,
+                                          "groups":  0,
+                                          "failed":  0,
+                                          "passed":  0
+                                      }
+                  },
+                  {
+                      "name":  "rust-test",
+                      "command":  "\u0026 cargo +1.96.0-x86_64-pc-windows-msvc test --workspace --no-fail-fast --locked",
+                      "exit_code":  0,
+                      "seconds":  3986.8588176999997,
+                      "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-test.log",
+                      "log_sha256":  "531c8980282b582f8a1ada0c0eb3325bc30fd0d77d277e0c6319679760b847b0",
+                      "rust_counts":  {
+                                          "ignored":  64,
+                                          "groups":  495,
+                                          "failed":  0,
+                                          "passed":  5670
+                                      }
+                  },
+                  {
+                      "name":  "winui-build",
+                      "command":  "\u0026 \u0027B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc\\winui-msvc-build.ps1\u0027",
+                      "exit_code":  0,
+                      "seconds":  533.3108112,
+                      "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc\\winui-build.log",
+                      "log_sha256":  "ba70c55ddc267762b81683a9c99384b73ee134d6e0f4f594e3cc140328303401",
+                      "rust_counts":  {
+                                          "ignored":  0,
+                                          "groups":  0,
+                                          "failed":  0,
+                                          "passed":  0
+                                      }
+                  },
+                  {
+                      "name":  "winui-protocol",
+                      "command":  "\u0026 dotnet run --project \u0027B:\\BlueIce\\workspaces\\blueice-downloads\\frontend\\winui\\tests\\ProtocolTests.csproj\u0027 -- \u0027B:\\BlueIce\\workspaces\\blueice-downloads\\target\\debug\\blueice-core.exe\u0027",
+                      "exit_code":  0,
+                      "seconds":  12.174852399999999,
+                      "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc\\winui-protocol.log",
+                      "log_sha256":  "d243f3f4f6aa856efeb7851dc530cb384887a35bd7798597ec2751e4b02143fb",
+                      "rust_counts":  {
+                                          "ignored":  0,
+                                          "groups":  0,
+                                          "failed":  0,
+                                          "passed":  0
+                                      }
+                  }
+              ],
+    "target":  "B:\\BlueIce\\workspaces\\blueice-downloads\\target",
+    "source_files":  2112,
+    "program_files":  1863,
+    "ui_task":  "BlueIce-Followup-20261012-a680de0e91f64c669de08789f2172886",
+    "process_execution_policy":  "Bypass",
+    "execution_policy_scopes_before":  [
+                                           {
+                                               "scope":  "MachinePolicy",
+                                               "policy":  "Undefined"
+                                           },
+                                           {
+                                               "scope":  "UserPolicy",
+                                               "policy":  "Undefined"
+                                           },
+                                           {
+                                               "scope":  "CurrentUser",
+                                               "policy":  "Undefined"
+                                           },
+                                           {
+                                               "scope":  "LocalMachine",
+                                               "policy":  "Undefined"
+                                           }
+                                       ],
+    "toolchains_before":  "stable-x86_64-pc-windows-gnu\r\nstable-x86_64-pc-windows-msvc (default)\r\n1.95.0-x86_64-pc-windows-gnu\r\n1.95.0-x86_64-pc-windows-msvc\r\n1.96.0-x86_64-pc-windows-gnu (active)\r\n1.96.0-x86_64-pc-windows-msvc\r\n",
+    "vs_dev_command":  "X:\\BuildTools\\Common7\\Tools\\VsDevCmd.bat",
+    "rustc":  "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "dotnet":  "10.0.400",
+    "reused_rust_acceptance":  {
+                                   "source":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-mta\\acceptance-result.json",
+                                   "sha256":  "9c5e3d299b8b3fb3c6bc4f8a917c12b4336f290b2e8bee8ee07f87cd62b21248",
+                                   "steps":  [
+                                                 {
+                                                     "name":  "rust-fmt",
+                                                     "command":  "\u0026 \u0027B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\format-workspace28.ps1\u0027",
+                                                     "exit_code":  0,
+                                                     "seconds":  38.996249,
+                                                     "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-fmt.log",
+                                                     "log_sha256":  "02a92ed809a18e00b21625860e1bd4b9f2577cfd38bb25872f2b5eab7bcc10be",
+                                                     "rust_counts":  {
+                                                                         "ignored":  0,
+                                                                         "groups":  0,
+                                                                         "failed":  0,
+                                                                         "passed":  0
+                                                                     }
+                                                 },
+                                                 {
+                                                     "name":  "rust-clippy",
+                                                     "command":  "\u0026 cargo +1.96.0-x86_64-pc-windows-msvc clippy --workspace --all-targets --locked -- -D warnings",
+                                                     "exit_code":  0,
+                                                     "seconds":  132.0144367,
+                                                     "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-clippy.log",
+                                                     "log_sha256":  "9c247cfe2251edcd8b7b8be313d1f463a1023ecf9b37003a549c007c59f396e5",
+                                                     "rust_counts":  {
+                                                                         "ignored":  0,
+                                                                         "groups":  0,
+                                                                         "failed":  0,
+                                                                         "passed":  0
+                                                                     }
+                                                 },
+                                                 {
+                                                     "name":  "rust-build",
+                                                     "command":  "\u0026 cargo +1.96.0-x86_64-pc-windows-msvc build --workspace --all-targets --locked",
+                                                     "exit_code":  0,
+                                                     "seconds":  2377.3336096,
+                                                     "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-build.log",
+                                                     "log_sha256":  "8b2466fa9ca6a01fcf3f4bf8babda3a599f2dc04ed3c761a70db9b6d9469afb0",
+                                                     "rust_counts":  {
+                                                                         "ignored":  0,
+                                                                         "groups":  0,
+                                                                         "failed":  0,
+                                                                         "passed":  0
+                                                                     }
+                                                 },
+                                                 {
+                                                     "name":  "rust-test",
+                                                     "command":  "\u0026 cargo +1.96.0-x86_64-pc-windows-msvc test --workspace --no-fail-fast --locked",
+                                                     "exit_code":  0,
+                                                     "seconds":  3986.8588176999997,
+                                                     "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-test.log",
+                                                     "log_sha256":  "531c8980282b582f8a1ada0c0eb3325bc30fd0d77d277e0c6319679760b847b0",
+                                                     "rust_counts":  {
+                                                                         "ignored":  64,
+                                                                         "groups":  495,
+                                                                         "failed":  0,
+                                                                         "passed":  5670
+                                                                     }
+                                                 },
+                                                 {
+                                                     "name":  "winui-build",
+                                                     "command":  "\u0026 \u0027B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc\\winui-msvc-build.ps1\u0027",
+                                                     "exit_code":  0,
+                                                     "seconds":  533.3108112,
+                                                     "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc\\winui-build.log",
+                                                     "log_sha256":  "ba70c55ddc267762b81683a9c99384b73ee134d6e0f4f594e3cc140328303401",
+                                                     "rust_counts":  {
+                                                                         "ignored":  0,
+                                                                         "groups":  0,
+                                                                         "failed":  0,
+                                                                         "passed":  0
+                                                                     }
+                                                 },
+                                                 {
+                                                     "name":  "winui-protocol",
+                                                     "command":  "\u0026 dotnet run --project \u0027B:\\BlueIce\\workspaces\\blueice-downloads\\frontend\\winui\\tests\\ProtocolTests.csproj\u0027 -- \u0027B:\\BlueIce\\workspaces\\blueice-downloads\\target\\debug\\blueice-core.exe\u0027",
+                                                     "exit_code":  0,
+                                                     "seconds":  12.174852399999999,
+                                                     "log":  "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc\\winui-protocol.log",
+                                                     "log_sha256":  "d243f3f4f6aa856efeb7851dc530cb384887a35bd7798597ec2751e4b02143fb",
+                                                     "rust_counts":  {
+                                                                         "ignored":  0,
+                                                                         "groups":  0,
+                                                                         "failed":  0,
+                                                                         "passed":  0
+                                                                     }
+                                                 }
+                                             ],
+                                   "reason":  "Same frozen product source; completed Rust/build/protocol logs verified before retrying all seven desktop cases with the same corrected owned-window close driver and an MTA desktop client, direct phase traces and plain-string JSON publication"
+                               },
+    "current":  "winui-desktop",
+    "desktop_session":  1,
+    "disk":  {
+                 "free_b":  295568084992,
+                 "free_c":  7250726912,
+                 "target_bytes":  17405602513,
+                 "max_target_bytes":  25769803776,
+                 "min_free_b":  53687091200,
+                 "min_free_c":  4294967296
+             },
+    "ui":  {
+               "exit_code":  0,
+               "error":  null,
+               "pid":  15000,
+               "session":  1,
+               "apartment":  "MTA",
+               "pass_count":  7,
+               "results":  "PASS real WinUI window and core-rendered credits\r\nPASS reload preserves the committed URL\r\nPASS settings, back and forward\r\nPASS create, select and close tabs\r\nPASS external navigation fails closed visibly\r\nPAGE_BOUNDS=28,145,944,488\r\nADDRESS_BOUNDS=178,107,650,32\r\nPASS visible rendered page pixels (2999 dark samples)\r\nPASS window close stops core and removes frames\r\n",
+               "artifacts":  {
+                                 "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-json\\winui-desktop.log":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                 "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-json\\winui-artifacts\\results.txt":  "46f0b45c987bf968f9c38eb0289b9502e4344dbc6ba97b760ba3d04555bd1104",
+                                 "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-json\\winui-artifacts\\window.png":  "1c4c75bbe95926f6bc3e86e99143cc785c0f62e5465e326cb59d9b992270569c"
+                             }
+           },
+    "ui_task_exit":  0,
+    "toolchains_after":  "stable-x86_64-pc-windows-gnu\r\nstable-x86_64-pc-windows-msvc (default)\r\n1.95.0-x86_64-pc-windows-gnu\r\n1.95.0-x86_64-pc-windows-msvc\r\n1.96.0-x86_64-pc-windows-gnu (active)\r\n1.96.0-x86_64-pc-windows-msvc\r\n",
+    "execution_policy_scopes_after":  [
+                                          {
+                                              "scope":  "MachinePolicy",
+                                              "policy":  "Undefined"
+                                          },
+                                          {
+                                              "scope":  "UserPolicy",
+                                              "policy":  "Undefined"
+                                          },
+                                          {
+                                              "scope":  "CurrentUser",
+                                              "policy":  "Undefined"
+                                          },
+                                          {
+                                              "scope":  "LocalMachine",
+                                              "policy":  "Undefined"
+                                          }
+                                      ],
+    "source_unchanged":  true,
+    "ui_task_removed":  true,
+    "ui_cleanup_candidates":  [
+
+                              ],
+    "remaining_owned_ui":  [
+
+                           ],
+    "finished":  "2026-10-12T14:55:12.9851352Z"
+}

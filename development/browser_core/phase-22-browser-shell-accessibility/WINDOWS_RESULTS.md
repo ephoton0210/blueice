@@ -76,3 +76,37 @@ The final local/Linux/Windows digest across 20 implementation, test and
 frontend build files is:
 
 `2cac149d968a45a329f02d667147a7efa0f2e25f0d3387fc20f7b39ef242f3b6`
+
+## Complete same-source follow-up on 2026-10-12
+
+Frozen product source `83436f846` passes the complete Windows Rust workspace:
+5,670 passed, zero failed, 64 ignored across 495 groups. All 25 workspace
+packages/474 formatter targets, strict workspace/all-target Clippy and the
+complete all-target build pass. WinUI native build and five actual-Core
+protocol cases also pass. An independent logged-in session-1 desktop run
+passes all seven existing cases, including 2,999 dark viewport samples and
+ordinary window close stopping Core/removing frame directories. The desktop
+task and full bootstrap both exit zero; all 2,112 source files remain
+unchanged. A separate final audit finds no owned task, desktop helper or app.
+
+The original build chose GNU through an ambiguous Rust toolchain selector;
+the external validation helper pins MSVC and the production build fix is
+committed separately. The UIA provider omitted WindowPattern, so the corrected
+smoke driver validates the owned HWND/PID before sending ordinary WM_CLOSE.
+The seven assertions are preserved. Subsequent STA and MTA driver attempts
+passed all seven assertions but stalled during JSON publication: Windows
+PowerShell 5.1 Get-Content strings carry provider/drive metadata. The direct
+traces and independent plain-string probe identify that serializer boundary.
+Reading results with ReadAllText fixes publication without changing any test
+assertion. Microsoft documents the
+[string-property serialization behavior](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/convertto-json?view=powershell-7.6).
+
+Build products, caches and TEMP/TMP use the dedicated B: test space. Final
+free space is C: 6.75 GiB/B: 275.28 GiB; original disk guards remain active.
+The [complete receipt](artifacts/windows-83436f846-results.json),
+[desktop results](artifacts/windows-83436f846-20261012/ui-results.txt) and
+[screenshot](artifacts/windows-83436f846-20261012/window.png) preserve source,
+log/artifact hashes, failed attempts, actual command scopes and cleanup.
+This acceptance predates the later object URL/AbortSignal/CustomEvent code;
+those changes need fresh complete gates. Physical-system acceptance remains
+independent.

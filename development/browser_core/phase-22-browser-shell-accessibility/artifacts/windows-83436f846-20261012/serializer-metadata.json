@@ -1,0 +1,17 @@
+{
+  "version": "5.1.26100.9444",
+  "decorated_note_properties": [
+    "PSPath",
+    "PSParentPath",
+    "PSChildName",
+    "PSDrive",
+    "PSProvider",
+    "ReadCount"
+  ],
+  "plain_note_properties": [],
+  "owned_probe_cleanup": {
+    "pid": 14860,
+    "created": "2026-10-12T14:43:51.7700920Z",
+    "reason": "Confirmed Get-Content decorated-string serialization stall; plain-string probe completed"
+  }
+}

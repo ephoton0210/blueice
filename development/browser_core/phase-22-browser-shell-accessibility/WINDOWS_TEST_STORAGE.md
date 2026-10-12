@@ -101,9 +101,18 @@ propagation. The corrected scripts also pass the guest PowerShell parser.
 
 The separate `acceptance-20261012-retry1` attempt has passed workspace format
 and strict workspace/all-target Clippy, complete all-target build and complete
-Rust execution: 5,670 passed, zero failed and 64 ignored. WinUI acceptance is
-still pending. Its initial build selected the GNU toolchain via `+1.96.0`;
+Rust execution: 5,670 passed, zero failed and 64 ignored. Its initial WinUI
+build selected the GNU toolchain via `+1.96.0`;
 `build.ps1` now selects `+1.96.0-x86_64-pc-windows-msvc`. A separate follow-up
 uses an explicitly pinned helper against the unchanged frozen Rust/C# source
 and verifies all previously completed Rust receipt hashes before reuse. The tracked follow-up receipt retains
 the original stop reason, helper source hash and regression evidence.
+
+The final same-source acceptance has now passed: WinUI native build, five
+actual-Core protocol cases and seven logged-in desktop cases. Both the
+desktop task and complete bootstrap exit zero; source hashes and permanent
+execution policies/toolchains are unchanged. The task, helpers, frontend and
+Core are gone, and frame directories were removed by ordinary window close.
+The final storage audit reports C: 6.75 GiB and B: 275.28 GiB free. See the
+[complete receipt](artifacts/windows-83436f846-results.json). Later API
+increments require separate complete acceptance.

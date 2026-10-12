@@ -1,0 +1,22 @@
+{
+  "status": "final-owned-cleanup-verified",
+  "task_exists": false,
+  "desktop_helpers": [],
+  "owned_apps": [],
+  "storage": [
+    {
+      "DriveLetter": "C",
+      "FileSystemLabel": "",
+      "FileSystem": "NTFS",
+      "Size": 150323851264,
+      "SizeRemaining": 7249690624
+    },
+    {
+      "DriveLetter": "B",
+      "FileSystemLabel": "BlueIceTests320",
+      "FileSystem": "NTFS",
+      "Size": 343579553792,
+      "SizeRemaining": 295577165824
+    }
+  ]
+}
