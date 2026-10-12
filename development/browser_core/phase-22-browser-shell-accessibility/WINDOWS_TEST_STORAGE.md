@@ -116,3 +116,21 @@ Core are gone, and frame directories were removed by ordinary window close.
 The final storage audit reports C: 6.75 GiB and B: 275.28 GiB free. See the
 [complete receipt](artifacts/windows-83436f846-results.json). Later API
 increments require separate complete acceptance.
+
+## Current-source validation on 2026-10-13
+
+The integrated `ec4217440` source is staged on B: with all 2,186 archived
+files verified, including 1,902 program inputs. Its formatter covers 25
+workspace packages and 495 targets, and strict workspace/all-target Clippy
+passes. The first full build stopped when its target directory reached
+25,933,694,145 bytes, exceeding the historical 24 GiB controller limit;
+B: still had 287,138,021,376 bytes free and C: 7,248,465,920 bytes free.
+That stopped attempt and its logs remain available.
+
+The separate `acceptance-20261013-ec4217440-retry1` controller raises only
+the target cap to 60 GiB for this 320 GiB volume. The B: 50 GiB and C: 4 GiB
+free-space guards remain enforced. It verifies unchanged source and receipt
+hashes before reusing the completed formatter and Clippy gates. The complete
+all-target build now exits zero; full Rust execution and WinUI acceptance
+are still running. These intermediate results do not establish acceptance
+of the current source. All caches and temporary files continue to use B:.

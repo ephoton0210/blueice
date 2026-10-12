@@ -207,3 +207,23 @@ independent audit finds no owned task/helpers/apps. Earlier GNU selection,
 unsupported close pattern and JSON-publication failures remain recorded in
 the [complete receipt](artifacts/windows-83436f846-results.json). Later API
 increments still require current-source complete gates.
+
+## Integrated source gates on 2026-10-13
+
+The `88c1f1438` macOS complete Rust gate finishes with 7,537 passed, zero
+failed and 69 ignored across 503 result groups. All 1,882 frozen program
+inputs match immediately after terminal exit zero; see the
+[receipt](artifacts/macos-workspace-88c1f1438-results.json). Only afterward
+was the main branch fast-forwarded to integrated `ec4217440`, preserving
+the committed Windows build/close fixes and CustomEvent, node events, tee,
+Promise GC and async stream iteration increments.
+
+Fresh complete macOS Rust and native gates are running for `ec4217440`.
+The native gate has already passed all 178 protocol methods but has four
+UI failures involving a missing permissions window; the failure record
+is retained and diagnosis is in progress. Complete native acceptance is
+not established. The integrated Windows source passes full formatter
+scope, strict Clippy and complete all-target build; its full Rust and
+WinUI gates remain running. The larger target cap and retained first stop
+are documented in [test storage](WINDOWS_TEST_STORAGE.md). Physical
+Zhuyin/VoiceOver/monitor/printer acceptance remains open.
