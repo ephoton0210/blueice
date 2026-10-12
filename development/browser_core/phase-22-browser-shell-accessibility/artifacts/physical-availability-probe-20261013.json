@@ -1,0 +1,35 @@
+{
+  "scope": "Read-only physical display/printer availability report; no physical transition or system accessibility/input acceptance",
+  "probe_utc_time": "2026-10-12T15:45:39.733558+00:00",
+  "report_sha256": "eab47eb6ea8498427eda51eda458a78ebeb3d688671db6dbf09a9b1bf40967cc",
+  "report": {
+    "SPDisplaysDataType": [
+      {
+        "_name": "Apple M4",
+        "spdisplays_metal": "spdisplays_supported",
+        "spdisplays_vendor": "sppci_vendor_Apple",
+        "sppci_bus": "spdisplays_builtin",
+        "sppci_cores": "10",
+        "sppci_device_type": "spdisplays_gpu",
+        "sppci_model": "Apple M4"
+      }
+    ],
+    "SPPrintersDataType": [
+      {
+        "cupsversion": "CUPS/2.3.4 (macOS 27.0.1; arm64) IPP/2.0",
+        "status": "no_info_found"
+      }
+    ]
+  },
+  "observations": [
+    "Display report identifies Apple M4 graphics but omits display details; physical monitor absence is not established",
+    "Printer report returns no_info_found; no configured printer is reported"
+  ],
+  "completion": {
+    "actual_ime_accepted": false,
+    "actual_voiceover_accepted": false,
+    "physical_monitor_transition_accepted": false,
+    "physical_printer_transition_accepted": false
+  },
+  "pending": "Physical device availability and actual Runner authorization; existing questions remain unanswered"
+}
