@@ -25,6 +25,26 @@ powershell -File frontend/winui/tests/WindowSmoke.ps1 `
   -ArtifactDirectory <test-output-directory>
 ```
 
+On the owner's Windows validation VM, use the dedicated `BlueIceTests320`
+NTFS volume at B:. Keep the checkout in
+`B:\BlueIce\workspaces\blueice-downloads` and run each command above through
+`scripts/test-with-windows-storage.ps1`. For example:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  B:\BlueIce\workspaces\blueice-downloads\scripts\test-with-windows-storage.ps1 `
+  -Workspace B:\BlueIce\workspaces\blueice-downloads `
+  cargo +1.96.0-x86_64-pc-windows-msvc test --workspace --no-fail-fast --locked
+```
+
+Use the wrapper for the WinUI build, protocol tests and the entry point of
+logged-in desktop helpers too. Store `WindowSmoke.ps1` artifacts under
+`B:\BlueIce\results`; the wrapper also puts frame directories, TEMP/TMP,
+Cargo/Rustup and .NET/NuGet caches on B:. The execution-policy option in this
+example applies only to that PowerShell process. See the
+[storage instructions](../../development/browser_core/phase-22-browser-shell-accessibility/WINDOWS_TEST_STORAGE.md)
+for the disk identity, capacity, free-space guard and verified C: cleanup.
+
 This first slice provides an address field, graphical tab creation,
 selection and closing, back/forward/reload, core-rendered built-in pages,
 viewport resizing, pointer clicks, scrolling and basic character/backspace
