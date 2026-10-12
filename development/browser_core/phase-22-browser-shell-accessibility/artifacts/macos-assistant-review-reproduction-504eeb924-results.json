@@ -1,0 +1,30 @@
+{
+  "source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "session_id": 90653,
+  "exit_code": 0,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "case": "BrowserUITests.BrowserUITests testNativeAssistantLoopbackEditorAndClosingUnconfirmedChanges",
+  "program_files_verified": 1902,
+  "backend_binaries_unchanged": 8,
+  "wrapper_cleanup": {
+    "SFTP_FIXTURE_CLEANUP": {
+      "root_removed": true,
+      "helper_exit": 0,
+      "helper_group_gone": true,
+      "server_group_gone": true
+    },
+    "AUTOMATIC_UPDATE_FIXTURE_SERVER_CLEANUP": {
+      "root_removed": true,
+      "server_thread_gone": true,
+      "owned_pids": {},
+      "remaining_owned_pids": [],
+      "owned_group_gone": true,
+      "command_group_gone": true
+    }
+  },
+  "owned_process_absence_verified": true,
+  "log_sha256": "b3dcabb28e7ef9ef83e8b6b3a74d82c796fc6f94efbe96cda5c364cb7aaa6cb9",
+  "interpretation": "Same unchanged source passes alone, while the full-run recording proves the valid form and clipped Review control. The isolated pass does not repair the full-run failure."
+}

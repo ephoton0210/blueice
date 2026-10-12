@@ -135,7 +135,14 @@ all-target build exits zero. Full Rust execution subsequently ends with
 5,764 passed, two GC failures and 64 ignored, stopping before WinUI; the
 [failed receipt](artifacts/windows-ec4217440-failed-results.json) retains
 source/log hash and idle-runtime verification. Corrected `504eeb924`
-complete Rust/WinUI acceptance is now running with fresh formatter,
-Clippy, build and execution gates after all 2,192 staged files and corpus
-hashes pass. Ongoing gates do not establish current-source acceptance.
-All caches and temporary files continue to use B:.
+now passes fresh complete Windows acceptance: 5,770 Rust cases, zero failures
+and 64 ignored across 516 groups, full formatter/strict Clippy/all-target
+build, WinUI build, five protocol cases and seven actual logged-in desktop
+cases. Task/bootstrap exit zero. The final read-only audit verifies 2,192
+source files, the corpus junction/manifest, six gate logs and 56 formatter/UI
+artifacts. No owned task or runtime remains; toolchains and persistent
+execution policies are unchanged. See the [current complete receipt](artifacts/windows-504eeb924-results.json).
+The final volume check reports C: 7,194,824,704 bytes (6.70 GiB) and B:
+280,680,800,256 bytes (261.40 GiB) free. All caches and test temporary files
+continue to use B:. Later Unix-test/macOS-UI-test/documentation changes do not
+change the accepted production source.

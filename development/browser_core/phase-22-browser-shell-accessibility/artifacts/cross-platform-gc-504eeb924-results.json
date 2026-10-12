@@ -1,0 +1,31 @@
+{
+  "utc": "2026-10-12T22:21:52.747115+00:00",
+  "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "macos_workspace_source_commit": "1e198f07e86b8669c92a4705015b873961d69aaa",
+  "old_gc_failure_cases": 2,
+  "new_native_host_wait_regression_cases": 3,
+  "explicit_original_test262_fixture_modes": 4,
+  "actual_result_lines": {
+    "array_from_async_allocations_after_a_user_hook": {
+      "windows": "test array_from_async_allocations_after_a_user_hook ... ok",
+      "macos": "test array_from_async_allocations_after_a_user_hook ... ok"
+    },
+    "atomics_wait_async": {
+      "windows": "test atomics_wait_async ... ok",
+      "macos": "test atomics_wait_async ... ok"
+    },
+    "async_host_wait_keeps_its_promise_alive_until_the_vm_settles_it": {
+      "windows": "test async_host_wait_keeps_its_promise_alive_until_the_vm_settles_it ... ok",
+      "macos": "test async_host_wait_keeps_its_promise_alive_until_the_vm_settles_it ... ok"
+    },
+    "async_host_wait_settles_inline_int32_and_bigint_promise_batches_after_collection": {
+      "windows": "test async_host_wait_settles_inline_int32_and_bigint_promise_batches_after_collection ... ok",
+      "macos": "test async_host_wait_settles_inline_int32_and_bigint_promise_batches_after_collection ... ok"
+    },
+    "async_host_wait_original_test262_timeout_fixtures_settle_in_both_script_modes": {
+      "windows": "test async_host_wait_original_test262_timeout_fixtures_settle_in_both_script_modes ... ok",
+      "macos": "test async_host_wait_original_test262_timeout_fixtures_settle_in_both_script_modes ... ok"
+    }
+  },
+  "scope": "Every named case passed separately in the real current complete Windows and Mac Rust runs. Those complete gates remain active; no whole-workspace result or hardware acceptance is inferred."
+}
