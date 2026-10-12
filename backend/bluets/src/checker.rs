@@ -600,7 +600,7 @@ fn member_call_parts(tokens: &[Token]) -> Option<MemberCall<'_>> {
     let open = tokens.get(dot + 2)?;
     let arguments = tokens.get(dot + 3..)?;
     (!receiver.is_empty()
-        && member.kind == TokenKind::Identifier
+        && matches!(member.kind, TokenKind::Identifier | TokenKind::Keyword)
         && open.is("(")
         && split_call_arguments(arguments).is_some())
     .then_some(MemberCall {

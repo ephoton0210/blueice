@@ -1327,6 +1327,25 @@ impl Compiler {
             )?;
         }
         self.emit(Opcode::InitializeBinding, iterator)?;
+        // A for-await loop owns an async finalizer around the whole loop,
+        // retaining its iterator binding until return() has settled.
+        let close_handler = if is_await {
+            let index = self.metadata_index(self.bytecode.handlers.len())?;
+            self.bytecode.handlers.push(Handler {
+                try_start: 0,
+                try_end: 0,
+                catch: None,
+                catch_end: None,
+                finally: None,
+                finally_end: None,
+            });
+            self.emit(Opcode::PushHandler, index)?;
+            self.bytecode.handlers[index as usize].try_start = self.offset();
+            self.tail_call_blockers += 1;
+            Some(index)
+        } else {
+            None
+        };
         let start = self.offset();
         self.emit(Opcode::GetBinding, iterator)?;
         let exit = if is_await {
@@ -1342,7 +1361,7 @@ impl Compiler {
             scope_depth: self.scopes.len(),
             breaks: Vec::new(),
             continues: Some(Vec::new()),
-            iterator: Some(iterator),
+            iterator: (!is_await).then_some(iterator),
         });
         if lexical {
             self.enter_scope(
@@ -1406,6 +1425,27 @@ impl Compiler {
         for (jump, control) in context.continues.expect("for-of loop has continue targets") {
             self.patch(jump, start);
             self.bytecode.abrupt_jumps[control].target = start;
+        }
+        if let Some(index) = close_handler {
+            self.tail_call_blockers -= 1;
+            // The local break/EOF target must lie inside the try region.
+            // Otherwise abrupt dispatch runs this finalizer first and the
+            // resumed cleanup gateway enters it a second time.
+            let exit_gateway = self.emit(Opcode::Jump, 0)?;
+            self.patch(exit_gateway, self.offset());
+            self.bytecode.handlers[index as usize].try_end = self.offset();
+            self.emit(Opcode::EnterFinalizer, 0)?;
+            let normal_exit = self.emit(Opcode::Jump, 0)?;
+            let finally_start = self.offset();
+            self.bytecode.handlers[index as usize].finally = Some(finally_start);
+            self.emit(Opcode::GetBinding, iterator)?;
+            let skipped = self.emit(Opcode::AsyncIteratorClose, 0)?;
+            self.emit(Opcode::Await, 0)?;
+            self.emit(Opcode::Pop, 0)?;
+            self.patch(skipped, self.offset());
+            self.emit(Opcode::ResumeCompletion, index)?;
+            self.bytecode.handlers[index as usize].finally_end = Some(self.offset());
+            self.patch(normal_exit, finally_start);
         }
         self.leave_scope()?;
         Ok(())

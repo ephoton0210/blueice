@@ -241,10 +241,8 @@ pub(super) fn bluets_compiler_options(
             .verified_dom_mutation_ambient_module(&page_host_dom_mutation_runtime_bindings_v1()),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event()
             .verified_dom_event_ambient_module(&page_host_dom_event_runtime_bindings_v1()),
-        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_tee()
-            .verified_dom_custom_event_ambient_module(
-                &page_host_dom_custom_event_runtime_bindings_v7(),
-            ),
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_iteration()
+            .verified_dom_iteration_ambient_module(&page_host_dom_iteration_runtime_bindings_v10()),
     }
     .map_err(|_| "verified page-host BlueTS typings are unavailable")?;
     let mut options = CompilerOptions {
@@ -505,6 +503,16 @@ mod tests {
             resolutions: Vec::new(),
             resolver_fingerprint: "test-fingerprint".to_string(),
         }
+    }
+
+    #[test]
+    fn bluets_module_file_profile_keeps_live_iteration_tee_and_node_events() {
+        let graph=graph_with_one_module("blueice://page/iteration.ts","export function read(stream: BlueIceReadableStream): BlueIceFilePromise<BlueIceStreamReadResult> { return stream.tee()[0].values().next(); }\nexport function emit(node: BlueIceNode): boolean { return node.dispatchEvent(new CustomEvent('data', {detail:7})); }");
+        let prepared = prepare_bluets_module_graph(graph, PageDomProfile::File);
+        assert!(
+            prepared.is_ok(),
+            "current live profile must prepare the authorized module graph"
+        );
     }
 
     #[test]

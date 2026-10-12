@@ -584,6 +584,10 @@ impl Vm {
                             self.stack.truncate(base + 1);
                             (record, Some(argument))
                         };
+                        let id = record.object_id().expect("owned async iterator record");
+                        self.with_roots(|heap| {
+                            heap.set(id, "asyncNextPending", Value::Bool(true))
+                        })?;
                         let promise = self.async_iterator_next(&record, argument)?;
                         self.stack.push(promise);
                     }
@@ -591,6 +595,10 @@ impl Vm {
                         let base = self.stack.len() - 2;
                         let record = self.stack[base].clone();
                         let result = self.stack[base + 1].clone();
+                        let id = record.object_id().expect("owned async iterator record");
+                        self.with_roots(|heap| {
+                            heap.set(id, "asyncNextPending", Value::Bool(false))
+                        })?;
                         iterators.retain(|active| active != &record);
                         let value = self.async_iterator_step(&record, &result)?;
                         self.stack.truncate(base);
@@ -607,6 +615,10 @@ impl Vm {
                         let base = self.stack.len() - 2;
                         let record = self.stack[base].clone();
                         let result = self.stack[base + 1].clone();
+                        let id = record.object_id().expect("owned async iterator record");
+                        self.with_roots(|heap| {
+                            heap.set(id, "asyncNextPending", Value::Bool(false))
+                        })?;
                         iterators.retain(|active| active != &record);
                         let Value::Object(record_id) = record else {
                             unreachable!("compiler only emits iterator records")
@@ -654,6 +666,19 @@ impl Vm {
                         iterators.retain(|active| active != &record);
                         self.iterator_close(&record)?;
                         self.pop();
+                    }
+                    Opcode::AsyncIteratorClose => {
+                        let record = self.stack.last().unwrap().clone();
+                        iterators.retain(|active| active != &record);
+                        let preserve_throw =
+                            matches!(self.pending_completions.last(), Some(Completion::Throw(_)));
+                        let closing = self.async_iterator_close(&record, preserve_throw)?;
+                        self.pop();
+                        if closing == Value::Undefined {
+                            pc = operand;
+                        } else {
+                            self.stack.push(closing);
+                        }
                     }
                     Opcode::CloseIteratorBinding => {
                         if let Some(record) = self.binding_value(operand)? {

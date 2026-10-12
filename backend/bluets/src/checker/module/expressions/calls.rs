@@ -28,7 +28,10 @@ impl<'a> ModuleChecker<'a> {
             if start > 0 && (tokens[start - 1].is(".") || tokens[start - 1].is("?."))
                 || tokens[start].kind != TokenKind::Identifier && !tokens[start].is("this")
                 || !tokens[start + 1].is(".")
-                || tokens[start + 2].kind != TokenKind::Identifier
+                || !matches!(
+                    tokens[start + 2].kind,
+                    TokenKind::Identifier | TokenKind::Keyword
+                )
                 || !tokens[start + 3].is("(")
             {
                 continue;

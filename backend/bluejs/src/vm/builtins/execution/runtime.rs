@@ -1681,6 +1681,84 @@ impl Vm {
         }
         Ok(())
     }
+
+    /// AsyncIteratorClose for compiler-owned for-await finalizers. Undefined
+    /// means no return call was needed; a Promise is awaited by bytecode.
+    pub(in super::super::super) fn async_iterator_close(
+        &mut self,
+        record: &Value,
+        preserve_throw: bool,
+    ) -> Result<Value, RuntimeError> {
+        let id = record.object_id().expect("owned async iterator record");
+        if self.heap.get_own(id, "done")? == Some(Value::Bool(true)) {
+            return Ok(Value::Undefined);
+        }
+        let next_failed = self.heap.get_own(id, "asyncNextPending")? == Some(Value::Bool(true));
+        self.with_roots(|heap| heap.set(id, "done", Value::Bool(true)))?;
+        if next_failed {
+            return Ok(Value::Undefined);
+        }
+        let base = self.stack.len();
+        self.stack.push(record.clone());
+        let result = (|| {
+            let called: Result<Option<Value>, RuntimeError> = (|| {
+                let iterator = self.get_property(record, &"iterator".into())?;
+                self.stack.push(iterator.clone());
+                let close = self.get_method(&iterator, &"return".into())?;
+                if close == Value::Undefined {
+                    return Ok(None);
+                }
+                let value = self.call_native(close, iterator, Vec::new(), false)?;
+                self.stack.push(value.clone());
+                let input = if self.heap.get_own(id, "asyncFromSync")? == Some(Value::Bool(true)) {
+                    self.async_from_sync_continue(id, value, false)?
+                } else {
+                    self.promise_resolve(value)?
+                };
+                Ok(Some(input))
+            })();
+            let input = match called {
+                Ok(None) => return Ok(Value::Undefined),
+                Ok(Some(input)) => input,
+                Err(error) if error.is_catchable() && preserve_throw => {
+                    return Ok(Value::Undefined)
+                }
+                Err(error) if error.is_catchable() => {
+                    let error = self.error_value(error)?;
+                    return self.promise_reject(error);
+                }
+                Err(error) => return Err(error),
+            };
+            self.stack.push(input.clone());
+            let function = self.function_prototype()?;
+            let mut callbacks = Vec::new();
+            for rejected in [false, true] {
+                let callback = self.with_roots(|heap| {
+                    heap.alloc_native_function(
+                        NativeFunction::AsyncIteratorCloseResult {
+                            preserve_throw,
+                            rejected,
+                        },
+                        "",
+                        function,
+                    )
+                })?;
+                self.stack.push(Value::Object(callback));
+                callbacks.push(Value::Object(callback));
+            }
+            let target = self.new_promise()?;
+            self.stack.push(Value::Object(target));
+            self.perform_promise_then(
+                input.object_id().expect("PromiseResolve result"),
+                callbacks[0].clone(),
+                callbacks[1].clone(),
+                ReactionTarget::Native(target),
+            )?;
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        result
+    }
 }
 
 #[cfg(test)]

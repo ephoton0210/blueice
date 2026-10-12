@@ -363,6 +363,9 @@ opcodes! {
     // Drop a retained Reference beneath the assignment's expression value.
     // The operand gives the number of stack values encoding that Reference.
     DiscardReference: 5, 0;
+    // Await an unfinished for-await iterator's return. The operand skips
+    // Await/Pop when completion or a failed next requires no close call.
+    AsyncIteratorClose: 5, 0;
 }
 
 /// The operand encoding shared by `DecorateElement` and `ReplaceClassElement`:

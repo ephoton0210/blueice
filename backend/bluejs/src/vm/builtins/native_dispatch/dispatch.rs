@@ -127,6 +127,27 @@ impl Vm {
                 rejected,
             } => self.stream_reaction(stream, action, rejected, first.clone()),
             NativeFunction::TeePull { tee, branch } => self.tee_pull(tee, branch),
+            NativeFunction::AsyncIteratorCloseResult {
+                preserve_throw,
+                rejected,
+            } => {
+                if preserve_throw {
+                    Ok(Value::Undefined)
+                } else if rejected {
+                    Err(RuntimeError::Thrown(first.clone()))
+                } else if !matches!(first, Value::Object(_)) {
+                    Err(RuntimeError::TypeError(
+                        "async iterator return must return an object".into(),
+                    ))
+                } else {
+                    Ok(Value::Undefined)
+                }
+            }
+            NativeFunction::StreamIteration {
+                request,
+                action,
+                rejected,
+            } => self.stream_iteration_reaction(request, action, rejected, first.clone()),
             NativeFunction::TeeCancel { tee, branch } => {
                 self.tee_cancel(tee, branch, first.clone())
             }

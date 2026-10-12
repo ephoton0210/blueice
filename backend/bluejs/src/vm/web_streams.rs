@@ -9,6 +9,7 @@ use crate::heap::{PullInto, StreamData, StreamRead, StreamReader, TypedArrayKind
 use crate::native::StreamNative;
 
 mod bytes;
+mod iteration;
 mod tee;
 use StreamNative::*;
 const NAMES: [&str; 6] = [
@@ -52,6 +53,7 @@ impl Vm {
                         ("getReader", 0, GetReader),
                         ("cancel", 0, Cancel),
                         ("tee", 0, Tee),
+                        ("values", 0, Values),
                     ],
                     1 | 2 => &[
                         ("read", if rank == 1 { 0 } else { 1 }, Read),
@@ -121,6 +123,17 @@ impl Vm {
                 self.heap.root(prototype)?;
                 self.globals.insert(format!("%{name}%"), prototype);
             }
+            self.install_stream_iteration()?;
+            let stream = self.globals["%ReadableStream%"];
+            let values = self.heap.get_own(stream, "values")?.unwrap();
+            self.define_data(
+                stream,
+                JsSymbol::well_known("asyncIterator"),
+                values,
+                true,
+                false,
+                true,
+            )?;
             let blob = self.globals["%WebBlob%"];
             for (name, text) in [("stream", false), ("textStream", true)] {
                 self.install_native(
@@ -206,6 +219,13 @@ impl Vm {
                 )),
             };
         }
+        if matches!(native, IteratorNext | IteratorReturn) {
+            return self.stream_iteration_call(
+                receiver,
+                native == IteratorReturn,
+                native::argument(args, 0).clone(),
+            );
+        }
         let id = receiver
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Invalid stream receiver".into()))?;
@@ -218,6 +238,7 @@ impl Vm {
             return self.allocate_stream(state).map(Value::Object);
         }
         match native {
+            Values => self.stream_values(id, native::argument(args, 0)),
             Tee => self.tee_stream(id),
             Locked => Ok(Value::Bool(self.stream_data(id)?.reader.is_some())),
             GetReader => {

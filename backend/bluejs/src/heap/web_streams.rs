@@ -71,6 +71,18 @@ pub(crate) struct StreamTee {
 }
 #[derive(Clone)]
 pub(crate) enum WebStreamState {
+    Iterator {
+        reader: ObjectId,
+        prevent_cancel: bool,
+        finished: bool,
+        ongoing: Option<ObjectId>,
+    },
+    Iteration {
+        iterator: ObjectId,
+        target: ObjectId,
+        returned: bool,
+        value: Value,
+    },
     Tee(Box<StreamTee>),
     Stream(Box<StreamData>),
     Reader(StreamReader),
@@ -87,6 +99,18 @@ pub(crate) enum WebStreamState {
 impl WebStreamState {
     pub fn references(&self) -> Vec<ObjectId> {
         match self {
+            Self::Iterator {
+                reader, ongoing, ..
+            } => std::iter::once(*reader).chain(*ongoing).collect(),
+            Self::Iteration {
+                iterator,
+                target,
+                value,
+                ..
+            } => [*iterator, *target]
+                .into_iter()
+                .chain(value.object_id())
+                .collect(),
             Self::Tee(state) => std::iter::once(state.source)
                 .chain(Some(state.reader))
                 .chain(state.branches.into_iter().flatten())
@@ -139,6 +163,7 @@ impl WebStreamState {
     pub fn bytes(&self) -> usize {
         size_of::<Self>()
             + match self {
+                Self::Iteration { value, .. } => value_bytes(value),
                 Self::Tee(state) => {
                     size_of::<StreamTee>()
                         + state
