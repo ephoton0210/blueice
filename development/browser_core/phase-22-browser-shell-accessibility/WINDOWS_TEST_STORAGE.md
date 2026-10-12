@@ -47,6 +47,12 @@ passes actual Windows checks for binary temporary-file writes, Rust 1.96
 execution, C: workspace refusal, child exit-code propagation and unchanged
 parent environment. This does not establish full Rust or WinUI acceptance.
 
+A separate probe ran as the logged-in `ephoton` user in desktop session 1 with
+Limited privileges. Binary TEMP I/O on B: and Rust 1.96 execution passed; its
+one-time owned task exited with zero and was removed. All five B: validation
+scripts pass the guest's PowerShell parser. The controller and desktop helper
+both use the storage wrapper so interactive descendants receive B: paths.
+
 ## Existing evidence and cleanup
 
 Existing X: BlueIce directories are copied to `B:\BlueIce\archive\x-drive`,

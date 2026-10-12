@@ -184,12 +184,66 @@
     "/private/tmp/blueice-followup-20261012/windows-storage-verify-receipt.json": "a41694f60fb0ba0e175334cb134bb8e681ff487a5f22a8d3bfef0cb48ab45e9c",
     "/private/tmp/blueice-followup-20261012/windows-storage-migration-receipt.json": "6206ddba76dee167023c202176ecd92d275cb59681d0ea015fae055f4fe955dd",
     "/private/tmp/blueice-followup-20261012/windows-storage-runner-probe-receipt.json": "665df8194368dd27108b68ee91308a43fe1a703153de064c2c528adacda5179d",
-    "/private/tmp/blueice-followup-20261012/windows-virtio-install-receipt.json": "4589b4bf978396449fd6d8bc4c6f07377405d25a2533a02ba25a6c8241a439eb"
+    "/private/tmp/blueice-followup-20261012/windows-virtio-install-receipt.json": "4589b4bf978396449fd6d8bc4c6f07377405d25a2533a02ba25a6c8241a439eb",
+    "/private/tmp/blueice-followup-20261012/windows-desktop-storage-probe-receipt.json": "7717fc3657f531f74e42a742a5e3a9d510e1ff2b0a538a757288389f4c724a8f",
+    "/private/tmp/blueice-followup-20261012/windows-template-syntax-receipt.json": "82c72f9052a8db7aec5afb7818f94aa1265c389a698e6b3c957b1c0eb59d5983"
   },
   "historical_failures": [
     "SATA hotplug unsupported; changed to signed VirtIO driver and live attachment.",
     "Initial archive manifest path was wrong; completed copies were retained, real manifest located, and 2077 hashes verified.",
     "Initial empty-root cleanup rejected directories with empty descendants; full subtrees were audited and removed only after proving zero files and no reparse points.",
     "Initial unsigned-script invocation was refused by existing policy; validation uses only process-scoped execution policy."
-  ]
+  ],
+  "desktop_storage_probe": {
+    "status": "passed",
+    "user": "ephoton",
+    "session": 1,
+    "temp": "B:\\BlueIce\\tmp",
+    "rustup": "B:\\BlueIce\\cache\\rustup",
+    "binary_temporary_io": "passed",
+    "time": "2026-10-12T10:14:31.6851108Z",
+    "task_exit": 0,
+    "task_removed": true
+  },
+  "validation_template_syntax": {
+    "time": "2026-10-12T10:08:57.7720937Z",
+    "status": "passed",
+    "scripts": [
+      {
+        "path": "B:\\BlueIce\\scripts\\validation-controller-20261012.ps1",
+        "sha256": "0cbdc4ca8e20a2d345fb47b522927e62a61ff46032c75aea72539a67b31caa63",
+        "syntax": "passed"
+      },
+      {
+        "path": "B:\\BlueIce\\scripts\\validation-format-20261012.ps1",
+        "sha256": "997050b1d9ee00cc4ebea9fe3165671ab1eda339e789adaf560badf5159c9ed8",
+        "syntax": "passed"
+      },
+      {
+        "path": "B:\\BlueIce\\scripts\\validation-desktop-20261012.ps1",
+        "sha256": "e9787d4428ff60592f2a36b64ae35a3fb94bfed9057c30a5581f31a3d1d6b78f",
+        "syntax": "passed"
+      },
+      {
+        "path": "B:\\BlueIce\\scripts\\validation-state-store-20261012.ps1",
+        "sha256": "fdffd15529b31aa2d527d1c6b11de179abdb5964413cedae44847a2912ef436c",
+        "syntax": "passed"
+      },
+      {
+        "path": "B:\\BlueIce\\scripts\\test-with-windows-storage.ps1",
+        "sha256": "f9d9d73dfc6eae2488fc2ab1645295211d8e2fd42f42955193f43843e5b2d1e0",
+        "syntax": "passed"
+      }
+    ],
+    "volumes": [
+      {
+        "DriveLetter": "C",
+        "SizeRemaining": 7252721664
+      },
+      {
+        "DriveLetter": "B",
+        "SizeRemaining": 313106608128
+      }
+    ]
+  }
 }
