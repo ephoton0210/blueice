@@ -241,7 +241,7 @@ pub(super) fn bluets_compiler_options(
             .verified_dom_mutation_ambient_module(&page_host_dom_mutation_runtime_bindings_v1()),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event()
             .verified_dom_event_ambient_module(&page_host_dom_event_runtime_bindings_v1()),
-        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_custom_event()
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_node_event()
             .verified_dom_custom_event_ambient_module(
                 &page_host_dom_custom_event_runtime_bindings_v7(),
             ),

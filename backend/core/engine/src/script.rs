@@ -303,6 +303,12 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
                 |(revision, files)| ScriptReply::InputFiles { revision, files },
             )
         }),
+        ScriptRequest::GetEventPath { target, node } => with_document(tabs, target, |page| {
+            page.script_event_path(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |nodes| ScriptReply::EventPath { nodes },
+            )
+        }),
         ScriptRequest::ReadInputFile {
             target,
             node,

@@ -336,6 +336,7 @@ pub(crate) enum NativeFunction {
     /// VM-owned click-listener registration on one exact host-object family.
     HostClickListenerAdd(u32),
     HostClickListenerRemove(u32),
+    HostNodeDispatch(u32),
     /// Can cancel only the currently dispatching VM-owned click event.
     HostClickPreventDefault,
     Function,

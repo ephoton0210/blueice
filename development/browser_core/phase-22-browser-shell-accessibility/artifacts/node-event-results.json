@@ -1,0 +1,186 @@
+{
+  "scope": "Core-backed node capture/target/bubble dispatch, real native base events, V8 typings and nested named callback parsing/checking/lowering; not full DOM/browser conformance",
+  "recorded_local_date": "2026-10-13",
+  "base_commit": "86999f09ce74b060116f0b4b17c85086d4878fd4",
+  "source_sha256": {
+    "backend/bluejs/src/native.rs": "de1fdd3e49e7f2012165bae491f2a2210fc9e533df23ea6affdcd42865734cb1",
+    "backend/bluejs/src/page_runtime.rs": "e36d671398c36912c294468e19d2090d589a8f74d5543c688aa29d1d647c83f5",
+    "backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs": "2ad86ac57b42d191650a3f1ecf032c08defc9a3e9f3c92d761048596e835d8a8",
+    "backend/bluejs/src/vm/host_objects.rs": "50aa9b80ca253be83b820ea94054e48e05330868f167cec0c6005d4f78e5ae1d",
+    "backend/bluejs/src/vm/host_objects/file_selection_events.rs": "29223ce2c36ec20f61d5b5186a9b08f72fbc25bd6c58c9dea7240286faf5bcbe",
+    "backend/bluejs/src/vm/web_event_target.rs": "971633ac1cdf1d26498d481b42c2a398ffc44f6dfb6b27a9de7bb9a5d88fbe1e",
+    "backend/bluets-bluejs/src/lowering.rs": "3502753ebd624abdc7ad2c20f6323b60d3b1166d895062e0a2d1bc59abd459cd",
+    "backend/bluets-bluejs/src/page_host_typings.rs": "5e639a846a624483d4428acd71f0fa0dd360f0fd74669b0edf3e2ce72cfc4af5",
+    "backend/bluets/src/checker/module/binding/classes.rs": "8cc4aa94e20068300bf7b64eaf27b02c07f6c0272d2a2105819271e7292f6508",
+    "backend/bluets/src/checker/module/binding/functions.rs": "b6cc08d3eb1ad9d838d2c375bdfd870a221fabf5949ea4a01a401bac24170061",
+    "backend/bluets/src/parser.rs": "56befd6af3e95b4f8a45c2347e42696b41b3c0391fd3b7b6f5c7a918d8808401",
+    "backend/bluets/src/parser/declarations.rs": "6ed9b1383c73fc7aa6ceab277d1f4c84c4615bf6e92d060f1dfb940a47075096",
+    "backend/bluets/src/parser/declarations/function_body.rs": "0694e995264cf6a4662d70f3715b951308e8797b29894b4f00f237ce21a27c8b",
+    "backend/bluets/src/parser/implementation.rs": "2c89bdb6d5a10bd5363ed25dfa745ec103a78a85b49386c2d08a3be222468aec",
+    "backend/core/engine/src/page/file_input.rs": "2264c715c128cdb4fa7c11822ba8011df2d885b04ce65ce9aaa339a0470b5989",
+    "backend/core/engine/src/script.rs": "d90e7855c245f1f88943c5d2c68076f685e2000bd5b14ca597d887af199dc886",
+    "backend/ipc/src/script.rs": "050857ffb433dc397e8cbe8ca256358788ab0e773f2faa2992a999ee01bc09f6",
+    "backend/launcher/src/bluejs_host.rs": "0c4abaf00f5ba3b5d50efabc6b6417647d86eb2c030be218b933e436c6784066",
+    "backend/launcher/src/bluejs_host/script_execution.rs": "cc6fb81460b9b0e5502c46ca7e8c610083fe8016f45cb9f3744ff19f4a33cbb5",
+    "backend/launcher/tests/browser_file_reader.rs": "febe28356f9d9db5807ed7f51ac7f7eb476e860ca03a01fd50e694d2759609e8",
+    "backend/bluejs/src/vm/host_objects/node_events.rs": "e97e478c4f5d3a930599af184ff25f79b903e3954ae8ee946b01a8bb65d6b6a9",
+    "backend/bluejs/tests/web_node_events.rs": "69603e78e19fd20d9fb5d9c73fa111bf8dbbfa36c3f3c6104fc89b7ac9d72c26",
+    "backend/bluets-bluejs/src/page_host_typings/node_events.rs": "90a8df4967233967fd1845046eeb1f3c35b7c30a067369dad0d03995d684c46c",
+    "backend/bluets-bluejs/tests/nested_functions.rs": "2676cd645c430b24a0f0dc5716c86ae12b66595cfe328deef32c814b1605260e",
+    "backend/bluets-bluejs/tests/page_node_event_typings.rs": "c08dfcd2a79498b7e3730ad1a1a10160c6e1132a50e70928dec9dfa9d6c5baf2",
+    "backend/core/engine/tests/script_node_events.rs": "93fc838882fab07271b34752477b163e0d34fbc3a6397030cb1fcf5a7675c1b2",
+    "backend/ipc/tests/script_node_events.rs": "95bcdacd4103705a1fc30212992ad2c6c2ba955dac11f8b9f8e98deeb028fa5d"
+  },
+  "private_script_protocol": 9,
+  "page_host_protocol": 49,
+  "typing_profile": "core-script-dom-node-event-v8",
+  "typing_runtime_bindings": 38,
+  "focused_vm_types_compiler": {
+    "passed": 70,
+    "failed": 0,
+    "ignored": 0,
+    "groups": 8,
+    "exit_code": 0
+  },
+  "core_and_ipc": {
+    "passed": 9,
+    "failed": 0,
+    "ignored": 0,
+    "groups": 4,
+    "exit_code": 0
+  },
+  "actual_core_child_browser": {
+    "passed": 1,
+    "failed": 0,
+    "ignored": 0,
+    "groups": 1,
+    "exit_code": 0
+  },
+  "complete_bluets": {
+    "passed": 354,
+    "failed": 0,
+    "ignored": 60,
+    "groups": 13,
+    "exit_code": 0
+  },
+  "complete_bridge": {
+    "passed": 145,
+    "failed": 0,
+    "ignored": 0,
+    "groups": 8,
+    "exit_code": 0
+  },
+  "complete_bluejs_library": {
+    "passed": 919,
+    "failed": 0,
+    "ignored": 0,
+    "groups": 1,
+    "exit_code": 0
+  },
+  "clippy": {
+    "crates": [
+      "blueice-bluejs",
+      "blueice-bluets",
+      "blueice-bluets-bluejs",
+      "blueice-launcher",
+      "blueice-ipc",
+      "blueice-engine"
+    ],
+    "all_targets": true,
+    "deny_warnings": true,
+    "exit_code": 0
+  },
+  "format_exit_code": 0,
+  "backends_build_exit_code": 0,
+  "actual_browser_markers": [
+    "doc-c:1,parent-c:1,node 中文:2:false,parent-b:3,doc-b:3",
+    "grant:1:0",
+    "native:true:true:1",
+    "input,change,loadstart,progress,load,loadend:0,255,65",
+    "cancelled:0:0:removed"
+  ],
+  "actual_browser_http_requests": 1,
+  "limits": {
+    "ancestry_nodes": 256,
+    "wrappers_per_family": 4096,
+    "listeners_per_family": 4096,
+    "nested_named_function_depth": 64
+  },
+  "retained_failures": [
+    "Original five node cases failed: unsupported event names, dispatch method absent, invalid borrowed EventTarget receiver",
+    "Native-only filter executed three cases: one synthetic case passed, native click and selection branding failed",
+    "V8 node declarations needed explicit string overloads to remain compatible with inherited EventTarget methods",
+    "Nested named callback in a function was unknown to the checker; kept that original source and fixed parser/lexical scope/direct lowering",
+    "Four original nested-function cases failed before implementation",
+    "Initial explicit backend build command named nonexistent bluejs-host; corrected to blueice-bluejs-host before any acceptance claim"
+  ],
+  "remaining": [
+    "Full current-source workspace/native/Windows gates after integration",
+    "Further DOM tree/lifecycle APIs, Shadow DOM retargeting and WPT conformance",
+    "HTML activation behavior and native mouse geometry/event subclasses",
+    "Remaining Streams/URL/Fetch behavior and broader TypeScript syntax",
+    "Actual physical input/accessibility/monitor/printer acceptance"
+  ],
+  "logs": {
+    "web-node-events-red.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-red.log",
+      "sha256": "019450ea15e254306db6fb01c3c4614988cc6287be21633f0010095eeb40634e"
+    },
+    "web-node-native-red.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-native-red.log",
+      "sha256": "006bf2b65c1b4aeeb280c147019235fde01d6e0c9536760181d3cb2fbadf44b2"
+    },
+    "web-node-events-first.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-first.log",
+      "sha256": "fe3a257c5e402f1923f98f7ba795f18334b6840249fba9078bb1c0b41b410b4e"
+    },
+    "web-node-events-second.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-second.log",
+      "sha256": "9290e97479a284c9a8f3cc710d2ec66603c6eb08737258fea87ebcc8464c101c"
+    },
+    "web-node-events-core-types-corrected.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-core-types-corrected.log",
+      "sha256": "27c27d107feab99cccc2a8f7e7d080a2c593a9b0c527e6f5e67899448b0f94e4"
+    },
+    "nested-callback-functions-red.log": {
+      "path": "/private/tmp/blueice-followup-20261012/nested-callback-functions-red.log",
+      "sha256": "cb1612a8b6dc5ebfa48cc537985c69d6ee5f7cd9c1a1395a2512cfd2aa9ed877"
+    },
+    "web-node-events-nested-first.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-nested-first.log",
+      "sha256": "947aa31da09861be31adb7ecc34ba3e028d72108524500aed0ef76adf6fdf7d2"
+    },
+    "web-node-events-core-ipc.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-core-ipc.log",
+      "sha256": "f417a19221d10ae8cf9fdfd56747c01b1548710f79826f7da118d15147677b20"
+    },
+    "web-node-events-backends-build.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-backends-build.log",
+      "sha256": "94b072903534a36aebb5a3f309c73d642c9fde4995120b8fe77a10e5beb8bce3"
+    },
+    "web-node-events-backends-build-corrected.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-backends-build-corrected.log",
+      "sha256": "af9135082cff88fe55609b2e9fdaac32334821dad19898862750ab5b23c3dcdd"
+    },
+    "web-node-events-browser.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-browser.log",
+      "sha256": "dad6d33eaf0f68fff39fb18cd48890cb5fda65e88dbc5e6bacef4a24161f02ae"
+    },
+    "web-node-events-bluets-full.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-bluets-full.log",
+      "sha256": "4daf727c3235cc98a04f2167290db34eb913072219209870fe02a9526f1f42c3"
+    },
+    "web-node-events-clippy.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-clippy.log",
+      "sha256": "b48fbbc46cffaac00aa6a5f0465779786074af38e0d2f5ea6a68aa6e4150d2cb"
+    },
+    "web-node-events-bluejs-lib.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-bluejs-lib.log",
+      "sha256": "4b05e9ba92fb0f27b9f7cf718d705b9377fa72f09e0164d36bf3c7563be5a629"
+    },
+    "web-node-events-bridge-full.log": {
+      "path": "/private/tmp/blueice-followup-20261012/web-node-events-bridge-full.log",
+      "sha256": "5d78f79b2387368f8d09170f61a6efed85ee7d2c3e06f01825d95005a7a1ec18"
+    }
+  }
+}

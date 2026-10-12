@@ -60,7 +60,7 @@ use std::path::PathBuf;
 /// V6 makes child-private node handles distinct from core DOM NodeIds and
 /// unique across documents. Older peers could confuse equal raw NodeIds in
 /// different tabs even when their document targets were authenticated.
-pub const SCRIPT_PROTOCOL_VERSION: u32 = 8;
+pub const SCRIPT_PROTOCOL_VERSION: u32 = 9;
 pub const SCRIPT_SESSION_TOKEN_HEX_BYTES: usize = 64;
 pub const SCRIPT_MAX_FRAME_BYTES: usize = 1_100_000;
 pub const SCRIPT_MAX_NAME_BYTES: usize = 4_096;
@@ -116,6 +116,12 @@ pub enum ScriptRequest {
     },
     GetDocument {
         target: ScriptDocumentTarget,
+    },
+    /// Returns target-first ancestry for one live, child-private node handle.
+    /// This is a read-only DOM operation and grants no native input action.
+    GetEventPath {
+        target: ScriptDocumentTarget,
+        node: u64,
     },
     /// Reads metadata for this exact document's file input, never an OS path.
     GetInputFiles {
@@ -216,9 +222,9 @@ impl ScriptRequest {
             | Self::AppendChild { target, .. }
             | Self::GetTextContent { target, .. }
             | Self::SetTextContent { target, .. } => Some(*target),
-            Self::GetInputFiles { target, .. } | Self::ReadInputFile { target, .. } => {
-                Some(*target)
-            }
+            Self::GetInputFiles { target, .. }
+            | Self::ReadInputFile { target, .. }
+            | Self::GetEventPath { target, .. } => Some(*target),
         }
     }
 }
@@ -226,6 +232,9 @@ impl ScriptRequest {
 /// `core`'s reply to one [`ScriptRequest`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ScriptReply {
+    EventPath {
+        nodes: Vec<u64>,
+    },
     BlobUrlUpload {
         upload_id: u64,
     },

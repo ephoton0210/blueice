@@ -10,7 +10,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
 };
 use std::thread::{self, JoinHandle};
@@ -82,12 +82,16 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
     let server = TcpListener::bind("127.0.0.1:0").unwrap();
     server.set_nonblocking(true).unwrap();
     let url = format!("http://{}/reader", server.local_addr().unwrap());
+    let http_requests = Arc::new(AtomicUsize::new(0));
+    let request_count = http_requests.clone();
     let stop = fixture.stop.clone();
     fixture.workers.push(thread::spawn(move || {
         let body = concat!(
             "<div id=initial>before</div><div id=selected>none</div><div id=streamed>pending</div>",
             "<input id=upload type=file aria-label=Upload><div id=cancelled>pending</div>",
             "<div id=custom>pending</div>",
+            "<section id=event-parent><span id=event-child>event</span><input id=synthetic-file type=file></section>",
+            "<div id=node-events>pending</div><div id=synthetic-grant>pending</div><div id=native-capture>pending</div>",
             "<script>",
             "let lateReady=false, lateObserved=false; const initial=new FileReader();",
             "initial.onload=()=>{if(!lateReady) throw 'task ran before later scripts';};",
@@ -103,6 +107,19 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
             "const customTarget=new EventTarget(), customPayload={message:'custom 中文'};",
             "customTarget.addEventListener('data',event=>{document.getElementById('custom').textContent=event.detail.message+':'+event.isTrusted;});",
             "customTarget.dispatchEvent(new CustomEvent('data',{detail:customPayload}));",
+            "const eventParent=document.getElementById('event-parent'), eventChild=document.getElementById('event-child'), nodeCalls=[];",
+            "document.addEventListener('custom-node',e=>nodeCalls.push('doc-c:'+e.eventPhase),true);",
+            "eventParent.addEventListener('custom-node',e=>nodeCalls.push('parent-c:'+e.eventPhase),true);",
+            "eventChild.addEventListener('custom-node',e=>nodeCalls.push(e.detail.message+':'+e.eventPhase+':'+e.isTrusted));",
+            "eventParent.addEventListener('custom-node',e=>nodeCalls.push('parent-b:'+e.eventPhase));",
+            "document.addEventListener('custom-node',e=>nodeCalls.push('doc-b:'+e.eventPhase));",
+            "eventChild.dispatchEvent(new CustomEvent('custom-node',{detail:{message:'node 中文'},bubbles:true}));",
+            "document.getElementById('node-events').textContent=nodeCalls.join(',');",
+            "const syntheticFile=document.getElementById('synthetic-file');let syntheticClicks=0;",
+            "syntheticFile.addEventListener('click',e=>{if(e instanceof Event && !e.isTrusted)syntheticClicks++;});",
+            "syntheticFile.dispatchEvent(new Event('click',{bubbles:true}));",
+            "document.getElementById('synthetic-grant').textContent='grant:'+syntheticClicks+':'+syntheticFile.files.length;",
+            "document.addEventListener('input',e=>{document.getElementById('native-capture').textContent='native:'+e.isTrusted+':'+(e instanceof Event)+':'+e.eventPhase;},true);",
             "upload.addEventListener('input', ()=>{events.push('input');const reader=new FileReader();",
             "for(const type of ['loadstart','progress','load','loadend']) reader.addEventListener(type, ()=>events.push(type));",
             "reader.onload=()=>{selected=Array.from(new Uint8Array(reader.result));};",
@@ -119,6 +136,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
                     stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
                     let mut request = [0; 4096];
                     if stream.read(&mut request).unwrap_or(0) != 0 {
+                        request_count.fetch_add(1,Ordering::AcqRel);
                         let _ = stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes());
                     }
                 }
@@ -150,6 +168,11 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
     assert!(dom.contains("\"initial 中文:true\""), "{dom}");
     assert!(dom.contains("\"stream:7,0,255\""), "{dom}");
     assert!(dom.contains("\"custom 中文:false\""), "{dom}");
+    assert!(
+        dom.contains("\"doc-c:1,parent-c:1,node 中文:2:false,parent-b:3,doc-b:3\""),
+        "{dom}"
+    );
+    assert!(dom.contains("\"grant:1:0\""), "{dom}");
     let ServerMessage::Representation(snapshot) =
         reply(&mut stream, &ClientMessage::GetRepresentation, 3)
     else {
@@ -200,6 +223,12 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
         "{dom}"
     );
     assert!(dom.contains("\"cancelled:0:0:removed\""), "{dom}");
+    assert!(dom.contains("\"native:true:true:1\""), "{dom}");
+    assert_eq!(
+        http_requests.load(Ordering::Acquire),
+        1,
+        "Only the original document request is allowed by this flow"
+    );
     drop(stream);
     drop(core);
 }

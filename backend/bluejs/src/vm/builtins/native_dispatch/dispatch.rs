@@ -174,6 +174,9 @@ impl Vm {
             NativeFunction::HostClickListenerRemove(index) => {
                 self.host_click_listener_call(index, receiver, &args, construct, false)
             }
+            NativeFunction::HostNodeDispatch(index) => {
+                self.host_node_dispatch_call(index, &receiver, &args, construct)
+            }
             NativeFunction::HostClickPreventDefault => {
                 self.host_click_prevent_default(receiver, &args, construct)
             }

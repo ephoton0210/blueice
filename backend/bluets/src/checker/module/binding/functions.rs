@@ -11,7 +11,15 @@ use narrowing::{narrowed_guard_scopes, selected_guard_local};
 
 impl<'a> ModuleChecker<'a> {
     pub(super) fn check_function(&mut self, function: &FunctionDeclaration) {
-        let mut scope = self.values.clone();
+        self.check_function_in_scope(function, &self.values.clone());
+    }
+
+    pub(super) fn check_function_in_scope(
+        &mut self,
+        function: &FunctionDeclaration,
+        inherited: &BTreeMap<String, Type>,
+    ) {
+        let mut scope = inherited.clone();
         let previous_parameters = self.type_parameters.clone();
         let previous_spreads = self.allowed_tuple_spread_parameters.clone();
         self.allowed_tuple_spread_parameters = function
@@ -88,6 +96,7 @@ impl<'a> ModuleChecker<'a> {
                 scope.insert(parameter.name.clone(), Type::Unknown);
             }
         }
+        let previous_functions = self.hoist_nested_functions(&function.body, &mut scope);
         for local in &function.locals {
             self.check_variable_in_scope(local, &scope);
             let inferred = local
@@ -133,6 +142,34 @@ impl<'a> ModuleChecker<'a> {
         }
         self.type_parameters = previous_parameters;
         self.allowed_tuple_spread_parameters = previous_spreads;
+        self.functions = previous_functions;
+    }
+
+    fn hoist_nested_functions(
+        &mut self,
+        items: &[FunctionBodyItem],
+        scope: &mut BTreeMap<String, Type>,
+    ) -> BTreeMap<String, Vec<FunctionSignature>> {
+        let previous = self.functions.clone();
+        for item in items {
+            if let FunctionBodyItem::Function(function) = item {
+                let signature = FunctionSignature {
+                    parameters: function.parameters.clone(),
+                    type_parameters: function.type_parameters.clone(),
+                    return_type: function.return_type.clone().unwrap_or(Type::Unknown),
+                };
+                scope.insert(
+                    function.name.clone(),
+                    Type::Function {
+                        parameters: signature.parameters.clone(),
+                        result: Box::new(signature.return_type.clone()),
+                    },
+                );
+                self.functions
+                    .insert(function.name.clone(), vec![signature]);
+            }
+        }
+        previous
     }
 
     /// Whether an explicit return annotation permits the JavaScript
@@ -170,7 +207,8 @@ impl<'a> ModuleChecker<'a> {
                     StructuredTermination::Opaque => return StructuredTermination::Opaque,
                 },
                 FunctionBodyItem::Opaque(_) => return StructuredTermination::Opaque,
-                FunctionBodyItem::Variable(_)
+                FunctionBodyItem::Function(_)
+                | FunctionBodyItem::Variable(_)
                 | FunctionBodyItem::Expression { .. }
                 | FunctionBodyItem::While(_)
                 | FunctionBodyItem::Try(_) => {}
@@ -235,6 +273,7 @@ impl<'a> ModuleChecker<'a> {
         selected_local: Option<&str>,
     ) {
         let mut current_scope = scope.clone();
+        let previous_functions = self.hoist_nested_functions(items, &mut current_scope);
         let mut selected_local_is_declared = false;
         let mut guard_used = false;
         for item in items {
@@ -310,11 +349,13 @@ impl<'a> ModuleChecker<'a> {
                         selected_local_is_declared = true;
                     }
                 }
-                FunctionBodyItem::Expression { .. }
+                FunctionBodyItem::Function(_)
+                | FunctionBodyItem::Expression { .. }
                 | FunctionBodyItem::Throw { .. }
                 | FunctionBodyItem::Opaque(_) => {}
             }
         }
+        self.functions = previous_functions;
     }
 
     fn check_function_if_returns(
@@ -414,10 +455,15 @@ impl<'a> ModuleChecker<'a> {
         selected_local: Option<&str>,
     ) {
         let mut current_scope = scope.clone();
+        let previous_functions = self.hoist_nested_functions(items, &mut current_scope);
         let mut selected_local_is_declared = false;
         let mut guard_used = false;
         for item in items {
             let (tokens, span) = match item {
+                FunctionBodyItem::Function(function) => {
+                    self.check_function_in_scope(function, &current_scope);
+                    continue;
+                }
                 FunctionBodyItem::Expression { tokens, span }
                 | FunctionBodyItem::Throw { tokens, span } => (tokens, span),
                 FunctionBodyItem::Variable(variable) => {
@@ -459,6 +505,7 @@ impl<'a> ModuleChecker<'a> {
             };
             self.check_direct_runtime_expression(tokens, &current_scope, span);
         }
+        self.functions = previous_functions;
     }
 
     pub(super) fn check_direct_function_if(

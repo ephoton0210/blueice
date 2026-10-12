@@ -17,6 +17,7 @@ use std::fmt;
 mod abort;
 mod custom_events;
 mod file_reader;
+mod node_events;
 mod object_urls;
 mod streams;
 
@@ -86,6 +87,10 @@ pub const PAGE_HOST_DOM_CUSTOM_EVENT_DECLARATION_MODULE_ID_V7: &str =
     "blueice:///profiles/core-script-dom-custom-event-v7/lib.blueice.d.ts";
 
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
+
+pub const PAGE_HOST_DOM_NODE_EVENT_PROFILE_V8: &str = "core-script-dom-node-event-v8";
+pub const PAGE_HOST_DOM_NODE_EVENT_DECLARATION_MODULE_ID_V8: &str =
+    "blueice:///profiles/core-script-dom-node-event-v8/lib.blueice.d.ts";
 
 /// One runtime global represented by the fixed page-host profile.
 ///
@@ -544,6 +549,13 @@ pub fn page_host_dom_custom_event_runtime_bindings_v7() -> [PageHostRuntimeBindi
     })
 }
 
+pub fn page_host_dom_node_event_runtime_bindings_v8() -> [PageHostRuntimeBindingV1; 38] {
+    node_events::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -651,6 +663,13 @@ impl PageHostDocumentTypingsV1 {
         Self::generate_from(
             PAGE_HOST_DOM_CUSTOM_EVENT_PROFILE_V7,
             &custom_events::bindings(),
+        )
+    }
+
+    pub fn generate_dom_node_event() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_NODE_EVENT_PROFILE_V8,
+            &node_events::bindings(),
         )
     }
 
@@ -827,6 +846,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_custom_event(),
             PAGE_HOST_DOM_CUSTOM_EVENT_DECLARATION_MODULE_ID_V7,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_node_event_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_node_event(),
+            PAGE_HOST_DOM_NODE_EVENT_DECLARATION_MODULE_ID_V8,
             installed_bindings,
         )
     }

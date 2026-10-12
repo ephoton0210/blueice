@@ -70,6 +70,20 @@ impl Vm {
                 "An event is already dispatching".into(),
             ));
         }
+        if self.host_object_families[family.index as usize]
+            .event_path
+            .is_some()
+        {
+            self.remaining_instructions = self.config.instruction_budget;
+            self.dispatch_native_node_event(
+                family.index,
+                path,
+                kind.as_str(),
+                false,
+                kind == HostFileSelectionEvent::Input,
+            )?;
+            return Ok(());
+        }
         let target = self.mint_host_wrapper(family.index as usize, path[0])?;
         self.remaining_instructions = self.config.instruction_budget;
         let prototype = self.object_prototype;

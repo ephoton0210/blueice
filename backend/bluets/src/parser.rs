@@ -319,6 +319,8 @@ pub struct Parameter {
 /// accidentally erase and execute around it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FunctionBodyItem {
+    /// A lexically scoped named function, with its own returns and locals.
+    Function(Box<FunctionDeclaration>),
     Variable(VariableDeclaration),
     /// A semicolon-terminated runtime expression statement. Its original
     /// tokens preserve BlueTSC emission while allowing the BlueTS-to-BlueJS

@@ -59,7 +59,12 @@ impl Page {
         Ok(current)
     }
 
-    #[cfg(unix)]
+    pub(crate) fn script_event_path(&mut self, handle: u64) -> Result<Vec<u64>, String> {
+        let node = self.script_node(handle)?;
+        self.script_file_event_path(node.as_u64())
+            .ok_or_else(|| "Invalid event ancestry".into())
+    }
+
     pub(crate) fn script_file_event_path(&mut self, node: u64) -> Option<Vec<u64>> {
         let mut node = NodeId::from_u64(node);
         if !self.doc.contains(node) {

@@ -9,6 +9,7 @@
 use super::*;
 mod drag_events;
 mod file_selection_events;
+mod node_events;
 pub use drag_events::{
     HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragImage, HostDragItem,
 };
@@ -136,7 +137,10 @@ pub(super) struct HostObjectFamilyState {
     file_events: bool,
     drag_events: bool,
     element_validator: Option<Box<dyn Fn(HostObjectKey) -> bool>>,
+    event_path: Option<Box<NodeEventPath>>,
 }
+
+type NodeEventPath = dyn FnMut(HostObjectKey) -> Result<Vec<HostObjectKey>, HostFunctionError>;
 
 pub(super) struct HostObjectFactoryRegistration {
     family_index: u32,
@@ -167,6 +171,8 @@ pub(super) struct HostClickListener {
     capture: bool,
     once: bool,
     passive: bool,
+    event_type: JsString,
+    type_root: Option<RootId>,
 }
 
 pub(super) struct ActiveHostClickEvent {
@@ -335,6 +341,18 @@ impl Vm {
                 "host-object family is unavailable".into(),
             ));
         };
+        if state.event_path.is_some() {
+            if self.active_host_click_event.is_some() || self.active_host_drag_event.is_some() {
+                return Err(RuntimeError::TypeError(
+                    "An event is already dispatching".into(),
+                ));
+            }
+            let path = self.host_node_event_path(family.index, key)?;
+            self.remaining_instructions = self.config.instruction_budget;
+            let result =
+                self.dispatch_native_node_event(family.index, &path, "click", true, true)?;
+            return Ok(result == Value::Bool(false));
+        }
         let Some(&(wrapper, _)) = state.wrappers.get(&key) else {
             return Ok(false);
         };
@@ -351,6 +369,7 @@ impl Vm {
                     && listener.key == key
                     && listener.selection.is_none()
                     && listener.drag.is_none()
+                    && listener.event_type == "click"
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -472,14 +491,21 @@ impl Vm {
             .object_id()
             .and_then(|object| family.keys_by_wrapper.get(&object).copied())
             .ok_or_else(|| RuntimeError::TypeError("invalid host-object receiver".into()))?;
-        let (file_events, drag_events) = (family.file_events, family.drag_events);
-        let event_type = Value::String(self.coerce_string(&args[0])?);
+        let (file_events, drag_events, node_events) = (
+            family.file_events,
+            family.drag_events,
+            family.event_path.is_some(),
+        );
+        let name = self.coerce_string(&args[0])?;
+        let event_type = Value::String(name.clone());
         let (selection, drag) = if event_type == Value::String("click".into()) {
             (None, None)
         } else if drag_events && HostDragEventKind::from_value(&event_type).is_some() {
             (None, HostDragEventKind::from_value(&event_type))
-        } else if file_events {
+        } else if file_events && HostFileSelectionEvent::from_value(&event_type).is_ok() {
             (Some(HostFileSelectionEvent::from_value(&event_type)?), None)
+        } else if node_events {
+            (None, None)
         } else {
             return Err(RuntimeError::TypeError(
                 "host listener requires an admitted event type".into(),
@@ -527,6 +553,7 @@ impl Vm {
                 && listener.selection == selection
                 && listener.drag == drag
                 && listener.capture == capture
+                && listener.event_type == name
         });
         if add {
             if existing.is_none() {
@@ -553,7 +580,27 @@ impl Vm {
                         RuntimeError::RangeError("listener identity exhausted".into())
                     })?;
                 let root = self.heap.root(callback)?;
-                let signal_root = signal.map(|signal| self.heap.root(signal)).transpose()?;
+                let signal_root = match signal.map(|signal| self.heap.root(signal)).transpose() {
+                    Ok(root) => root,
+                    Err(error) => {
+                        self.heap.unroot(root)?;
+                        return Err(error.into());
+                    }
+                };
+                let type_root = if node_events {
+                    match self.root_host_event_type(name.clone()) {
+                        Ok(root) => Some(root),
+                        Err(error) => {
+                            self.heap.unroot(root)?;
+                            if let Some(root) = signal_root {
+                                self.heap.unroot(root)?;
+                            }
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    None
+                };
                 self.next_host_listener_serial = serial;
                 self.host_click_listeners.push(HostClickListener {
                     serial,
@@ -567,9 +614,16 @@ impl Vm {
                     capture,
                     once,
                     passive,
+                    event_type: name,
+                    type_root,
                 });
                 if let Some(signal) = signal {
-                    self.attach_abort_hook(signal, crate::heap::AbortHook::Host { serial })?;
+                    if let Err(error) =
+                        self.attach_abort_hook(signal, crate::heap::AbortHook::Host { serial })
+                    {
+                        self.remove_host_listener_serial(serial)?;
+                        return Err(error);
+                    }
                 }
             }
         } else if let Some(index) = existing {
@@ -587,6 +641,9 @@ impl Vm {
         {
             let listener = self.host_click_listeners.remove(index);
             self.heap.unroot(listener.root)?;
+            if let Some(root) = listener.type_root {
+                self.heap.unroot(root)?;
+            }
             if let Some((signal, root)) = listener.signal {
                 self.detach_abort_hook(signal, crate::heap::AbortHook::Host { serial })?;
                 self.heap.unroot(root)?;
@@ -687,6 +744,7 @@ impl Vm {
             file_events: false,
             drag_events: false,
             element_validator: None,
+            event_path: None,
         });
         Ok(HostObjectFamily {
             heap: self.object_prototype.heap,

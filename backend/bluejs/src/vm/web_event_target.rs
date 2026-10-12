@@ -100,6 +100,19 @@ impl Vm {
                 self.with_roots(|heap| heap.alloc_web_event_target(prototype))?,
             ));
         }
+        if let Some(index) = self.host_node_event_family(receiver) {
+            return if native == TargetNative::Dispatch {
+                self.host_node_dispatch_call(index, receiver, args, construct)
+            } else {
+                self.host_click_listener_call(
+                    index,
+                    receiver.clone(),
+                    args,
+                    construct,
+                    native == TargetNative::Add,
+                )
+            };
+        }
         let object = receiver
             .object_id()
             .filter(|id| self.heap.web_event_target(*id).is_ok())

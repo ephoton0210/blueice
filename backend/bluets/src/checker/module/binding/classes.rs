@@ -780,6 +780,9 @@ impl ModuleChecker<'_> {
         let mut scope = scope.clone();
         for item in items {
             match item {
+                FunctionBodyItem::Function(function) => {
+                    self.check_function_in_scope(function, &scope)
+                }
                 FunctionBodyItem::Variable(variable) => {
                     self.check_variable_in_scope(variable, &scope);
                     let value = variable

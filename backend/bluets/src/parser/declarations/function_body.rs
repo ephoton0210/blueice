@@ -18,6 +18,46 @@ impl Parser {
         let mut parentheses = 0usize;
         let mut brackets = 0usize;
         while !self.at_eof() && depth > 0 {
+            if parentheses == 0 && brackets == 0 && self.peek("function") {
+                let token = self.current().clone();
+                if self.nested_function_depth >= 64 {
+                    self.error_at(
+                        token.span(&self.id),
+                        DiagnosticCode::ResourceLimit,
+                        "nested function declarations exceed the 64-level limit",
+                    );
+                    let mut braces = 0;
+                    let mut entered = false;
+                    while !self.at_eof() {
+                        if self.peek("{") {
+                            braces += 1;
+                            entered = true;
+                        } else if self.peek("}") {
+                            if !entered {
+                                break;
+                            }
+                            braces -= 1;
+                        }
+                        let end = (entered && braces == 0) || (!entered && self.peek(";"));
+                        self.bump();
+                        if end {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                self.bump();
+                self.nested_function_depth += 1;
+                self.parse_function(token.start, false, false, false, false);
+                self.nested_function_depth -= 1;
+                let Declaration::Function(function) =
+                    self.declarations.pop().expect("parsed nested function")
+                else {
+                    unreachable!("parse_function emits one declaration")
+                };
+                body.push(FunctionBodyItem::Function(Box::new(function)));
+                continue;
+            }
             self.diagnose_unsupported_opaque_syntax(
                 self.index,
                 self.index.saturating_add(2).min(self.tokens.len()),

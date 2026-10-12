@@ -334,6 +334,15 @@ impl BlueJsHostBindingRegistrar<'_> {
         self.vm.install_host_file_selection_event_methods(family)
     }
 
+    pub fn install_host_node_event_methods(
+        &mut self,
+        family: HostObjectFamily,
+        path: impl FnMut(HostObjectKey) -> Result<Vec<HostObjectKey>, crate::HostFunctionError>
+            + 'static,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_node_event_methods(family, path)
+    }
+
     /// Installs a private wrapper getter/setter pair with exact receiver
     /// checks. The accessors remain in the creating realm only.
     pub fn install_host_object_accessor(

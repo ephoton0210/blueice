@@ -32,8 +32,9 @@ use blueice_bluets_bluejs::page_host_typings::{
     page_host_document_runtime_bindings_v1, page_host_dom_abort_runtime_bindings_v6,
     page_host_dom_custom_event_runtime_bindings_v7, page_host_dom_event_runtime_bindings_v1,
     page_host_dom_file_runtime_bindings_v1, page_host_dom_mutation_runtime_bindings_v1,
-    page_host_dom_object_url_runtime_bindings_v5, page_host_dom_stream_runtime_bindings_v4,
-    page_host_dom_text_runtime_bindings_v1, PageHostDocumentTypingsV1,
+    page_host_dom_node_event_runtime_bindings_v8, page_host_dom_object_url_runtime_bindings_v5,
+    page_host_dom_stream_runtime_bindings_v4, page_host_dom_text_runtime_bindings_v1,
+    PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
@@ -439,6 +440,26 @@ struct ScriptDomClient {
 }
 
 impl ScriptDomClient {
+    fn event_path(&mut self, target: ScriptDocumentTarget, node: u64) -> io::Result<Vec<u64>> {
+        match self.call(target, ScriptRequest::GetEventPath { target, node })? {
+            ScriptReply::EventPath { nodes }
+                if nodes.first() == Some(&node)
+                    && nodes.len() <= 256
+                    && !nodes.contains(&0)
+                    && nodes.iter().collect::<std::collections::HashSet<_>>().len()
+                        == nodes.len() =>
+            {
+                Ok(nodes)
+            }
+            _ => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Invalid core event ancestry",
+                ))
+            }
+        }
+    }
     fn file_value(&mut self, target: ScriptDocumentTarget, node: u64) -> io::Result<HostValue> {
         match self.call(target, ScriptRequest::GetFileValue { target, node })? {
             ScriptReply::FileValue { value } => Ok(value.map_or(HostValue::Undefined, |value| {
@@ -1017,14 +1038,14 @@ fn install_document_snapshot_bindings(
         PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text(),
         PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation(),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event(),
-        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_custom_event(),
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_node_event(),
     };
     let expected_bindings = match page_dom_profile {
         PageDomProfile::Snapshot => page_host_document_runtime_bindings_v1().to_vec(),
         PageDomProfile::Text => page_host_dom_text_runtime_bindings_v1().to_vec(),
         PageDomProfile::Mutation => page_host_dom_mutation_runtime_bindings_v1().to_vec(),
         PageDomProfile::Event => page_host_dom_event_runtime_bindings_v1().to_vec(),
-        PageDomProfile::File => page_host_dom_custom_event_runtime_bindings_v7().to_vec(),
+        PageDomProfile::File => page_host_dom_node_event_runtime_bindings_v8().to_vec(),
     };
     artifact
         .verify_runtime_bindings(&expected_bindings)
@@ -1295,6 +1316,35 @@ fn install_document_snapshot_bindings(
                 ) {
                     if page_dom_profile == PageDomProfile::File {
                         bindings.install_host_file_selection_event_methods(family)?;
+                        let path_client = Rc::clone(&file_client);
+                        bindings.install_host_node_event_methods(
+                            family,
+                            move |key: HostObjectKey| {
+                                if !key.matches_owner(tab_id, document_generation) {
+                                    return Err(HostFunctionError::new(
+                                        "Node belongs to another document",
+                                    ));
+                                }
+                                path_client
+                                    .borrow_mut()
+                                    .event_path(target, key.object())
+                                    .map(|nodes| {
+                                        nodes
+                                            .into_iter()
+                                            .map(|node| {
+                                                HostObjectKey::new(
+                                                    tab_id,
+                                                    document_generation,
+                                                    node,
+                                                )
+                                            })
+                                            .collect()
+                                    })
+                                    .map_err(|_| {
+                                        HostFunctionError::new("Live node ancestry unavailable")
+                                    })
+                            },
+                        )?;
                     } else {
                         bindings.install_host_click_event_methods(family)?;
                     }
@@ -1378,6 +1428,8 @@ fn install_document_snapshot_bindings(
                         .extend_from_slice(&page_host_dom_abort_runtime_bindings_v6()[34..]);
                     installed_bindings
                         .extend_from_slice(&page_host_dom_custom_event_runtime_bindings_v7()[36..]);
+                    installed_bindings
+                        .extend_from_slice(&page_host_dom_node_event_runtime_bindings_v8()[37..]);
                 }
             } else {
                 installed_bindings

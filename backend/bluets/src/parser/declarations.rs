@@ -31,6 +31,7 @@ impl Parser {
             diagnostics: Vec::new(),
             max_type_depth,
             type_depth: 0,
+            nested_function_depth: 0,
         }
     }
 
