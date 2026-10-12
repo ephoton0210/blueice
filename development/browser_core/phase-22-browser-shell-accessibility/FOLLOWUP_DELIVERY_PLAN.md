@@ -324,8 +324,10 @@ The corrected macOS workspace run now completes all 516 result groups:
 Core cases; all 1,902 completion input hashes match. The original tool session
 handle was lost, so its direct OS exit code is explicitly unrecorded rather
 than inferred. See [complete case results](artifacts/macos-workspace-1e198f07e-results.json).
-Main is integrated through `1e4286068`; formatting passes and complete strict
-workspace/all-target Clippy is running with a separately captured exit receipt.
+Main is integrated through `1e4286068`; formatting and complete strict
+workspace/all-target Clippy both exit zero on the unchanged Rust source.
+Their direct exit codes and log hashes are retained in the
+[complete check receipt](artifacts/macos-final-1e4286068-rust-checks-results.json).
 The current native Zhuyin case actually skips at its Accessibility guard;
 no physical keys were injected. Actual VoiceOver navigation/action/speech,
 multi-monitor handoff and printer transitions remain open. The single physical
