@@ -7,6 +7,18 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_test262_assertion_boundary_contracts() {
+    blueice_bluejs::Vm::verify_test262_assertion_boundary_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_heap_object_storage_boundary_contracts() {
+    blueice_bluejs::Heap::verify_object_storage_boundary_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_common_boundary_contracts() {
     blueice_bluejs::Vm::verify_common_boundary_contracts();
     blueice_bluejs::Program::verify_payload_accounting_contracts();
