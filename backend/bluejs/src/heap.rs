@@ -54,6 +54,7 @@ mod web_event_target;
 mod web_file_api;
 mod web_file_reader;
 mod web_streams;
+mod web_url;
 pub(crate) use web_drag_drop::{DragEventState, DragItem, DragItemData, DragStore, DragStoreMode};
 pub(crate) use web_event_target::{WebListener, WebTargetData};
 pub(crate) use web_file_reader::{FileReadKind, FileReaderState};
@@ -889,6 +890,7 @@ enum ObjectKind {
         /// whose bytes nothing may write after that allocation.
         immutable: bool,
     },
+    WebUrl(Box<url::Url>),
     WebBlob(WebBlobData),
     WebFileList(Vec<ObjectId>),
     WebDOMException {
@@ -1362,6 +1364,7 @@ impl Object {
                     .chain(bound.args.iter().filter_map(Value::object_id))
                     .collect(),
                 ObjectKind::NativeFunction { function, .. } => function.references(),
+                ObjectKind::WebUrl(_) => Vec::new(),
                 ObjectKind::WebFileList(files) => files.clone(),
                 ObjectKind::WebDataTransfer(store) => store.references(),
                 ObjectKind::WebDragItems(store)

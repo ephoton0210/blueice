@@ -49,6 +49,8 @@ mod web_event_target;
 mod web_events;
 mod web_file_api;
 mod web_file_input;
+mod web_url;
+pub use web_url::HostObjectUrls;
 mod web_file_reader;
 mod web_streams;
 use completion::{
@@ -983,6 +985,7 @@ pub struct Vm {
     host_object_pair_methods: Vec<HostObjectPairMethodRegistration>,
     host_object_families: Vec<HostObjectFamilyState>,
     host_file_inputs: Vec<web_file_input::HostFileInputRegistration>,
+    host_object_urls: Option<Box<dyn HostObjectUrls>>,
     host_click_listeners: Vec<HostClickListener>,
     next_host_listener_serial: u64,
     active_host_click_event: Option<ActiveHostClickEvent>,
@@ -1731,6 +1734,7 @@ impl Vm {
             && !matches!(
                 function,
                 NativeFunction::String
+                    | NativeFunction::WebUrl(crate::native::UrlNative::Constructor)
                     | NativeFunction::Blob
                     | NativeFunction::File
                     | NativeFunction::DOMException

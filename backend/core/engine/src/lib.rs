@@ -19,6 +19,7 @@ pub mod downloads_page;
 mod gatekeeper_client;
 pub mod gatekeeper_settings_page;
 mod navigation_request;
+mod object_urls;
 mod page;
 mod page_text;
 pub mod script;
@@ -30,6 +31,7 @@ mod translation;
 use blueice_css::{cascade, ua_stylesheet, Origin};
 use blueice_paint::Frame;
 
+pub use object_urls::{ObjectUrlLease, ObjectUrlPurpose};
 pub use page::printing::{FrozenPrintDocument, PrintedDocument};
 pub use page::Page;
 pub use tabs::{

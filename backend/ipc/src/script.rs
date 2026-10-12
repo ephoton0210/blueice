@@ -55,11 +55,12 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
+/// V8 adds document-scoped, bounded Blob URL upload and revocation.
 /// V7 adds bounded selected-file metadata/byte reads and file clear/form reset.
 /// V6 makes child-private node handles distinct from core DOM NodeIds and
 /// unique across documents. Older peers could confuse equal raw NodeIds in
 /// different tabs even when their document targets were authenticated.
-pub const SCRIPT_PROTOCOL_VERSION: u32 = 7;
+pub const SCRIPT_PROTOCOL_VERSION: u32 = 8;
 pub const SCRIPT_SESSION_TOKEN_HEX_BYTES: usize = 64;
 pub const SCRIPT_MAX_FRAME_BYTES: usize = 1_100_000;
 pub const SCRIPT_MAX_NAME_BYTES: usize = 4_096;
@@ -77,6 +78,30 @@ pub struct ScriptDocumentTarget {
 /// long-lived connection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ScriptRequest {
+    BeginBlobUrl {
+        target: ScriptDocumentTarget,
+        size: u64,
+        media_type: String,
+    },
+    AppendBlobUrl {
+        target: ScriptDocumentTarget,
+        upload_id: u64,
+        offset: u64,
+        bytes: Vec<u8>,
+    },
+    CommitBlobUrl {
+        target: ScriptDocumentTarget,
+        upload_id: u64,
+    },
+    AbortBlobUrl {
+        target: ScriptDocumentTarget,
+        upload_id: u64,
+    },
+    RevokeBlobUrl {
+        target: ScriptDocumentTarget,
+        url: String,
+    },
+
     GetFileValue {
         target: ScriptDocumentTarget,
         node: u64,
@@ -175,7 +200,12 @@ impl ScriptRequest {
     pub fn document_target(&self) -> Option<ScriptDocumentTarget> {
         match self {
             Self::Hello { .. } | Self::Call { .. } => None,
-            Self::GetDocument { target } => Some(*target),
+            Self::BeginBlobUrl { target, .. }
+            | Self::AppendBlobUrl { target, .. }
+            | Self::CommitBlobUrl { target, .. }
+            | Self::AbortBlobUrl { target, .. }
+            | Self::RevokeBlobUrl { target, .. }
+            | Self::GetDocument { target } => Some(*target),
             Self::GetFileValue { target, .. }
             | Self::ClearInputFiles { target, .. }
             | Self::ResetForm { target, .. } => Some(*target),
@@ -196,6 +226,12 @@ impl ScriptRequest {
 /// `core`'s reply to one [`ScriptRequest`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ScriptReply {
+    BlobUrlUpload {
+        upload_id: u64,
+    },
+    BlobUrl {
+        url: String,
+    },
     FileValue {
         value: Option<String>,
     },

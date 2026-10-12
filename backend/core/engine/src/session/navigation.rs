@@ -150,6 +150,24 @@ pub(super) fn begin_history_navigation<S: Write>(
                     extension_events,
                 );
             }
+            if url::Url::parse(&url).is_ok_and(|url| url.scheme() == "blob") {
+                return begin_gated_request(
+                    tabs,
+                    stream,
+                    frame_dir,
+                    generation,
+                    reply_tab,
+                    request_id,
+                    tab_id,
+                    url.into(),
+                    kind,
+                    pending_nav_seq,
+                    downloads_refresher,
+                    completion_tx,
+                    gatekeeper_socket,
+                    extension_events,
+                );
+            }
             if let Err(e) = blueice_net::validate_url_scheme(&url) {
                 return write_error(stream, reply_tab, request_id, e.to_string());
             }
@@ -276,6 +294,40 @@ pub(super) fn begin_gated_request<S: Write>(
     if built_in {
         if is_downloads_url(&url) {
             downloads_refresher.begin_visit(tab_id);
+        }
+        return reply_success(
+            tabs,
+            stream,
+            frame_dir,
+            generation,
+            reply_tab,
+            request_id,
+            &kind,
+            tab_id,
+            extension_events,
+        );
+    }
+    if url::Url::parse(&url).is_ok_and(|url| url.scheme() == "blob") {
+        if navigation.request.method() != "GET" {
+            return write_error(
+                stream,
+                reply_tab,
+                request_id,
+                "Blob navigation requires GET".into(),
+            );
+        }
+        let Some(lease) =
+            tabs.resolve_object_url(tab_id, &url, crate::ObjectUrlPurpose::Navigation)
+        else {
+            return write_error(stream, reply_tab, request_id, "Blob URL unavailable".into());
+        };
+        let blob_kind = match kind {
+            PendingKind::Reload => crate::tabs::BlobNavigationKind::Reload,
+            PendingKind::History(direction) => crate::tabs::BlobNavigationKind::History(direction),
+            _ => crate::tabs::BlobNavigationKind::New,
+        };
+        if let Err(message) = tabs.apply_blob_navigation(tab_id, &url, &lease, blob_kind) {
+            return write_error(stream, reply_tab, request_id, message);
         }
         return reply_success(
             tabs,

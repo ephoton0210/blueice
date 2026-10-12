@@ -15,6 +15,7 @@ use blueice_bluets::ModuleSource;
 use std::fmt;
 
 mod file_reader;
+mod object_urls;
 mod streams;
 
 /// The profile identity shared by the core binding catalog and the isolated
@@ -69,6 +70,10 @@ pub const PAGE_HOST_DOM_FILE_READER_DECLARATION_MODULE_ID_V3: &str =
 pub const PAGE_HOST_DOM_STREAM_PROFILE_V4: &str = "core-script-dom-stream-v4";
 pub const PAGE_HOST_DOM_STREAM_DECLARATION_MODULE_ID_V4: &str =
     "blueice:///profiles/core-script-dom-stream-v4/lib.blueice.d.ts";
+
+pub const PAGE_HOST_DOM_OBJECT_URL_PROFILE_V5: &str = "core-script-dom-object-url-v5";
+pub const PAGE_HOST_DOM_OBJECT_URL_DECLARATION_MODULE_ID_V5: &str =
+    "blueice:///profiles/core-script-dom-object-url-v5/lib.blueice.d.ts";
 
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
 
@@ -508,6 +513,13 @@ pub fn page_host_dom_stream_runtime_bindings_v4() -> [PageHostRuntimeBindingV1; 
     })
 }
 
+pub fn page_host_dom_object_url_runtime_bindings_v5() -> [PageHostRuntimeBindingV1; 34] {
+    object_urls::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -598,6 +610,13 @@ impl PageHostDocumentTypingsV1 {
 
     pub fn generate_dom_stream() -> Self {
         Self::generate_from(PAGE_HOST_DOM_STREAM_PROFILE_V4, &streams::bindings())
+    }
+
+    pub fn generate_dom_object_url() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_OBJECT_URL_PROFILE_V5,
+            &object_urls::bindings(),
+        )
     }
 
     fn generate_from(profile: &'static str, bindings: &[PageHostDocumentBindingV1]) -> Self {
@@ -740,6 +759,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_stream(),
             PAGE_HOST_DOM_STREAM_DECLARATION_MODULE_ID_V4,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_object_url_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_object_url(),
+            PAGE_HOST_DOM_OBJECT_URL_DECLARATION_MODULE_ID_V5,
             installed_bindings,
         )
     }

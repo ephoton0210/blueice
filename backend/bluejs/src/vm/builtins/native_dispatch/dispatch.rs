@@ -94,6 +94,9 @@ impl Vm {
         };
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::WebUrl(native) => {
+                self.web_url_call(native, &receiver, &args, construct)
+            }
             NativeFunction::DOMException
             | NativeFunction::DOMExceptionName
             | NativeFunction::DOMExceptionMessage

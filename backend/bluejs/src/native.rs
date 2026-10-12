@@ -261,7 +261,18 @@ pub(crate) enum ReaderNative {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UrlNative {
+    Constructor,
+    Part(u8, bool),
+    Serialize,
+    Parse(bool),
+    Create,
+    Revoke,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
+    WebUrl(UrlNative),
     DOMException,
     DOMExceptionName,
     DOMExceptionMessage,

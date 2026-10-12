@@ -223,6 +223,13 @@ impl BlueJsHostBindingRegistrar<'_> {
         self.vm.install_web_file_api()
     }
 
+    pub fn install_host_object_urls(
+        &mut self,
+        host: impl crate::HostObjectUrls,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_object_urls(host)
+    }
+
     pub fn install_host_file_input_reader(
         &mut self,
         family: HostObjectFamily,

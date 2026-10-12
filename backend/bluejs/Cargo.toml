@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+url = "=2.5.8"
 blueice-ecma402 = { path = "../ecma402" }
 regress = { version = "=0.12.0", features = ["utf16"] }
 unicode-normalization = "=0.1.25"

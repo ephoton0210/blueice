@@ -120,6 +120,7 @@ impl Vm {
             host_object_families: Vec::new(),
             event_time_origin: std::time::Instant::now(),
             host_file_inputs: Vec::new(),
+            host_object_urls: None,
             host_click_listeners: Vec::new(),
             next_host_listener_serial: 0,
             active_host_click_event: None,

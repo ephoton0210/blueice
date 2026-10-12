@@ -844,6 +844,7 @@ impl Vm {
             self.heap.native_function(*id)?,
             Some(
                 NativeFunction::Function
+                    | NativeFunction::WebUrl(crate::native::UrlNative::Constructor)
                     | NativeFunction::Blob
                     | NativeFunction::File
                     | NativeFunction::DOMException

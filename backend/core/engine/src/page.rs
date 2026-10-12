@@ -41,6 +41,8 @@ use url::Url;
 static NEXT_SCRIPT_NODE_HANDLE: AtomicU64 = AtomicU64::new(1);
 
 pub struct Page {
+    pub(crate) object_url_origin: Option<crate::object_urls::DocumentOrigin>,
+    pub(crate) object_url_environment: Option<crate::object_urls::DocumentEnvironment>,
     pub(crate) submission_pending: bool,
     pub(crate) post_expired: bool,
     pub(crate) last_navigation: Option<crate::navigation_request::BrowserNavigation>,
@@ -125,6 +127,8 @@ impl Page {
         next_node_id: u64,
     ) -> Self {
         Page {
+            object_url_origin: None,
+            object_url_environment: None,
             doc: Document::new_continuing_from(next_node_id),
             styles: HashMap::new(),
             fragment: Fragment::empty_block(),
@@ -184,6 +188,8 @@ impl Page {
     /// measures the text that is actually shown; a wrong-length answer leaves
     /// the original page (fail-open).
     fn load_html_translating(&mut self, html: &str, translations: Option<&[String]>) {
+        self.object_url_environment = None;
+        self.object_url_origin = None;
         // `parse_continuing_from` (not `parse`) so this replacement
         // document's NodeIds never collide with -- or get numerically
         // confused with -- the document it's replacing. A client that
@@ -1132,6 +1138,7 @@ impl Page {
     /// its document generation is strictly greater (so a page-script realm bound
     /// to the departed document can never alias this one).
     pub(crate) fn continue_tab_generations_from(&mut self, previous: &Page) {
+        self.object_url_environment = None;
         self.native_undo.clear();
         self.native_select = native_select::SelectSession::default();
         self.native_text_scroll.clear();
@@ -1220,6 +1227,15 @@ impl Page {
     /// This is intentionally crate-visible: it is a core lifecycle token, not
     /// web-observable state. It lets the script host invalidate a realm even
     /// when a navigation keeps the same origin.
+    #[cfg(unix)]
+    pub(crate) fn effective_script_origin(&self) -> Option<String> {
+        match &self.object_url_origin {
+            Some(crate::object_urls::DocumentOrigin::Tuple(origin)) => Some(origin.clone()),
+            Some(crate::object_urls::DocumentOrigin::Opaque(_)) => None,
+            None => blueice_net::canonical_http_origin(self.url()?).ok(),
+        }
+    }
+
     pub(crate) fn document_generation(&self) -> u64 {
         self.document_generation
     }

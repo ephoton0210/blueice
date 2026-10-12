@@ -226,6 +226,8 @@ enum HistoryEntry {
 }
 
 mod navigation_session;
+mod object_urls;
+pub(crate) use object_urls::BlobNavigationKind;
 
 impl HistoryEntry {
     fn post_request(&self) -> Option<&crate::navigation_request::BrowserNavigation> {
@@ -249,7 +251,8 @@ impl HistoryEntry {
 }
 
 impl HistoryEntry {
-    fn from_page(page: Page, mode: HistorySnapshotMode) -> Self {
+    fn from_page(mut page: Page, mode: HistorySnapshotMode) -> Self {
+        page.object_url_environment = None;
         match mode {
             HistorySnapshotMode::Reload => HistoryEntry::Reload {
                 url: page.url().map(str::to_string),
@@ -338,6 +341,7 @@ impl Tab {
 /// same as any other stale ID -- one consistent failure mode, not a
 /// special case.
 pub struct TabManager {
+    pub(crate) object_urls: Arc<crate::object_urls::ObjectUrlStore>,
     tabs: HashMap<TabId, Tab>,
     /// Insertion order, for a deterministic `ListTabs` reply --
     /// `HashMap` iteration order isn't stable, and a browser's tab list
@@ -421,6 +425,7 @@ impl TabManager {
             },
         );
         TabManager {
+            object_urls: Arc::new(crate::object_urls::ObjectUrlStore::default()),
             tabs,
             order: vec![default_tab],
             next_tab_id: 2,
