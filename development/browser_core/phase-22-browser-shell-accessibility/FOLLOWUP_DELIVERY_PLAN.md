@@ -189,7 +189,10 @@ pass without failures or skips. Temporary trace code is removed from the final
 candidate. The corrected complete Rust run for committed `83436f846` has
 finished successfully: 7,507 passed, zero failed and 69 ignored across 495 result
 groups. All 1,246 frozen Rust/Cargo inputs are unchanged. The complete native
-run is still live; physical input-method/hardware acceptance is still open.
+run has finished with 309 passed, zero failed and one physical Zhuyin skip.
+All 1,863 frozen inputs are unchanged; the SFTP and update wrappers confirm
+owned-process/fixture cleanup. Physical input-method/hardware acceptance is
+still open.
 Windows uses the independently hashed B: archive of that same committed source.
 After the storage-scanner race correction, its format, strict all-target Clippy
 and complete all-target build have passed; complete Rust and WinUI execution
