@@ -8898,3 +8898,23 @@ This closes the measured class-plus-two-method-decorator anchor case, not all
 multi-decorator combinations. Other class/member orders, field/accessor and
 computed-key interactions, helper families, full mapping-set parity, complete
 K.0 and final-source hosted CI remain open.
+
+### K.11 legacy decorator helper frames (2026-10-12)
+
+A seventh pinned TypeScript 5.9.3 fixture exercises `experimentalDecorators`
+with one class and one method decorator. Both compilers execute `method`,
+`class`, then `42`, and the relocated decorator names, `names` table and inline
+source content already agree. The new public oracle first observed BlueTS
+mapping its generated `__bluetsDecorate` definition to the source decorator,
+the method helper call to the class closing brace, and the class helper call
+to the method decorator. Native leaves the helper definition unmapped and maps
+the calls to the method key and class-name end respectively. The legacy emitter
+now tags its helper insertion as generated-only and anchors each call at the
+measured source site; these markers do not change JavaScript bytes when source
+maps are disabled. The focused oracle is green.
+
+This establishes the measured legacy class/member helper frames, not complete
+legacy source-map parity. Native leaves the generated decorator-array closing
+brackets unmapped while BlueTS currently maps them to expression ends.
+Parameter and metadata helper frames, other helper families, complete K.0 and
+final-source hosted CI remain open.

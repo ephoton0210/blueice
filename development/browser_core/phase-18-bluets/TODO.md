@@ -634,6 +634,73 @@ Token-level mappings with `names` and `sourcesContent`; compared with `tsc` by d
 comparing the mapping sets for the supported constructs (not the text); debugger mappings for generated
 helper frames and the relocated decorator text.
 
+**Minimum acceptance contract (all boxes required; K.11 is open).** This is a
+bounded JavaScript Source Map v3 claim for the committed matrix below, not a
+claim that every TypeScript construct or every emitted byte matches `tsc`.
+Each row uses the same explicitly recorded compiler options against pinned
+TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
+
+- [ ] **K.11.1 Freeze the public oracle matrix.** Commit fixtures and at least
+  eleven machine-readable rows, one for each of: copied code; erased
+  annotations; a standard method decorator; whitespace-compacted relocation;
+  erasure inside relocation; composed class and two member decorators; a
+  legacy class and member decorator; legacy parameter plus emitted metadata
+  helpers; a non-decorator generated helper; a System-module wrapper; and CRLF plus a
+  non-BMP character. Record target, module kind, decorator flags, source-map
+  options and expected accept/reject verdict per row. Every required row must
+  run in the pinned oracle through the public compiler API; external and
+  inline publication must also be exercised through BlueTSC's CLI. No
+  missing, silently skipped or selectively filtered row counts as passing.
+- [ ] **K.11.2 Compare complete decoded mappings within that matrix.** Decode
+  both Source Map v3 streams, validate monotonic generated positions and VLQ
+  fields, and compare every emitted non-trivia token and every unmapped/mapped
+  transition, not only hand-picked debugger sites. Where the emitted JavaScript
+  bytes are identical, compare the entire decoded segment sets (normalizing
+  only source-root paths). Otherwise align every corresponding emitted token
+  by a checked token/role table and compare source identity, original line,
+  UTF-16 column and optional name index; classify each unmatched token as
+  source-anchored or generated-only with a measured expected mapping state.
+  Unaligned or unexplained differences fail the row. Do not compare raw VLQ
+  text or accept fewer segments merely because a few inspected positions agree.
+- [ ] **K.11.3 Verify map metadata and publication.** For each applicable
+  matrix row, check `version`, `file`, `sourceRoot`, `sources`, `names` and
+  `sourcesContent` against Native after documented path normalization; check
+  both external and inline map delivery, and `inlineSources` on/off. Include a
+  nonempty named-segment encode/decode regression even if pinned Native emits
+  an empty `names` table for a given row. Verify CRLF and astral characters use
+  source UTF-16 columns. A source-map resource-limit failure must return a
+  bounded diagnostic without a partial published map; enabling maps must not
+  change executable JavaScript apart from an explicitly requested map trailer.
+- [ ] **K.11.4 Prove generated and relocated debugger positions.** Across the
+  matrix, generated helper definitions, wrapper scaffolding and synthetic
+  punctuation must match Native's measured mapped/unmapped state; helper calls
+  must anchor to the measured source token, including standard and legacy
+  decorator class/member/parameter/metadata cases and the non-decorator
+  helper. Relocated decorator expressions must retain their original token
+  positions through compaction and erasure. Exercise the public debugger's
+  breakpoint/step and stack-location lookup at mapped, relocated and unmapped
+  sites; no synthetic helper body may be reported as user source.
+- [ ] **K.11.5 Verify executable and regression behavior.** For every accepted
+  fixture, execute Native and BlueTSC output with the recorded Node version and
+  compare exit status, stdout and stderr; retain stable map output across
+  repeated builds. Run focused source-map, emitter, declaration-map,
+  module-wrapper and debugger regressions. A row cannot be accepted by
+  changing the fixture or weakening its comparison without a recorded Native
+  re-baseline and review.
+- [ ] **K.11.6 Pass the final-source gate.** On the same committed source,
+  pass the complete K.0 local gate (format, warnings-denied all-target Clippy,
+  workspace tests including explicitly run ignored pinned oracles and coverage)
+  and the hosted platform build/test/lint, pinned TypeScript oracle, coverage
+  and final CI-gate jobs. Record the exact commit, oracle versions, commands,
+  fixture count, coverage and hosted run in PLAN.md. Earlier K.10 or
+  intermediate K.11 green runs do not close this item.
+
+**Exit rule:** check K.11 only when K.11.1–K.11.6 are all checked and there is
+no known red or unclassified mapping inside the frozen matrix. Any other
+supported source-map form remains a named coverage gap (or a precise refusal),
+not an implied parity claim; changing the minimum matrix requires updating
+this contract and the baseline before claiming closure.
+
 *K.11 test-first baseline (2026-10-12):* The pinned 5.9.3 checker accepts two
 unique fixtures, and Native/BlueTSC Node output, inline source content and
 `names` agree. The decoded, token-aligned mapping oracle is deliberately red
@@ -667,6 +734,12 @@ The relocated expressions and method helper already mapped correctly, but the
 class helper inherited the method anchor; it now uses the `class` keyword
 token in the checked header. Other class/member orders, generated helper
 families, full mapping-set parity and the complete K.0 gate remain open.
+The seventh pinned fixture covers a legacy class plus method decorator. Its
+generated `__decorate` definition is now unmapped, while the member and class
+helper calls carry distinct Native-compatible source anchors; relocated names,
+runtime output and inline map content also agree. Legacy array punctuation,
+parameter/metadata helper frames, other helper families, the full mapping set
+and K.0 remain open.
 
 ### K.12 Projects — M10 — gap G-M2
 
