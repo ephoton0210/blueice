@@ -1205,6 +1205,39 @@ final class NativeEditingTests: XCTestCase {
         await model.stop()
     }
 
+    func testEscapeKeyCancelsMarkedTextThroughRealCore() async throws {
+        let (model, view, fixture) = try await start()
+        let window = NSWindow(contentRect: CGRect(x: 40, y: 40, width: 640, height: 400),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        window.makeKeyAndOrderFront(nil)
+        XCTAssertTrue(window.makeFirstResponder(view))
+        defer {
+            window.contentView = nil; window.close(); fixture.stop()
+            Task { await model.stop() }
+        }
+        try await focus("Editor", model: model, view: view)
+        model.textInput(.move(.end, false))
+        await wait { model.textInputState?.focused?.selection.location == 4 && !model.textInputBusy }
+        // This is the public AppKit key/client boundary against real Core;
+        // the separate OS-key test establishes actual system IME behavior.
+        view.setMarkedText("ㄋㄧ", selectedRange: NSRange(location: 2, length: 0),
+                           replacementRange: NSRange(location: NSNotFound, length: 0))
+        await wait { model.textInputState?.focused?.text == "A😀Bㄋㄧ" && !model.textInputBusy }
+        XCTAssertEqual(model.textInputState?.focused?.marked?.nsRange, NSRange(location: 4, length: 2))
+        let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+            modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, characters: "\u{1b}",
+            charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
+        view.keyDown(with: event)
+        await wait { model.textInputState?.focused?.text == "A😀B" && !model.textInputBusy }
+        XCTAssertNil(model.textInputState?.focused?.marked)
+        XCTAssertFalse(view.hasMarkedText())
+        XCTAssertEqual(fixture.requests, ["/editing"])
+        await model.stop()
+    }
+
     func testMultilineCaretScreenGeometrySubstringAndGraphemeDeletion() async throws {
         let (model, view, fixture) = try await start()
         defer { fixture.stop(); Task { await model.stop() } }

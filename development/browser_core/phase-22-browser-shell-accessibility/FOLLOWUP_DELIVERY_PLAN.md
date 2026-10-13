@@ -402,3 +402,34 @@ see [follow-up cleanup](artifacts/physical-voiceover-keyboard-navigation-followu
 Stable startup, actual reader navigation/action/speech, successful IME cancel,
 language-popup placement and physical printer/multi-monitor acceptance remain
 open; helper compilation and scoped passes do not complete those requirements.
+
+## Actual Zhuyin cancellation repair on 2026-10-13
+
+The macOS viewport now cancels an active marked composition before forwarding
+unmodified Escape to the system input context. Discarding that conversion session
+does not adopt its phonetic suffix through AppKit callbacks. A scoped Escape
+unmark callback also cancels rather than committing, while ordinary unmarkText
+retains its existing finish/commit semantics. This is a Mac Swift change;
+production Rust and WinUI code are unchanged.
+
+The separate owned native app now passes the actual system Zhuyin sequence with
+OS keycodes: ㄋ, ㄋㄧ, third tone→你, Return commit, a second ㄋㄧ composition,
+and Escape restoring only the committed 你. All seven observed Core states
+preserve the document, frame source and editor identity. The original ABC input
+source is restored; the app exits normally and its runtime, private preferences,
+HTTP server and fixture are removed. See the
+[actual OS result](artifacts/physical-zhuyin-escape-fixed-results.json).
+This establishes physical IME composition/commit/cancel for the explicit
+candidate frontend source hashes and unchanged Rust runtime; the older Runner
+Accessibility skip is retained as historical evidence rather than relabeled.
+
+Two public AppKit/Core cancellation and ordinary-unmark cases pass, followed by
+all 38 NativeEditingTests with zero failures/skips and exit zero. All 1,902
+program inputs, 11 strict signatures and owned-process absence are verified;
+see [focused cases](artifacts/macos-ime-cancel-focused-results.json) and
+[complete editing cohort](artifacts/macos-native-editing-cancel-results.json).
+The generic key boundary already passed before the fix; the actual OS cancel
+failure supplies the red evidence. An earlier proposed synthetic NSEvent/system
+IME fixture failed to establish composition and is explicitly disqualified as
+cancellation evidence. VoiceOver, the language-popup fixture, current drag and
+fresh complete native acceptance retain their separate remaining gates.

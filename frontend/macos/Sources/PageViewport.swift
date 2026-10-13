@@ -169,6 +169,8 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     private var pendingSelection: NSRange?
     private var pendingContext: TextInputContext?
     private var pendingUnmark: TextInputContext?
+    private var interpretingKey: NSEvent?
+    private var discardingCancelledComposition = false
     private var handledFocusExit: TextInputContext?
     private var contextMenuTask: Task<Void, Never>?
     private var activeContextMenu: (menu: NSMenu, context: PageMenuContext)?
@@ -608,6 +610,9 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     override func keyDown(with event: NSEvent) {
+        let previousKey = interpretingKey
+        interpretingKey = event
+        defer { interpretingKey = previousKey }
         if isPageInputKey(event), pendingMouseGesture != nil, bufferMouseEvent(event) { return }
         if pointerTransition != nil, isPageInputKey(event) {
             replayPendingKeys()
@@ -626,6 +631,16 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
                 model?.textInput(.selectKey(key, event.modifierFlags.contains(.shift), true)); return
             }
             if event.charactersIgnoringModifiers?.lowercased() == "a", select.multiple { model?.textInput(.selectAll); return }
+        }
+        if event.keyCode == 53, hasMarkedText(),
+           event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+            cancelMarkedText()
+            // End the system IME buffer without adopting the phonetic suffix
+            // through callbacks made while discarding it.
+            discardingCancelledComposition = true
+            inputContext?.discardMarkedText()
+            discardingCancelledComposition = false
+            return
         }
         if !hasMarkedText(), event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
             let key: PageKey?
@@ -793,6 +808,7 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
     }
 
     func insertText(_ string: Any, replacementRange: NSRange) {
+        guard !discardingCancelledComposition else { return }
         guard model?.textInputState?.document?.active != true else { return }
         if model?.textInputState?.select != nil {
             let text = (string as? NSAttributedString)?.string ?? (string as? String ?? "")
@@ -837,12 +853,13 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         case "insertNewline:", "insertLineBreak:": insertText("\n", replacementRange: NSRange(location: NSNotFound, length: 0))
         case "insertTab:": beginTabTransition(shift: false)
         case "insertBacktab:": beginTabTransition(shift: true)
-        case "cancelOperation:": model?.textInput(.cancelComposition); pendingMarked = nil; pendingSelection = nil
+        case "cancelOperation:": cancelMarkedText()
         case "selectAll:": selectAll(nil)
         default: break
         }
     }
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        guard !discardingCancelledComposition else { return }
         guard model?.textInputState?.document?.active != true else { return }
         let text = (string as? NSAttributedString)?.string ?? (string as? String ?? "")
         guard text.utf16.count <= 65_536, let selection = TextRange.replacement(selectedRange),
@@ -857,9 +874,21 @@ final class CorePageView: NSView, NSTextInputClient, NSUserInterfaceValidations 
         model?.textInput(.compose(text, selection, TextRange.replacement(replacementRange)))
     }
     func unmarkText() {
+        guard !discardingCancelledComposition else { return }
         guard model?.textInputState?.document?.active != true else { return }
+        let key = interpretingKey ?? (window as? BrowserWindow)?.dispatchingKey
+        if key?.type == .keyDown, key?.keyCode == 53,
+           key?.modifierFlags.intersection([.command, .control, .option]).isEmpty == true {
+            cancelMarkedText()
+            return
+        }
         pendingUnmark = model?.textInputState?.context
         model?.textInput(.finishComposition); pendingMarked = nil; pendingSelection = nil
+    }
+    private func cancelMarkedText() {
+        pendingUnmark = model?.textInputState?.context
+        model?.textInput(.cancelComposition)
+        pendingMarked = nil; pendingSelection = nil; pendingContext = nil
     }
     func hasMarkedText() -> Bool { markedRange().location != NSNotFound }
     func markedRange() -> NSRange {
