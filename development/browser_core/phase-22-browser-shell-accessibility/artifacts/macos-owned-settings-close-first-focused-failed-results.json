@@ -1,0 +1,110 @@
+{
+  "utc": "2026-10-13T04:24:59.278543+00:00",
+  "source_commit": "cffd2425c41a3fed3ee2d942e230c108ec2d896d",
+  "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "documentation_head": "cffd2425c41a3fed3ee2d942e230c108ec2d896d",
+  "session_id": 28308,
+  "exit_code": 65,
+  "passed": 3,
+  "failed": 1,
+  "skipped": 0,
+  "failure_names": [
+    "BrowserUITests.BrowserUITests testNormalQuitRelaunchKeepsSettingsUsableAboveAnOwnedFinderWindow"
+  ],
+  "skipped_names": [],
+  "program_files_verified": 1902,
+  "unchanged_backend_binaries_verified": 8,
+  "changed_inputs": [],
+  "changed_binaries": [],
+  "source_delta_scope": "Six owned Settings normal-close/assertion lines in UI teardown; all method body and normal app/service-exit assertions retained",
+  "wrapper_cleanup": {
+    "SFTP_FIXTURE_CLEANUP": {
+      "root_removed": true,
+      "helper_exit": 0,
+      "helper_group_gone": true,
+      "server_group_gone": true
+    },
+    "AUTOMATIC_UPDATE_FIXTURE_SERVER_CLEANUP": {
+      "root_removed": true,
+      "server_thread_gone": true,
+      "owned_pids": {},
+      "remaining_owned_pids": [],
+      "owned_group_gone": true,
+      "command_group_gone": true
+    }
+  },
+  "wrapper_cleanup_verified": true,
+  "owned_process_absence_verified": true,
+  "remaining_owned_processes": [],
+  "strict_signatures": [
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-core",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-launcher",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-bluejs-host",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/bluejs-regexp-worker",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-gatekeeper",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-downloads",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-extension-host",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-assistant",
+      "exit_code": 0
+    }
+  ],
+  "out_of_scope_strict_signature_paths": [
+    {
+      "path": "/private/tmp/blueice-native-owned-settings-teardown-20261013/frontend/macos/.build/Build/Products/Debug/DragInteropFixture.app",
+      "reason": "Independent drag fixture is not built or used by these four UI methods; complete native gate verifies it separately"
+    }
+  ],
+  "log_sha256": "a17fe45ec734e8ec67808b028deb2bbe2a46854882f62f323a086b01f15a027d",
+  "xcresult": "/private/tmp/blueice-followup-20261012/native-owned-settings-close-focused.xcresult",
+  "xcresult_summary_sha256": "d11eb08125012d9f8de08aacc0775081c93fff39b658ec19e17e4f6a3bae87e3",
+  "explicit_exit_receipt_sha256": "dbbd97f448d106b167576fce56a5b0e51f65b5fbb4e2322efe7374d39ed0cac2",
+  "case_outcomes": [
+    {
+      "name": "BrowserUITests.BrowserUITests testNormalQuitRelaunchKeepsSettingsUsableAboveAnOwnedFinderWindow",
+      "outcome": "failed"
+    },
+    {
+      "name": "BrowserUITests.BrowserUITests testRuntimeLanguageSwitchPreservesPageEditorsPrivatePanelsAndRelaunch",
+      "outcome": "passed"
+    },
+    {
+      "name": "BrowserUITests.BrowserUITests testSessionManualRestoreForgetAndInvalidPreferenceRecovery",
+      "outcome": "passed"
+    },
+    {
+      "name": "BrowserUITests.BrowserUITests testTraditionalChineseChromeSettingsMenusAndMultipleWindows",
+      "outcome": "passed"
+    }
+  ],
+  "remaining": "Independent seven-stage physical Zhuyin acceptance already passes current Swift source. VoiceOver navigation/action/speech, multi-monitor and physical printer acceptance remain open; a skipped Runner test is not acceptance."
+}

@@ -2904,6 +2904,12 @@ final class BrowserUITests: XCTestCase {
             if printPanel.buttons["Cancel"].exists { printPanel.buttons["Cancel"].click() }
             if app.buttons["download-credentials-close"].exists { app.buttons["download-credentials-close"].click() }
             if app.buttons["downloads-close"].exists { app.buttons["downloads-close"].click() }
+            let settings = app.windows["com_apple_SwiftUI_Settings_window"]
+            if settings.exists {
+                settings.buttons[XCUIIdentifierCloseWindow].click()
+                XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: settings)], timeout: 5), .completed,
+                               "Normal close must dismiss the owned settings window before closing browser windows")
+            }
             let deadline = Date().addingTimeInterval(15)
             while app.state != .notRunning, Date() < deadline {
                 let candidate = app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'browser-window'")).firstMatch
@@ -3270,6 +3276,7 @@ final class BrowserUITests: XCTestCase {
         print("OWNED_RELAUNCH_FINDER_FIXTURE_STARTED=" + folder.path)
         launch()
         let settings = preferenceWindow()
+        positionOwnedWindow(settings,x: 840,y: 160,titleX: 80)
         let close = settings.buttons[XCUIIdentifierCloseWindow].frame
         finder.activate()
         let zoom = background.buttons[XCUIIdentifierFullScreenWindow].exists

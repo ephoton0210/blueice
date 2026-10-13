@@ -484,10 +484,52 @@ hashes are retained in the nine-method receipt. Fresh complete native acceptance
 now contains 311 methods after the public Escape-key regression; VoiceOver and
 remaining physical hardware acceptance are still separate unfinished gates.
 
-The fresh complete native gate starts on committed `2cf93cf56` after normal
-Utility/VoiceOver cleanup. It builds inside both live SFTP and update fixture
-wrappers, freezes the same 1,902 current program inputs and eight Rust `504eeb924`
-binaries, and retains the XCResult, OS recordings and an explicit process exit
-receipt. Its result is pending; the completed nine-method gate does not replace
-this integration check. GUI acceptance work resumes only after terminal result
-and owned-process cleanup verification.
+The complete native gate on committed `2cf93cf56` ends with 308 passed, two
+failures and one actual Zhuyin Runner-permission skip, exit65. All nine actual OS
+drag methods and the full runtime-language method pass within this integration
+run. Both failures occur in `tearDownWithError`: an owned Settings window remains
+over the browser close control, so normal close never reaches the required
+app/service-stop assertion. The session-recovery and Traditional Chinese method
+body assertions pass. XCResult agrees on all 311 outcomes; all 1,902 source
+inputs, eight frozen Rust binaries, 11 strict signatures, both fixture wrappers
+and actual owned-process absence are verified. See the
+[complete failed receipt](artifacts/macos-native-2cf93cf56-failed-results.json)
+and [source manifest](artifacts/macos-native-2cf93cf56-source-inputs.json).
+
+UI teardown now normally closes the exact owned Settings window and verifies
+its disappearance before closing browser windows; the original normal
+app/service-stop assertion remains. The first four-method follow-up passes
+both previous failures and runtime language, but the normal-relaunch fixture
+cannot align its owned Finder zoom control at the Settings close point
+(66 versus54, with the original three-point bound). Its real three-pass/one-fail
+result and cleanup remain in the
+[first focused receipt](artifacts/macos-owned-settings-close-first-focused-failed-results.json).
+That fixture now positions only its owned Settings window inside the screen
+before capturing the target and aligning only its newly opened Finder window.
+The original three-point alignment, immediate pointer handoff, normal Cmd-Q,
+relaunch and Finder/window/resource cleanup assertions remain.
+
+All four methods then pass with zero failures/skips and exit0: session recovery,
+Traditional Chinese multi-window, runtime language/editor/private-panel/state
+preservation and normal quit/relaunch. All 1,902 inputs, eight frozen Rust
+binaries, the ten signatures used by these four methods, both wrapper cleanups
+and actual owned-process absence pass. The independent drag fixture is neither
+built nor used by this cohort; complete native acceptance verifies its signature
+separately. See the
+[positive focused receipt](artifacts/macos-owned-settings-close-focused-results.json)
+and [current source manifest](artifacts/macos-owned-settings-close-source-inputs.json).
+A fresh complete311-method native gate remains required after these UI fixture
+corrections. Production Rust/WinUI and the Mac Swift IME repair are unchanged.
+
+The independent VoiceOver native-event attempt uses already authorized session
+keyboard events, exact foreground-app/system-reader guards and preallocated
+modifier-release events. The actual phrase-copy driver exits0 and observes
+restored modifier state, but the clipboard remains unchanged and no navigation,
+action or phrase is accepted. Reader-off/process absence, original input source,
+clipboard, normal app exit0 and owned runtime/preferences/fixture removal pass.
+See the [actual failed result](artifacts/physical-voiceover-native-event-channel-failed-results.json)
+and [retained native driver](artifacts/voiceover-owned-native-event-key.swift).
+The unresolved observation requires actual command-assignment inspection or the
+system caption panel described by
+[Apple](https://support.apple.com/en-lamr/guide/voiceover/unac078/mac); it does not
+justify assuming a successful reader or changing scripting authorization.
