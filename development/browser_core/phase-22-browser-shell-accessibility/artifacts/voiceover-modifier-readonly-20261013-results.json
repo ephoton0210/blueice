@@ -1,0 +1,58 @@
+{
+  "utc": "2026-10-13T02:30:46.292273+00:00",
+  "scope": "Read-only Commands category in a newly owned installed VoiceOver Utility window; no preferences or authorization changes",
+  "inspection_exit_code": 0,
+  "physical_voiceover_accepted": false,
+  "initial_voiceover_enabled": false,
+  "owned_utility": {
+    "pid": 75595,
+    "bundle_id": "com.apple.VoiceOverUtility",
+    "canonical_bundle": "/System/Applications/Utilities/VoiceOver Utility.app",
+    "prelaunch_applications": [],
+    "single_window_id": 27558
+  },
+  "observed_modifier": {
+    "ax_role": "AXMenuButton",
+    "ax_title": "⌃⌥ 或 ⇪",
+    "meaning": "Control–Option or Caps Lock"
+  },
+  "inspection_method": "Normal select of the one Commands sidebar row, read-only AX attributes, text fields and text areas excluded",
+  "normal_utility_termination": {
+    "request_exit_code": 0,
+    "accepted": true,
+    "post_termination_applications": []
+  },
+  "scoped_window_capture": {
+    "exit_code": 1,
+    "error": "could not create image from window",
+    "image_accepted": false
+  },
+  "artifacts": {
+    "voiceover-utility-owned-control.swift": {
+      "sha256": "006e7098106f9a3f664b4cbaf331a23bd51cb682abed2828610384b3e6ead62f",
+      "bytes": 2458
+    },
+    "voiceover-utility-owned-inspection.applescript": {
+      "sha256": "2a1167ebc6682db2f0a1d9604d48f984e6083f156445b511310c5e89de7bd22e",
+      "bytes": 4498
+    },
+    "voiceover-commands-readonly-20261013.txt": {
+      "sha256": "4cb10776f84595605299c1edfc717ce01a7301f24b6bc0801515f3d7d72cfe79",
+      "bytes": 2998
+    },
+    "physical-voiceover-phrase-copy-failed-results.json": {
+      "sha256": "71fd7ffd882871b73239a28e8a14c549feb591667bf3488dbc7c8750b8602c4d",
+      "bytes": 37368
+    }
+  },
+  "prior_phrase_attempt": {
+    "accepted": false,
+    "key_driver_exit_code": 0,
+    "clipboard_changed": false,
+    "reader_enabled": true,
+    "owned_foreground": true,
+    "initial_reader_input_source_clipboard_restored": true,
+    "blueice_app_runtime_preferences_fixture_removed": true
+  },
+  "next": "Full current native311 gate is running separately; after cleanup, investigate actual VoiceOver navigation/action/phrase using verified modifier configuration. No successful speech or navigation inferred from command delivery."
+}

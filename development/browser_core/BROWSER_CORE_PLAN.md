@@ -124,11 +124,14 @@ Zhuyin input source and an absent VoiceOver AppleScript-control marker. Actual
 Zhuyin composition/commit/cancel now pass all seven actual OS-key/Core stages
 after a Mac Swift Escape repair; the previous phonetic-suffix cancellation failure
 is retained. All 38 native editing methods pass with current source, signatures
-and owned cleanup verified. The VoiceOver
-keyboard attempt exposes a transient-reader/welcome-dialog race before navigation;
-its exact owned startup dialog was normally closed and initial-off state restored.
-VoiceOver operation remains unaccepted. The next physical attempt
-will follow complete native UI cleanup; its availability evidence and documented
+and owned cleanup verified. VoiceOver startup now reaches a stable actual reader;
+its guarded phrase-copy key command exits zero but produces no clipboard change,
+so navigation/action/speech remain unaccepted. Read-only inspection of the actual
+Utility Commands page confirms Control–Option or Caps Lock as the configured
+modifier. The newly owned Utility was normally closed; input source, clipboard
+and initial-off reader state are restored after the failed physical attempt.
+The fresh complete 311-method native gate on committed `2cf93cf56` is running.
+The next physical attempt will follow its complete UI cleanup; evidence and the documented
 keyboard-command path are recorded in the
 [follow-up plan](phase-22-browser-shell-accessibility/FOLLOWUP_DELIVERY_PLAN.md#physical-input-and-voiceover-preflight).
 

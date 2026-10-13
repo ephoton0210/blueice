@@ -35,6 +35,21 @@ with exact owned-application guards and preservation of the clipboard and
 initial reader/input-source state. No system permission or scripting gate was
 changed by this inspection.
 
+The latest physical keyboard attempt reaches a stable actual reader with the
+owned BlueIce app in the foreground. Its standard phrase-copy driver exits zero
+but leaves the clipboard unchanged; no navigation, action or speech acceptance
+is inferred. Reader-off/process absence, the original ABC input source, clipboard
+and owned app/runtime/preferences/fixture cleanup are verified in the
+[failed phrase-copy receipt](artifacts/physical-voiceover-phrase-copy-failed-results.json).
+Read-only inspection of the actual system Utility Commands page then confirms
+the `AXMenuButton` title `⌃⌥ 或 ⇪`: Control–Option or Caps Lock. The one newly
+owned Utility is normally terminated and its post-cleanup application list is
+empty. No preferences or authorization are changed. See the
+[actual modifier receipt](artifacts/voiceover-modifier-readonly-20261013-results.json)
+and [retained AX controls](artifacts/voiceover-commands-readonly-20261013.txt).
+These results narrow the unresolved keyboard-observation failure; they do not
+establish its cause or successful VoiceOver use.
+
 ## Drag acceptance
 
 Destination keyboard focus must be independent from an explicit OS drag. A
@@ -468,3 +483,11 @@ Video, log and [unaltered decoded frame](artifacts/macos-current-drag-preview.pn
 hashes are retained in the nine-method receipt. Fresh complete native acceptance
 now contains 311 methods after the public Escape-key regression; VoiceOver and
 remaining physical hardware acceptance are still separate unfinished gates.
+
+The fresh complete native gate starts on committed `2cf93cf56` after normal
+Utility/VoiceOver cleanup. It builds inside both live SFTP and update fixture
+wrappers, freezes the same 1,902 current program inputs and eight Rust `504eeb924`
+binaries, and retains the XCResult, OS recordings and an explicit process exit
+receipt. Its result is pending; the completed nine-method gate does not replace
+this integration check. GUI acceptance work resumes only after terminal result
+and owned-process cleanup verification.
