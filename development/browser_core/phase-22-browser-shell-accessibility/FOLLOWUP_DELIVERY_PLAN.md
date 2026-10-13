@@ -604,3 +604,23 @@ and [frozen source manifest](artifacts/macos-native-a1fcf96d8-source-inputs.json
 The corrected fixture entry and UI cleanup fixes are accepted by this full gate.
 VoiceOver navigation/action/speech, second-monitor transfer and physical printer
 acceptance remain separate open requirements.
+
+The post-completion physical recheck still finds no configured/default CUPS
+destination and only one PA279CRV at2x. Native AX/event-post authority is already
+available, while screen-capture preflight is false; no permission is requested
+or changed. A bounded actual Reader recheck identifies three CG windows owned
+by the exact newly started system Reader PID, two visible, including a600x110
+window near the bottom of the display. Window names are unavailable and no
+other application's titles are read. This metadata does not identify accepted
+spoken text. The Reader `AXWindows` query still returns -25204; no phrase,
+navigation or action passes. Reader-off, clipboard/input preservation, normal
+app exit0 and owned runtime/preferences/fixture removal are verified in the
+[owned-window result](artifacts/physical-voiceover-owned-window-metadata-results.json).
+
+The remaining physical scope requires a usable printer model/IP/USB connection,
+a second connected display for transfer acceptance, and evidence of actual
+VoiceOver keyboard navigation/action/speech. The owner has been asked for those
+device details and observed physical-keyboard behavior. See the
+[current availability record](artifacts/remaining-physical-acceptance-availability-results.json).
+The software gates and actual Zhuyin/single-monitor-mode results do not complete
+these remaining physical requirements.
