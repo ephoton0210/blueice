@@ -1,0 +1,28 @@
+{
+  "utc": "2026-10-13T06:51:52.996679+00:00",
+  "scope": "Read-only original system caption-panel preference after exact owned Utility view navigation; no preference changes",
+  "physical_voiceover_accepted": false,
+  "owned_utility_pid": 69261,
+  "prelaunch_applications": [],
+  "caption_checkbox": {
+    "title": "顯示字幕面板",
+    "identifier": "_NS:10",
+    "value": 1,
+    "help": "在字幕面板中顯示語音文字。"
+  },
+  "initial_reader_enabled": false,
+  "preferences_changed": false,
+  "normal_utility_terminate_exit_code": 0,
+  "post_cleanup_applications": [],
+  "raw_baseline_path": "/private/tmp/blueice-followup-20261012/voiceover-native-caption-panel-baseline.json",
+  "raw_baseline_sha256": "b9abf4b3af41f6dd69824e23c5106c0dd324e598614470905b73e10b031c0b1f",
+  "actual_caption_attempt": {
+    "accepted": false,
+    "reader_ax_windows_error": -25204,
+    "window_metadata": [],
+    "clipboard_written": false,
+    "preferences_changed": false,
+    "actual_navigation_observations": 0
+  },
+  "remaining": "No caption or navigation/action/speech accepted; AXCannotComplete does not establish a permission denial. Reader/input/clipboard and owned-resource restoration verified in failed receipt."
+}

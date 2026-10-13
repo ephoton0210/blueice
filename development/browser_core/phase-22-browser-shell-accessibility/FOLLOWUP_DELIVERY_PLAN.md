@@ -573,3 +573,24 @@ actual owned-process absence are verified. See the
 and [source manifest](artifacts/macos-cold-drag-fixture-source-inputs.json).
 All existing test assertions and production source remain unchanged by this
 entry-point correction. Fresh complete311-method acceptance remains required.
+
+Read-only inspection of the actual Utility Visuals/Panels and Menus page confirms
+`顯示字幕面板` is already checked (`_NS:10`, value1). No preference toggle is
+needed or performed; the newly owned Utility is normally terminated and its
+post-cleanup application list is empty. See the
+[caption preference result](artifacts/voiceover-caption-preference-readonly-results.json).
+The next physical attempt reads only the exact newly started system Reader's
+caption window while the owned fixture app is foreground. It permits only known
+fixture phrases in output, injects no speech and writes no clipboard data.
+Its actual `AXWindows` query returns `-25204` (CannotComplete) through the bounded
+observation interval, yielding no windows or accepted phrase/navigation/action.
+This error does not establish a permission denial. Original reader-off/process
+absence, ABC input source, preserved clipboard, normal owned app exit0 and
+runtime/preferences/fixture removal are verified in the
+[actual failed observation](artifacts/physical-voiceover-caption-failed-results.json)
+and [retained inspector](artifacts/voiceover-owned-caption-inspector.swift).
+
+The fresh complete311-method gate on committed `a1fcf96d8` is now running after
+the caption attempt's complete cleanup. It uses the corrected automatic fixture
+entry and retains the same source/binary/11-signature/owned-cleanup audit scope.
+Its result remains pending; the 13-method result is not a complete-gate result.
