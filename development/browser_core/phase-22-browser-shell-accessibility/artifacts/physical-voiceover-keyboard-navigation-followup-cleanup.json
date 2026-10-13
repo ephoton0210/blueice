@@ -1,0 +1,17 @@
+{
+  "scope": "Normal cleanup of the exact new VoiceOver Quickstart after the first keyboard-route attempt; no new acceptance claimed",
+  "attempt_receipt": "physical-voiceover-20261013-keyboard-navigation-results.json",
+  "owned_quickstart_pid": 41754,
+  "normal_system_turn_off_button_exit": 0,
+  "actual_final_state": {
+    "enabled": false,
+    "physical_voiceover_accepted": false,
+    "quickstarts": [],
+    "readers": [],
+    "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+  },
+  "initial_enabled": false,
+  "restored_initial_reader_state": true,
+  "permission_settings_modified": false,
+  "physical_voiceover_accepted": false
+}

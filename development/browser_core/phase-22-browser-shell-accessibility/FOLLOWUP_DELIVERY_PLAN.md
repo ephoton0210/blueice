@@ -357,3 +357,48 @@ multi-monitor handoff and printer transitions remain open. The single physical
 monitor mode transition and restoration are now accepted separately. Capability discovery and cancellation
 checks for the prepared display helper are preparation rather than physical
 acceptance.
+
+## Current native and actual input follow-up on 2026-10-13
+
+The full `12bc50772` native gate is now terminal with exit 65: 307 passed,
+two failed and one actual Zhuyin Accessibility skip across all 310 methods.
+XCResult and case logs agree; 1,902 source files, eight frozen backend binaries,
+11 strict signatures, both fixture wrappers and owned-process absence are
+verified. See the [full failed receipt](artifacts/macos-native-12bc50772-failed-results.json).
+The remaining UI failures occur before the custom-image drag, when an exact
+four-point window correction does not move, and during a language-picker click
+whose center overlaps a system VoiceOver AppleScript-control dialog. Retained
+failed-case movies and AX trees distinguish that dialog from earlier Local
+Network notices. No permission change is claimed or required as a fixture fix.
+
+The four-point positioning helper now includes the exact four-point boundary.
+The existing OS `setDragImage` method first exercises that correction from the
+observed frame and restores the original geometry. The candidate builds without
+changing the fixed Rust binaries and passes its actual selected native method:
+one passed, zero failures/skips, exit zero, with all original independent native
+reference/custom-preview geometry and payload assertions. Source, signatures
+and owned cleanup also pass; see the
+[focused receipt](artifacts/macos-window-four-point-focused-results.json).
+The related positioning cohort and a fresh complete native gate remain required.
+
+Separate actual system Zhuyin testing now reaches the live Core editor with OS
+keycodes after choosing the real native input-context source. Six observed
+stages pass: ㄋ and ㄋㄧ retain marked ranges, the third tone produces 你,
+Return commits it without a marked range, and the next syllable marks only the
+suffix. Escape fails to restore the committed prefix and leaves 你ㄋㄧ unmarked;
+full IME acceptance therefore remains false. The failed attempt restores ABC
+and cleans up its app/runtime/preferences/fixture normally. See the
+[actual input-context result](artifacts/physical-zhuyin-native-input-context-results.json).
+The earlier GUI inspection timeout and global-TIS-only ASCII result are retained
+as failed preparation/execution rather than IME acceptance.
+
+The actual VoiceOver keyboard attempt observes a transient reader followed by a
+late welcome dialog and stops before navigation, spoken-phrase copying or action.
+Its original cleanup initially leaves that dialog active, which is explicitly
+retained in the [attempt](artifacts/physical-voiceover-keyboard-navigation-results.json).
+Normal use of the exact newly started system dialog's Turn Off VoiceOver button
+then restores the initial disabled state with no reader/startup process remaining;
+see [follow-up cleanup](artifacts/physical-voiceover-keyboard-navigation-followup-cleanup.json).
+Stable startup, actual reader navigation/action/speech, successful IME cancel,
+language-popup placement and physical printer/multi-monitor acceptance remain
+open; helper compilation and scoped passes do not complete those requirements.

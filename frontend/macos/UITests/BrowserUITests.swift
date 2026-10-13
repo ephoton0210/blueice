@@ -21,6 +21,12 @@ final class BrowserUITests: XCTestCase {
         enter(url); waitValue(main.textFields["address"],url)
         XCTAssertTrue(main.staticTexts["Custom preview ready"].waitForExistence(timeout: 15))
         positionTabDragWindow(main,x: 40)
+        // Exercise an exact four-point correction from the observed frame,
+        // then return to the original placement before the OS preview drag.
+        let positioned = main.frame
+        positionOwnedWindow(main,x: positioned.minX + 4,y: positioned.minY)
+        positionOwnedWindow(main,x: positioned.minX,y: positioned.minY)
+        positionTabDragWindow(main,x: 40)
         let fixtureURL = Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("DragInteropFixture.app")
         let external = XCUIApplication(url: fixtureURL)
         external.launch(); addTeardownBlock { external.terminate() }
@@ -395,11 +401,12 @@ final class BrowserUITests: XCTestCase {
             let title = window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
                 .withOffset(CGVector(dx: frame.width / 2, dy: 12))
             var dx = x - frame.minX, dy = y - frame.minY
-            // A small correction can remain below AppKit's drag threshold.
+            // A small correction, including exactly four points, can remain
+            // below AppKit's drag threshold.
             // Move far enough to start a drag, then recalibrate against the
             // unchanged exact target on the next attempt if necessary.
-            if dx != 0 && abs(dx) < 4 { dx += dx > 0 ? 4 : -4 }
-            if dy != 0 && abs(dy) < 4 { dy += dy > 0 ? 4 : -4 }
+            if dx != 0 && abs(dx) <= 4 { dx += dx > 0 ? 4 : -4 }
+            if dy != 0 && abs(dy) <= 4 { dy += dy > 0 ? 4 : -4 }
             title.click(forDuration: 0.1, thenDragTo: title.withOffset(
                 CGVector(dx: dx, dy: dy)))
             let reached = XCTWaiter.wait(for: [XCTNSPredicateExpectation(
