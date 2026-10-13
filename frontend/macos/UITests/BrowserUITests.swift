@@ -387,7 +387,7 @@ final class BrowserUITests: XCTestCase {
         return (runtime,application.processIdentifier,launcher)
     }
 
-    private func positionOwnedWindow(_ window: XCUIElement, x: CGFloat, y: CGFloat = 40) {
+    private func positionOwnedWindow(_ window: XCUIElement, x: CGFloat, y: CGFloat = 40, titleX: CGFloat? = nil) {
         func atTarget() -> Bool {
             let frame = window.frame
             return abs(frame.minX - x) < 3 && abs(frame.minY - y) < 3
@@ -399,7 +399,7 @@ final class BrowserUITests: XCTestCase {
             if atTarget() { return }
             let frame = window.frame
             let title = window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-                .withOffset(CGVector(dx: frame.width / 2, dy: 12))
+                .withOffset(CGVector(dx: titleX ?? frame.width / 2, dy: 12))
             var dx = x - frame.minX, dy = y - frame.minY
             // A small correction, including exactly four points, can remain
             // below AppKit's drag threshold.
@@ -2799,7 +2799,14 @@ final class BrowserUITests: XCTestCase {
         XCTAssertTrue(second.waitForExistence(timeout: 15))
         app.typeKey(",", modifierFlags: .command)
         let language = app.popUpButtons["interface-language"]
-        XCTAssertTrue(language.waitForExistence(timeout: 10)); language.click()
+        XCTAssertTrue(language.waitForExistence(timeout: 10))
+        let settings = app.windows.containing(.popUpButton, identifier: "interface-language").firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        // The owned settings titlebar's left segment remains outside the
+        // recorded system dialog; position only this app before selecting.
+        positionOwnedWindow(settings,x: 40,titleX: 80)
+        language.click()
+        XCTAssertTrue(app.menuItems["繁體中文"].waitForExistence(timeout: 5))
         app.menuItems["繁體中文"].click()
         let localized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "返回"), object: first.buttons["back"])
         XCTAssertEqual(XCTWaiter.wait(for: [localized], timeout: 10), .completed)
@@ -2814,14 +2821,18 @@ final class BrowserUITests: XCTestCase {
         XCTAssertFalse(panels.buttons["assistant-settings-confirm"].exists)
         XCTAssertFalse(FileManager.default.fileExists(atPath: assistantSettingsFile.path))
         app.activate(); app.typeKey(",", modifierFlags: .command)
-        language.click(); app.menuItems["English"].click()
+        positionOwnedWindow(settings,x: 40,titleX: 80)
+        language.click()
+        XCTAssertTrue(app.menuItems["English"].waitForExistence(timeout: 5))
+        app.menuItems["English"].click()
         let english = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Back'"), object: first.buttons["back"])
         XCTAssertEqual(XCTWaiter.wait(for: [english], timeout: 10), .completed)
         waitAssistantText(panels.staticTexts["assistant-settings-current"], "In force: Off · idle 600 seconds · niceness 10")
         waitValue(editor, "Keep 😀 中文")
-        language.click(); app.menuItems["繁體中文"].click()
+        language.click()
+        XCTAssertTrue(app.menuItems["繁體中文"].waitForExistence(timeout: 5))
+        app.menuItems["繁體中文"].click()
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "返回"), object: first.buttons["back"])], timeout: 10), .completed)
-        let settings = app.windows.containing(.popUpButton, identifier: "interface-language").firstMatch
         settings.buttons[XCUIIdentifierCloseWindow].click()
         second.buttons[XCUIIdentifierCloseWindow].click()
         first.buttons[XCUIIdentifierCloseWindow].click()

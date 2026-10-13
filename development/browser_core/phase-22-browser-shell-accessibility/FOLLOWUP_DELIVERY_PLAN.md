@@ -433,3 +433,38 @@ failure supplies the red evidence. An earlier proposed synthetic NSEvent/system
 IME fixture failed to establish composition and is explicitly disqualified as
 cancellation evidence. VoiceOver, the language-popup fixture, current drag and
 fresh complete native acceptance retain their separate remaining gates.
+
+## Current language fixture and OS drag acceptance on 2026-10-13
+
+The runtime-language fixture now positions only its owned settings window before
+choosing a language. Its left titlebar segment avoids the previously recorded
+system dialog, and all three language choices wait for the actual menu item.
+The original editor value, independent windows, private permission/assistant
+panels, absent unconfirmed settings, persistence and normal restart assertions
+remain. The complete language method and actual custom-preview method pass
+two cases, zero failures/skips and exit zero; source, 11 strict signatures and
+owned-process cleanup are verified in the
+[language result](artifacts/macos-language-window-fixed-results.json).
+
+All nine current-source actual OS drag methods now pass with zero failures/skips
+and exit zero. They cover inactive-window and external AppKit text exchange,
+exact binary file promises, Copy/Move/Link and readonly refusal, source/page
+cancellation, hover lifecycle and actual Core custom-preview geometry/payload.
+XCResult and logs agree on the exact nine methods; all 1,902 program inputs,
+eight frozen backend binaries, 11 strict signatures, both owned fixture wrappers
+and actual process absence are verified. See the
+[current nine-method result](artifacts/macos-current-os-drag-nine-results.json).
+The initial attempt omitted the required update-fixture wrapper and stopped five
+methods at missing build-time metadata. Its actual four-pass/five-failure result
+and cleanup remain in the [failed preparation](artifacts/macos-current-os-drag-fixture-failed-results.json);
+the corrected run builds inside the live fixture wrappers on unchanged source.
+
+The separately scoped current-source custom-drag recording also passes the
+time-bounded pixel verifier: after the logged custom drag begins at 31.43s,
+two moving green Core previews appear at 32.77/32.97s with measured 100x48 point
+geometry (one sampled height is 49 within the existing three-point image bound).
+The original recording remains 3840x2160 pixels on a 1920x1080 point desktop.
+Video, log and [unaltered decoded frame](artifacts/macos-current-drag-preview.png)
+hashes are retained in the nine-method receipt. Fresh complete native acceptance
+now contains 311 methods after the public Escape-key regression; VoiceOver and
+remaining physical hardware acceptance are still separate unfinished gates.
