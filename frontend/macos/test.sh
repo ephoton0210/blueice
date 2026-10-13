@@ -13,7 +13,6 @@ frontend_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$frontend_dir/../.." && pwd)
 python3 "$frontend_dir/TestSupport/test-signed-runner.py"
 "$frontend_dir/build.sh" Debug
-bash "$frontend_dir/TestSupport/build-drag-interop-fixture.sh"
 core_target=${CARGO_TARGET_DIR:-$frontend_dir/.build/core-target}
 case "$core_target" in /*) ;; *) core_target="$repo_root/$core_target" ;; esac
 result="$frontend_dir/.build/results-$(date +%Y%m%d-%H%M%S).xcresult"
@@ -22,6 +21,7 @@ if [[ "$keep_system_attachments" == true ]]; then
         python3 "$frontend_dir/TestSupport/run-update-ui-tests.py" "$frontend_dir/.build/Build/Products/Debug/BlueIce.app" \
         python3 "$frontend_dir/TestSupport/run-kept-native-tests.py" "$frontend_dir/.build/Build/Products" "$result" "BLUEICE_BACKEND_DIR=$core_target/debug" "$@"
 else
+bash "$frontend_dir/TestSupport/build-drag-interop-fixture.sh"
 python3 "$frontend_dir/TestSupport/run-sftp-ui-tests.py" \
     python3 "$frontend_dir/TestSupport/run-update-ui-tests.py" "$frontend_dir/.build/Build/Products/Debug/BlueIce.app" \
     xcodebuild -project "$frontend_dir/BlueIce.xcodeproj" -scheme BlueIce \

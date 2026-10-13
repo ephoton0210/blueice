@@ -547,8 +547,29 @@ and [retained inspector](artifacts/voiceover-utility-owned-native-inspection.swi
 Correct configured keys do not establish successful VoiceOver input recognition
 or explain the missing phrase. Actual navigation/action/speech remain open.
 
-The corrected complete311-method native gate is now running on committed
-`26c97b5f8` after all focused UI and Utility cleanup, with the same 1,902 program
-input and eight frozen Rust binary checks and both live fixture wrappers.
-Its source worktree remains immutable until the terminal result and complete
-signature/fixture/owned-process audit; this running gate is not acceptance.
+The corrected complete311-method native gate on committed `26c97b5f8` ends
+with 307 passed, three failed and one actual Zhuyin Runner skip, exit65.
+All four previous Settings/relaunch/language methods pass in this full run.
+The three failures are preparation errors: the fresh checkout lacks
+`DragInteropFixture.app`, so file promises, custom preview and external text
+methods stop before the independent app can launch or a drag can begin.
+The direct recording runner omitted the separate fixture builder that the
+standard `test.sh` entry point runs. All 1,902 source inputs, eight Rust binaries,
+ten available signatures and owned wrapper/process cleanup pass; the missing
+required drag-fixture signature is explicitly incomplete, and this full result
+cannot be accepted. See the
+[failed preparation receipt](artifacts/macos-native-26c97b5f8-fixture-failed-results.json).
+
+The recording runner now builds and signs the independent drag fixture before
+starting any test. The standard entry point retains its fixture build for the
+ordinary mode and lets the recording runner perform it in recording mode,
+so each mode builds the fixture once. A new checkout starts with that bundle
+absent, then passes all nine actual OS drag methods and the four related
+Settings/relaunch/language methods:13 passed, zero failed/skipped, exit0.
+The actual new bundle identifier/executable digest, all 1,902 source inputs,
+eight unchanged Rust binaries, all 11 signatures, both fixture wrappers and
+actual owned-process absence are verified. See the
+[cold-checkout result](artifacts/macos-cold-drag-fixture-thirteen-results.json)
+and [source manifest](artifacts/macos-cold-drag-fixture-source-inputs.json).
+All existing test assertions and production source remain unchanged by this
+entry-point correction. Fresh complete311-method acceptance remains required.

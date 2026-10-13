@@ -34,6 +34,11 @@ built = subprocess.run([
 ], check=False)
 if built.returncode:
     raise SystemExit(built.returncode)
+fixture = subprocess.run([
+    "bash", str(frontend / "TestSupport/build-drag-interop-fixture.sh"),
+], check=False)
+if fixture.returncode:
+    raise SystemExit(fixture.returncode)
 sources = sorted(args.products.glob("BlueIce_macosx*.xctestrun"), key=lambda p: p.stat().st_mtime)
 if not sources:
     raise SystemExit("No built BlueIce test configuration")
