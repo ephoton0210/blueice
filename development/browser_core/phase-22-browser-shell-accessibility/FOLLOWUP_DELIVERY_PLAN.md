@@ -590,7 +590,17 @@ runtime/preferences/fixture removal are verified in the
 [actual failed observation](artifacts/physical-voiceover-caption-failed-results.json)
 and [retained inspector](artifacts/voiceover-owned-caption-inspector.swift).
 
-The fresh complete311-method gate on committed `a1fcf96d8` is now running after
-the caption attempt's complete cleanup. It uses the corrected automatic fixture
-entry and retains the same source/binary/11-signature/owned-cleanup audit scope.
-Its result remains pending; the 13-method result is not a complete-gate result.
+The fresh complete311-method gate on committed `a1fcf96d8` now finishes with
+310 passed, zero failed and one actual Zhuyin Runner-permission skip, exit0.
+All nine OS drag methods, four related Settings/language/relaunch methods and
+the remaining protocol/UI methods pass in this complete run. The independent
+seven-stage physical Zhuyin result already verifies current unchanged production
+Swift; the separate Runner skip remains recorded as skipped. XCResult and logs
+agree on all 311 outcomes; all 1,902 program inputs, eight frozen Rust binaries,
+11 strict signatures, both live fixture wrapper cleanups and actual
+owned-process absence pass. See the
+[complete current receipt](artifacts/macos-native-a1fcf96d8-results.json)
+and [frozen source manifest](artifacts/macos-native-a1fcf96d8-source-inputs.json).
+The corrected fixture entry and UI cleanup fixes are accepted by this full gate.
+VoiceOver navigation/action/speech, second-monitor transfer and physical printer
+acceptance remain separate open requirements.
