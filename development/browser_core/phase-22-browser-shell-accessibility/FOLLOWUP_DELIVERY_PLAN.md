@@ -22,9 +22,10 @@ composition/commit/cancel acceptance. See the
 [retained probe](artifacts/physical-input-source-probe.swift).
 
 Read-only inspection of the installed VoiceOver Utility finds its explicit
-AppleScript enablement-marker check. The marker is currently absent, supporting
-script control being unavailable; its actual checkbox/authorization UI has not
-yet been inspected. This is stronger evidence than interpreting the earlier
+AppleScript enablement-marker check. The marker is currently absent. Subsequent
+native AX inspection of the actual General page confirms the allow-AppleScript
+checkbox is unchecked; its startup welcome checkbox is checked. This is
+stronger evidence than interpreting the earlier
 AppleEvent timeout alone, but does not establish successful VoiceOver use.
 See the [installed-system result](artifacts/voiceover-script-control-readonly-20261013.json)
 and [Apple's macOS 26 General settings](https://support.apple.com/guide/voiceover/general-category-cpvougen/10/mac/26).
@@ -533,3 +534,21 @@ The unresolved observation requires actual command-assignment inspection or the
 system caption panel described by
 [Apple](https://support.apple.com/en-lamr/guide/voiceover/unac078/mac); it does not
 justify assuming a successful reader or changing scripting authorization.
+
+The actual system Utility Command Assignments browser is then inspected with
+native AX reads under exact new PID/system-path/foreground guards. Its selected
+set is `使用者（0自訂）`, and the unique `將最後一段詞句拷貝到剪貼板`
+command displays `⌃⌥  ⇧C`, matching the delivered shortcut. Normal category,
+browser, fixed-search and row-selection UI actions do not edit assignments.
+The command browser Done and newly owned Utility termination both exit0;
+the post-termination application list is empty. See the
+[actual assignment result](artifacts/voiceover-command-assignment-readonly-20261013-results.json)
+and [retained inspector](artifacts/voiceover-utility-owned-native-inspection.swift).
+Correct configured keys do not establish successful VoiceOver input recognition
+or explain the missing phrase. Actual navigation/action/speech remain open.
+
+The corrected complete311-method native gate is now running on committed
+`26c97b5f8` after all focused UI and Utility cleanup, with the same 1,902 program
+input and eight frozen Rust binary checks and both live fixture wrappers.
+Its source worktree remains immutable until the terminal result and complete
+signature/fixture/owned-process audit; this running gate is not acceptance.
