@@ -11,21 +11,21 @@ const PAGE_SOURCE: &str = "const answer: number = 42;";
 const SANITIZED_PUBLIC_FAILURE: &str =
     "native debugger program locations require an enabled live JavaScript page realm";
 
-fn assert_closed_map_failure(reply: DebuggerReply, mode: &str) {
+pub(super) fn assert_closed_map_failure(reply: DebuggerReply, mode: &str) {
     assert_eq!(
         reply,
         DebuggerReply::Error {
             code: DebuggerErrorCode::CapabilityUnavailable,
             message: SANITIZED_PUBLIC_FAILURE.to_string(),
         },
-        "{mode}: malformed child map must disclose no source or private error detail"
+        "{mode}: child map fault must disclose no source or private error detail"
     );
 }
 
-struct FaultLaunchDir(PathBuf);
+pub(super) struct FaultLaunchDir(PathBuf);
 
 impl FaultLaunchDir {
-    fn new() -> Self {
+    pub(super) fn new(child_entry: &str) -> Self {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
             "blueice-map-fault-launch-{}-{}",
@@ -41,7 +41,9 @@ impl FaultLaunchDir {
         let wrapper = path.join("blueice-bluejs-host");
         std::fs::write(
             &wrapper,
-            "#!/bin/sh\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    --socket) BLUEICE_TEST_MAP_FAULT_SOCKET=\"$2\"; shift 2;;\n    --session-token) BLUEICE_TEST_MAP_FAULT_TOKEN=\"$2\"; shift 2;;\n    *) shift;;\n  esac\ndone\nexport BLUEICE_TEST_MAP_FAULT_SOCKET BLUEICE_TEST_MAP_FAULT_TOKEN\nexec \"$BLUEICE_TEST_MAP_FAULT_EXECUTABLE\" --exact generated_map_faults::fault_child_entry --nocapture\n",
+            format!(
+                "#!/bin/sh\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    --socket) BLUEICE_TEST_MAP_FAULT_SOCKET=\"$2\"; shift 2;;\n    --session-token) BLUEICE_TEST_MAP_FAULT_TOKEN=\"$2\"; shift 2;;\n    *) shift;;\n  esac\ndone\nexport BLUEICE_TEST_MAP_FAULT_SOCKET BLUEICE_TEST_MAP_FAULT_TOKEN\nexec \"$BLUEICE_TEST_MAP_FAULT_EXECUTABLE\" --exact {child_entry} --nocapture\n"
+            ),
         )
         .unwrap();
         let mut permissions = std::fs::metadata(&wrapper).unwrap().permissions();
@@ -50,7 +52,7 @@ impl FaultLaunchDir {
         Self(path)
     }
 
-    fn launcher(&self) -> PathBuf {
+    pub(super) fn launcher(&self) -> PathBuf {
         self.0.join("blueice-launcher")
     }
 }
@@ -134,7 +136,7 @@ fn fault_child_entry() {
 
 #[test]
 fn public_malformed_map_faults_fail_closed_through_real_launcher_core_and_child() {
-    let fault_binaries = FaultLaunchDir::new();
+    let fault_binaries = FaultLaunchDir::new("generated_map_faults::fault_child_entry");
     for mode in [
         "bad_vlq",
         "non_monotonic_column",

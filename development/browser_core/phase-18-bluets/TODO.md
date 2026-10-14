@@ -558,7 +558,7 @@ journal are in `PLAN_HISTORY.md` ("Archived from TODO.md: K.11"); only open work
     corruption kinds (bad VLQ, non-monotonic column, out-of-range source/name index). *Pass when:* resolution,
     arming and paused projection each refuse, disclose no partial source, retain no breakpoint, and the
     page still runs to completion.
-  - [ ] **AC-K11.B Substituted artifact/map, out-of-process.** Other-generation map, map for different
+  - [x] **AC-K11.B Substituted artifact/map, out-of-process.** Other-generation map, map for different
     JavaScript hash, externally asserted map. *Pass when:* each is refused with a distinct outcome and
     retains no breakpoint.
   - [ ] **AC-K11.C Helper-frame non-disclosure.** *Pass when:* one test iterates all 11 rows and fails if

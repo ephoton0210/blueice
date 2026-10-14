@@ -28,6 +28,8 @@ impl BlueJsChildHost {
             next_debugger_metadata_handle: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             next_debugger_metadata_generation: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             script_dom_capability: None,
+            #[cfg(debug_assertions)]
+            saved_emitted_map_for_test: None,
         })
     }
 
@@ -1029,7 +1031,7 @@ impl BlueJsChildHost {
                     top_level_spans,
                     identifier_spans,
                 } => {
-                    let bound = match BoundEmittedMap::new(
+                    let mut bound = match BoundEmittedMap::new(
                         source.clone(),
                         source_map,
                         emitted_profile,
@@ -1108,6 +1110,7 @@ impl BlueJsChildHost {
                         Ok(program) => program,
                         Err(()) => return self.fail_debugger_execution_document(tab_id),
                     };
+                    bound.admit_for(document_generation, program);
                     let Some(document) = self.documents.get_mut(&tab_id) else {
                         return self.fail_debugger_execution_document(tab_id);
                     };
@@ -1215,9 +1218,10 @@ impl BlueJsChildHost {
                         return self.fail_debugger_execution_document(tab_id);
                     };
                     for (module_id, program) in identities {
-                        let bound = emitted_maps
+                        let mut bound = emitted_maps
                             .remove(&module_id)
                             .expect("every emitted module map was checked before attachment");
+                        bound.admit_for(document_generation, program);
                         document.emitted_maps.insert(program, bound);
                     }
                     document

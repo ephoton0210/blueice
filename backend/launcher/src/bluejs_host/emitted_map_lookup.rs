@@ -172,6 +172,16 @@ impl BlueJsChildHost {
         let Some(bound) = document.emitted_maps.get(&program) else {
             return Err(invalid_request());
         };
+        match bound.admitted_for {
+            Some((admitted_generation, _)) if admitted_generation != document_generation => {
+                return Err(stale_document());
+            }
+            Some((_, admitted_program)) if admitted_program != program => {
+                return Err(invalid_request());
+            }
+            None => return Err(unauthorized_artifact()),
+            Some(_) => {}
+        }
         let Ok(installed) = self.runtime.program_registry().get(record.runtime_handle) else {
             return Err(invalid_request());
         };

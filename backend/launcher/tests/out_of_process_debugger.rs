@@ -58,6 +58,9 @@ mod generated_legacy;
 #[cfg(debug_assertions)]
 #[path = "out_of_process_debugger/generated_map_faults.rs"]
 mod generated_map_faults;
+#[cfg(debug_assertions)]
+#[path = "out_of_process_debugger/generated_map_substitution.rs"]
+mod generated_map_substitution;
 #[path = "out_of_process_debugger/generated_primitives.rs"]
 mod generated_primitives;
 #[path = "out_of_process_debugger/generated_system.rs"]

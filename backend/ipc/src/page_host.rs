@@ -137,6 +137,9 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V54 distinguishes a retained emitted map that never passed child program
+/// admission from stale and mismatched admitted artifacts. No caller-supplied
+/// map operation is added.
 /// V51 adds an all-or-nothing private System three-frame generated/original
 /// location projection, without granting public debugger access.
 /// V50 adds exact System generated-token lookup through a separately
@@ -152,7 +155,7 @@ use std::io::{self, Read, Write};
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 53;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 54;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -208,6 +211,7 @@ pub use debugger_shapes::*;
 /// page loader. `source_hash` is verified by the child against `source`; it
 /// is never a client-supplied assertion that the child blindly trusts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PageHostSource {
     pub canonical_module_id: String,
     pub source: String,
@@ -242,6 +246,7 @@ pub struct PageHostStaticResolution {
 
 /// A closed, caller-authorized source graph for one page declaration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PageHostModuleGraph {
     pub entry: String,
     pub modules: Vec<PageHostSource>,
@@ -311,6 +316,7 @@ pub enum PageHostScriptLanguage {
 /// One declaration in document order. Its graph is fully supplied before the
 /// child parses or executes anything.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PageHostScript {
     pub ordinal: u32,
     pub language: PageHostScriptLanguage,
@@ -350,6 +356,7 @@ pub enum PageHostBlueTsEmissionProfile {
 /// text and canonical origin. A page cannot add, remove, rename, or widen
 /// these bindings through this private protocol.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PageHostDocument {
     pub tab_id: u64,
     pub document_generation: u64,
@@ -1299,6 +1306,9 @@ pub enum PageHostReply {
 pub enum PageHostErrorCode {
     ProtocolVersion,
     Authentication,
+    /// A map exists but was never admitted for the live compiler-generated
+    /// program; callers cannot assert one through this protocol.
+    UnauthorizedArtifact,
     InvalidRequest,
     StaleDocument,
     UnknownRealm,

@@ -10406,3 +10406,41 @@ and `git diff --check` pass. With pinned TypeScript 5.9.3 and Acorn 8.15.0,
 passes, including the TypeScript oracle. This closes AC-K11.A only;
 substituted-map and helper-frame cases (AC-K11.B/C), the K.11.4 parent tick,
 and K.11.6 final-source/coverage/hosted gates remain open.
+
+### K.11.4 AC-K11.B — substituted emitted artifacts (2026-10-14)
+
+The first failing child-host regression showed that a real map removed from
+document generation 1 could be inserted beside a generation-2 program built
+from identical BlueTS and still resolve a valid safe point. Matching source
+hashes did not prove generation ownership. Each compiler-produced map now
+receives a single document-generation and child-program admission binding at
+installation. Lookup refuses a map with another generation as
+`StaleDocument`, a map whose generated JavaScript has a different hash as
+`InvalidRequest`, and an otherwise valid map without an admission binding as
+the new private `UnauthorizedArtifact` category. Page-host protocol v54 adds
+only that refusal category, not any operation to supply a map. A second red
+test showed that unknown `source_map` fields were silently ignored; the
+document, script, graph and source records now reject such fields on decode.
+
+One public real-launcher/core/separate-child test loops over all three cases.
+For the stale case it captures the actual first-generation child map, reloads
+the same source, then substitutes that old map for the newly compiled map;
+the generated JavaScript hashes are equal. The mismatched case uses an
+independently compiled map for different JavaScript. The external-assertion
+case supplies an independently compiled map without the host's admission
+binding; the protocol regression separately proves a caller cannot put a map
+field into any document layer. In the child process, lookup asserts the three
+distinct private outcomes above. The public debugger exposes only its fixed
+source-free `CapabilityUnavailable` response, retains no breakpoint after
+resolution or arming, and the page reaches completed execution. The full
+`out_of_process_debugger` target passes 54/54 tests; AC-K11.C/D remain open.
+
+Verification on this source: `cargo test -p blueice-ipc -p blueice-launcher`
+passes (IPC library 145/145, launcher library 201/201, public debugger
+54/54); `cargo test -p blueice-engine --test core_binary` passes 21/21;
+`cargo clippy -p blueice-ipc -p blueice-launcher -p blueice-engine --all-targets -- -D warnings`
+and the K.0 two-BlueTS-crate all-target Clippy pass. With TypeScript 5.9.3,
+Acorn 8.15.0 and `FORCE_COLOR=0`, the two BlueTS crates' full
+`--include-ignored` test run exits 0, including the 82-test TypeScript oracle
+and 23-test decoded source-map oracle. Formatting and whitespace checks pass.
+This is a local leaf gate, not the K.11.6 workspace coverage or hosted gate.

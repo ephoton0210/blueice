@@ -1154,3 +1154,30 @@ fn version_five_document_requires_the_fixed_core_snapshot() {
         .remove("snapshot");
     assert!(serde_json::from_value::<PageHostRequest>(value).is_err());
 }
+
+#[test]
+fn externally_asserted_source_maps_are_not_part_of_the_page_host_document_schema() {
+    for path in [
+        "/SynchronizeDocument/document",
+        "/SynchronizeDocument/document/scripts/0",
+        "/SynchronizeDocument/document/scripts/0/graph",
+        "/SynchronizeDocument/document/scripts/0/graph/modules/0",
+    ] {
+        let mut wire = serde_json::to_value(PageHostRequest::SynchronizeDocument {
+            document: document(),
+        })
+        .unwrap();
+        wire.pointer_mut(path)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert(
+                "source_map".to_string(),
+                serde_json::json!({ "mappings": "AAAA" }),
+            );
+        assert!(
+            serde_json::from_value::<PageHostRequest>(wire).is_err(),
+            "{path}: an external map assertion must be rejected, not ignored"
+        );
+    }
+}

@@ -173,6 +173,7 @@ pub(super) fn child_error_category(code: PageHostErrorCode) -> &'static str {
         }
         PageHostErrorCode::Authentication
         | PageHostErrorCode::ProtocolVersion
+        | PageHostErrorCode::UnauthorizedArtifact
         | PageHostErrorCode::InvalidRequest
         | PageHostErrorCode::InvalidDebuggerState
         | PageHostErrorCode::UnknownRealm

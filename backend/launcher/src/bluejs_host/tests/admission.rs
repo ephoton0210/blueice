@@ -884,6 +884,52 @@ fn debugger_admission_retains_the_exact_emitted_map_until_realm_replacement() {
 }
 
 #[test]
+fn previous_generation_map_cannot_bind_an_identical_new_generated_program() {
+    let mut host = BlueJsChildHost::default();
+    let source = "const answer: number = 42;";
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(1, vec![blue_ts_emitted_classic(0, source)]),
+        }),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let old_program = *host.documents[&7].emitted_maps.keys().next().unwrap();
+    let old_map = host
+        .documents
+        .get_mut(&7)
+        .unwrap()
+        .emitted_maps
+        .remove(&old_program)
+        .unwrap();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(2, vec![blue_ts_emitted_classic(0, source)]),
+        }),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let new_program = *host.documents[&7].emitted_maps.keys().next().unwrap();
+    let new_map = host.documents[&7].emitted_maps.get(&new_program).unwrap();
+    assert_eq!(old_map.generated.source_hash, new_map.generated.source_hash);
+    host.documents
+        .get_mut(&7)
+        .unwrap()
+        .emitted_maps
+        .insert(new_program, old_map);
+    assert_eq!(
+        host.handle_request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
+            tab_id: 7,
+            document_generation: 2,
+            program: new_program,
+            generated_line: 0,
+            generated_column_utf16: 0,
+        }),
+        stale_document(),
+        "a map from the prior generation must not resolve the new live program"
+    );
+    assert!(host.documents[&7].debugger_breakpoints.is_empty());
+}
+
+#[test]
 fn page_host_executes_bluets_emitted_decorator_artifact_as_javascript() {
     let fixture = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),

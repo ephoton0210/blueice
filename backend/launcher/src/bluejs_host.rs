@@ -273,6 +273,10 @@ struct ChildDebuggerProgram {
 struct BoundEmittedMap {
     generated: PageHostSource,
     map: SourceMap,
+    /// Set exactly once when the compiler-produced map is installed beside
+    /// its live child program. Matching source bytes alone do not authorize
+    /// reuse after a document or program generation changes.
+    admitted_for: Option<(u64, PageHostDebuggerProgram)>,
     emission_profile: PageHostBlueTsEmissionProfile,
     top_level_spans: Vec<ParsedStatementSpan>,
     identifier_spans: Vec<blueice_bluejs::ParsedIdentifierSpan>,
@@ -330,6 +334,7 @@ impl BoundEmittedMap {
         let mut bound = Self {
             generated,
             map,
+            admitted_for: None,
             emission_profile,
             top_level_spans,
             identifier_spans,
@@ -381,6 +386,14 @@ impl BoundEmittedMap {
             return Err("BlueTS emitted source map exceeds retention budget");
         }
         Ok(bound)
+    }
+
+    fn admit_for(&mut self, document_generation: u64, program: PageHostDebuggerProgram) {
+        assert!(
+            self.admitted_for.is_none(),
+            "an emitted map may be admitted for only one live program"
+        );
+        self.admitted_for = Some((document_generation, program));
     }
 
     fn retained_bytes(&self) -> Option<usize> {
@@ -982,6 +995,8 @@ pub struct BlueJsChildHost {
     next_debugger_metadata_handle: u64,
     next_debugger_metadata_generation: u64,
     script_dom_capability: Option<ScriptDomCapability>,
+    #[cfg(debug_assertions)]
+    saved_emitted_map_for_test: Option<BoundEmittedMap>,
 }
 
 mod execution_drive;
@@ -1005,6 +1020,9 @@ use debugger_mapping::*;
 
 mod script_execution;
 use script_execution::*;
+
+#[cfg(debug_assertions)]
+mod test_artifact_faults;
 
 impl BlueJsChildHost {
     /// Debug-build-only test seam; it is never reachable through page-host IPC.
@@ -1475,6 +1493,13 @@ fn stale_document() -> PageHostReply {
     PageHostReply::Error {
         code: PageHostErrorCode::StaleDocument,
         message: "BlueJS page-host document generation is stale".to_string(),
+    }
+}
+
+fn unauthorized_artifact() -> PageHostReply {
+    PageHostReply::Error {
+        code: PageHostErrorCode::UnauthorizedArtifact,
+        message: "BlueJS page-host emitted map was not admitted for this program".to_string(),
     }
 }
 
