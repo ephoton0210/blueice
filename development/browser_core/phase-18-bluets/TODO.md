@@ -701,6 +701,14 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     The single-program classic stack route must not relabel a foreign frame
     as the emitted program. Until this is implemented, generated and raw
     arming must both fail closed without retaining a breakpoint.
+  - [x] Route the private v48 System arm through the core-owned page-host
+    adapter. Remint both exact program generations, reject a same-program
+    loader and stale core identity before transport, validate the emitted
+    safe point, and accept only an acknowledgement echoing the complete
+    tab/document/loader/target tuple. Keep the public System route closed.
+  - [ ] Require independent same-stream loader and emitted receipts, then
+    expose only the exact three-frame generated/original projection with
+    step, resume and thrown-completion regressions.
   - [ ] Add independently default-denied, same-stream receipted public
     debugger operations for generated breakpoint resolution/arming and
     paused step/stack-location projection. Unmapped helper bodies and
@@ -1193,6 +1201,19 @@ leave no breakpoint. Ordinary raw System arm and the single-program stack
 remain denied. This is a private transport and scheduler milestone only:
 core has no receipted public System arm or three-frame original-location
 projection yet, so the System subitem and K.11.4 remain unchecked.
+
+Core now routes the private v48 System arm through its page-host connection
+and debugger-location adapter. The adapter remints both core program IDs to
+their exact child generations, rejects stale or same-program identities,
+validates the emitted nested safe point, and accepts only a full-tuple child
+acknowledgement. A default client remains unsupported. Focused core tests
+cover the exact transport tuple, positive reminting, stale identity, root-target
+rejection, wrong tab/document/loader/target echoes and the child-error path.
+The engine library suite passes all 473 tests with local socket permission;
+engine all-target Clippy and workspace formatting checks also pass.
+This completes only the checked private core-routing subitem above; no
+public System capability, same-stream loader receipt, or three-frame source
+projection is available. The parent System item and K.11.4 remain open.
 
 ### K.12 Projects — M10 — gap G-M2
 

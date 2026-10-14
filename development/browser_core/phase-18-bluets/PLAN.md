@@ -10316,3 +10316,17 @@ filter remains fail-closed for System. Core still needs independent same-
 stream receipts for the loader and emitted program, plus a complete three-
 frame projection before a public System arm may become reachable. Thus the
 System checklist row and K.11.4 remain open.
+
+The next private core-routing subcheck is complete: the page-host client and
+socket connection carry v48 `ArmDebuggerSystemNestedBreakpoint`; the
+core-facing debugger-location adapter resolves both opaque core program
+identities back to their exact child generations, rejects stale/same-program
+inputs, validates the emitted safe point, and accepts only an exact echoed
+tab/document/loader/target acknowledgement. An unsupported client stays
+default-denied. Focused core tests prove the positive route and wrong
+tab/document/loader/target replies fail closed. This does not publish a
+System debugger capability: independent same-stream receipts and the true
+three-frame generated/original stack projection are still required before
+the parent K.11.4 System item may be checked.
+The 473-test engine library suite passes with local socket permission, as do
+engine all-target Clippy with denied warnings and workspace formatting.

@@ -815,6 +815,21 @@ impl PageHostClient for PageHostConnection {
         })
     }
 
+    fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+            tab_id,
+            document_generation,
+            loader_program,
+            safe_point,
+        })
+    }
+
     fn step_debugger_nested_instruction(
         &mut self,
         frame: PageHostDebuggerFrame,

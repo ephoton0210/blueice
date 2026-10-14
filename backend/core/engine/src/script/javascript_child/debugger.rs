@@ -890,6 +890,23 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         )
     }
 
+    fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        loader: JavaScriptPageDebuggerProgram,
+        emitted: JavaScriptPageDebuggerProgram,
+        safe_point: JavaScriptPageDebuggerSafePoint,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        self.core_arm_debugger_system_nested_breakpoint(
+            tab_id,
+            document_generation,
+            loader,
+            emitted,
+            safe_point,
+        )
+    }
+
     fn debugger_nested_execution_state(
         &mut self,
         tab_id: TabId,

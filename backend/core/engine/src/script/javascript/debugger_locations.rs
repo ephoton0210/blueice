@@ -628,6 +628,20 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
+    /// Arms an emitted System execute-body site only through one separately
+    /// installed, exact page-loader generation. This core-facing seam grants
+    /// no public access to either program or its paused stack.
+    fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _loader: JavaScriptPageDebuggerProgram,
+        _emitted: JavaScriptPageDebuggerProgram,
+        _safe_point: JavaScriptPageDebuggerSafePoint,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
     /// `None` means this live program is not currently in a nested frame;
     /// ordinary root/pending/completed state remains separately queryable.
     fn debugger_nested_execution_state(
@@ -1218,6 +1232,16 @@ mod tests {
         );
         assert_eq!(
             debugger.arm_debugger_nested_safe_point_breakpoint(tab(), 1, 1, 1, 0, 0),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.arm_debugger_system_nested_breakpoint(
+                tab(),
+                1,
+                program(),
+                program(),
+                safe_point(),
+            ),
             Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
         );
         assert_eq!(

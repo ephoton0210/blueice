@@ -671,6 +671,19 @@ pub trait PageHostClient {
         ))
     }
 
+    fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _loader_program: PageHostDebuggerProgram,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement System debugger control",
+        ))
+    }
+
     fn step_debugger_nested_instruction(
         &mut self,
         _frame: PageHostDebuggerFrame,
@@ -1194,6 +1207,10 @@ mod tests {
         assert_unsupported(
             client.arm_debugger_nested_safe_point_breakpoint(1, 1, safe_point()),
             "page-host child does not implement nested debugger control",
+        );
+        assert_unsupported(
+            client.arm_debugger_system_nested_breakpoint(1, 1, program(), safe_point()),
+            "page-host child does not implement System debugger control",
         );
         assert_unsupported(
             client.step_debugger_nested_instruction(frame()),

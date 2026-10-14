@@ -5,6 +5,65 @@
 use super::*;
 
 impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
+    pub(super) fn core_arm_debugger_system_nested_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        loader: JavaScriptPageDebuggerProgram,
+        emitted: JavaScriptPageDebuggerProgram,
+        safe_point: JavaScriptPageDebuggerSafePoint,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_nested_frames_available() || safe_point.code_unit_ordinal == 0 {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let child_loader = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            loader.program_handle,
+            loader.program_generation,
+        )?;
+        let child_emitted = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            emitted.program_handle,
+            emitted.program_generation,
+        )?;
+        if child_loader == child_emitted {
+            return Err(JavaScriptPageDebuggerError::InvalidSafePoint);
+        }
+        let child_point = PageHostDebuggerSafePoint {
+            program: child_emitted,
+            code_unit_ordinal: safe_point.code_unit_ordinal,
+            bytecode_offset: safe_point.bytecode_offset,
+        };
+        validate_child_safe_point_reply(self, tab_id, document_generation, child_point)?;
+        let reply = self
+            .child
+            .arm_debugger_system_nested_breakpoint(
+                tab_id.as_u64(),
+                document_generation,
+                child_loader,
+                child_point,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerSystemNestedBreakpointArmed {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                loader_program: reply_loader,
+                safe_point: reply_point,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && reply_loader == child_loader
+                && reply_point == child_point =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
+
     pub(super) fn core_arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         tab_id: TabId,
