@@ -56,6 +56,8 @@ pub(super) fn describe_capabilities(
             static_metadata_safe_point_span_available: false,
             static_metadata_source_span_step_available: false,
             static_metadata_source_breakpoint_available: false,
+            generated_breakpoint_available: false,
+            generated_paused_location_available: false,
             static_metadata_contract_location_available: false,
             static_metadata_symbol_type_available: false,
             static_metadata_symbol_contract_available: false,
@@ -633,6 +635,27 @@ pub(super) fn unavailable_static_metadata_source_breakpoint_arm() -> DebuggerRep
     }
 }
 
+pub(super) fn unavailable_generated_breakpoint() -> DebuggerReply {
+    DebuggerReply::Unsupported {
+        operation: "resolve generated breakpoint".to_string(),
+        reason: "generated breakpoint binding requires an independent owner/client grant, a same-stream program receipt, and a live emitted-map child".to_string(),
+    }
+}
+
+pub(super) fn unavailable_generated_breakpoint_arm() -> DebuggerReply {
+    DebuggerReply::Unsupported {
+        operation: "arm generated breakpoint".to_string(),
+        reason: "generated breakpoint arm requires its independent grant, same-stream program receipt, exact root safe point and live execution control".to_string(),
+    }
+}
+
+pub(super) fn unavailable_generated_paused_location() -> DebuggerReply {
+    DebuggerReply::Unsupported {
+        operation: "get generated paused location".to_string(),
+        reason: "generated paused location requires its independent owner/client grant, same-stream program receipt and exact live paused root stack".to_string(),
+    }
+}
+
 pub(super) fn unavailable_static_metadata_contract_location() -> DebuggerReply {
     DebuggerReply::Unsupported {
         operation: "describe static metadata contract location".to_string(),
@@ -832,6 +855,8 @@ pub(super) struct DebuggerCapabilityAvailability {
     pub(super) static_metadata_safe_point_span_available: bool,
     pub(super) static_metadata_source_span_step_available: bool,
     pub(super) static_metadata_source_breakpoint_available: bool,
+    pub(super) generated_breakpoint_available: bool,
+    pub(super) generated_paused_location_available: bool,
     pub(super) static_metadata_contract_location_available: bool,
     pub(super) static_metadata_symbol_type_available: bool,
     pub(super) static_metadata_symbol_contract_available: bool,
@@ -865,6 +890,8 @@ pub(super) fn capability_reports(
         static_metadata_safe_point_span_available,
         static_metadata_source_span_step_available,
         static_metadata_source_breakpoint_available,
+        generated_breakpoint_available,
+        generated_paused_location_available,
         static_metadata_contract_location_available,
         static_metadata_symbol_type_available,
         static_metadata_symbol_contract_available,
@@ -1213,6 +1240,32 @@ pub(super) fn capability_reports(
                 "bounded BlueTS source positions resolve to exact safe points or explicit unbound results under separate receipts; atomic classic/module root arm also requires execution control"
             } else {
                 "BlueTS source-position binding requires independent inventory, source-inventory, and binding grants plus a live child attachment"
+            },
+        ),
+        (
+            DebuggerCapability::GeneratedBreakpoint,
+            if generated_breakpoint_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if generated_breakpoint_available {
+                "exact emitted-JavaScript token breakpoints are installed under a separate program-receipted grant"
+            } else {
+                "generated breakpoints require an independent grant, program receipt and live emitted-map child"
+            },
+        ),
+        (
+            DebuggerCapability::GeneratedPausedLocation,
+            if generated_paused_location_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if generated_paused_location_available {
+                "exact paused emitted-root locations are installed under a separate program-receipted grant"
+            } else {
+                "generated paused locations require an independent grant, program receipt and live paused child"
             },
         ),
         (

@@ -12,7 +12,13 @@ impl Parser {
         start: usize,
         exported: bool,
     ) {
-        let name = self.require_identifier("expected a type alias name");
+        let name = if self.peek("asserts") || self.peek("is") {
+            let name = self.current().text.clone();
+            self.bump();
+            name
+        } else {
+            self.require_identifier("expected a type alias name")
+        };
         let type_parameters = self.parse_type_parameters();
         self.expect("=");
         let value = self.parse_type_until(&[";"]);
@@ -58,37 +64,16 @@ impl Parser {
             }
         }
         self.expect("{");
-        let mut fields = Vec::new();
-        let mut closed = false;
-        while !self.at_eof() {
-            if self.consume("}") {
-                closed = true;
-                break;
-            }
-            let readonly = self.consume("readonly");
-            let field_start = self.current().start;
-            let name = self.require_property_name("expected an interface field name");
-            let optional = self.consume("?");
-            let value = if self.peek("(") {
-                self.parse_method_signature(&[";", ",", "}"])
-            } else {
-                self.expect(":");
-                self.parse_type_until(&[";", ",", "}"])
-            };
-            let end = self.previous().end;
-            fields.push(TypeField {
-                name,
-                readonly,
-                optional,
-                value,
-                span: SourceSpan::new(&self.id, field_start, end),
-            });
-            self.consume(";");
-            self.consume(",");
-        }
-        if !closed {
-            self.expect("}");
-        }
+        let body = self.parse_record_type("expected an interface field name");
+        let (body, indices) = match body {
+            Type::IndexedRecord { object, indices } => (*object, indices),
+            value => (value, Vec::new()),
+        };
+        let (fields, signatures) = match body {
+            Type::Record(fields) => (fields, Vec::new()),
+            Type::CallableRecord { fields, signatures } => (fields, signatures),
+            _ => unreachable!(),
+        };
         let end = self.previous().end;
         self.edits.push(TextEdit {
             start,
@@ -101,7 +86,10 @@ impl Parser {
                 type_parameters,
                 heritage,
                 fields,
+                signatures,
+                indices,
                 exported,
+                default_export: false,
                 span: SourceSpan::new(&self.id, start, end),
             }));
     }
@@ -124,7 +112,36 @@ impl Parser {
         declared: bool,
         kind: VariableKind,
     ) -> VariableDeclaration {
-        let name = self.require_identifier("expected a variable name");
+        let (name, pattern) = if self.peek("{") || self.peek("[") {
+            let open = self.index;
+            match patterns::parse_variable_pattern(&self.tokens, open, &self.id) {
+                Some((pattern, close)) => {
+                    let name =
+                        self.source[self.tokens[open].start..self.tokens[close].end].to_string();
+                    self.index = close + 1;
+                    if exported || declared {
+                        self.unsupported(
+                            SourceSpan::new(
+                                &self.id,
+                                self.tokens[open].start,
+                                self.tokens[close].end,
+                            ),
+                            "exported or ambient variable binding patterns are not supported yet",
+                        );
+                    }
+                    (name, Some(pattern))
+                }
+                None => {
+                    self.unsupported(
+                        self.current().span(&self.id),
+                        "this variable binding pattern is not supported yet",
+                    );
+                    (self.require_identifier("expected a variable name"), None)
+                }
+            }
+        } else {
+            (self.require_identifier("expected a variable name"), None)
+        };
         if self.consume("?") {
             self.unsupported(
                 self.previous().span(&self.id),
@@ -148,10 +165,29 @@ impl Parser {
             let initializer_start = self.index;
             let initializer = self.collect_until_statement_end();
             self.collect_expression_type_edits(initializer_start, self.index);
+            self.collect_following_variable_types(initializer_start, self.index);
             initializer
         } else {
             Vec::new()
         };
+        if declared && !initializer.is_empty() {
+            // An ambient `const` may only be initialized, without a type, by a
+            // literal.
+            let literal = matches!(
+                initializer.as_slice(),
+                [token] if matches!(token.kind, TokenKind::String | TokenKind::Number)
+            ) || matches!(
+                initializer.as_slice(),
+                [sign, token] if sign.is("-") && token.kind == TokenKind::Number
+            );
+            if annotation.is_some() || kind != VariableKind::Const || !literal {
+                self.error_at(
+                    initializer[0].span(&self.id),
+                    DiagnosticCode::ParseError,
+                    "initializers are not allowed in ambient contexts",
+                );
+            }
+        }
         self.consume(";");
         let end = self.previous().end;
         if declared {
@@ -163,6 +199,7 @@ impl Parser {
         }
         VariableDeclaration {
             name,
+            pattern,
             kind,
             annotation,
             initializer,
@@ -180,6 +217,9 @@ impl Parser {
         declared: bool,
         async_start: bool,
     ) {
+        // `function* name`: a generator.
+        let generator_span = self.current().span(&self.id);
+        let generator = self.consume("*");
         let name = self.require_identifier("expected a function name");
         let type_parameter_start = self.current().start;
         let type_parameters = self.parse_type_parameters();
@@ -193,7 +233,7 @@ impl Parser {
         let parameters = self.parse_parameters();
         let return_start = self.current().start;
         let return_type = if self.consume(":") {
-            let value = self.parse_type_until(&["{", ";"]);
+            let value = self.parse_return_type_until(&["{", ";"]);
             let return_end = self.current().start;
             self.edits.push(TextEdit {
                 start: return_start,
@@ -204,6 +244,22 @@ impl Parser {
         } else {
             None
         };
+
+        if generator && async_start && return_type.is_none() && !self.emitted_runtime {
+            self.unsupported(
+                generator_span.clone(),
+                "an async generator without an explicit return annotation is not supported yet",
+            );
+        }
+        if generator
+            && async_start
+            && matches!(return_type.as_ref(), Some(Type::Named { name, .. }) if matches!(name.as_str(), "Generator" | "Iterator" | "IterableIterator" | "Iterable"))
+        {
+            self.unsupported(
+                generator_span,
+                "an async generator with a synchronous iterator annotation is not supported yet",
+            );
+        }
 
         let mut body = Vec::new();
         let mut returns = Vec::new();
@@ -233,7 +289,9 @@ impl Parser {
         self.declarations
             .push(Declaration::Function(FunctionDeclaration {
                 name,
+                anonymous: false,
                 async_function: async_start,
+                generator,
                 body_open,
                 type_parameters,
                 parameters,
@@ -249,16 +307,131 @@ impl Parser {
             }));
     }
 
+    /// `[public|protected|private] [readonly]` before a constructor parameter,
+    /// erased from the output. `None` when the parameter has neither, so it is
+    /// an ordinary parameter. A modifier word counts only when a parameter
+    /// follows it; `constructor(readonly)` names a parameter `readonly`.
+    fn consume_parameter_property_modifiers(&mut self) -> Option<(Visibility, bool, bool, usize)> {
+        let starts_parameter = |token: Option<&Token>| {
+            token.is_some_and(|token| {
+                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+                    || token.is("...")
+                    || token.is("{")
+                    || token.is("[")
+            })
+        };
+        let first = self.index;
+        let mut visibility = None;
+        let mut readonly = false;
+        let mut override_modifier = false;
+        let mut misplaced = false;
+        while starts_parameter(self.tokens.get(self.index + 1)) {
+            let word = self.tokens[self.index].text.as_str();
+            match word {
+                "public" | "protected" | "private" => {
+                    misplaced |= visibility.is_some() || readonly || override_modifier;
+                    visibility = Some(match word {
+                        "protected" => Visibility::Protected,
+                        "private" => Visibility::Private,
+                        _ => Visibility::Public,
+                    });
+                }
+                "readonly" => {
+                    misplaced |= readonly;
+                    readonly = true;
+                }
+                "override" => {
+                    misplaced |= readonly || override_modifier;
+                    override_modifier = true;
+                }
+                _ => break,
+            }
+            self.index += 1;
+        }
+        if self.index == first {
+            return None;
+        }
+        if misplaced {
+            self.error_at(
+                SourceSpan::new(
+                    &self.id,
+                    self.tokens[first].start,
+                    self.tokens[self.index - 1].end,
+                ),
+                DiagnosticCode::ParseError,
+                "parameter modifiers must be an accessibility modifier, then `readonly`, each at most once",
+            );
+        }
+        self.edits.push(TextEdit {
+            start: self.tokens[first].start,
+            end: self.current().start,
+            replacement: String::new(),
+        });
+        Some((
+            visibility.unwrap_or_default(),
+            readonly,
+            override_modifier,
+            self.tokens[first].start,
+        ))
+    }
+
     pub(in crate::parser::implementation) fn parse_parameters(&mut self) -> Vec<Parameter> {
         self.expect("(");
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(")") {
+            let property_modifiers = if self.parameter_property_mode
+                || matches!(
+                    self.current().text.as_str(),
+                    "public" | "protected" | "private" | "readonly" | "override"
+                ) {
+                self.consume_parameter_property_modifiers()
+            } else {
+                None
+            };
+            // Legacy parameter decorators come first; the modifiers of a parameter
+            // property follow them.
+            let decorators = self.parse_decorators();
+            let property_modifiers = if self.parameter_property_mode && property_modifiers.is_none()
+            {
+                self.consume_parameter_property_modifiers()
+            } else {
+                property_modifiers
+            };
             let parameter_start = self.current().start;
             let rest = self.consume("...");
-            let parameter_name = self.require_identifier("expected a parameter name");
+            let mut pattern = None;
+            let parameter_name = if !rest && (self.peek("{") || self.peek("[")) {
+                let open = self.index;
+                match patterns::parse_binding_pattern(&self.tokens, open, &self.id) {
+                    Some((parsed, close)) => {
+                        let text = self.source[self.tokens[open].start..self.tokens[close].end]
+                            .to_string();
+                        self.index = close + 1;
+                        pattern = Some(parsed);
+                        text
+                    }
+                    None => {
+                        self.unsupported(
+                            self.current().span(&self.id),
+                            "this destructuring pattern is not supported yet",
+                        );
+                        // Skip the pattern so parsing can continue.
+                        let end = find_balanced_delimiter(
+                            &self.tokens,
+                            open,
+                            self.tokens.len() - 1,
+                            &[",", ")", ":", "=", "?"],
+                        );
+                        self.index = end.max(open + 1);
+                        "<pattern>".to_string()
+                    }
+                }
+            } else {
+                self.parse_parameter_name("expected a parameter name")
+            };
             let optional_start = self.current().start;
             let mut optional = self.consume("?");
-            if optional {
+            if optional && parameter_name != "this" {
                 self.edits.push(TextEdit {
                     start: optional_start,
                     end: self.current().start,
@@ -269,11 +442,13 @@ impl Parser {
             let annotation = if self.consume(":") {
                 let value = self.parse_type_until(&["=", ",", ")"]);
                 let annotation_end = self.current().start;
-                self.edits.push(TextEdit {
-                    start: annotation_start,
-                    end: annotation_end,
-                    replacement: String::new(),
-                });
+                if parameter_name != "this" {
+                    self.edits.push(TextEdit {
+                        start: annotation_start,
+                        end: annotation_end,
+                        replacement: String::new(),
+                    });
+                }
                 Some(value)
             } else {
                 None
@@ -299,8 +474,64 @@ impl Parser {
                 None
             };
             let parameter_end = self.previous().end;
+            if parameter_name == "this" {
+                if rest || optional || default.is_some() {
+                    self.unsupported(
+                        SourceSpan::new(&self.id, parameter_start, parameter_end),
+                        "optional, defaulted and rest this parameters are not supported",
+                    );
+                }
+                self.check_receiver_parameter_position(
+                    parameters.len(),
+                    SourceSpan::new(&self.id, parameter_start, parameter_end),
+                );
+                self.edits.push(TextEdit {
+                    start: parameter_start,
+                    end: if self.peek(",") {
+                        self.current().end
+                    } else {
+                        self.current().start
+                    },
+                    replacement: String::new(),
+                });
+            }
+            if let Some((visibility, readonly, override_modifier, modifiers_start)) =
+                property_modifiers
+            {
+                if !self.parameter_property_mode {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::ParseError,
+                            SourceSpan::new(&self.id, parameter_start, parameter_end),
+                            "a parameter property is only allowed in a constructor implementation",
+                        )
+                        .with_typescript(2369, Vec::new()),
+                    );
+                }
+                if rest || pattern.is_some() {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::ParseError,
+                            SourceSpan::new(&self.id, parameter_start, parameter_end),
+                            "a parameter property cannot be a rest parameter or a binding pattern",
+                        )
+                        .with_typescript(if rest { 1317 } else { 1187 }, Vec::new()),
+                    );
+                }
+                if self.parameter_property_mode {
+                    self.parameter_properties.push(ParameterProperty {
+                        parameter_index: parameters.len(),
+                        visibility,
+                        readonly,
+                        override_modifier,
+                        modifiers_start,
+                    });
+                }
+            }
             parameters.push(Parameter {
+                decorators,
                 name: parameter_name,
+                pattern,
                 rest,
                 optional,
                 annotation,

@@ -1,0 +1,294 @@
+{
+  "version": "8.15.0",
+  "targets": [
+    "ES5",
+    "ES2015",
+    "ES2016",
+    "ES2017",
+    "ES2018",
+    "ES2019",
+    "ES2020",
+    "ES2021",
+    "ES2022",
+    "ES2023",
+    "ESNext"
+  ],
+  "specification": "https://tc39.es/ecma262/2024/multipage/#sec-intro",
+  "cases": [
+    {
+      "entry": "classic.js",
+      "sourceType": "script",
+      "firstTarget": 5
+    },
+    {
+      "entry": "keywords-as-properties.js",
+      "sourceType": "script",
+      "firstTarget": 5
+    },
+    {
+      "entry": "future-text.js",
+      "sourceType": "script",
+      "firstTarget": 5
+    },
+    {
+      "entry": "lexical-let.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "lexical-const.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "arrow.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "object-method.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "object-shorthand.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "computed-property.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "bind-pattern.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "default-parameter.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "rest-parameter.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "call-spread.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "array-spread.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "template.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "iteration.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "generator.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "inheritance.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "new-target.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "binary-literal.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "octal-literal.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "regexp-unicode.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "regexp-sticky.js",
+      "sourceType": "script",
+      "firstTarget": 2015
+    },
+    {
+      "entry": "power.js",
+      "sourceType": "script",
+      "firstTarget": 2016
+    },
+    {
+      "entry": "async-function.js",
+      "sourceType": "script",
+      "firstTarget": 2017
+    },
+    {
+      "entry": "trailing-call-comma.js",
+      "sourceType": "script",
+      "firstTarget": 2017
+    },
+    {
+      "entry": "trailing-parameter-comma.js",
+      "sourceType": "script",
+      "firstTarget": 2017
+    },
+    {
+      "entry": "object-spread.js",
+      "sourceType": "script",
+      "firstTarget": 2018
+    },
+    {
+      "entry": "object-rest.js",
+      "sourceType": "script",
+      "firstTarget": 2018
+    },
+    {
+      "entry": "async-generator.js",
+      "sourceType": "script",
+      "firstTarget": 2018
+    },
+    {
+      "entry": "async-iteration.js",
+      "sourceType": "script",
+      "firstTarget": 2018
+    },
+    {
+      "entry": "regexp-dotall.js",
+      "sourceType": "script",
+      "firstTarget": 2018
+    },
+    {
+      "entry": "regexp-named-group.js",
+      "sourceType": "script",
+      "firstTarget": 2018
+    },
+    {
+      "entry": "regexp-lookbehind.js",
+      "sourceType": "script",
+      "firstTarget": 2018
+    },
+    {
+      "entry": "regexp-property.js",
+      "sourceType": "script",
+      "firstTarget": 2018
+    },
+    {
+      "entry": "optional-catch.js",
+      "sourceType": "script",
+      "firstTarget": 2019
+    },
+    {
+      "entry": "json-line-separator.js",
+      "sourceType": "script",
+      "firstTarget": 2019
+    },
+    {
+      "entry": "optional-chain.js",
+      "sourceType": "script",
+      "firstTarget": 2020
+    },
+    {
+      "entry": "nullish.js",
+      "sourceType": "script",
+      "firstTarget": 2020
+    },
+    {
+      "entry": "bigint.js",
+      "sourceType": "script",
+      "firstTarget": 2020
+    },
+    {
+      "entry": "dynamic-import.js",
+      "sourceType": "script",
+      "firstTarget": 2020
+    },
+    {
+      "entry": "import-meta.js",
+      "sourceType": "module",
+      "firstTarget": 2020
+    },
+    {
+      "entry": "namespace-export.js",
+      "sourceType": "module",
+      "firstTarget": 2020
+    },
+    {
+      "entry": "logical-or-assign.js",
+      "sourceType": "script",
+      "firstTarget": 2021
+    },
+    {
+      "entry": "logical-and-assign.js",
+      "sourceType": "script",
+      "firstTarget": 2021
+    },
+    {
+      "entry": "logical-nullish-assign.js",
+      "sourceType": "script",
+      "firstTarget": 2021
+    },
+    {
+      "entry": "numeric-separator.js",
+      "sourceType": "script",
+      "firstTarget": 2021
+    },
+    {
+      "entry": "public-field.js",
+      "sourceType": "script",
+      "firstTarget": 2022
+    },
+    {
+      "entry": "private-field.js",
+      "sourceType": "script",
+      "firstTarget": 2022
+    },
+    {
+      "entry": "private-method.js",
+      "sourceType": "script",
+      "firstTarget": 2022
+    },
+    {
+      "entry": "private-brand.js",
+      "sourceType": "script",
+      "firstTarget": 2022
+    },
+    {
+      "entry": "static-block.js",
+      "sourceType": "script",
+      "firstTarget": 2022
+    },
+    {
+      "entry": "top-level-await.js",
+      "sourceType": "module",
+      "firstTarget": 2022
+    },
+    {
+      "entry": "regexp-indices.js",
+      "sourceType": "script",
+      "firstTarget": 2022
+    },
+    {
+      "entry": "hashbang.js",
+      "sourceType": "script",
+      "firstTarget": 2023
+    }
+  ]
+}

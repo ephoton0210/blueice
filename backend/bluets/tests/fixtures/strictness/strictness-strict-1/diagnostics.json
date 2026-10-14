@@ -1,0 +1,6 @@
+[
+  {
+    "code": 7006,
+    "message": "Parameter 'value' implicitly has an 'any' type."
+  }
+]

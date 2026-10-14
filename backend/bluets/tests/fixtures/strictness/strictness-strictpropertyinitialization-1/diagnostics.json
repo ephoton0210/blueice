@@ -1,0 +1,6 @@
+[
+  {
+    "code": 2564,
+    "message": "Property 'value' has no initializer and is not definitely assigned in the constructor."
+  }
+]

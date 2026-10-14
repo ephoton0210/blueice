@@ -1,0 +1,22 @@
+{
+  "id": "tagtype-commonjs-d3",
+  "form": "d3",
+  "entry": "main.tsx",
+  "rootFiles": [
+    "main.tsx"
+  ],
+  "runtimeModule": "CommonJS",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "jsx": "react",
+    "jsxFactory": "h",
+    "rootDir": ".",
+    "outDir": "out"
+  }
+}

@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 mod authorization;
+mod emitted_map;
 mod lifecycle;
 mod linked_execution;
 mod linked_pause;
@@ -31,6 +32,7 @@ mod resource_accounting;
 mod scope_values;
 mod span_contracts;
 mod stack_scopes;
+mod system_loader;
 mod transport;
 
 fn unique_socket_path(label: &str) -> PathBuf {

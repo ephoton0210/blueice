@@ -1,0 +1,5 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+export namespace Outer { export namespace Inner { export const value = {answer: 42}; export function get() { return value; } } } export const result = [Outer.Inner.get().answer];

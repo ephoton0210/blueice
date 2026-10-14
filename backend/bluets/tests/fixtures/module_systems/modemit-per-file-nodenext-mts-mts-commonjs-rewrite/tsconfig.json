@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "outDir": "out",
+    "lib": [
+      "ES2020"
+    ],
+    "moduleResolution": "NodeNext",
+    "verbatimModuleSyntax": false
+  },
+  "files": [
+    "dep.mts",
+    "main.mts"
+  ]
+}

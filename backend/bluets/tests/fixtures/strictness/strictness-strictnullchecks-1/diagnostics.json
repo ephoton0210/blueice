@@ -1,0 +1,6 @@
+[
+  {
+    "code": 2322,
+    "message": "Type 'null' is not assignable to type 'number'."
+  }
+]

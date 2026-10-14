@@ -123,7 +123,7 @@ fn malformed_command_lines_fail_with_a_message_and_the_usage_text() {
         (&[], "a command is required"),
         (
             &["compile", "main.ts"],
-            "unknown command `compile`; expected `check` or `build`",
+            "unknown command `compile`; expected `check`, `build` or `fetch-declarations`",
         ),
         (
             &["check"],
@@ -143,8 +143,8 @@ fn malformed_command_lines_fail_with_a_message_and_the_usage_text() {
             "--out-dir is valid only with build",
         ),
         (
-            &["check", "main.ts", "--target", "es2019"],
-            "unsupported target `es2019`; expected es2020 or es2022",
+            &["check", "main.ts", "--target", "es4"],
+            "unsupported target `es4`; expected es5, es2015 through es2023, or esnext",
         ),
         (
             &["check", "main.ts", "--runtime-policy", "loose"],
@@ -280,7 +280,7 @@ fn the_file_loader_only_resolves_closed_project_ts_sources() {
 
     let expectations = [
         ("main.ts", "cannot resolve `./absent.ts` from `main.ts`"),
-        ("json.ts", "is not a supported .ts, .tsx, or .d.ts source file"),
+        ("json.ts", "JSON source `./data.json` requires resolveJsonModule"),
         (
             "escape.ts",
             "specifier `../outside.ts` resolves outside the declared project root",
@@ -548,8 +548,8 @@ fn config_target_and_runtime_policy_are_validated_and_applied() {
     config_project(&scratch);
     for (text, message) in [
         (
-            r#"{"entries": ["src/main.ts"], "target": "es5"}"#,
-            "unsupported target `es5`; expected es2020 or es2022",
+            r#"{"entries": ["src/main.ts"], "target": "es4"}"#,
+            "unsupported target `es4`; expected es5, es2015 through es2023, or esnext",
         ),
         (
             r#"{"entries": ["src/main.ts"], "runtimePolicy": "reckless"}"#,

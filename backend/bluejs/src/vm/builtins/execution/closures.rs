@@ -120,8 +120,26 @@ impl Vm {
                     })
             })
             .map(|request| (request.bytecode_offset, request.code_unit_ordinal));
+        let intermediate_debugger_frame = nested_debugger_target.is_none()
+            && self.call_depth == 1
+            && self.debugger_nested_direct_call
+            && !construct
+            && !code.async_function
+            && !code.generator
+            && !code.class_constructor
+            && self
+                .debugger_nested_pause_request
+                .as_ref()
+                .is_some_and(|request| {
+                    request
+                        .intermediate_program_generation
+                        .is_some_and(|generation| {
+                            code.debugger_program_generation == Some(generation)
+                        })
+                });
         if nested_debugger_target.is_some()
-            && (self.call_depth != 1
+            && (!(self.call_depth == 1
+                || (self.call_depth == 2 && self.debugger_nested_intermediate_active))
                 || !self.debugger_nested_direct_call
                 || construct
                 || code.async_function
@@ -129,7 +147,7 @@ impl Vm {
                 || code.class_constructor)
         {
             return Err(RuntimeError::Unsupported(
-                "nested debugger pause requires a direct synchronous closure call",
+                "nested debugger pause requires a bounded direct synchronous caller chain",
             ));
         }
         // Reject serial exhaustion before replacing the caller's bindings,
@@ -442,6 +460,54 @@ impl Vm {
                 }
                 DebuggerInterpreterExit::Completed(result) => result,
             };
+            if result.is_err() {
+                let base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &result {
+                    self.stack.push(value.clone());
+                }
+                self.stack.extend(iterators.iter().cloned());
+                for record in iterators.into_iter().rev() {
+                    let _ = self.iterator_close(&record);
+                }
+                self.stack.truncate(base);
+            }
+            if suspended_parent_stack.is_none() {
+                self.pending_completions.truncate(pending_base);
+                self.completion_saves.truncate(save_base);
+            }
+            result
+        } else if intermediate_debugger_frame {
+            let pending_base = self.pending_completions.len();
+            let save_base = self.completion_saves.len();
+            let mut iterators = Vec::new();
+            let previous = std::mem::replace(&mut self.debugger_nested_intermediate_active, true);
+            let exit = self.interpret(&code, &mut iterators, 0, None, None, None);
+            self.debugger_nested_intermediate_active = previous;
+            let result =
+                match DebuggerInterpreterExit::classify(exit, DebuggerFrameKind::NestedEntry) {
+                    DebuggerInterpreterExit::Suspended {
+                        pc,
+                        iterators,
+                        handlers,
+                    } => {
+                        debug_assert!(self.debugger_nested_continuation.is_some());
+                        debug_assert!(self.debugger_nested_intermediate_continuation.is_none());
+                        let stack = self.stack.split_off(frame_base);
+                        let mut execution = self.suspend_module_execution();
+                        let parent_stack = std::mem::replace(&mut execution.stack, stack);
+                        self.debugger_nested_intermediate_continuation =
+                            Some(IntermediateDebuggerContinuation {
+                                code: code.as_ref().clone(),
+                                pc,
+                                execution,
+                                iterators,
+                                handlers,
+                            });
+                        suspended_parent_stack = Some(parent_stack);
+                        Ok(Value::Undefined)
+                    }
+                    DebuggerInterpreterExit::Completed(result) => result,
+                };
             if result.is_err() {
                 let base = self.stack.len();
                 if let Err(RuntimeError::Thrown(value)) = &result {

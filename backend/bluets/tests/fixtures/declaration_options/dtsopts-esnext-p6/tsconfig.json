@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "outDir": "out",
+    "declarationMap": true,
+    "mapRoot": "maps"
+  },
+  "files": [
+    "main.ts"
+  ]
+}

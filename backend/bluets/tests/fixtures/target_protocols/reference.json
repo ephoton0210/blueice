@@ -1,0 +1,602 @@
+{
+  "typescript": "5.9.3",
+  "acorn": "8.15.0",
+  "native_source_sha256": "9a72380d3d5cdb8c0e439cbb8482fd120cd5dff47175978292a08aa4777da3fa",
+  "typed_source_sha256": "1c30660c20203e6dc7c8c46c663bd1103d43eabc7942926d48a8a974d1201b85",
+  "native_stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+  "native_observations": 37,
+  "cases": [
+    {
+      "target": "ES5",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES5",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "7de3e121012e4762806056d461c013bd1667c924b2b19be09f26ff2d3475e7f5",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|break|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|returned|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|break|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|returned|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": [
+        {
+          "index": 2,
+          "native": "break|primitive|type|1|1",
+          "emitted": "break|primitive|break|1|1"
+        },
+        {
+          "index": 7,
+          "native": "return|primitive|type|1|1",
+          "emitted": "return|primitive|returned|1|1"
+        },
+        {
+          "index": 22,
+          "native": "async|break|primitive|type|1|1|1",
+          "emitted": "async|break|primitive|break|1|1|1"
+        },
+        {
+          "index": 28,
+          "native": "async|return|primitive|type|1|1|1",
+          "emitted": "async|return|primitive|returned|1|1|1"
+        }
+      ]
+    },
+    {
+      "target": "ES5",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES5",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "be850ce8b91f9fedceee78ed88c535d2e097fbade0d012283f0a0231179ebea7",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|break|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|returned|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|break|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|returned|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": [
+        {
+          "index": 2,
+          "native": "break|primitive|type|1|1",
+          "emitted": "break|primitive|break|1|1"
+        },
+        {
+          "index": 7,
+          "native": "return|primitive|type|1|1",
+          "emitted": "return|primitive|returned|1|1"
+        },
+        {
+          "index": 22,
+          "native": "async|break|primitive|type|1|1|1",
+          "emitted": "async|break|primitive|break|1|1|1"
+        },
+        {
+          "index": 28,
+          "native": "async|return|primitive|type|1|1|1",
+          "emitted": "async|return|primitive|returned|1|1|1"
+        }
+      ]
+    },
+    {
+      "target": "ES2015",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES2015",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "879b099be380b773705192d486d43236ed9c5faac19ada13072ed4b357db6085",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|break|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|returned|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": [
+        {
+          "index": 22,
+          "native": "async|break|primitive|type|1|1|1",
+          "emitted": "async|break|primitive|break|1|1|1"
+        },
+        {
+          "index": 28,
+          "native": "async|return|primitive|type|1|1|1",
+          "emitted": "async|return|primitive|returned|1|1|1"
+        }
+      ]
+    },
+    {
+      "target": "ES2015",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES2015",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "008235ff4413570e3021fc8c32b9b52ef75ba3f6de627db1243ed6139d51c0de",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|break|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|returned|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": [
+        {
+          "index": 22,
+          "native": "async|break|primitive|type|1|1|1",
+          "emitted": "async|break|primitive|break|1|1|1"
+        },
+        {
+          "index": 28,
+          "native": "async|return|primitive|type|1|1|1",
+          "emitted": "async|return|primitive|returned|1|1|1"
+        }
+      ]
+    },
+    {
+      "target": "ES2016",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES2016",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "879b099be380b773705192d486d43236ed9c5faac19ada13072ed4b357db6085",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|break|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|returned|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": [
+        {
+          "index": 22,
+          "native": "async|break|primitive|type|1|1|1",
+          "emitted": "async|break|primitive|break|1|1|1"
+        },
+        {
+          "index": 28,
+          "native": "async|return|primitive|type|1|1|1",
+          "emitted": "async|return|primitive|returned|1|1|1"
+        }
+      ]
+    },
+    {
+      "target": "ES2016",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES2016",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "008235ff4413570e3021fc8c32b9b52ef75ba3f6de627db1243ed6139d51c0de",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|break|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|returned|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": [
+        {
+          "index": 22,
+          "native": "async|break|primitive|type|1|1|1",
+          "emitted": "async|break|primitive|break|1|1|1"
+        },
+        {
+          "index": 28,
+          "native": "async|return|primitive|type|1|1|1",
+          "emitted": "async|return|primitive|returned|1|1|1"
+        }
+      ]
+    },
+    {
+      "target": "ES2017",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES2017",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "a0a4b879575bbcdc3c0f2bc80b4854e507a8b00a46977b5931ebc9d7f1dd681f",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|break|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|returned|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": [
+        {
+          "index": 22,
+          "native": "async|break|primitive|type|1|1|1",
+          "emitted": "async|break|primitive|break|1|1|1"
+        },
+        {
+          "index": 28,
+          "native": "async|return|primitive|type|1|1|1",
+          "emitted": "async|return|primitive|returned|1|1|1"
+        }
+      ]
+    },
+    {
+      "target": "ES2017",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES2017",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "158a115116c603d816f860c1903af8b034fb3ba695b2e7c04bc0ca310c2a60ad",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|break|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|returned|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": [
+        {
+          "index": 22,
+          "native": "async|break|primitive|type|1|1|1",
+          "emitted": "async|break|primitive|break|1|1|1"
+        },
+        {
+          "index": 28,
+          "native": "async|return|primitive|type|1|1|1",
+          "emitted": "async|return|primitive|returned|1|1|1"
+        }
+      ]
+    },
+    {
+      "target": "ES2018",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES2018",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "6e4ae8c317bf227db17fc083cb2d0467b28dc3263883d88a552ef1b58883b686",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2018",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES2018",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "46ba7e2ee828408379af0780f672eeba9233ef598f05cc0cce090202d0964afb",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2019",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES2019",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "6e4ae8c317bf227db17fc083cb2d0467b28dc3263883d88a552ef1b58883b686",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2019",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES2019",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "46ba7e2ee828408379af0780f672eeba9233ef598f05cc0cce090202d0964afb",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2020",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES2020",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "6e4ae8c317bf227db17fc083cb2d0467b28dc3263883d88a552ef1b58883b686",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2020",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES2020",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "46ba7e2ee828408379af0780f672eeba9233ef598f05cc0cce090202d0964afb",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2021",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES2021",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "6e4ae8c317bf227db17fc083cb2d0467b28dc3263883d88a552ef1b58883b686",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2021",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES2021",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "46ba7e2ee828408379af0780f672eeba9233ef598f05cc0cce090202d0964afb",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2022",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "6e4ae8c317bf227db17fc083cb2d0467b28dc3263883d88a552ef1b58883b686",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2022",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES2022",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "46ba7e2ee828408379af0780f672eeba9233ef598f05cc0cce090202d0964afb",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2023",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ES2023",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "6e4ae8c317bf227db17fc083cb2d0467b28dc3263883d88a552ef1b58883b686",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ES2023",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ES2023",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "46ba7e2ee828408379af0780f672eeba9233ef598f05cc0cce090202d0964afb",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ESNext",
+      "module": "commonjs",
+      "flags": [
+        "--target",
+        "ESNext",
+        "--module",
+        "commonjs",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "6e4ae8c317bf227db17fc083cb2d0467b28dc3263883d88a552ef1b58883b686",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    },
+    {
+      "target": "ESNext",
+      "module": "ES2022",
+      "flags": [
+        "--target",
+        "ESNext",
+        "--module",
+        "ES2022",
+        "--lib",
+        "ES2020",
+        "--strict",
+        "--skipLibCheck",
+        "--downlevelIteration",
+        "true"
+      ],
+      "accepts": true,
+      "javascript_sha256": "46ba7e2ee828408379af0780f672eeba9233ef598f05cc0cce090202d0964afb",
+      "declaration_sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "stdout": "break|getter-throw|get-close|1|0\nbreak|call-throw|call-close|1|1\nbreak|primitive|type|1|1\nbreak|object|break|1|1\nbreak|absent|break|1|0\nreturn|getter-throw|get-close|1|0\nreturn|call-throw|call-close|1|1\nreturn|primitive|type|1|1\nreturn|object|returned|1|1\nreturn|absent|returned|1|0\nthrow|getter-throw|body|1|0\nthrow|call-throw|body|1|1\nthrow|primitive|body|1|1\nthrow|object|body|1|1\nthrow|absent|body|1|0\nstart-return|0|42|true||true\nstart-throw|0|body||true\nreentrant|type|false||true\ncompleted|20|42|true|body||true\nasync|break|getter-throw|get-close|1|0|0\nasync|break|call-throw|call-close|1|1|0\nasync|break|reject|await-close|1|1|1\nasync|break|primitive|type|1|1|1\nasync|break|object|break|1|1|1\nasync|break|absent|break|1|0|0\nasync|return|getter-throw|get-close|1|0|0\nasync|return|call-throw|call-close|1|1|0\nasync|return|reject|await-close|1|1|1\nasync|return|primitive|type|1|1|1\nasync|return|object|returned|1|1|1\nasync|return|absent|returned|1|0|0\nasync|throw|getter-throw|body|1|0|0\nasync|throw|call-throw|body|1|1|0\nasync|throw|reject|body|1|1|1\nasync|throw|primitive|body|1|1|1\nasync|throw|object|body|1|1|1\nasync|throw|absent|body|1|0|0\n",
+      "declaration_text": "export {};\n",
+      "differences": []
+    }
+  ]
+}

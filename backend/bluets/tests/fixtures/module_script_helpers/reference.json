@@ -1,0 +1,125 @@
+{
+  "typescript": "5.9.3",
+  "observations": [
+    {
+      "module": "CommonJS",
+      "imports": false,
+      "omit": false,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "CommonJS",
+      "imports": false,
+      "omit": true,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "CommonJS",
+      "imports": true,
+      "omit": false,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "CommonJS",
+      "imports": true,
+      "omit": true,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "AMD",
+      "imports": false,
+      "omit": false,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "AMD",
+      "imports": false,
+      "omit": true,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "AMD",
+      "imports": true,
+      "omit": false,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "AMD",
+      "imports": true,
+      "omit": true,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "UMD",
+      "imports": false,
+      "omit": false,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "UMD",
+      "imports": false,
+      "omit": true,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "UMD",
+      "imports": true,
+      "omit": false,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    },
+    {
+      "module": "UMD",
+      "imports": true,
+      "omit": true,
+      "diagnostics": [],
+      "result": true,
+      "importsRuntime": false,
+      "wrapper": false,
+      "declaration": "declare class Base {\n}\ndeclare class Derived extends Base {\n}\ndeclare var result: boolean;\n"
+    }
+  ]
+}

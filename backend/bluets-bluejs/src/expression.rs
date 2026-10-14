@@ -6,22 +6,53 @@
 
 use super::*;
 
+mod calls;
+mod writes;
+
 pub(super) struct ExpressionLowerer<'a> {
-    module: &'a str,
-    tokens: &'a [Token],
-    index: usize,
+    pub(super) module: &'a str,
+    pub(super) module_ast: Option<&'a Module>,
+    pub(super) tokens: &'a [Token],
+    pub(super) index: usize,
 }
 
 impl<'a> ExpressionLowerer<'a> {
     pub(super) fn new(module: &'a str, tokens: &'a [Token]) -> Self {
         Self {
             module,
+            module_ast: None,
+            tokens,
+            index: 0,
+        }
+    }
+
+    pub(super) fn for_module(module: &'a Module, tokens: &'a [Token]) -> Self {
+        Self {
+            module: &module.id,
+            module_ast: Some(module),
             tokens,
             index: 0,
         }
     }
 
     pub(super) fn parse(mut self) -> Result<bluejs::Expr, BridgeError> {
+        if let Some(module) = self.module_ast {
+            let spans = module.erased_assertion_spans().collect::<Vec<_>>();
+            let erased = |token: &Token| {
+                spans
+                    .iter()
+                    .any(|span| span.start <= token.start && token.end <= span.end)
+            };
+            if self.tokens.iter().any(erased) {
+                let tokens = self
+                    .tokens
+                    .iter()
+                    .filter(|token| !erased(token))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                return ExpressionLowerer::for_module(module, &tokens).parse();
+            }
+        }
         let expression = self.parse_sequence()?;
         if let Some(token) = self.tokens.get(self.index) {
             return Err(unsupported(
@@ -51,55 +82,6 @@ impl<'a> ExpressionLowerer<'a> {
             expressions.push(self.parse_assignment()?);
         }
         Ok(bluejs::Expr::Sequence(expressions))
-    }
-
-    pub(super) fn parse_assignment(&mut self) -> Result<bluejs::Expr, BridgeError> {
-        let target = self.parse_conditional()?;
-        let op = self
-            .tokens
-            .get(self.index)
-            .and_then(|token| match token.text.as_str() {
-                "=" => Some(bluejs::AssignOp::Assign),
-                "+=" => Some(bluejs::AssignOp::AddAssign),
-                "-=" => Some(bluejs::AssignOp::SubAssign),
-                "*=" => Some(bluejs::AssignOp::MulAssign),
-                "**=" => Some(bluejs::AssignOp::ExponentAssign),
-                "/=" => Some(bluejs::AssignOp::DivAssign),
-                "%=" => Some(bluejs::AssignOp::ModAssign),
-                "<<=" => Some(bluejs::AssignOp::ShiftLeftAssign),
-                ">>=" => Some(bluejs::AssignOp::ShiftRightAssign),
-                ">>>=" => Some(bluejs::AssignOp::UnsignedShiftRightAssign),
-                "&=" => Some(bluejs::AssignOp::BitAndAssign),
-                "^=" => Some(bluejs::AssignOp::BitXorAssign),
-                "|=" => Some(bluejs::AssignOp::BitOrAssign),
-                "&&=" => Some(bluejs::AssignOp::LogicalAndAssign),
-                "||=" => Some(bluejs::AssignOp::LogicalOrAssign),
-                "??=" => Some(bluejs::AssignOp::NullishAssign),
-                _ => None,
-            });
-        let Some(op) = op else {
-            return Ok(target);
-        };
-        let span = self
-            .tokens
-            .get(self.index)
-            .map(|token| self.token_span(token))
-            .expect("an assignment operator was just inspected");
-        self.index += 1;
-        if !matches!(
-            &target,
-            bluejs::Expr::Identifier(_) | bluejs::Expr::Member { .. }
-        ) {
-            return Err(unsupported(
-                span,
-                "only identifier and property assignment targets are in the v1 direct bridge subset",
-            ));
-        }
-        Ok(bluejs::Expr::Assign {
-            op,
-            target: Box::new(target),
-            value: Box::new(self.parse_assignment()?),
-        })
     }
 
     pub(super) fn parse_conditional(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -277,7 +259,28 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     pub(super) fn parse_relational(&mut self) -> Result<bluejs::Expr, BridgeError> {
-        let mut expression = self.parse_shift()?;
+        // `#name in object` is a distinct relational form: a private name
+        // cannot otherwise begin an expression. BlueJS keeps the name without
+        // its `#`.
+        let mut expression = if let Some(name) = self
+            .tokens
+            .get(self.index)
+            .filter(|token| token.text.starts_with('#'))
+            .filter(|_| {
+                self.tokens
+                    .get(self.index + 1)
+                    .is_some_and(|next| next.text == "in")
+            })
+            .map(|token| token.text[1..].to_string())
+        {
+            self.index += 2;
+            bluejs::Expr::PrivateIn {
+                name,
+                object: Box::new(self.parse_shift()?),
+            }
+        } else {
+            self.parse_shift()?
+        };
         while let Some(token) = self.tokens.get(self.index) {
             if self.shift_operator_at(self.index).is_some() {
                 break;
@@ -388,12 +391,22 @@ impl<'a> ExpressionLowerer<'a> {
         self.tokens.get(self.index).is_some_and(|token| {
             matches!(
                 token.text.as_str(),
-                "!" | "+" | "-" | "~" | "typeof" | "void" | "delete"
+                "!" | "+" | "-" | "~" | "typeof" | "void" | "delete" | "await"
             )
         })
     }
 
     pub(super) fn parse_unary(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        // `await operand`: valid in an async function and at a module's top level,
+        // which BlueTS has already established before the bridge sees the token.
+        if self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "await")
+        {
+            self.index += 1;
+            return Ok(bluejs::Expr::Await(Box::new(self.parse_unary()?)));
+        }
         let op = self
             .tokens
             .get(self.index)
@@ -429,63 +442,6 @@ impl<'a> ExpressionLowerer<'a> {
         self.parse_update()
     }
 
-    pub(super) fn parse_update(&mut self) -> Result<bluejs::Expr, BridgeError> {
-        if let Some(op) = self.update_operator_at(self.index) {
-            let span = self
-                .tokens
-                .get(self.index)
-                .map(|token| self.token_span(token))
-                .expect("an update operator was just inspected");
-            self.index += 1;
-            let arg = self.parse_unary()?;
-            return self.lower_update(op, arg, true, span);
-        }
-        let expression = self.parse_primary()?;
-        let Some(op) = self.update_operator_at(self.index) else {
-            return Ok(expression);
-        };
-        let span = self
-            .tokens
-            .get(self.index)
-            .map(|token| self.token_span(token))
-            .expect("an update operator was just inspected");
-        self.index += 1;
-        self.lower_update(op, expression, false, span)
-    }
-
-    pub(super) fn update_operator_at(&self, index: usize) -> Option<bluejs::UpdateOp> {
-        self.tokens
-            .get(index)
-            .and_then(|token| match token.text.as_str() {
-                "++" => Some(bluejs::UpdateOp::Inc),
-                "--" => Some(bluejs::UpdateOp::Dec),
-                _ => None,
-            })
-    }
-
-    pub(super) fn lower_update(
-        &self,
-        op: bluejs::UpdateOp,
-        arg: bluejs::Expr,
-        prefix: bool,
-        span: SourceSpan,
-    ) -> Result<bluejs::Expr, BridgeError> {
-        if !matches!(
-            arg,
-            bluejs::Expr::Identifier(_) | bluejs::Expr::Member { .. }
-        ) {
-            return Err(unsupported(
-                span,
-                "only identifier and property update targets are in the v1 direct bridge subset",
-            ));
-        }
-        Ok(bluejs::Expr::Update {
-            op,
-            arg: Box::new(arg),
-            prefix,
-        })
-    }
-
     pub(super) fn parse_primary(&mut self) -> Result<bluejs::Expr, BridgeError> {
         let expression = self.parse_atom()?;
         self.parse_suffixes(expression)
@@ -498,6 +454,25 @@ impl<'a> ExpressionLowerer<'a> {
                 "expected a runtime expression",
             ));
         };
+        if let Some((module, expression)) = self.module_ast.and_then(|module| {
+            module
+                .class_expression(token.start)
+                .map(|expression| (module, expression))
+        }) {
+            let bluejs::Stmt::ClassDecl(mut class) = lowering::classes::lower_class(
+                module,
+                &expression.class,
+                jsx_direct::defines_class_fields(),
+            )?
+            else {
+                unreachable!("class lowering produces a class declaration");
+            };
+            class.name = expression.name.clone();
+            self.index = self
+                .tokens
+                .partition_point(|token| token.start < expression.class.span.end);
+            return Ok(bluejs::Expr::Class(class));
+        }
         self.index += 1;
         match token.kind {
             TokenKind::Number => token
@@ -508,6 +483,7 @@ impl<'a> ExpressionLowerer<'a> {
                 .map_err(|_| unsupported(self.token_span(token), "unsupported numeric literal")),
             TokenKind::String => lower_string(self.module, token),
             TokenKind::Template => lower_template(self.module, token),
+            TokenKind::JsxElement => self.lower_jsx_element(token),
             TokenKind::Identifier => Ok(bluejs::Expr::Identifier(token.text.clone())),
             TokenKind::Keyword => match token.text.as_str() {
                 "true" => Ok(bluejs::Expr::Bool(true)),
@@ -515,6 +491,10 @@ impl<'a> ExpressionLowerer<'a> {
                 "null" => Ok(bluejs::Expr::Null),
                 "undefined" => Ok(bluejs::Expr::Identifier("undefined".to_string())),
                 "new" => self.parse_new_expression(token),
+                "this" => Ok(bluejs::Expr::This),
+                // `super(..)` and `super.member` are an ordinary call and
+                // member access on this node; BlueJS checks where it may occur.
+                "super" => Ok(bluejs::Expr::Super),
                 _ => Err(unsupported(
                     self.token_span(token),
                     format!(
@@ -606,87 +586,6 @@ impl<'a> ExpressionLowerer<'a> {
                     ));
                 }
             }
-        }
-    }
-
-    pub(super) fn parse_new_expression(
-        &mut self,
-        keyword: &Token,
-    ) -> Result<bluejs::Expr, BridgeError> {
-        let Some(callee) = self.tokens.get(self.index) else {
-            return Err(unsupported(
-                self.token_span(keyword),
-                "expected a constructor after `new`",
-            ));
-        };
-        if callee.kind != TokenKind::Identifier {
-            return Err(unsupported(
-                self.token_span(callee),
-                "only identifier constructors are in the v1 direct bridge subset",
-            ));
-        }
-        let callee = bluejs::Expr::Identifier(callee.text.clone());
-        self.index += 1;
-        let Some(opening) = self.tokens.get(self.index) else {
-            return Err(unsupported(
-                self.token_span(keyword),
-                "expected `(` after a constructor",
-            ));
-        };
-        if opening.text != "(" {
-            return Err(unsupported(
-                self.token_span(opening),
-                "only constructor calls with parentheses are in the v1 direct bridge subset",
-            ));
-        }
-        self.index += 1;
-        let mut args = Vec::new();
-        if self
-            .tokens
-            .get(self.index)
-            .is_some_and(|token| token.text == ")")
-        {
-            self.index += 1;
-        } else {
-            loop {
-                args.push(self.parse_argument()?);
-                let Some(separator) = self.tokens.get(self.index) else {
-                    return Err(unsupported(
-                        self.token_span(keyword),
-                        "unterminated constructor call",
-                    ));
-                };
-                match separator.text.as_str() {
-                    "," => self.index += 1,
-                    ")" => {
-                        self.index += 1;
-                        break;
-                    }
-                    _ => {
-                        return Err(unsupported(
-                            self.token_span(separator),
-                            "expected `,` or `)` in constructor call",
-                        ))
-                    }
-                }
-            }
-        }
-        Ok(bluejs::Expr::New {
-            callee: Box::new(callee),
-            args,
-        })
-    }
-
-    pub(super) fn parse_argument(&mut self) -> Result<bluejs::Argument, BridgeError> {
-        if self
-            .tokens
-            .get(self.index)
-            .is_some_and(|token| token.text == "...")
-        {
-            self.index += 1;
-            Ok(bluejs::Argument::Spread(self.parse_assignment()?))
-        } else {
-            Ok(bluejs::Argument::Normal(self.parse_assignment()?))
         }
     }
 
@@ -799,147 +698,6 @@ impl<'a> ExpressionLowerer<'a> {
                     ));
                 }
             }
-        }
-    }
-
-    pub(super) fn parse_suffixes(
-        &mut self,
-        mut expression: bluejs::Expr,
-    ) -> Result<bluejs::Expr, BridgeError> {
-        loop {
-            let Some(token) = self.tokens.get(self.index) else {
-                return Ok(expression);
-            };
-            if token.text == "!" {
-                // TypeScript's postfix non-null assertion is erased. The
-                // checker narrows the static result; runtime null access
-                // still fails normally in BlueJS.
-                self.index += 1;
-                continue;
-            }
-            if token.text == "?." {
-                let optional_span = self.token_span(token);
-                if !matches!(expression, bluejs::Expr::Identifier(_)) {
-                    return Err(unsupported(
-                        optional_span,
-                        "only a direct identifier receiver may use optional dot access",
-                    ));
-                }
-                self.index += 1;
-                let Some(property) = self.tokens.get(self.index) else {
-                    return Err(unsupported(
-                        optional_span,
-                        "expected an identifier after optional dot access",
-                    ));
-                };
-                if property.kind != TokenKind::Identifier {
-                    return Err(unsupported(
-                        self.token_span(property),
-                        "only an identifier property is in the first optional dot subset",
-                    ));
-                }
-                let name = property.text.clone();
-                self.index += 1;
-                expression = bluejs::Expr::OptionalMember {
-                    object: Box::new(expression),
-                    property: Box::new(bluejs::Expr::Identifier(name)),
-                    computed: false,
-                };
-                continue;
-            }
-            if token.text == "." {
-                let dot_span = self.token_span(token);
-                self.index += 1;
-                let Some(property) = self.tokens.get(self.index) else {
-                    return Err(unsupported(dot_span, "expected a property name after `.`"));
-                };
-                if !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword) {
-                    return Err(unsupported(
-                        self.token_span(property),
-                        "only identifier dot property names are in the v1 direct bridge subset",
-                    ));
-                }
-                let name = property.text.clone();
-                self.index += 1;
-                expression = bluejs::Expr::Member {
-                    object: Box::new(expression),
-                    property: Box::new(bluejs::Expr::Identifier(name)),
-                    computed: false,
-                };
-                continue;
-            }
-            if token.text == "[" {
-                let opening_span = self.token_span(token);
-                self.index += 1;
-                let property = self.parse_sequence()?;
-                let Some(closing) = self.tokens.get(self.index) else {
-                    return Err(unsupported(
-                        opening_span,
-                        "unterminated computed property access",
-                    ));
-                };
-                if closing.text != "]" {
-                    return Err(unsupported(
-                        self.token_span(closing),
-                        "expected `]` in computed property access",
-                    ));
-                }
-                self.index += 1;
-                expression = bluejs::Expr::Member {
-                    object: Box::new(expression),
-                    property: Box::new(property),
-                    computed: true,
-                };
-                continue;
-            }
-            if token.text != "(" {
-                return Ok(expression);
-            }
-            if !matches!(
-                &expression,
-                bluejs::Expr::Identifier(_) | bluejs::Expr::Member { .. }
-            ) {
-                return Err(unsupported(
-                    self.token_span(token),
-                    "only direct identifier and property calls are in the v1 direct bridge subset",
-                ));
-            }
-            self.index += 1;
-            let mut args = Vec::new();
-            if self
-                .tokens
-                .get(self.index)
-                .is_some_and(|token| token.text == ")")
-            {
-                self.index += 1;
-            } else {
-                loop {
-                    args.push(self.parse_argument()?);
-                    let Some(separator) = self.tokens.get(self.index) else {
-                        return Err(unsupported(
-                            SourceSpan::new(self.module, 0, 0),
-                            "unterminated call expression",
-                        ));
-                    };
-                    match separator.text.as_str() {
-                        "," => self.index += 1,
-                        ")" => {
-                            self.index += 1;
-                            break;
-                        }
-                        _ => {
-                            return Err(unsupported(
-                                self.token_span(separator),
-                                "expected `,` or `)` in call expression",
-                            ));
-                        }
-                    }
-                }
-            }
-            expression = bluejs::Expr::Call {
-                callee: Box::new(expression),
-                args,
-            };
         }
     }
 

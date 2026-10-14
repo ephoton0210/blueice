@@ -317,7 +317,7 @@ fn private_static_scope_linked_entry_root_requires_complete_live_stack_and_owner
     let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
         panic!("the linked module remains pending");
     };
-    let dependency_handle = attachment.modules[dependency].handle;
+    let dependency_handle = attachment.module_handle(dependency).unwrap();
     let dependency_program = host.documents[&7]
         .debugger_programs
         .iter()

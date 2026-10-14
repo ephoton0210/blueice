@@ -7,3 +7,36 @@ backend/core/engine/tests/fixtures/host_typings/** text eol=lf
 # Oracle fixtures are quoted verbatim (span text, line offsets) by tests, so a
 # Windows autocrlf checkout must not turn their newlines into CRLF.
 backend/bluets/tests/fixtures/** text eol=lf
+
+# Byte-pinned K.3.3 type-fact witnesses retain identical digests on Windows.
+backend/bluets/tests/fixtures/typescript_oracle/lib-loop-return-assigned-error/main.ts text eol=lf
+backend/bluets/tests/fixtures/typescript_oracle/lib-loop-shadowed-error/main.ts text eol=lf
+backend/bluets/tests/fixtures/typescript_oracle/lib-loop-following-error/main.ts text eol=lf
+
+# K.7.3 native diagnostics and source-content digests depend on fixture bytes.
+backend/bluets/tests/fixtures/output_options/** text eol=lf
+
+# K.7.2 native diagnostic offsets and fixture observations use original LF bytes.
+backend/bluets/tests/fixtures/module_systems/** text eol=lf
+backend/bluets/tests/fixtures/output_validation/** text eol=lf
+
+# K.7.4 records native source digests and UTF-16 diagnostic origins.
+backend/bluets/tests/fixtures/decorator_targets/** text eol=lf
+
+backend/bluets/tests/fixtures/decorator_residuals/** text eol=lf
+
+# Native inferred-declaration primary offsets and recorded source hashes use LF.
+backend/bluets/tests/fixtures/declaration_inference/** text eol=lf
+
+backend/bluets/tests/fixtures/declaration_options/** text eol=lf
+
+backend/bluets/tests/fixtures/package_extras/** text eol=lf
+
+# K.9.2 Native path/type resolution observations retain LF bytes.
+backend/bluets/tests/fixtures/path_extras/** text eol=lf
+
+# K.9.3 Native JSON/JavaScript observations retain LF bytes.
+backend/bluets/tests/fixtures/source_extras/** text eol=lf
+backend/bluets/tests/fixtures/jsx_typing_extras/** text eol=lf
+backend/bluets/tests/fixtures/jsx_runtime_namespace/** text eol=lf
+backend/bluets/tests/fixtures/decorator_typing/** text eol=lf

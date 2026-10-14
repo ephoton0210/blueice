@@ -50,6 +50,8 @@ impl Vm {
             debugger_module_continuation: None,
             debugger_nested_pause_request: None,
             debugger_nested_continuation: None,
+            debugger_nested_intermediate_continuation: None,
+            debugger_nested_intermediate_active: false,
             debugger_nested_parent_execution: None,
             debugger_nested_direct_call: false,
             debugger_nested_direct_caller_generation: None,

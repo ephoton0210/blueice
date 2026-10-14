@@ -145,6 +145,7 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
         && expected.root_statement_offsets() == actual.root_statement_offsets()
         && expected.root_statement_ranges() == actual.root_statement_ranges()
         && expected.root_function_child_indices() == actual.root_function_child_indices()
+        && expected.root_statement_child_ranges() == actual.root_statement_child_ranges()
         && expected.root_declaration_binding_slots() == actual.root_declaration_binding_slots()
         && expected
             .child_code_units()
@@ -384,7 +385,11 @@ pub(super) fn build_safe_point_map(
     let bytecode = compiled.bytecode();
     let ranges = bytecode.root_statement_ranges();
     let child_indices = bytecode.root_function_child_indices();
-    if ranges.len() != provenance.len() || child_indices.len() != provenance.len() {
+    let child_ranges = bytecode.root_statement_child_ranges();
+    if ranges.len() != provenance.len()
+        || child_indices.len() != provenance.len()
+        || child_ranges.len() != provenance.len()
+    {
         return Err(BridgeError::ProvenanceAttachment(
             "root statement ownership does not match direct lowering spans".to_string(),
         ));
@@ -393,24 +398,42 @@ pub(super) fn build_safe_point_map(
     let root = code_units.first().ok_or_else(|| {
         BridgeError::ProvenanceAttachment("the installed program has no root code unit".to_string())
     })?;
+    // The code-unit inventory is a pre-order walk of the closure tree. A direct
+    // child owns its whole subtree: a namespace's function, for one, holds the
+    // closures of every function and class written inside it.
+    fn subtree_size(unit: &bluejs::Bytecode) -> usize {
+        1 + unit.child_code_units().map(subtree_size).sum::<usize>()
+    }
     let children = bytecode.child_code_units().collect::<Vec<_>>();
-    if children
-        .iter()
-        .any(|child| child.child_code_units().next().is_some())
-        || code_units.len() != children.len() + 1
-    {
+    let mut subtrees: Vec<(usize, usize)> = Vec::with_capacity(children.len());
+    let mut next_ordinal = 1usize;
+    for child in &children {
+        let size = subtree_size(child);
+        subtrees.push((next_ordinal, size));
+        next_ordinal += size;
+    }
+    if code_units.len() != next_ordinal {
         return Err(BridgeError::ProvenanceAttachment(
-            "direct lowering produced an unsupported nested closure shape".to_string(),
+            "direct lowering produced a closure inventory that does not match its tree".to_string(),
         ));
     }
     let mut entries = Vec::new();
-    for ((provenance, range), child_index) in provenance.iter().zip(ranges).zip(child_indices) {
+    for (((provenance, range), child_index), owned_children) in provenance
+        .iter()
+        .zip(ranges)
+        .zip(child_indices)
+        .zip(child_ranges)
+    {
         match (provenance.safe_point, range) {
             (DirectSafePointBinding::Bound(safe_point), Some((start, end)))
                 if safe_point.code_unit == root.id()
                     && safe_point.bytecode_offset == *start
                     && start < end => {}
-            (DirectSafePointBinding::Unbound, None) if child_index.is_none() => continue,
+            (DirectSafePointBinding::Unbound, None)
+                if child_index.is_none() && owned_children.is_none() =>
+            {
+                continue
+            }
             _ => {
                 return Err(BridgeError::ProvenanceAttachment(
                     "compiler statement range disagrees with its bound safe point".to_string(),
@@ -435,26 +458,46 @@ pub(super) fn build_safe_point_map(
                 .map(|offset| entry_at(root.id(), offset)),
         );
         if let Some(child_index) = child_index {
-            let child_ordinal = usize::try_from(*child_index)
+            let (first, size) = usize::try_from(*child_index)
                 .ok()
-                .and_then(|index| index.checked_add(1))
+                .and_then(|index| subtrees.get(index).copied())
                 .ok_or_else(|| {
                     BridgeError::ProvenanceAttachment(
-                        "function child index exceeds the host address space".to_string(),
+                        "function declaration has no installed child code unit".to_string(),
                     )
                 })?;
-            let child = code_units.get(child_ordinal).ok_or_else(|| {
-                BridgeError::ProvenanceAttachment(
-                    "function declaration has no installed child code unit".to_string(),
-                )
-            })?;
-            entries.extend(
-                child
-                    .instruction_offsets()
-                    .iter()
-                    .copied()
-                    .map(|offset| entry_at(child.id(), offset)),
-            );
+            for child in &code_units[first..first + size] {
+                entries.extend(
+                    child
+                        .instruction_offsets()
+                        .iter()
+                        .copied()
+                        .map(|offset| entry_at(child.id(), offset)),
+                );
+            }
+        }
+        // A class declaration owns the closures of its constructor and
+        // methods; each maps to the whole original class.
+        if let Some((first, last)) = owned_children {
+            for child_index in *first..*last {
+                let (ordinal, size) = usize::try_from(child_index)
+                    .ok()
+                    .and_then(|index| subtrees.get(index).copied())
+                    .ok_or_else(|| {
+                        BridgeError::ProvenanceAttachment(
+                            "a class member has no installed child code unit".to_string(),
+                        )
+                    })?;
+                for child in &code_units[ordinal..ordinal + size] {
+                    entries.extend(
+                        child
+                            .instruction_offsets()
+                            .iter()
+                            .copied()
+                            .map(|offset| entry_at(child.id(), offset)),
+                    );
+                }
+            }
         }
     }
     entries.sort_by(safe_point_entry_order);

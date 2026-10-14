@@ -13,39 +13,14 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let mut open = Vec::new();
-        let mut closes = vec![None; tokens.len()];
-        for (index, token) in tokens.iter().enumerate() {
-            if token.is("(") {
-                open.push(index);
-            } else if token.is(")") {
-                if let Some(start) = open.pop() {
-                    closes[start] = Some(index);
-                }
+        for range in member_call_ranges(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            // Constructor validation owns `new receiver.Type(...)`.
+            let call = &tokens[range];
+            if constructor_call_parts(call).is_none() {
+                self.check_member_call(call, scope, span);
             }
-        }
-        for start in 0..tokens.len().saturating_sub(3) {
-            if start > 0 && (tokens[start - 1].is(".") || tokens[start - 1].is("?."))
-                || tokens[start].kind != TokenKind::Identifier && !tokens[start].is("this")
-                || !tokens[start + 1].is(".")
-                || !matches!(
-                    tokens[start + 2].kind,
-                    TokenKind::Identifier | TokenKind::Keyword
-                )
-                || !tokens[start + 3].is("(")
-            {
-                continue;
-            }
-            if let Some(end) = closes[start + 3] {
-                self.check_member_call(&tokens[start..=end], scope, span);
-            }
-        }
-        // A method on a call result has no identifier immediately before its
-        // final dot (for example `document.getElementById('x')!.appendChild(y)`).
-        // The direct-call scan above checks the inner call; check the complete
-        // chain once for the outer receiver and its arguments.
-        if member_call_parts(tokens).is_some_and(|call| call.receiver.len() > 1) {
-            self.check_member_call(tokens, scope, span);
         }
     }
 
@@ -61,9 +36,51 @@ impl<'a> ModuleChecker<'a> {
         } else {
             tokens
         };
-        let Some(call) = member_call_parts(tokens) else {
+        let Some(call) = member_call_parts(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) else {
             return;
         };
+        if let Some(signatures) =
+            self.module_member_signatures(call.receiver, &call.member.text, scope)
+        {
+            let callee = Token {
+                kind: TokenKind::Identifier,
+                text: format!("{}.{}", call.receiver[0].text, call.member.text),
+                start: if call.generic {
+                    call.member.start
+                } else {
+                    call.receiver[0].start
+                },
+                end: call.member.end,
+            };
+            let mut qualified = vec![
+                callee,
+                Token {
+                    kind: TokenKind::Punct,
+                    text: "(".to_string(),
+                    start: call.member.end,
+                    end: call.member.end,
+                },
+            ];
+            if call.generic {
+                let member = tokens
+                    .iter()
+                    .position(|token| token.start == call.member.start)
+                    .unwrap();
+                let close = explicit_generic_call_close(tokens, member).unwrap();
+                qualified.splice(1..2, tokens[member + 1..=close + 1].iter().cloned());
+            }
+            qualified.extend_from_slice(call.arguments);
+            // The qualified binding retains generic parameters and every overload.
+            debug_assert!(!signatures.is_empty());
+            self.check_function_call_with_receiver(&qualified, scope, span, Some(call.receiver));
+            return;
+        }
+        if self.check_function_method(call.receiver, call.member, call.arguments, scope, span) {
+            return;
+        }
+
         if self.require_declared_global_calls
             && call.receiver.first().is_some_and(|base| {
                 base.kind == TokenKind::Identifier && !scope.contains_key(&base.text)
@@ -88,15 +105,9 @@ impl<'a> ModuleChecker<'a> {
         );
         let member_type = match member_type {
             PropertyType::Found { value, .. } => value,
-            PropertyType::Missing
-                if matches!(
-                    base,
-                    Type::String | Type::Number | Type::Boolean | Type::Array(_) | Type::Tuple(_)
-                ) =>
-            {
-                // BlueTS does not yet model the JavaScript built-in method
-                // catalogs. Preserve their runtime semantics while still
-                // rejecting missing members on declared host interfaces.
+            PropertyType::Missing if self.hidden_member(&base, &call.member.text).is_some() => {
+                // Diagnosed, with its accessibility, by the restricted-member
+                // scan over the whole expression.
                 return;
             }
             PropertyType::Missing => {
@@ -117,14 +128,14 @@ impl<'a> ModuleChecker<'a> {
                 } else {
                     span
                 };
-                self.type_error(
+                self.missing_property_error(
                     diagnostic_span,
-                    format!(
-                        "property `{}` does not exist on type `{}`",
-                        call.member.text,
-                        type_label(&base)
-                    ),
-                    DiagnosticCode::TypeMismatch,
+                    &base,
+                    &call.member.text,
+                    call.receiver
+                        .first()
+                        .filter(|_| call.receiver.len() == 1)
+                        .map(|token| token.text.as_str()),
                 );
                 return;
             }
@@ -141,21 +152,85 @@ impl<'a> ModuleChecker<'a> {
             }
             PropertyType::Indeterminate => return,
         };
+        if signatures::callable_signatures(&member_type, false).is_some_and(|signatures| {
+            signatures
+                .iter()
+                .any(|signature| !signature.type_parameters.is_empty())
+        }) {
+            let member_index = tokens
+                .iter()
+                .position(|token| token.start == call.member.start)
+                .expect("member belongs to call");
+            let mut qualified = tokens[member_index..].to_vec();
+            qualified[0].text = format!("#member@{}", call.member.start);
+            let mut local = scope.clone();
+            local.insert(qualified[0].text.clone(), member_type);
+            let call_span = SourceSpan::new(
+                &span.module,
+                tokens[0].start,
+                tokens.last().expect("member call has tokens").end,
+            );
+            self.check_function_call_with_receiver(
+                &qualified,
+                &local,
+                &call_span,
+                Some(call.receiver),
+            );
+            return;
+        }
         let Some(arguments) = split_call_arguments(call.arguments) else {
             return;
         };
         for argument in &arguments {
             self.check_function_call(argument, scope, span);
         }
-        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
-            self.type_error(
+        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
+            let before = self.diagnostics.len();
+            for alternative in &alternatives {
+                self.check_member_call(tokens, alternative, span);
+            }
+            self.dedupe_diagnostics_since(before);
+            return;
+        }
+        let context_signatures = match &member_type {
+            Type::Function { parameters, result } => vec![FunctionSignature {
+                parameters: parameters.clone(),
+                type_parameters: Vec::new(),
+                return_type: (**result).clone(),
+            }],
+            Type::Intersection(overloads) => {
+                method_overload_signatures(overloads).unwrap_or_default()
+            }
+            _ => Vec::new(),
+        };
+        if let Some(signature) = context_signatures.first() {
+            self.check_call_receiver(
+                &signature.parameters,
+                Some(call.receiver),
+                scope,
+                span,
+                call.receiver,
+            );
+        }
+        let Ok(actuals) =
+            self.expanded_call_argument_types_for(&arguments, scope, &context_signatures)
+        else {
+            self.typescript_type_error(
                 span,
                 format!(
                     "a spread argument for method {} must have a fixed-length tuple type",
                     call.member.text
                 ),
                 DiagnosticCode::TypeMismatch,
+                2556,
+                Vec::new(),
             );
+            if let Some(argument) = arguments
+                .iter()
+                .find(|argument| argument.first().is_some_and(|t| t.is("...")))
+            {
+                self.point_last_typescript(argument);
+            }
             return;
         };
         let call_span = SourceSpan::new(
@@ -166,153 +241,55 @@ impl<'a> ModuleChecker<'a> {
         let bound_class_member = self.is_bound_class_instance_type(&base)
             || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope));
         let (parameters, selected_overload) = match member_type {
-            Type::Function { parameters, .. } => (parameters, false),
-            Type::Intersection(overloads) if matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope)) =>
-            {
-                let Some(signatures) = method_overload_signatures(&overloads) else {
-                    return;
-                };
-                match self.select_function_signature(&signatures, &actuals, None) {
-                    Ok(Some(_)) => {}
-                    Ok(None) => self.type_error(
-                        &call_span,
-                        format!(
-                            "no overload of static method {} matches the supplied argument types",
-                            call.member.text
-                        ),
-                        DiagnosticCode::TypeMismatch,
-                    ),
-                    Err(()) => self.type_error(
-                        &call_span,
-                        format!(
-                            "static method overload selection exceeds the {} generic-expansion limit",
-                            self.max_type_expansions
-                        ),
-                        DiagnosticCode::ResourceLimit,
-                    ),
-                }
-                return;
-            }
-            Type::Intersection(overloads) if self.is_bound_class_instance_type(&base) => {
-                let Some(signatures) = method_overload_signatures(&overloads) else {
-                    return;
-                };
-                match self.select_function_signature(&signatures, &actuals, None) {
-                    Ok(Some(_)) => {}
-                    Ok(None) => self.type_error(
-                        &call_span,
-                        format!(
-                            "no overload of instance method {} matches the supplied argument types",
-                            call.member.text
-                        ),
-                        DiagnosticCode::TypeMismatch,
-                    ),
-                    Err(()) => self.type_error(
-                        &call_span,
-                        format!(
-                            "instance method overload selection exceeds the {} generic-expansion limit",
-                            self.max_type_expansions
-                        ),
-                        DiagnosticCode::ResourceLimit,
-                    ),
-                }
-                return;
-            }
-            Type::Intersection(overloads) if !has_literal_method_tags(&overloads) => {
-                let Some(signatures) = method_overload_signatures(&overloads) else {
-                    return;
-                };
-                match self.select_function_signature(&signatures, &actuals, None) {
-                    Ok(Some(signature)) => (signature.parameters.clone(), true),
-                    Ok(None) => {
-                        self.type_error(
-                            &call_span,
-                            format!(
-                                "no overload of method {} matches the supplied argument types",
-                                call.member.text
-                            ),
-                            DiagnosticCode::TypeMismatch,
-                        );
-                        return;
-                    }
-                    Err(()) => {
-                        self.type_error(
-                            &call_span,
-                            "method overload selection exceeds the type-expansion limit"
-                                .to_string(),
-                            DiagnosticCode::ResourceLimit,
-                        );
-                        return;
-                    }
-                }
-            }
+            Type::Function { parameters, .. } => (
+                parameters
+                    .into_iter()
+                    .filter(|p| p.name != "this")
+                    .collect::<Vec<_>>(),
+                false,
+            ),
             Type::Intersection(overloads) => {
-                if !supports_callback_method_receiver(&base, &self.types, self.max_type_expansions)
-                {
-                    self.type_error(
-                        &call_span,
-                        format!("unsupported overload set for method {}", call.member.text),
-                        DiagnosticCode::TypeMismatch,
-                    );
+                let Some(signatures) = method_overload_signatures(&overloads) else {
                     return;
-                }
-                match select_callback_method_overload(
-                    &overloads,
-                    &actuals,
-                    &self.types,
-                    self.max_type_expansions,
-                ) {
-                    Ok(Type::Function { parameters, .. }) => {
-                        let named_callback = matches!(arguments.get(1), Some([callback]) if callback.kind == TokenKind::Identifier);
-                        if matches!(actuals.get(1), Some(Type::Any | Type::Unknown))
-                            || (matches!(actuals.get(1), Some(Type::Function { .. }))
-                                && !named_callback)
-                        {
-                            self.type_error(
-                                &call_span,
-                                format!(
-                                    "method {} requires a named function callback",
-                                    call.member.text
-                                ),
-                                DiagnosticCode::TypeMismatch,
-                            );
-                            return;
-                        }
-                        (parameters.clone(), true)
-                    }
-                    Ok(_) => unreachable!("the selected overload is a function"),
-                    Err(MethodOverloadError::Ambiguous) => {
-                        self.type_error(
+                };
+                match self.select_function_signature(&signatures, &actuals, None) {
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        let kind = if bound_class_member {
+                            "instance method"
+                        } else {
+                            "method"
+                        };
+                        self.rejected_call_error(
                             &call_span,
                             format!(
-                                "ambiguous overload of method {} for first argument type `{}`",
-                                call.member.text,
-                                type_label(&actuals[0])
-                            ),
-                            DiagnosticCode::TypeMismatch,
-                        );
-                        return;
-                    }
-                    Err(MethodOverloadError::NoMatch) => {
-                        self.type_error(
-                            &call_span,
-                            format!(
-                                "no overload of method {} matches the supplied argument types",
+                                "no overload of {kind} {} matches the supplied argument types",
                                 call.member.text
                             ),
-                            DiagnosticCode::TypeMismatch,
+                            &signatures,
+                            &actuals,
+                            true,
                         );
-                        return;
-                    }
-                    Err(MethodOverloadError::Unsupported) => {
-                        self.type_error(
-                            &call_span,
-                            format!("unsupported overload set for method {}", call.member.text),
-                            DiagnosticCode::TypeMismatch,
+                        if let Some(argument) = arguments.first() {
+                            self.point_last_typescript(argument);
+                        }
+                        self.present_callback_return_error(
+                            &signatures,
+                            &actuals,
+                            &arguments,
+                            call.member,
                         );
-                        return;
                     }
+                    Err(()) => self.type_error(
+                        &call_span,
+                        format!(
+                            "method overload selection exceeds the {} generic-expansion limit",
+                            self.max_type_expansions
+                        ),
+                        DiagnosticCode::ResourceLimit,
+                    ),
                 }
+                return;
             }
             _ => {
                 self.type_error(
@@ -328,11 +305,13 @@ impl<'a> ModuleChecker<'a> {
         } else {
             span
         };
-        let required = parameters
-            .iter()
-            .filter(|parameter| !parameter.optional)
-            .count();
-        if actuals.len() < required || actuals.len() > parameters.len() {
+        let signature = FunctionSignature {
+            parameters: parameters.clone(),
+            type_parameters: Vec::new(),
+            return_type: Type::Unknown,
+        };
+        let required = function_signature_required_arguments(&signature);
+        if !function_signature_accepts_argument_count(&signature, actuals.len()) {
             self.type_error(
                 argument_span,
                 format!(
@@ -346,98 +325,77 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         for (index, actual) in actuals.iter().enumerate() {
-            if selected_overload
-                && index == 0
-                && parameters
-                    .first()
-                    .and_then(|parameter| parameter.annotation.as_ref())
-                    .is_some_and(|annotation| {
-                        matches!(annotation, Type::Literal(_) | Type::Union(_))
-                    })
-            {
+            if selected_overload && index == 0 {
                 // The selector already compared the literal string values,
                 // including equivalent single and double quote spellings.
                 continue;
             }
-            let expected = parameters[index]
-                .annotation
-                .as_ref()
-                .expect("method signature parameters have annotations");
-            if let Type::Record(fields) = actual {
-                if arguments
-                    .get(index)
-                    .is_some_and(|argument| argument.first().is_some_and(|token| token.is("{")))
-                    && record_argument_fields_fit(
-                        fields,
-                        expected,
-                        &self.types,
-                        self.max_type_expansions,
-                    ) == Some(false)
-                {
-                    self.type_error(
-                        argument_span,
-                        format!(
-                            "argument {} contains a property not declared by the method parameter",
-                            index + 1
-                        ),
-                        DiagnosticCode::TypeMismatch,
-                    );
+            let parameter = function_parameter_for_argument(&signature, index)
+                .expect("an accepted method call has a parameter for every argument");
+            let expected = if parameter.rest {
+                rest_parameter_element_annotation(parameter)
+            } else {
+                parameter.annotation.as_ref()
+            }
+            .expect("method signature parameters have annotations");
+            if let Some(argument) = arguments.get(index) {
+                if self.check_fresh_properties(argument, expected, scope, argument_span) {
                     continue;
                 }
             }
             if !self.is_assignable_bounded(actual, expected, argument_span) {
-                self.type_error(
+                let displayed_expected =
+                    crate::diagnostic::type_text::default_parameter(expected, parameter);
+                let library_receiver = match &base {
+                    Type::Array(_) => Some("Array".to_string()),
+                    Type::String => Some("String".to_string()),
+                    Type::Named{name,..} if matches!(name.as_str(),"Promise"|"Generator"|"Iterator"|"IterableIterator")=>Some(name.clone()),
+                    _ => matches!(call.receiver, [receiver] if self.library_values.contains(&receiver.text))
+                        .then(|| format!("{}Constructor", call.receiver[0].text)),
+                };
+                let overloaded = library_receiver.as_ref().is_some_and(|receiver| {
+                    crate::diagnostic::templates::member_overloads(receiver, &call.member.text) > 1
+                });
+                self.call_argument_error(
                     argument_span,
                     format!(
                         "argument {} has type `{}`, which is not assignable to method parameter `{}` of type `{}`",
                         index + 1,
                         type_label(actual),
-                        parameters[index].name,
+                        parameter.name,
                         type_label(expected)
                     ),
-                    DiagnosticCode::TypeMismatch,
+                    actual,
+                    &displayed_expected,
+                    arguments.get(index).copied().unwrap_or(&[]),
+                    overloaded,
                 );
+                if overloaded {
+                    let mut substitutions = BTreeMap::new();
+                    if let Type::Array(element) = &base {
+                        substitutions.insert("T".into(), *element.clone());
+                        substitutions.insert("S".into(), *element.clone());
+                    }
+                    self.present_library_overloads(
+                        &format!("{}.{}", library_receiver.unwrap(), call.member.text),
+                        &actuals.iter().zip(&arguments).map(|(actual,argument)|if matches!(*argument,[token] if token.is("true")||token.is("false")){Type::Literal(argument[0].text.clone())}else{actual.clone()}).collect::<Vec<_>>(),
+                        &substitutions,
+                    );
+                } else if let Some(receiver) = library_receiver {
+                    self.present_library_argument(
+                        &format!("{receiver}.{}", call.member.text),
+                        actual,
+                        expected,
+                        arguments.get(index).copied().unwrap_or(&[]),
+                        &base,
+                        index,
+                    );
+                }
+                if overloaded && index + 1 == parameters.len() && matches!(expected, Type::Union(_))
+                {
+                    self.point_last_typescript(std::slice::from_ref(call.member));
+                }
             }
         }
-    }
-}
-
-// A fresh object argument gets the usual excess-property check. Referenced
-// structural objects retain their existing assignability rules.
-fn record_argument_fields_fit(
-    fields: &[crate::parser::TypeField],
-    expected: &Type,
-    aliases: &BTreeMap<String, TypeDefinition>,
-    limit: usize,
-) -> Option<bool> {
-    if limit == 0 {
-        return None;
-    }
-    match expected {
-        Type::Any | Type::Unknown => Some(true),
-        Type::Record(expected) => Some(fields.iter().all(|field| {
-            expected
-                .iter()
-                .any(|candidate| candidate.name == field.name)
-        })),
-        Type::Named { .. } => {
-            let mut budget = TypeExpansionBudget::new(limit);
-            instantiate_named(
-                expected,
-                aliases,
-                &mut HashSet::new(),
-                &mut budget,
-                "object argument",
-            )
-            .and_then(|expanded| record_argument_fields_fit(fields, &expanded, aliases, limit - 1))
-        }
-        Type::Union(parts) => {
-            let fits = parts
-                .iter()
-                .filter_map(|part| record_argument_fields_fit(fields, part, aliases, limit - 1))
-                .collect::<Vec<_>>();
-            (!fits.is_empty()).then(|| fits.into_iter().any(|fit| fit))
-        }
-        _ => None,
     }
 }

@@ -1,0 +1,1 @@
+tsconfig.json(5,12): error TS18002: The 'files' list in config file '<project>/tsconfig.json' is empty.

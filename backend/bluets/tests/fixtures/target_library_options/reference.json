@@ -1,0 +1,481 @@
+{
+  "typescriptVersion": "5.9.3",
+  "cases": [
+    {
+      "id": "includes-es5",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es5",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es5"
+        ]
+      },
+      "accepts": false,
+      "codes": [
+        2550
+      ]
+    },
+    {
+      "id": "includes-es2015",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es2015",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2015"
+        ]
+      },
+      "accepts": false,
+      "codes": [
+        2550
+      ]
+    },
+    {
+      "id": "includes-es2016",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es2016",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2016"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "includes-es2017",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es2017",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2017"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "includes-es2018",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es2018",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2018"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "includes-es2019",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es2019",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2019"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "includes-es2020",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es2020",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2020"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "includes-es2021",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es2021",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2021"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "includes-es2022",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2022"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "includes-es2023",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "es2023",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2023"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "includes-esnext",
+      "source": "export function result(): boolean { return [1,2].includes(2); }",
+      "options": {
+        "target": "esnext",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "esnext"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "at-es5-es2020",
+      "source": "export function result(): number | undefined { return [1,2].at(-1); }",
+      "options": {
+        "target": "es5",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2020"
+        ]
+      },
+      "accepts": false,
+      "codes": [
+        2550
+      ]
+    },
+    {
+      "id": "at-es2022-es2020",
+      "source": "export function result(): number | undefined { return [1,2].at(-1); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2020"
+        ]
+      },
+      "accepts": false,
+      "codes": [
+        2550
+      ]
+    },
+    {
+      "id": "at-es2020-es2022",
+      "source": "export function result(): number | undefined { return [1,2].at(-1); }",
+      "options": {
+        "target": "es2020",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2022"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "at-es2023-es2023",
+      "source": "export function result(): number | undefined { return [1,2].at(-1); }",
+      "options": {
+        "target": "es2023",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2023"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "promise-es5",
+      "source": "export function result(): Promise<number> { return Promise.resolve(42); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es5"
+        ]
+      },
+      "accepts": false,
+      "codes": [
+        2585
+      ]
+    },
+    {
+      "id": "promise-es2015",
+      "source": "export function result(): Promise<number> { return Promise.resolve(42); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2015"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "promise-es2017",
+      "source": "export function result(): Promise<number> { return Promise.resolve(42); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2017"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "promise-es2018",
+      "source": "export function result(): Promise<number> { return Promise.resolve(42); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2018"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "finally-es2015",
+      "source": "export function result(): Promise<number> { return Promise.resolve(42).finally(() => {}); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2015"
+        ]
+      },
+      "accepts": false,
+      "codes": [
+        2550
+      ]
+    },
+    {
+      "id": "finally-es2018",
+      "source": "export function result(): Promise<number> { return Promise.resolve(42).finally(() => {}); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2018"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "trim-es5",
+      "source": "export function result(): string { return \" x \".trimStart(); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es5"
+        ]
+      },
+      "accepts": false,
+      "codes": [
+        2550
+      ]
+    },
+    {
+      "id": "trim-es2017",
+      "source": "export function result(): string { return \" x \".trimStart(); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2017"
+        ]
+      },
+      "accepts": false,
+      "codes": [
+        2550
+      ]
+    },
+    {
+      "id": "trim-es2019",
+      "source": "export function result(): string { return \" x \".trimStart(); }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2019"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "bigint-es5",
+      "source": "export function result(): bigint { return 1n; }",
+      "options": {
+        "target": "es5",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2020"
+        ]
+      },
+      "accepts": false,
+      "codes": [
+        2737
+      ]
+    },
+    {
+      "id": "bigint-es2020",
+      "source": "export function result(): bigint { return 1n; }",
+      "options": {
+        "target": "es2020",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "es2020"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "empty-lib",
+      "source": "export function result(): number { return 42; }",
+      "options": {
+        "target": "es2022",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": []
+      },
+      "accepts": false,
+      "codes": [
+        2318,
+        2318,
+        2318,
+        2318,
+        2318,
+        2318,
+        2318,
+        2318,
+        2318,
+        2318
+      ]
+    },
+    {
+      "id": "iteration-false",
+      "source": "export function result(): number { return 42; }",
+      "options": {
+        "target": "es5",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": false,
+        "lib": [
+          "ES2020"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "iteration-true",
+      "source": "export function result(): number { return 42; }",
+      "options": {
+        "target": "es5",
+        "module": "es2022",
+        "strict": true,
+        "downlevelIteration": true,
+        "lib": [
+          "ES2020"
+        ]
+      },
+      "accepts": true,
+      "codes": []
+    },
+    {
+      "id": "es5-symbol-primitive-interface",
+      "source": "export function stringify(value: symbol): string { return value.toString(); }",
+      "options": {
+        "target": "es5",
+        "module": "es2022",
+        "lib": [
+          "es5"
+        ],
+        "strict": true
+      },
+      "accepts": true,
+      "codes": []
+    }
+  ]
+}

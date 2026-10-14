@@ -341,6 +341,9 @@ fn lower(
     active: &mut HashSet<String>,
 ) -> Result<Contract, ContractError> {
     match value {
+        Type::Predicate(predicate) => {
+            lower(&predicate.runtime_type(), named_types, definitions, active)
+        }
         Type::Null => Ok(Contract::Null),
         Type::Undefined => Ok(Contract::Undefined),
         Type::Boolean => Ok(Contract::Boolean),
@@ -427,12 +430,28 @@ fn lower(
             definitions.insert(name.clone(), definition);
             Ok(Contract::Reference(name.clone()))
         }
-        Type::Any | Type::Unknown | Type::Never => Err(ContractError {
+        Type::Any | Type::Unknown | Type::StrictUnknown | Type::Never => Err(ContractError {
             message: "any, unknown, and never are not automatic runtime contracts".to_string(),
         }),
-        Type::Function { .. } => Err(ContractError {
-            message: "function members are not data-boundary runtime contracts".to_string(),
+        Type::BigInt
+        | Type::Symbol
+        | Type::UniqueSymbol(_)
+        | Type::ConstAssertion
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. }
+        | Type::Conditional(_)
+        | Type::Infer(_)
+        | Type::Mapped(_)
+        | Type::TemplateLiteral(_)
+        | Type::KeyOf(_)
+        | Type::IndexedAccess { .. } => Err(ContractError {
+            message: "type operators require a concrete checked data-boundary contract".into(),
         }),
+        Type::Function { .. } | Type::GenericFunction { .. } | Type::CallableRecord { .. } => {
+            Err(ContractError {
+                message: "function members are not data-boundary runtime contracts".to_string(),
+            })
+        }
         Type::Void => Err(ContractError {
             message: "void is not a data-boundary runtime contract".to_string(),
         }),
@@ -807,6 +826,8 @@ mod tests {
         let plan = ContractPlan::from_type(
             "User",
             &Type::Record(vec![TypeField {
+                accessor_write_type: None,
+                method: false,
                 name: "id".to_string(),
                 readonly: false,
                 optional: false,
@@ -832,6 +853,8 @@ mod tests {
     #[test]
     fn validates_an_inherited_record_as_a_reifiable_intersection() {
         let field = |name: &str, value: Type| TypeField {
+            accessor_write_type: None,
+            method: false,
             name: name.to_string(),
             readonly: false,
             optional: false,

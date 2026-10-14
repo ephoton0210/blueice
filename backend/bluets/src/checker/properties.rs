@@ -4,10 +4,11 @@
 
 //! Bounded property lookup shared by expression inference and mutation checks.
 
-use super::{instantiate_named, Type, TypeDefinition};
+use super::{instantiate_named, Type, TypeDefinition, TypeDefinitionKind};
 use std::collections::{BTreeMap, HashSet};
 
 pub(super) struct TypeExpansionBudget {
+    pub(super) checking: crate::CheckingOptions,
     remaining: usize,
     pub(super) exhausted: bool,
 }
@@ -15,6 +16,7 @@ pub(super) struct TypeExpansionBudget {
 impl TypeExpansionBudget {
     pub(super) fn new(limit: usize) -> Self {
         Self {
+            checking: crate::CheckingOptions::legacy(),
             remaining: limit,
             exhausted: false,
         }
@@ -50,8 +52,154 @@ pub(super) fn property_type(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> PropertyType {
+    property_type_with_access(value, property, aliases, visited, budget, false)
+}
+
+pub(super) fn property_write_type(
+    value: &Type,
+    property: &str,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> PropertyType {
+    property_type_with_access(value, property, aliases, visited, budget, true)
+}
+
+fn property_type_with_access(
+    value: &Type,
+    property: &str,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+    writing: bool,
+) -> PropertyType {
+    if *value == Type::StrictUnknown {
+        return PropertyType::Indeterminate;
+    }
+    if let Type::Readonly(value) = value {
+        if property.parse::<usize>().is_ok() {
+            let value = match value.as_ref() {
+                Type::Array(item) => Some((**item).clone()),
+                Type::Tuple(items) => property
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|index| items.get(index))
+                    .map(|item| item.indexed_type()),
+                _ => None,
+            };
+            if let Some(value) = value {
+                return PropertyType::Found {
+                    value,
+                    readonly: true,
+                };
+            }
+        }
+        let element = match value.as_ref() {
+            Type::Array(item) => (**item).clone(),
+            Type::Tuple(items) => {
+                Type::Union(items.iter().map(|item| item.indexed_type()).collect())
+            }
+            _ => {
+                return property_type_with_access(
+                    value, property, aliases, visited, budget, writing,
+                )
+            }
+        };
+        return property_type_with_access(
+            &Type::Named {
+                name: "ReadonlyArray".into(),
+                arguments: vec![element],
+            },
+            property,
+            aliases,
+            visited,
+            budget,
+            writing,
+        );
+    }
+    if let Type::IndexedRecord { object, indices } = value {
+        let declared = property_type_with_access(
+            object,
+            property,
+            aliases,
+            &mut visited.clone(),
+            budget,
+            writing,
+        );
+        if !matches!(declared, PropertyType::Missing) {
+            return declared;
+        }
+        if let Some(index) = indices.iter().find(|index| {
+            index.key == Type::String
+                || (index.key == Type::Number && property.parse::<f64>().is_ok())
+        }) {
+            return PropertyType::Found {
+                value: index.value.clone(),
+                readonly: index.readonly,
+            };
+        }
+        return PropertyType::Missing;
+    }
+    // Enum literals retain nominal identity for assignment. Property lookup
+    // uses their underlying primitive without changing that identity.
+    if let Type::Literal(name) = value {
+        if let Some(definition) = aliases
+            .get(name)
+            .filter(|definition| definition.kind == TypeDefinitionKind::EnumMember)
+        {
+            if !budget.consume() {
+                return PropertyType::Exhausted;
+            }
+            return property_type_with_access(
+                &definition.value,
+                property,
+                aliases,
+                visited,
+                budget,
+                writing,
+            );
+        }
+    }
+    let boxed = match value {
+        Type::String => Some(("String", Vec::new())),
+        Type::Number => Some(("Number", Vec::new())),
+        Type::BigInt => Some(("BigInt", Vec::new())),
+        Type::Symbol | Type::UniqueSymbol(_) => Some(("Symbol", Vec::new())),
+        Type::Boolean => Some(("Boolean", Vec::new())),
+        Type::Function { .. } => Some(("Function", Vec::new())),
+        Type::Literal(text) if text.starts_with(['\'', '"', '`']) => Some(("String", Vec::new())),
+        Type::Literal(text) if text.ends_with('n') => Some(("BigInt", Vec::new())),
+        Type::Literal(text) if text.parse::<f64>().is_ok() => Some(("Number", Vec::new())),
+        Type::Literal(text) if matches!(text.as_str(), "true" | "false") => {
+            Some(("Boolean", Vec::new()))
+        }
+        Type::Array(element) => Some(("Array", vec![(**element).clone()])),
+        Type::Tuple(elements) => Some((
+            "Array",
+            vec![Type::Union(
+                elements
+                    .iter()
+                    .map(|element| element.indexed_type())
+                    .collect(),
+            )],
+        )),
+        _ => None,
+    };
+    if let Some((name, arguments)) = boxed.filter(|(name, _)| aliases.contains_key(*name)) {
+        return property_type_with_access(
+            &Type::Named {
+                name: name.to_string(),
+                arguments,
+            },
+            property,
+            aliases,
+            visited,
+            budget,
+            writing,
+        );
+    }
     match value {
-        Type::Record(fields) => {
+        Type::Record(fields) | Type::CallableRecord { fields, .. } => {
             let mut values = Vec::new();
             let mut readonly = false;
             for field in fields.iter().filter(|field| field.name == property) {
@@ -60,14 +208,34 @@ pub(super) fn property_type(
                 if !values.is_empty() && !budget.consume() {
                     return PropertyType::Exhausted;
                 }
-                values.push(if field.optional {
-                    Type::Union(vec![field.value.clone(), Type::Undefined])
+                let value = if writing {
+                    field.accessor_write_type.as_deref().unwrap_or(&field.value)
                 } else {
-                    field.value.clone()
+                    &field.value
+                };
+                values.push(if field.optional {
+                    Type::Union(vec![value.clone(), Type::Undefined])
+                } else {
+                    value.clone()
                 });
                 readonly |= field.readonly;
             }
             match values.len() {
+                0 if matches!(value, Type::CallableRecord { signatures, .. } if !signatures.is_empty())
+                    && aliases.contains_key("Function") =>
+                {
+                    property_type_with_access(
+                        &Type::Named {
+                            name: "Function".into(),
+                            arguments: Vec::new(),
+                        },
+                        property,
+                        aliases,
+                        visited,
+                        budget,
+                        writing,
+                    )
+                }
                 0 => PropertyType::Missing,
                 1 => PropertyType::Found {
                     value: values.pop().expect("one matching field"),
@@ -79,9 +247,16 @@ pub(super) fn property_type(
                 },
             }
         }
-        Type::Named { .. } => {
+        Type::Named { .. }
+        | Type::Conditional(_)
+        | Type::Mapped(_)
+        | Type::IndexedAccess { .. }
+        | Type::KeyOf(_)
+        | Type::TemplateLiteral(_) => {
             match instantiate_named(value, aliases, visited, budget, "property") {
-                Some(value) => property_type(&value, property, aliases, visited, budget),
+                Some(value) => {
+                    property_type_with_access(&value, property, aliases, visited, budget, writing)
+                }
                 None if budget.exhausted => PropertyType::Exhausted,
                 None => PropertyType::Indeterminate,
             }
@@ -94,7 +269,14 @@ pub(super) fn property_type(
                 if !budget.consume() {
                     return PropertyType::Exhausted;
                 }
-                match property_type(part, property, aliases, &mut visited.clone(), budget) {
+                match property_type_with_access(
+                    part,
+                    property,
+                    aliases,
+                    &mut visited.clone(),
+                    budget,
+                    writing,
+                ) {
                     PropertyType::Found {
                         value,
                         readonly: part_readonly,
@@ -127,7 +309,7 @@ pub(super) fn property_type(
             let mut found = Vec::new();
             let mut readonly = false;
             for part in parts {
-                match property_type(part, property, aliases, visited, budget) {
+                match property_type_with_access(part, property, aliases, visited, budget, writing) {
                     PropertyType::Found {
                         value,
                         readonly: part_readonly,
@@ -135,12 +317,7 @@ pub(super) fn property_type(
                         if !found.is_empty() && !budget.consume() {
                             return PropertyType::Exhausted;
                         }
-                        // Interface heritage can contribute an overload group
-                        // beside another group; expose one flat intersection.
-                        match value {
-                            Type::Intersection(values) => found.extend(values),
-                            value => found.push(value),
-                        }
+                        found.push(value);
                         readonly |= part_readonly;
                     }
                     PropertyType::Missing => {}
@@ -163,5 +340,200 @@ pub(super) fn property_type(
         }
         Type::Any | Type::Unknown => PropertyType::Indeterminate,
         _ => PropertyType::Missing,
+    }
+}
+
+pub(super) fn contains_readonly_member(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> Result<bool, ()> {
+    match value {
+        Type::Readonly(_) => Ok(true),
+        Type::IndexedRecord { object, indices } => {
+            if indices.iter().any(|index| index.readonly) {
+                Ok(true)
+            } else {
+                contains_readonly_member(object, aliases, visited, budget)
+            }
+        }
+        Type::Record(fields) | Type::CallableRecord { fields, .. } => {
+            Ok(fields.iter().any(|field| field.readonly))
+        }
+        Type::Named { .. }
+        | Type::Conditional(_)
+        | Type::Mapped(_)
+        | Type::IndexedAccess { .. }
+        | Type::KeyOf(_)
+        | Type::TemplateLiteral(_) => {
+            match instantiate_named(value, aliases, visited, budget, "readonly property") {
+                Some(value) => contains_readonly_member(&value, aliases, visited, budget),
+                None if budget.exhausted => Err(()),
+                None => Ok(false),
+            }
+        }
+        Type::Union(parts) | Type::Intersection(parts) => {
+            for part in parts {
+                if contains_readonly_member(part, aliases, visited, budget)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        _ => Ok(false),
+    }
+}
+
+/// Mutability also applies to private/protected marker fields and to a
+/// readonly alternative of a union. Accessibility is checked separately.
+pub(super) fn readonly_property(
+    owner: &Type,
+    property: &str,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+    private_owner: Option<&str>,
+    depth: usize,
+) -> bool {
+    if depth > 128 {
+        budget.exhausted = true;
+        return false;
+    }
+    if !budget.consume() {
+        return false;
+    }
+    match owner {
+        Type::Record(fields) | Type::CallableRecord { fields, .. } => {
+            if fields.iter().any(|field| field.name == property) {
+                fields
+                    .iter()
+                    .any(|field| field.name == property && field.readonly)
+            } else {
+                fields
+                    .iter()
+                    .find(|field| mutation_name_matches(&field.name, property, private_owner))
+                    .is_some_and(|field| field.readonly)
+            }
+        }
+        Type::Named { .. }
+        | Type::Conditional(_)
+        | Type::Mapped(_)
+        | Type::IndexedAccess { .. }
+        | Type::KeyOf(_)
+        | Type::TemplateLiteral(_) => {
+            instantiate_named(owner, aliases, visited, budget, "readonly mutation").is_some_and(
+                |value| {
+                    readonly_property(
+                        &value,
+                        property,
+                        aliases,
+                        visited,
+                        budget,
+                        private_owner,
+                        depth + 1,
+                    )
+                },
+            )
+        }
+        Type::Union(parts) | Type::Intersection(parts) => parts.iter().any(|part| {
+            readonly_property(
+                part,
+                property,
+                aliases,
+                &mut visited.clone(),
+                budget,
+                private_owner,
+                depth + 1,
+            )
+        }),
+        _ => false,
+    }
+}
+
+fn mutation_name_matches(name: &str, property: &str, private_owner: Option<&str>) -> bool {
+    let marker = name.split_once(' ').and_then(|(visibility, rest)| {
+        matches!(visibility, "private" | "protected")
+            .then(|| rest.split_once(' '))
+            .flatten()
+    });
+    name == property
+        || marker.is_some_and(|(owner, name)| {
+            name == property && (!property.starts_with('#') || private_owner == Some(owner))
+        })
+}
+
+/// A restricted member's type can carry a readonly target further down a
+/// receiver chain. This lookup serves mutation checks only; the ordinary
+/// checker still applies accessibility before permitting member access.
+pub(super) fn mutation_field_type(
+    owner: &Type,
+    property: &str,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+    private_owner: Option<&str>,
+    depth: usize,
+) -> Option<Type> {
+    if depth > 128 {
+        budget.exhausted = true;
+        return None;
+    }
+    if !budget.consume() {
+        return None;
+    }
+    match owner {
+        Type::Record(fields) | Type::CallableRecord { fields, .. } => fields
+            .iter()
+            .find(|field| mutation_name_matches(&field.name, property, private_owner))
+            .map(|field| {
+                if field.optional {
+                    Type::Union(vec![field.value.clone(), Type::Undefined])
+                } else {
+                    field.value.clone()
+                }
+            }),
+        Type::Named { .. }
+        | Type::Conditional(_)
+        | Type::Mapped(_)
+        | Type::IndexedAccess { .. }
+        | Type::KeyOf(_)
+        | Type::TemplateLiteral(_) => {
+            instantiate_named(owner, aliases, visited, budget, "mutation receiver").and_then(
+                |value| {
+                    mutation_field_type(
+                        &value,
+                        property,
+                        aliases,
+                        visited,
+                        budget,
+                        private_owner,
+                        depth + 1,
+                    )
+                },
+            )
+        }
+        Type::Union(parts) | Type::Intersection(parts) => {
+            let values: Vec<_> = parts
+                .iter()
+                .filter_map(|part| {
+                    mutation_field_type(
+                        part,
+                        property,
+                        aliases,
+                        &mut visited.clone(),
+                        budget,
+                        private_owner,
+                        depth + 1,
+                    )
+                })
+                .collect();
+            match values.as_slice() {
+                [] => None,
+                [value] => Some(value.clone()),
+                _ => Some(Type::Union(values)),
+            }
+        }
+        _ => None,
     }
 }

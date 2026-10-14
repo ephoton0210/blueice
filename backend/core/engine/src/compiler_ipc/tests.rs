@@ -198,10 +198,9 @@ fn opaque_project_queries_return_generation_bound_source_free_metadata() {
     };
     assert_eq!(static_type.generation, check.generation);
     // The first deterministic type belongs to the imported binding. Its
-    // checked static shape is intentionally `unknown` until a richer
-    // import type surface is implemented; this still proves a precise,
-    // generation-bound type lookup rather than a runtime-value query.
-    assert_eq!(static_type.display, "unknown");
+    // checked number type is retained through the import, and the lookup
+    // remains generation-bound rather than querying a runtime value.
+    assert_eq!(static_type.display, "number");
 
     let CompilerReply::StaticSymbol(symbol) = adapter.handle(CompilerRequest::GetStaticSymbol {
         generation: check.generation,

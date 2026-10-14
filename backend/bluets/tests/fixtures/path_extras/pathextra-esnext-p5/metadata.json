@@ -1,0 +1,21 @@
+{
+  "id": "pathextra-esnext-p5",
+  "form": "p5",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "ESNext",
+  "options": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "baseUrl": "."
+  }
+}

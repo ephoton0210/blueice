@@ -15,6 +15,18 @@ fn negotiated_session() -> DebuggerMetadataSessionAuthorization {
     metadata_session_authorization(&hello, &reply).unwrap()
 }
 
+fn negotiated_generated_session() -> DebuggerMetadataSessionAuthorization {
+    let manifest =
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_generated_breakpoint();
+    let hello = DebuggerRequest::Hello {
+        protocol_version: DEBUGGER_PROTOCOL_VERSION,
+        requested_metadata_capabilities: manifest.clone(),
+        requested_bounded_values: false,
+    };
+    let reply = negotiate_with_values(&hello, &manifest, false);
+    metadata_session_authorization(&hello, &reply).unwrap()
+}
+
 fn dispatch(
     sender: &DebuggerRequestSender,
     receiver: &DebuggerRequestReceiver,
@@ -203,6 +215,83 @@ fn next_document_hold_attaches_once_and_expires_on_replacement_disconnect_or_tim
         .unwrap()
         .expires_at = Instant::now() - Duration::from_millis(1);
     assert!(receiver.refresh_admission_hold(&tabs).is_none());
+}
+
+#[test]
+fn foreign_system_arm_with_its_own_dual_receipts_cannot_consume_owner_hold() {
+    let mut tabs = TabManager::new(320.0, 200.0);
+    let tab = tabs.default_tab();
+    let tab_id = tab.as_u64();
+    let (sender, receiver) = debugger_request_channel();
+    let owner = negotiated_generated_session();
+    let foreign = negotiated_generated_session();
+    let realm = DebuggerPageRealm {
+        browser_context_id: DEFAULT_BROWSER_CONTEXT_ID,
+        tab_id,
+        realm_generation: 1,
+    };
+    let emitted = DebuggerProgram {
+        realm,
+        program_handle: 7,
+        program_generation: 3,
+    };
+    let loader = DebuggerProgram {
+        program_handle: 8,
+        program_generation: 4,
+        ..emitted
+    };
+    for session in [&owner, &foreign] {
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueGeneratedBreakpoint));
+        assert!(session.observe_programs(&[emitted, loader]));
+        assert!(session.observed_program(emitted));
+        assert!(session.observed_program(loader));
+    }
+    assert_eq!(
+        dispatch(
+            &sender,
+            &receiver,
+            &tabs,
+            DebuggerRequest::HoldNextDocument { tab_id },
+            Some(&owner),
+        ),
+        DebuggerReply::NextDocumentHoldAcquired { tab_id }
+    );
+    tabs.get_mut(tab)
+        .unwrap()
+        .load_html_str("<script>let answer = 42;</script>", None);
+    assert_eq!(receiver.refresh_admission_hold(&tabs), Some(tab));
+    let target = DebuggerGeneratedSystemBreakpointTarget {
+        emitted: DebuggerGeneratedBreakpointTarget {
+            program: emitted,
+            generated_line: 1,
+            generated_column_utf16: 2,
+        },
+        loader,
+    };
+    assert!(matches!(
+        dispatch(
+            &sender,
+            &receiver,
+            &tabs,
+            DebuggerRequest::ArmGeneratedSystemBreakpoint { target },
+            Some(&foreign),
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    assert_eq!(receiver.refresh_admission_hold(&tabs), Some(tab));
+    assert_eq!(
+        dispatch(
+            &sender,
+            &receiver,
+            &tabs,
+            DebuggerRequest::ReleaseNextDocumentHold { tab_id },
+            Some(&owner),
+        ),
+        DebuggerReply::NextDocumentHoldReleased { tab_id }
+    );
 }
 
 #[test]

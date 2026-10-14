@@ -8,13 +8,82 @@ use super::*;
 
 mod arrays;
 mod records;
+mod template_constants;
 
 impl<'a> ModuleChecker<'a> {
+    /// The type of a top-level chain of `+`/`-` or of `*`/`/`/`%`, folded from the
+    /// left, or `None` when `tokens` is not such a chain.
+    #[inline(never)]
+    fn infer_operator_chain(
+        &self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+    ) -> Option<Type> {
+        let generic_call =
+            |start: usize| self.module.generic_call_type_arguments.contains_key(&start);
+        for operators in [&["+", "-"][..], &["*", "/", "%"][..]] {
+            let Some((mut rest, operator, last)) =
+                top_level_binary_parts(tokens, operators, generic_call)
+            else {
+                continue;
+            };
+            let mut chain = vec![(operator, last)];
+            while let Some((left, operator, operand)) =
+                top_level_binary_parts(rest, operators, generic_call)
+            {
+                chain.push((operator, operand));
+                rest = left;
+            }
+            let mut result = self.infer_expression(rest, scope);
+            for (operator, operand) in chain.into_iter().rev() {
+                let operand = self.infer_expression(operand, scope);
+                result = if operators.contains(&"+") {
+                    infer_additive_expression(operator, result, operand)
+                } else {
+                    infer_numeric_binary_expression(result, operand)
+                };
+            }
+            return Some(result);
+        }
+        None
+    }
+
+    /// `yield x` is what the caller passes to `next`; `yield* g` is `g`'s result.
+    /// Kept out of `infer_expression` so that function's stack frame, which every
+    /// level of a long expression pays for, stays small.
+    #[inline(never)]
+    fn infer_yield(&self, tokens: &[Token], scope: &BTreeMap<String, Type>) -> Option<Type> {
+        if !tokens.first().is_some_and(|token| token.is("yield")) {
+            return None;
+        }
+        let context = self.generator_context.as_ref()?;
+        if tokens.get(1).is_some_and(|token| token.is("*")) {
+            return Some(match self.infer_expression(&tokens[2..], scope) {
+                Type::Named { name, arguments } if name == "Generator" => {
+                    arguments.get(1).cloned().unwrap_or(Type::Any)
+                }
+                _ => Type::Any,
+            });
+        }
+        Some(context.next_type.clone())
+    }
+
     pub(in crate::checker::module) fn infer_expression(
         &self,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
     ) -> Type {
+        if let [token] = tokens {
+            if token.kind == TokenKind::Identifier || token.is("this") {
+                if let Some(value) = self
+                    .flow
+                    .as_ref()
+                    .and_then(|flow| flow.query(self.scopes.as_ref()?, token))
+                {
+                    return value;
+                }
+            }
+        }
         if tokens
             .iter()
             .filter(|token| token.is("[") || token.is("{"))
@@ -22,6 +91,41 @@ impl<'a> ModuleChecker<'a> {
             > MAX_LITERAL_INFERENCE_CONTAINERS
         {
             return Type::Unknown;
+        }
+        // `<element .. />` is one operand: its token and the embedded expressions
+        // the lexer follows it with as arguments.
+        if tokens
+            .first()
+            .is_some_and(|token| token.kind == TokenKind::JsxElement)
+        {
+            return self.jsx_element_type();
+        }
+        if let Some(function) = self.nested_function_type(strip_outer_parentheses(tokens), scope) {
+            return function;
+        }
+        let unwrapped = strip_outer_parentheses(tokens);
+        if let Some(expression) = unwrapped
+            .first()
+            .and_then(|first| self.module.class_expression(first.start))
+            .filter(|expression| {
+                unwrapped
+                    .last()
+                    .is_some_and(|last| last.end == expression.class.span.end)
+            })
+        {
+            return self
+                .values
+                .get(&expression.class.name)
+                .cloned()
+                .unwrap_or(Type::Unknown);
+        }
+        if let Some(result) = self.infer_yield(tokens, scope) {
+            return result;
+        }
+        // `await` of a `Promise<T>` is the `T`; of anything else, the operand.
+        if tokens.len() > 1 && tokens[0].is("await") {
+            let operand = self.infer_expression(&tokens[1..], scope);
+            return super::super::binding::promise_value_type(&operand).unwrap_or(operand);
         }
         if tokens
             .iter()
@@ -45,36 +149,40 @@ impl<'a> ModuleChecker<'a> {
             return Type::Unknown;
         }
         let tokens = strip_outer_parentheses(tokens);
+        if let Some(value) = self
+            .flow
+            .as_ref()
+            .and_then(|flow| flow.property(self.scopes.as_ref()?, tokens))
+        {
+            return value;
+        }
         if let Some(call) = constructor_call_parts(tokens) {
-            if self.is_bound_class_constructor_value(&call.callee.text, scope) {
-                return Type::Named {
-                    name: call.callee.text.clone(),
-                    arguments: Vec::new(),
-                };
+            if let Some(signatures) = self.function_value_signatures(&call.callee.text, scope, true)
+            {
+                let explicit = call.generic.then(|| {
+                    self.module.generic_call_type_arguments[&call.callee.start].as_slice()
+                });
+                return self.infer_function_call(&signatures, call.arguments, scope, explicit);
             }
-            if let Some(constructor) = scope.get(&call.callee.text) {
-                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-                if let PropertyType::Found {
-                    value: Type::Function { parameters, result },
-                    ..
-                } = property_type(
-                    constructor,
-                    "new",
-                    &self.types,
-                    &mut HashSet::new(),
-                    &mut budget,
-                ) {
-                    return self.infer_function_call(
-                        &[FunctionSignature {
-                            parameters,
-                            type_parameters: Vec::new(),
-                            return_type: *result,
-                        }],
-                        call.arguments,
-                        scope,
-                        None,
-                    );
-                }
+            if call
+                .receiver
+                .is_none_or(|receiver| scope.get(&receiver.text) == self.values.get(&receiver.text))
+                && self.is_bound_class_constructor_value(&call.callee.text, scope)
+            {
+                let Some(binding) = self.class_constructors.get(&call.callee.text) else {
+                    return Type::Unknown;
+                };
+                let signatures = &binding.signatures;
+                let explicit = call
+                    .generic
+                    .then(|| {
+                        self.module
+                            .generic_call_type_arguments
+                            .get(&call.callee.start)
+                            .map(Vec::as_slice)
+                    })
+                    .flatten();
+                return self.infer_function_call(signatures, call.arguments, scope, explicit);
             }
         }
         if let Some((_, _, result)) = top_level_binary_parts(tokens, &[","], |start| {
@@ -116,6 +224,12 @@ impl<'a> ModuleChecker<'a> {
                 value => value,
             };
         }
+        if let Some((_, consequent, alternate)) = conditional_expression_parts(tokens) {
+            return merge_conditional_branch_types(
+                self.infer_expression(consequent, scope),
+                self.infer_expression(alternate, scope),
+            );
+        }
         if tokens
             .first()
             .is_some_and(|token| token.is("++") || token.is("--"))
@@ -125,7 +239,25 @@ impl<'a> ModuleChecker<'a> {
         {
             return Type::Number;
         }
-        if let Some(call) = member_call_parts(tokens) {
+        if let Some(value) = self.infer_indexed_call(tokens, scope) {
+            return value;
+        }
+        if let Some(call) = member_call_parts(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            if let Some(signatures) =
+                self.module_member_signatures(call.receiver, &call.member.text, scope)
+            {
+                let explicit = call.generic.then(|| {
+                    self.module.generic_call_type_arguments[&call.member.start].as_slice()
+                });
+                return self.infer_function_call(&signatures, call.arguments, scope, explicit);
+            }
+            if let Some(value) =
+                self.function_method_result(call.receiver, &call.member.text, call.arguments, scope)
+            {
+                return value;
+            }
             let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             let found = property_type(
@@ -138,51 +270,30 @@ impl<'a> ModuleChecker<'a> {
             if let PropertyType::Found { value, .. } = found {
                 match value {
                     Type::Function { result, .. } => return *result,
-                    Type::Intersection(overloads)
-                        if self.is_bound_class_instance_type(&base)
-                            || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope)) =>
-                    {
+                    value @ Type::GenericFunction { .. } => {
+                        let signatures = signatures::callable_signatures(&value, false)
+                            .expect("generic function has call signature");
+                        let explicit = call.generic.then(|| {
+                            self.module.generic_call_type_arguments[&call.member.start].as_slice()
+                        });
+                        return self.infer_function_call(
+                            &signatures,
+                            call.arguments,
+                            scope,
+                            explicit,
+                        );
+                    }
+                    Type::Intersection(overloads) => {
                         if let Some(signatures) = method_overload_signatures(&overloads) {
                             return self.infer_function_call(
                                 &signatures,
                                 call.arguments,
                                 scope,
-                                None,
+                                call.generic.then(|| {
+                                    self.module.generic_call_type_arguments[&call.member.start]
+                                        .as_slice()
+                                }),
                             );
-                        }
-                    }
-                    Type::Intersection(overloads) if !has_literal_method_tags(&overloads) => {
-                        if let Some(signatures) = method_overload_signatures(&overloads) {
-                            return self.infer_function_call(
-                                &signatures,
-                                call.arguments,
-                                scope,
-                                None,
-                            );
-                        }
-                    }
-                    Type::Intersection(overloads)
-                        if supports_callback_method_receiver(
-                            &base,
-                            &self.types,
-                            self.max_type_expansions,
-                        ) =>
-                    {
-                        if let Some(arguments) = split_call_arguments(call.arguments) {
-                            if let Ok(actuals) =
-                                self.expanded_call_argument_types(&arguments, scope)
-                            {
-                                if let Ok(Type::Function { result, .. }) =
-                                    select_callback_method_overload(
-                                        &overloads,
-                                        &actuals,
-                                        &self.types,
-                                        self.max_type_expansions,
-                                    )
-                                {
-                                    return *result.clone();
-                                }
-                            }
                         }
                     }
                     _ => {}
@@ -193,6 +304,22 @@ impl<'a> ModuleChecker<'a> {
         if let Some(call) =
             direct_call_parts(tokens).filter(|call| split_call_arguments(call.arguments).is_some())
         {
+            if let Some(signatures) =
+                self.inferred_call_signatures(&call.callee.text, call.callee.start, scope)
+            {
+                let explicit = call.generic.then(|| {
+                    self.module.generic_call_type_arguments[&call.callee.start].as_slice()
+                });
+                return self.infer_function_call(&signatures, call.arguments, scope, explicit);
+            }
+            if let Some(signatures) =
+                self.function_value_signatures(&call.callee.text, scope, false)
+            {
+                let explicit = call.generic.then(|| {
+                    self.module.generic_call_type_arguments[&call.callee.start].as_slice()
+                });
+                return self.infer_function_call(&signatures, call.arguments, scope, explicit);
+            }
             if let Some(signatures) = self.functions.get(&call.callee.text) {
                 let explicit = call.generic.then(|| {
                     self.module
@@ -203,16 +330,9 @@ impl<'a> ModuleChecker<'a> {
                 });
                 return self.infer_function_call(signatures, call.arguments, scope, explicit);
             }
-            return scope
-                .get(&call.callee.text)
-                .cloned()
-                .unwrap_or(Type::Unknown);
-        }
-        if let Some((_, consequent, alternate)) = conditional_expression_parts(tokens) {
-            return merge_conditional_branch_types(
-                self.infer_expression(consequent, scope),
-                self.infer_expression(alternate, scope),
-            );
+            // A call through a value that is not a known function type has no
+            // known result.
+            return Type::Unknown;
         }
         if let Some((left, _, right)) = top_level_binary_parts(tokens, &["??"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
@@ -239,6 +359,31 @@ impl<'a> ModuleChecker<'a> {
             );
         }
         if let Some(value) = erased_assertion_operand(tokens) {
+            if let Some(annotation) = tokens
+                .get(value.len())
+                .and_then(|token| self.module.type_assertions.get(&token.start))
+            {
+                if tokens[value.len()].is("satisfies") {
+                    return self.infer_in_context(value, scope, annotation);
+                }
+                if *annotation == Type::ConstAssertion {
+                    return self.infer_const_assertion(value, scope);
+                }
+                let target = match annotation {
+                    Type::Named { name, .. } => self
+                        .types
+                        .get(name)
+                        .map(|definition| &definition.value)
+                        .unwrap_or(annotation),
+                    value => value,
+                };
+                if matches!(target, Type::Literal(_))
+                    || target.operator_children().is_some()
+                    || matches!(target, Type::KeyOf(_) | Type::IndexedAccess { .. })
+                {
+                    return annotation.clone();
+                }
+            }
             // Both forms disappear from emitted JavaScript. Keep the known
             // runtime receiver type, including readonly host qualifiers,
             // rather than accidentally inferring its first identifier.
@@ -282,24 +427,11 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(right, scope),
             );
         }
-        if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["+", "-"], |start| {
-                self.module.generic_call_type_arguments.contains_key(&start)
-            })
-        {
-            return infer_additive_expression(
-                operator,
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["*", "/", "%"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_numeric_binary_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
+        // A long chain `a + b + c + ..` is folded left to right here rather than
+        // by recursing on its left side, which would be as deep as the chain is
+        // long (and, at every level, in this function's large stack frame).
+        if let Some(result) = self.infer_operator_chain(tokens, scope) {
+            return result;
         }
         if let Some((left, _, right)) = top_level_binary_parts(tokens, &["**"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
@@ -322,32 +454,28 @@ impl<'a> ModuleChecker<'a> {
             return Type::Boolean;
         }
         if matches!(first.text.as_str(), "+" | "-" | "~") {
-            return Type::Number;
+            return if !first.is("+") && self.infer_expression(&tokens[1..], scope) == Type::BigInt {
+                Type::BigInt
+            } else {
+                Type::Number
+            };
         }
-        if first.kind == TokenKind::String || first.kind == TokenKind::Template {
+        // A literal only stands for the whole expression when nothing follows
+        // it: `"x".length` is a member read, not a string.
+        if (first.kind == TokenKind::String || first.kind == TokenKind::Template)
+            && tokens.len() == 1
+        {
             return Type::String;
         }
-        if first.kind == TokenKind::Number {
-            return Type::Number;
+        if first.kind == TokenKind::Number && tokens.len() == 1 {
+            return if first.text.ends_with('n') {
+                Type::BigInt
+            } else {
+                Type::Number
+            };
         }
-        if let [receiver, optional, property] = tokens {
-            if receiver.kind == TokenKind::Identifier
-                && optional.is("?.")
-                && property.kind == TokenKind::Identifier
-            {
-                return scope
-                    .get(&receiver.text)
-                    .and_then(|receiver_type| {
-                        optional_property_type(
-                            receiver_type,
-                            &property.text,
-                            &self.types,
-                            self.max_type_expansions,
-                        )
-                        .ok()
-                    })
-                    .unwrap_or(Type::Unknown);
-            }
+        if let Some(value) = self.infer_optional_chain(tokens, scope) {
+            return value;
         }
         if let Some((receiver, property)) = member_access_target(tokens) {
             if tokens.iter().filter(|token| token.is("[")).count() > self.max_type_expansions {
@@ -359,12 +487,19 @@ impl<'a> ModuleChecker<'a> {
                 .is_some_and(|token| token.is("]"))
                 .then(|| canonical_index_key(&tokens[receiver.len() + 1..tokens.len() - 1]))
                 .flatten();
+            if property.is_none() && tokens.last().is_some_and(|token| token.is("]")) {
+                let inside = &tokens[receiver.len() + 1..tokens.len() - 1];
+                if let Some(result) = self.enum_index_type(&owner, inside, scope) {
+                    return result;
+                }
+            }
             if property.is_none() || index.is_some() {
                 // A computed receiver may still have a known element type.
                 // Retaining it lets a later `.readonlyField` write reach the
                 // same property policy as a direct receiver. A literal index
                 // also selects the exact member of a heterogeneous tuple.
                 let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                budget.checking = self.checking;
                 let indexed = indexed_value_type(
                     &owner,
                     index,
@@ -393,8 +528,8 @@ impl<'a> ModuleChecker<'a> {
                 }
             };
         }
-        if first.is("this") && tokens.len() == 1 {
-            return scope.get("this").cloned().unwrap_or(Type::Unknown);
+        if (first.is("this") || first.is("super")) && tokens.len() == 1 {
+            return scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
         }
         match first.text.as_str() {
             "true" | "false" => Type::Boolean,
@@ -403,16 +538,22 @@ impl<'a> ModuleChecker<'a> {
             "[" => self.infer_array(tokens, scope),
             "{" => self.infer_record(tokens, scope),
             _ if first.kind == TokenKind::Identifier => {
+                // A value in scope (a parameter, a local, a catch binding)
+                // shadows a module function of the same name.
                 if tokens.len() == 1 {
+                    if let Some(value @ Type::Intersection(parts)) = scope.get(&first.text) {
+                        if parts.iter().any(|part| matches!(part, Type::Record(_))) {
+                            return value.clone();
+                        }
+                    }
                     if let Some(signature) =
                         self.functions.get(&first.text).and_then(|set| set.first())
                     {
-                        if signature.type_parameters.is_empty() {
-                            return Type::Function {
-                                parameters: signature.parameters.clone(),
-                                result: Box::new(signature.return_type.clone()),
-                            };
-                        }
+                        return super::super::binding::declared_function_type(
+                            &signature.parameters,
+                            signature.return_type.clone(),
+                            &signature.type_parameters,
+                        );
                     }
                 }
                 scope.get(&first.text).cloned().unwrap_or(Type::Unknown)

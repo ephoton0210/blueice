@@ -12,3 +12,15 @@ fn bounded_values_policy_is_independent_of_static_metadata() {
     assert!(options.debugger_bounded_values);
     assert!(!options.debugger_static_metadata_inventory);
 }
+
+#[test]
+fn generated_owner_builders_are_independent_of_metadata_inventory() {
+    let options = CoreLaunchOptions::default().with_debugger_generated_breakpoint();
+    assert!(options.debugger_generated_breakpoint);
+    assert!(!options.debugger_generated_paused_location);
+    assert!(!options.debugger_static_metadata_inventory);
+    let options = CoreLaunchOptions::default().with_debugger_generated_paused_location();
+    assert!(!options.debugger_generated_breakpoint);
+    assert!(options.debugger_generated_paused_location);
+    assert!(!options.debugger_static_metadata_inventory);
+}

@@ -53,6 +53,204 @@ fn child_point(
     }
 }
 
+#[test]
+fn class_static_block_nested_pause_rejoins_its_root_after_resume() {
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let program = install(
+        &mut runtime,
+        "page:///static-debug.js",
+        "globalThis.answer = 0; class Example { static { globalThis.answer = 42; } }",
+        false,
+    );
+    let point = runtime
+        .program_registry()
+        .get(program)
+        .unwrap()
+        .unique_identifier_safe_point(1, "globalThis")
+        .expect("static-block identifier must have a compiler-recorded child point");
+    assert_ne!(point.code_unit.ordinal(), 0);
+    let BlueJsPageDebuggerNestedExecutionState::Paused {
+        frame,
+        bytecode_offset,
+    } = runtime
+        .execute_program_until_nested_debugger_pause(7, program, point)
+        .unwrap()
+    else {
+        panic!("class static block must pause at its selected child instruction");
+    };
+    assert_eq!(frame.code_unit_ordinal(), point.code_unit.ordinal());
+    assert_eq!(bytecode_offset, point.bytecode_offset);
+    assert!(matches!(
+        runtime.resume_debugger_nested_execution(frame),
+        Ok(BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. })
+    ));
+    assert_eq!(
+        runtime.resume_debugger_execution(7),
+        Ok(blueice_bluejs::BlueJsPageDebuggerExecutionState::Completed)
+    );
+    let reader = install(
+        &mut runtime,
+        "page:///static-debug-reader.js",
+        "globalThis.answer;",
+        false,
+    );
+    assert_eq!(runtime.execute_program(7, reader), Ok(Value::Number(42.0)));
+}
+
+#[test]
+fn iife_static_block_nested_pause_preserves_both_callers_without_replay() {
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let program = install(
+        &mut runtime,
+        "page:///decorated-iife.js",
+        "globalThis.starts = 0; function decoSite(value) { return value; } let Example = (() => { globalThis.starts++; return class Example { static { const decorators = [decoSite]; globalThis.hit = decorators.length; } }; })(); globalThis.done = Example ? globalThis.starts : -1;",
+        false,
+    );
+    let installed = runtime.program_registry().get(program).unwrap();
+    let point = installed
+        .unique_identifier_safe_point(2, "decoSite")
+        .expect("the relocated identifier has one compiler instruction");
+    assert_eq!(
+        installed.code_units()[point.code_unit.ordinal() as usize].nesting_depth(),
+        2
+    );
+    let BlueJsPageDebuggerNestedExecutionState::Paused {
+        frame,
+        bytecode_offset,
+    } = runtime
+        .execute_program_until_nested_debugger_pause(7, program, point)
+        .unwrap()
+    else {
+        panic!("IIFE-contained static block must pause before its identifier instruction");
+    };
+    assert_eq!(bytecode_offset, point.bytecode_offset);
+    let stack = runtime
+        .debugger_stack_snapshot(7, program, Some(frame), 3, 1)
+        .unwrap();
+    assert_eq!(stack.frames.len(), 3);
+    assert_eq!(stack.frames[0].code_unit_ordinal, point.code_unit.ordinal());
+    assert_ne!(stack.frames[1].code_unit_ordinal, 0);
+    assert_eq!(stack.frames[2].code_unit_ordinal, 0);
+    assert!(!stack.stack_truncated);
+    assert!(matches!(
+        runtime.step_debugger_nested_instruction(frame),
+        Ok(BlueJsPageDebuggerNestedExecutionState::Paused { .. })
+    ));
+    assert!(matches!(
+        runtime.resume_debugger_nested_execution(frame),
+        Ok(BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. })
+    ));
+    assert_eq!(
+        runtime.resume_debugger_execution(7),
+        Ok(blueice_bluejs::BlueJsPageDebuggerExecutionState::Completed)
+    );
+    let reader = install(
+        &mut runtime,
+        "page:///decorated-iife-reader.js",
+        "globalThis.starts * 100 + globalThis.hit * 10 + globalThis.done;",
+        false,
+    );
+    assert_eq!(runtime.execute_program(7, reader), Ok(Value::Number(111.0)));
+}
+
+#[test]
+fn iife_static_block_nested_throw_rejoins_the_intermediate_catch() {
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let program = install(
+        &mut runtime,
+        "page:///decorated-throw.js",
+        "globalThis.starts = 0; function decoSite() { return 1; } let Example = (() => { globalThis.starts++; try { return class Example { static { const decorators = [decoSite]; throw 7; } }; } catch (error) { globalThis.caught = error; return class Fallback {}; } })(); globalThis.answer = globalThis.starts * 10 + globalThis.caught;",
+        false,
+    );
+    let point = runtime
+        .program_registry()
+        .get(program)
+        .unwrap()
+        .unique_identifier_safe_point(2, "decoSite")
+        .unwrap();
+    let BlueJsPageDebuggerNestedExecutionState::Paused { frame, .. } = runtime
+        .execute_program_until_nested_debugger_pause(7, program, point)
+        .unwrap()
+    else {
+        panic!("the static block must pause before its throwing instruction");
+    };
+    assert!(matches!(
+        runtime.resume_debugger_nested_execution(frame),
+        Ok(BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. })
+    ));
+    assert_eq!(
+        runtime.resume_debugger_execution(7),
+        Ok(blueice_bluejs::BlueJsPageDebuggerExecutionState::Completed)
+    );
+    let reader = install(
+        &mut runtime,
+        "page:///decorated-throw-reader.js",
+        "globalThis.answer;",
+        false,
+    );
+    assert_eq!(runtime.execute_program(7, reader), Ok(Value::Number(17.0)));
+}
+
+#[test]
+fn iife_static_block_pause_does_not_renew_instruction_fuel() {
+    let source = "function decoSite() {} let Example = (() => { return class Example { static { const decorators = [decoSite]; const value = 1 + 2 + 3 + 4; } }; })(); 42;";
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install(
+            BlueJsSourceIdentity::new("page:///decorated-fuel.js", "sha256:fuel").unwrap(),
+            &BlueJsProgramV1::Script(parse(source).unwrap()),
+        )
+        .unwrap();
+    let installed = registry.get(handle).unwrap();
+    let point = installed
+        .unique_identifier_safe_point(1, "decoSite")
+        .unwrap();
+    assert_eq!(
+        installed.code_units()[point.code_unit.ordinal() as usize].nesting_depth(),
+        2
+    );
+    let code = installed.bytecode();
+    let mut normal_succeeded = false;
+    let mut paused_succeeded = false;
+    for instruction_budget in 1..=512 {
+        let config = VmConfig {
+            instruction_budget,
+            ..VmConfig::default()
+        };
+        let mut normal = Vm::new(config).unwrap();
+        let normal_ok = normal.execute_script(code).is_ok();
+        normal_succeeded |= normal_ok;
+        let mut paused = Vm::new(config).unwrap();
+        let paused_ok = match paused.execute_script_until_nested_debugger_pause(
+            code,
+            point.code_unit.ordinal(),
+            point.bytecode_offset,
+        ) {
+            Ok(VmDebuggerNestedExecutionState::Paused { frame_serial, .. }) => {
+                match paused.resume_debugger_nested_execution(frame_serial) {
+                    Ok(VmDebuggerNestedExecutionState::FrameReturned { .. }) => {
+                        paused.resume_debugger_execution()
+                            == Ok(blueice_bluejs::VmDebuggerExecutionState::Completed)
+                    }
+                    Err(RuntimeError::InstructionLimit) => false,
+                    other => panic!("unexpected nested fuel outcome: {other:?}"),
+                }
+            }
+            Err(RuntimeError::InstructionLimit) => false,
+            other => panic!("unexpected pre-pause fuel outcome: {other:?}"),
+        };
+        paused_succeeded |= paused_ok;
+        assert!(
+            !paused_ok || normal_ok,
+            "pause/resume must not grant a fresh instruction budget of {instruction_budget}"
+        );
+    }
+    assert!(normal_succeeded && paused_succeeded);
+}
+
 fn installed_script(source: &str) -> Bytecode {
     let mut registry = BlueJsProgramRegistry::default();
     let handle = registry

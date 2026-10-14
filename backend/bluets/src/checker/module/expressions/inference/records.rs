@@ -5,9 +5,22 @@
 //! Record literal result inference, including referenced spread fields.
 
 use super::*;
+use crate::parser::NestedFunctionKind;
 
 impl<'a> ModuleChecker<'a> {
     pub(super) fn infer_record(&self, tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
+        self.infer_record_in_context(tokens, scope, None)
+    }
+
+    /// An object literal whose property values are read against the property
+    /// types of `expected`, where it has one of that name, so a bracketed literal
+    /// there can be a tuple and a nested literal a record.
+    pub(in crate::checker::module) fn infer_record_in_context(
+        &self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        expected: Option<&[TypeField]>,
+    ) -> Type {
         let mut fields = Vec::new();
         let mut index = 1usize;
         while index < tokens.len() && !tokens[index].is("}") {
@@ -45,14 +58,50 @@ impl<'a> ModuleChecker<'a> {
                 index = end + usize::from(tokens[end].is(","));
                 continue;
             }
+            if let Some((name, member_end, value, setter)) = self.nested_member(tokens, index) {
+                // A setter only supplies the property type when no getter did.
+                if !(setter && fields.iter().any(|field: &TypeField| field.name == name)) {
+                    insert_inferred_record_field(
+                        &mut fields,
+                        TypeField {
+                            accessor_write_type: None,
+                            method: self
+                                .module
+                                .nested_functions
+                                .get(&tokens[index].start)
+                                .is_some_and(|function| {
+                                    function.kind == NestedFunctionKind::Method
+                                }),
+                            name,
+                            readonly: false,
+                            optional: false,
+                            value,
+                            span: SourceSpan::new(
+                                "<inferred>",
+                                tokens[index].start,
+                                tokens[member_end.saturating_sub(1)].end,
+                            ),
+                        },
+                    );
+                }
+                index = member_end.saturating_add(1);
+                continue;
+            }
             let name = tokens[index].text.clone();
             let (value, value_end) = if tokens.get(index + 1).is_some_and(|token| token.is(":")) {
                 let value_start = index + 2;
                 let Some(value_end) = record_member_end(tokens, value_start) else {
                     return Type::Unknown;
                 };
+                let value_tokens = &tokens[value_start..value_end];
+                let context = expected
+                    .and_then(|fields| fields.iter().find(|field| field.name == name))
+                    .map(|field| &field.value);
                 (
-                    self.infer_expression(&tokens[value_start..value_end], scope),
+                    match context {
+                        Some(context) => self.infer_in_context(value_tokens, scope, context),
+                        None => self.infer_expression(value_tokens, scope),
+                    },
                     value_end,
                 )
             } else if tokens
@@ -69,6 +118,8 @@ impl<'a> ModuleChecker<'a> {
             insert_inferred_record_field(
                 &mut fields,
                 TypeField {
+                    accessor_write_type: None,
+                    method: false,
                     name,
                     readonly: false,
                     optional: false,
@@ -85,7 +136,48 @@ impl<'a> ModuleChecker<'a> {
         Type::Record(fields)
     }
 
-    fn expanded_record_fields(&self, value: Type) -> (Option<Vec<TypeField>>, bool) {
+    /// A structured method, getter or setter member starting at `index`, as
+    /// its property name, the index of the `,` or `}` ending it, the type it
+    /// gives the property (a function type for a method) and whether it is a
+    /// setter.
+    fn nested_member(&self, tokens: &[Token], index: usize) -> Option<(String, usize, Type, bool)> {
+        let nested = self.module.nested_functions.get(&tokens[index].start)?;
+        let end = record_member_end(tokens, index)?;
+        let result = || nested.return_type.clone().unwrap_or(Type::Unknown);
+        let (name, value, setter) = match nested.kind {
+            NestedFunctionKind::Method => (
+                // `async name(..)` starts at the `async` token.
+                tokens[index + usize::from(nested.async_function || nested.generator)]
+                    .text
+                    .clone(),
+                Type::Function {
+                    parameters: nested.parameters.clone(),
+                    result: Box::new(super::super::super::binding::async_result(
+                        result(),
+                        nested.async_function && nested.return_type.is_none(),
+                    )),
+                },
+                false,
+            ),
+            NestedFunctionKind::Getter => (tokens.get(index + 1)?.text.clone(), result(), false),
+            NestedFunctionKind::Setter => (
+                tokens.get(index + 1)?.text.clone(),
+                nested
+                    .parameters
+                    .first()
+                    .and_then(|parameter| parameter.annotation.clone())
+                    .unwrap_or(Type::Unknown),
+                true,
+            ),
+            _ => return None,
+        };
+        Some((name, end, value, setter))
+    }
+
+    pub(in crate::checker::module) fn expanded_record_fields(
+        &self,
+        value: Type,
+    ) -> (Option<Vec<TypeField>>, bool) {
         let mut visited = HashSet::new();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let fields = self.expand_record_fields(value, &mut visited, &mut budget);
@@ -99,8 +191,15 @@ impl<'a> ModuleChecker<'a> {
         budget: &mut TypeExpansionBudget,
     ) -> Option<Vec<TypeField>> {
         match value {
-            Type::Record(fields) => Some(fields),
-            Type::Named { .. } => {
+            Type::Record(fields) | Type::CallableRecord { fields, .. } => Some(fields),
+            Type::IndexedRecord { object, .. } => {
+                self.expand_record_fields(*object, visited, budget)
+            }
+            Type::Named { .. }
+            | Type::Conditional(_)
+            | Type::Mapped(_)
+            | Type::KeyOf(_)
+            | Type::IndexedAccess { .. } => {
                 let expanded =
                     instantiate_named(&value, &self.types, visited, budget, "record spread")?;
                 self.expand_record_fields(expanded, visited, budget)
@@ -136,6 +235,30 @@ impl<'a> ModuleChecker<'a> {
                         .collect(),
                 )
             }
+            Type::Intersection(parts) => {
+                let mut fields: Vec<TypeField> = Vec::new();
+                for part in parts {
+                    if !budget.consume() {
+                        return None;
+                    }
+                    for field in self.expand_record_fields(part, &mut visited.clone(), budget)? {
+                        if let Some(existing) = fields
+                            .iter_mut()
+                            .find(|existing| existing.name == field.name)
+                        {
+                            existing.optional &= field.optional;
+                            existing.readonly |= field.readonly;
+                            if existing.value != field.value {
+                                existing.value =
+                                    Type::Intersection(vec![existing.value.clone(), field.value]);
+                            }
+                        } else {
+                            fields.push(field)
+                        }
+                    }
+                }
+                Some(fields)
+            }
             _ => None,
         }
     }
@@ -167,6 +290,7 @@ fn insert_inferred_record_field(fields: &mut Vec<TypeField>, field: TypeField) {
 
 fn insert_inferred_spread_field(fields: &mut Vec<TypeField>, mut field: TypeField) {
     field.readonly = false;
+    field.accessor_write_type = None;
     if field.optional {
         if let Some(existing) = fields
             .iter_mut()

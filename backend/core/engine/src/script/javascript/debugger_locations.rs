@@ -120,6 +120,17 @@ pub trait PageJavaScriptDebuggerLocations {
         false
     }
 
+    /// Whether this owner can resolve positions in a generation-bound
+    /// compiler-emitted JavaScript artifact. This private support signal is
+    /// not a public debugger grant.
+    fn debugger_emitted_map_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_emitted_paused_root_location_available(&self) -> bool {
+        false
+    }
+
     /// Whether this route can disclose a separately authorized contract
     /// declaration range under receipted contract and source IDs.
     fn debugger_static_metadata_contract_location_available(&self) -> bool {
@@ -171,6 +182,65 @@ pub trait PageJavaScriptDebuggerLocations {
         tab_id: TabId,
         document_generation: u64,
     ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError>;
+
+    /// Looks up an original coordinate only after the owner re-mints and
+    /// verifies the exact child program generation. A future public route
+    /// must separately authorize this source-structure disclosure.
+    fn debugger_emitted_original_position(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerEmittedOriginalPosition>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    fn debugger_emitted_safe_point(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Resolves only a mapped System execute-body token under an exact
+    /// separately installed loader. This core-facing method does not grant
+    /// public debugger access or retain a breakpoint.
+    fn debugger_system_emitted_safe_point(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _loader: JavaScriptPageDebuggerProgram,
+        _emitted: JavaScriptPageDebuggerProgram,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    fn debugger_emitted_paused_root_location(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<
+        (
+            JavaScriptPageDebuggerSafePoint,
+            Option<JavaScriptPageDebuggerEmittedPausedRootLocation>,
+        ),
+        JavaScriptPageDebuggerError,
+    > {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
 
     /// Lists only core-minted opaque metadata identities for one exact public
     /// program generation. It exposes no static metadata payload; source,
@@ -573,6 +643,44 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
+    /// Arms an emitted System execute-body site only through one separately
+    /// installed, exact page-loader generation. This core-facing seam grants
+    /// no public access to either program or its paused stack.
+    fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _loader: JavaScriptPageDebuggerProgram,
+        _emitted: JavaScriptPageDebuggerProgram,
+        _safe_point: JavaScriptPageDebuggerSafePoint,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Returns only a private, exact three-frame System pause after core has
+    /// reminted the emitted and foreign loader programs independently. Public
+    /// grants and same-stream receipts must be checked by a later route.
+    fn debugger_system_stack_snapshot(
+        &mut self,
+        _frame: JavaScriptPageDebuggerFrame,
+        _loader: JavaScriptPageDebuggerProgram,
+        _max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerSystemStackSnapshot, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Projects only the exact three-frame System pause through a retained
+    /// emitted artifact. This private seam does not grant any public source
+    /// location; a later debugger stream must receipt both programs.
+    fn debugger_system_stack_locations(
+        &mut self,
+        _frame: JavaScriptPageDebuggerFrame,
+        _loader: JavaScriptPageDebuggerProgram,
+        _max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerSystemStackLocations, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
     /// `None` means this live program is not currently in a nested frame;
     /// ordinary root/pending/completed state remains separately queryable.
     fn debugger_nested_execution_state(
@@ -732,6 +840,15 @@ pub trait PageJavaScriptDebuggerLocations {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn system_emitted_lookup_is_default_denied() {
+        let mut debugger = MinimalDebugger;
+        assert_eq!(
+            debugger.debugger_system_emitted_safe_point(tab(), 1, program(), program(), 0, 0),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+    }
 
     /// Implements only this trait's 5 required methods, leaving every
     /// optional method at its trait default -- the same "test doubles must
@@ -1163,6 +1280,24 @@ mod tests {
         );
         assert_eq!(
             debugger.arm_debugger_nested_safe_point_breakpoint(tab(), 1, 1, 1, 0, 0),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.arm_debugger_system_nested_breakpoint(
+                tab(),
+                1,
+                program(),
+                program(),
+                safe_point(),
+            ),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_system_stack_snapshot(frame(), program(), 1),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_system_stack_locations(frame(), program(), 1),
             Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
         );
         assert_eq!(

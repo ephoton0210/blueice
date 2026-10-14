@@ -12,13 +12,14 @@
 
 use crate::{
     script::javascript::{
-        JavaScriptPageDebuggerError, JavaScriptPageDebuggerExceptionLocationTarget,
-        JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
-        JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerLinkedSpanAccess,
-        JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerLinkedStackSnapshot,
-        JavaScriptPageDebuggerLinkedValueTarget, JavaScriptPageDebuggerNestedExecutionState,
-        JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
-        JavaScriptPageDebuggerScopeEntry, JavaScriptPageDebuggerStaticMetadata,
+        JavaScriptPageDebuggerEmittedPausedRootLocation, JavaScriptPageDebuggerError,
+        JavaScriptPageDebuggerExceptionLocationTarget, JavaScriptPageDebuggerExecutionState,
+        JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerLinkedExecutionState,
+        JavaScriptPageDebuggerLinkedSpanAccess, JavaScriptPageDebuggerLinkedStackFrame,
+        JavaScriptPageDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerLinkedValueTarget,
+        JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
+        JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
+        JavaScriptPageDebuggerStaticMetadata,
         JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
         JavaScriptPageDebuggerStaticMetadataContractTarget,
         JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
@@ -39,6 +40,11 @@ use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
     DebuggerErrorCode, DebuggerExceptionLocation, DebuggerExecutionState, DebuggerFrame,
+    DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget,
+    DebuggerGeneratedLinkedStackLocations, DebuggerGeneratedOriginalPosition,
+    DebuggerGeneratedPausedLocation, DebuggerGeneratedPausedSourceLocation,
+    DebuggerGeneratedStepTarget, DebuggerGeneratedSystemBreakpoint,
+    DebuggerGeneratedSystemBreakpointTarget, DebuggerGeneratedSystemStackLocations,
     DebuggerLinkedArmTarget, DebuggerLinkedExecutionState, DebuggerLinkedFrame,
     DebuggerLinkedScopeSnapshot, DebuggerLinkedScopeTarget, DebuggerLinkedStackCoordinates,
     DebuggerLinkedStackCoordinatesTarget, DebuggerLinkedStackFrame, DebuggerLinkedStackSnapshot,
@@ -411,6 +417,7 @@ impl DebuggerRequestReceiver {
                 | DebuggerReply::RootSafePointBreakpointArmed { .. }
                 | DebuggerReply::NestedSafePointBreakpointArmed { .. }
                 | DebuggerReply::LinkedNestedSafePointBreakpointArmed { .. }
+                | DebuggerReply::GeneratedSystemBreakpointArmed(..)
                 | DebuggerReply::ExecutionResumed { .. }
                 | DebuggerReply::ExecutionStepRequested { .. }
                 | DebuggerReply::NestedStepRequested { .. }
@@ -457,6 +464,12 @@ impl DebuggerRequestReceiver {
                 DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target } => {
                     Some(target.source.metadata.program.realm.tab_id)
                 }
+                DebuggerRequest::ArmGeneratedBreakpoint { target } => {
+                    Some(target.program.realm.tab_id)
+                }
+                DebuggerRequest::ArmGeneratedSystemBreakpoint { target } => {
+                    Some(target.emitted.program.realm.tab_id)
+                }
                 _ => None,
             };
             let requests_execution_transition = matches!(
@@ -466,9 +479,12 @@ impl DebuggerRequestReceiver {
                     | DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
                     | DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { .. }
                     | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
+                    | DebuggerRequest::ArmGeneratedBreakpoint { .. }
+                    | DebuggerRequest::ArmGeneratedSystemBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
                     | DebuggerRequest::StepRootInstruction { .. }
                     | DebuggerRequest::StepNestedInstruction { .. }
+                    | DebuggerRequest::StepGeneratedInstruction { .. }
                     | DebuggerRequest::ResumeNestedExecution { .. }
                     | DebuggerRequest::ResumeLinkedNestedExecution { .. }
                     | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
@@ -519,6 +535,7 @@ impl DebuggerRequestReceiver {
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
                         | DebuggerReply::NestedSafePointBreakpointArmed { .. }
                         | DebuggerReply::LinkedNestedSafePointBreakpointArmed { .. }
+                        | DebuggerReply::GeneratedSystemBreakpointArmed(..)
                         | DebuggerReply::ExecutionResumed { .. }
                         | DebuggerReply::ExecutionStepRequested { .. }
                         | DebuggerReply::NestedStepRequested { .. }
@@ -533,6 +550,7 @@ impl DebuggerRequestReceiver {
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
                         | DebuggerReply::NestedSafePointBreakpointArmed { .. }
                         | DebuggerReply::LinkedNestedSafePointBreakpointArmed { .. }
+                        | DebuggerReply::GeneratedSystemBreakpointArmed(..)
                 ) {
                     let mut slot = self.admission_hold.borrow_mut();
                     if slot.as_ref().is_some_and(|hold| {
@@ -681,6 +699,24 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. } => {
             unavailable_static_metadata_source_breakpoint_arm()
         }
+        DebuggerRequest::ResolveGeneratedBreakpoint { .. } => unavailable_generated_breakpoint(),
+        DebuggerRequest::ArmGeneratedBreakpoint { .. } => unavailable_generated_breakpoint_arm(),
+        DebuggerRequest::ResolveGeneratedSystemBreakpoint { .. } => {
+            unavailable_generated_breakpoint()
+        }
+        DebuggerRequest::ArmGeneratedSystemBreakpoint { .. } => {
+            unavailable_generated_breakpoint_arm()
+        }
+        DebuggerRequest::GetGeneratedPausedLocation { .. } => {
+            unavailable_generated_paused_location()
+        }
+        DebuggerRequest::GetGeneratedLinkedStackLocations { .. } => {
+            unavailable_generated_paused_location()
+        }
+        DebuggerRequest::GetGeneratedSystemStackLocations { .. } => {
+            unavailable_generated_paused_location()
+        }
+        DebuggerRequest::StepGeneratedInstruction { .. } => unavailable_generated_paused_location(),
         DebuggerRequest::DescribeStaticMetadataContractLocation { .. } => {
             unavailable_static_metadata_contract_location()
         }
@@ -836,7 +872,9 @@ fn handle_debugger_request_with_child_locations_and_pause(
         DebuggerRequest::DescribeCapabilities { realm } => {
             describe_child_location_capabilities(tabs, locations, metadata_session, realm)
         }
-        DebuggerRequest::ListPrograms { realm } => list_child_programs(tabs, locations, realm),
+        DebuggerRequest::ListPrograms { realm } => {
+            list_child_programs(tabs, locations, metadata_session, realm)
+        }
         DebuggerRequest::ListStaticMetadata { program } => {
             list_child_static_metadata(tabs, locations, metadata_session, program)
         }
@@ -910,6 +948,35 @@ fn handle_debugger_request_with_child_locations_and_pause(
         }
         DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target } => {
             arm_child_static_metadata_source_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::ResolveGeneratedBreakpoint { target } => {
+            resolve_child_generated_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::ArmGeneratedBreakpoint { target } => {
+            arm_child_generated_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::ResolveGeneratedSystemBreakpoint { target } => {
+            resolve_child_generated_system_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::ArmGeneratedSystemBreakpoint { target } => {
+            arm_child_generated_system_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::GetGeneratedPausedLocation { program } => {
+            child_generated_paused_location(tabs, locations, metadata_session, program)
+        }
+        DebuggerRequest::GetGeneratedLinkedStackLocations { expected_stack } => {
+            child_generated_linked_stack_locations(
+                tabs,
+                locations,
+                metadata_session,
+                expected_stack,
+            )
+        }
+        DebuggerRequest::GetGeneratedSystemStackLocations { frame, loader } => {
+            child_generated_system_stack_locations(tabs, locations, metadata_session, frame, loader)
+        }
+        DebuggerRequest::StepGeneratedInstruction { target } => {
+            step_child_generated_instruction(tabs, locations, metadata_session, target)
         }
         DebuggerRequest::DescribeStaticMetadataContractLocation { target } => {
             describe_child_static_metadata_contract_location(
@@ -1122,6 +1189,8 @@ mod child_metadata_details;
 use child_metadata_details::*;
 mod child_control;
 use child_control::*;
+mod child_generated;
+use child_generated::*;
 mod child_inspection;
 use child_inspection::*;
 mod generic_routes;

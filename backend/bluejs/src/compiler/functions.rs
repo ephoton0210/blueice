@@ -993,6 +993,7 @@ impl Compiler {
             max_metadata_entries: self.max_metadata_entries,
             max_list_items: self.max_list_items,
             function: true,
+            current_root_statement_index: self.current_root_statement_index,
             local_scope: 1,
             // A function created inside `with` resolves its free names
             // through the same with objects (captured when it is created);

@@ -1,0 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+enum E { A, B, C }
+const a: E = E.B;
+const n: number = E.A;
+const s: string = E[0];
+const back: string = E[a];
+const byName: E = E["C"];

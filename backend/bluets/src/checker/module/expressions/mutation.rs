@@ -13,16 +13,23 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let [base, dot, property] = tokens else {
+        let [receiver @ .., dot, property] = tokens else {
             return;
         };
-        if base.kind != TokenKind::Identifier && !base.is("this")
+        let Some(base) = receiver.first() else {
+            return;
+        };
+        if (receiver.len() == 1 && base.kind != TokenKind::Identifier && !base.is("this"))
+            || (receiver.len() > 1 && constructor_call_parts(receiver).is_none())
             || !dot.is(".")
             || !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword)
         {
             return;
         }
-        let value = scope.get(&base.text).cloned().unwrap_or(Type::Unknown);
+        let value = self.infer_expression(receiver, scope);
+        if receiver.len() == 1 && self.flow_nullish_error(base, &value) {
+            return;
+        }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         match property_type(
             &value,
@@ -32,6 +39,9 @@ impl<'a> ModuleChecker<'a> {
             &mut budget,
         ) {
             PropertyType::Found { .. } | PropertyType::Indeterminate => {}
+            // A private or protected member is diagnosed, with its accessibility,
+            // by the restricted-member scan over the whole expression.
+            PropertyType::Missing if self.hidden_member(&value, &property.text).is_some() => {}
             PropertyType::Missing => {
                 let direct_span = SourceSpan::new(&span.module, base.start, property.end);
                 let diagnostic_span = if self.is_bound_class_constructor_value(&base.text, scope)
@@ -42,14 +52,11 @@ impl<'a> ModuleChecker<'a> {
                 } else {
                     span
                 };
-                self.type_error(
+                self.missing_property_error(
                     diagnostic_span,
-                    format!(
-                        "property `{}` does not exist on type `{}`",
-                        property.text,
-                        type_label(&value)
-                    ),
-                    DiagnosticCode::TypeMismatch,
+                    &value,
+                    &property.text,
+                    (receiver.len() == 1).then_some(base.text.as_str()),
                 );
             }
             PropertyType::Exhausted => self.type_error(
@@ -106,7 +113,7 @@ impl<'a> ModuleChecker<'a> {
             }
             return;
         };
-        match property_type(
+        match property_write_type(
             &owner,
             property,
             &self.types,
@@ -117,7 +124,13 @@ impl<'a> ModuleChecker<'a> {
                 value: expected,
                 readonly,
             } => {
-                if readonly {
+                let own_constructor_field = !mutation.operator.is("delete")
+                    && matches!(strip_outer_parentheses(mutation.receiver), [receiver] if receiver.is("this"))
+                    && self
+                        .constructor_readonly_fields
+                        .as_ref()
+                        .is_some_and(|fields| fields.contains(property));
+                if readonly && !own_constructor_field {
                     self.type_error(
                         span,
                         format!("cannot mutate readonly property `{property}`"),
@@ -128,7 +141,10 @@ impl<'a> ModuleChecker<'a> {
                 if !mutation.operator.is("=") {
                     return;
                 }
-                let actual = self.infer_expression(mutation.value, scope);
+                if self.check_fresh_properties(mutation.value, &expected, scope, span) {
+                    return;
+                }
+                let actual = self.infer_in_context(mutation.value, scope, &expected);
                 if !self.is_assignable_bounded(&actual, &expected, span) {
                     self.type_error(
                         span,
@@ -142,6 +158,7 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
             }
+            PropertyType::Missing if self.hidden_member(&owner, property).is_some() => {}
             PropertyType::Missing => self.type_error(
                 span,
                 format!(
@@ -160,6 +177,97 @@ impl<'a> ModuleChecker<'a> {
                 DiagnosticCode::ResourceLimit,
             ),
             PropertyType::Indeterminate => {}
+        }
+    }
+
+    /// `name = value` for a variable declared with a type, and `array[i] = value`,
+    /// read against the declared type, so a bracketed or braced literal on the
+    /// right takes its shape from the target as it does in an initializer.
+    pub(in crate::checker::module) fn check_variable_assignment(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let tokens = strip_outer_parentheses(tokens);
+        let Some((target, operator, value)) = top_level_binary_parts(tokens, &["="], |_| false)
+        else {
+            return;
+        };
+        if !operator.is("=") || value.is_empty() {
+            return;
+        }
+        let (expected, what) = match target {
+            [name] if name.kind == TokenKind::Identifier => {
+                if !(self.annotated_names.contains(&name.text)
+                    || self.module.id.ends_with(".js") && self.check_javascript == Some(true))
+                {
+                    return;
+                }
+                let Some(expected) = scope.get(&name.text) else {
+                    return;
+                };
+                (expected.clone(), format!("variable `{}`", name.text))
+            }
+            _ => {
+                let Some((receiver, None)) = member_access_target(target) else {
+                    return;
+                };
+                let Some(open) = target.iter().rposition(|token| token.is("[")) else {
+                    return;
+                };
+                let index = &target[open + 1..target.len() - 1];
+                let owner = self.infer_expression(receiver, scope);
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                let mut visited = HashSet::new();
+                let mut owner = owner;
+                while let Some(expanded) = instantiate_named(
+                    &owner,
+                    &self.types,
+                    &mut visited,
+                    &mut budget,
+                    "element assignment",
+                ) {
+                    owner = expanded;
+                }
+                match (&owner, index) {
+                    (Type::Array(item), _) => ((**item).clone(), "an array element".to_string()),
+                    (Type::Tuple(elements), [literal])
+                        if literal.kind == TokenKind::Number
+                            && elements
+                                .iter()
+                                .all(|element| !element.rest && !element.optional) =>
+                    {
+                        let Some(position) = literal.text.parse::<usize>().ok() else {
+                            return;
+                        };
+                        let Some(element) = elements.get(position) else {
+                            return;
+                        };
+                        (element.annotation.clone(), "a tuple element".to_string())
+                    }
+                    _ => return,
+                }
+            }
+        };
+        if matches!(expected, Type::Unknown | Type::Any) {
+            return;
+        }
+        if self.check_fresh_properties(value, &expected, scope, span) {
+            return;
+        }
+        let actual = self.infer_in_context(value, scope, &expected);
+        if !self.is_assignable_bounded(&actual, &expected, span) {
+            self.type_error(
+                span,
+                format!(
+                    "assignment has type `{}`, which is not assignable to {what} of type `{}`",
+                    type_label(&actual),
+                    type_label(&expected)
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+            self.explain_last_type_pair(&actual, &expected);
         }
     }
 
@@ -277,7 +385,13 @@ impl<'a> ModuleChecker<'a> {
                             }
                         }
                     };
-                if readonly {
+                let own_constructor_field = !operator.is("delete")
+                    && matches!(strip_outer_parentheses(receiver), [receiver] if receiver.is("this"))
+                    && self
+                        .constructor_readonly_fields
+                        .as_ref()
+                        .is_some_and(|fields| property.is_some_and(|name| fields.contains(name)));
+                if readonly && !own_constructor_field {
                     let mutation_span = SourceSpan::new(
                         &span.module,
                         target
@@ -306,11 +420,11 @@ impl<'a> ModuleChecker<'a> {
     }
 }
 
-struct MemberMutation<'a> {
-    receiver: &'a [Token],
-    property: Option<&'a str>,
-    operator: &'a Token,
-    value: &'a [Token],
+pub(super) struct MemberMutation<'a> {
+    pub(super) receiver: &'a [Token],
+    pub(super) property: Option<&'a str>,
+    pub(super) operator: &'a Token,
+    pub(super) value: &'a [Token],
 }
 
 const MEMBER_ASSIGNMENT_OPERATORS: &[&str] = &[
@@ -358,7 +472,7 @@ pub(in crate::checker::module) fn member_access_target(
     None
 }
 
-fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
+pub(super) fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
     let (target, operator, value) = match tokens {
         [operator, target @ ..]
             if operator.is("++") || operator.is("--") || operator.is("delete") =>
@@ -487,31 +601,4 @@ pub(super) fn unescaped_property_name(text: &str) -> Option<&str> {
                 .and_then(|value| value.strip_suffix('"'))
         })?;
     (!value.contains('\\')).then_some(value)
-}
-
-pub(in crate::checker::module) fn contains_readonly_member(
-    value: &Type,
-    aliases: &BTreeMap<String, TypeDefinition>,
-    visited: &mut HashSet<String>,
-    budget: &mut TypeExpansionBudget,
-) -> Result<bool, ()> {
-    match value {
-        Type::Record(fields) => Ok(fields.iter().any(|field| field.readonly)),
-        Type::Named { .. } => {
-            match instantiate_named(value, aliases, visited, budget, "readonly property") {
-                Some(value) => contains_readonly_member(&value, aliases, visited, budget),
-                None if budget.exhausted => Err(()),
-                None => Ok(false),
-            }
-        }
-        Type::Union(parts) | Type::Intersection(parts) => {
-            for part in parts {
-                if contains_readonly_member(part, aliases, visited, budget)? {
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        }
-        _ => Ok(false),
-    }
 }

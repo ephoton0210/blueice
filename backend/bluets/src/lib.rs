@@ -19,12 +19,20 @@
 
 mod authorized_loader;
 mod checker;
+mod checking_options;
 mod compiler;
 mod contracts;
 mod debug_info;
 mod diagnostic;
 mod emitter;
+mod enum_eval;
+pub mod jsx;
+mod namespace_analysis;
+pub mod package_resolution;
 mod parser;
+mod performance;
+pub mod remote_declarations;
+pub mod standard_library;
 mod strict_boundaries;
 mod syntax;
 
@@ -33,9 +41,11 @@ pub use authorized_loader::{
     AuthorizedModuleResolution,
 };
 pub use checker::{CheckedModule, CheckedProject, Symbol, SymbolKind, Type};
+pub use checking_options::CheckingOptions;
 pub use compiler::{
-    compile, CompilerLimits, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult,
-    MapLoader, ModuleLoader, ModuleSource, Project, RuntimePolicy, StrictRuntimeBoundary,
+    compile, is_external_library_module, CompilerLimits, CompilerOptions, EcmaTarget,
+    IncrementalCompiler, IncrementalResult, JsxMode, MapLoader, ModuleKind, ModuleLoader,
+    ModuleSource, NewLine, Project, RuntimePolicy, StrictRuntimeBoundary,
 };
 pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,
@@ -45,19 +55,36 @@ pub use debug_info::{
     source_locations_for_spans, BlueTsDebugInfo, ContractId, DebugContract, DebugSource,
     DebugSourceLocation, DebugSourcePosition, DebugSymbol, DebugType, SourceId, SymbolId, TypeId,
 };
-pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
+pub use diagnostic::{
+    Diagnostic, DiagnosticCode, Severity, SourceSpan, TypeScriptDiagnostic, TypeScriptPosition,
+    TypeScriptRelatedInformation, DIAGNOSTICS_VERSION,
+};
+pub use emitter::javascript_specifier as emitted_javascript_specifier;
 pub use emitter::{
     BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
-    SourceMap,
+    SourceMap, SourceMapLookupError, SourceMapOriginalPosition, CLASS_HELPER_V1_VERSION,
+    DECORATOR_HELPER_V1_VERSION, LEGACY_DECORATOR_HELPER_V1_VERSION, TARGET_HELPER_V1_VERSION,
+};
+pub use enum_eval::{evaluate_enums, evaluate_enums_in, EnumValue, EvaluatedEnum, EvaluatedMember};
+pub use namespace_analysis::{
+    has_runtime_values, nested_spans, refuse_shadowing_of, rewrite_declaration, BodyInput,
+    NamespaceExports,
 };
 pub use parser::{
-    parse_module, ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMemberShell,
-    ClassMethod, ClassMethodGroup, Declaration, FunctionBodyItem, FunctionCatchClause,
-    FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, FunctionTryStatement,
-    FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module, Parameter,
-    ParserLimits, RawDeclaration, TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration,
-    TypeParameter, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
+    parse_module, AmbientDeclaration, BindingPattern, ClassAccessor, ClassConstructor,
+    ClassDeclaration, ClassExpression, ClassField, ClassMemberKind, ClassMemberShell, ClassMethod,
+    ClassMethodGroup, ConditionalType, Declaration, Decorator, ElementBinding, EnumDeclaration,
+    EnumMember, FunctionBodyItem, FunctionCatchClause, FunctionDeclaration, FunctionElseBranch,
+    FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, ImportAttribute,
+    ImportAttributes, ImportDeclaration, IndexSignature, InterfaceDeclaration, MappedModifier,
+    MappedType, Module, NamespaceDeclaration, ObjectBinding, Parameter, ParameterProperty,
+    ParameterPropertyInsertion, ParserLimits, RawDeclaration, TemplateLiteralType,
+    TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, TypePredicate,
+    TypeSignature, UmdExportDeclaration, ValueExportBinding, ValueExportDeclaration,
+    VariableBindingPattern, VariableDeclaration, VariableKind, Variance, Visibility,
 };
+pub use performance::CompilerPerformance;
+pub use syntax::parse_jsx;
 pub use syntax::{lex, Token, TokenKind};
 
 /// The pinned BlueTS language matrix exposed in emitted fingerprints and
@@ -75,6 +102,7 @@ pub struct Compilation {
     pub debug_info: Option<BlueTsDebugInfo>,
     pub diagnostics: Vec<Diagnostic>,
     pub output: Option<BuildOutput>,
+    pub performance: CompilerPerformance,
 }
 
 impl Compilation {

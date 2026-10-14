@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": [
+      "ES2020"
+    ],
+    "strict": true,
+    "noImplicitThis": false,
+    "declaration": true,
+    "noEmitOnError": true,
+    "useDefineForClassFields": false,
+    "newLine": "LF",
+    "outDir": "out",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "files": [
+    "main.ts"
+  ]
+}

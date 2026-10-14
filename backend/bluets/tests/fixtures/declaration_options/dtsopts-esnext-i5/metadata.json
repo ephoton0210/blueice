@@ -1,0 +1,14 @@
+{
+  "id": "dtsopts-esnext-i5",
+  "form": "i5",
+  "options": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "outDir": "out",
+    "isolatedDeclarations": true
+  }
+}

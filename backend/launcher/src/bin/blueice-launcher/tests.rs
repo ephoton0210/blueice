@@ -25,6 +25,199 @@ fn bounded_values_owner_policy_requires_an_explicit_debugger_socket() {
 }
 
 #[test]
+fn generated_owner_policies_are_independent_and_require_a_debugger_socket() {
+    for flag in [
+        "--debugger-generated-breakpoint",
+        "--debugger-generated-paused-location",
+    ] {
+        assert_eq!(
+            args(&[flag]),
+            Err(format!("{flag} requires --debugger-socket"))
+        );
+    }
+    let parsed = args(&[
+        "--debugger-socket",
+        "/tmp/debugger.sock",
+        "--debugger-generated-paused-location",
+    ])
+    .unwrap();
+    assert!(!parsed.debugger_generated_breakpoint);
+    assert!(parsed.debugger_generated_paused_location);
+    assert!(!parsed.debugger_static_metadata_inventory);
+}
+
+#[test]
+fn emitted_bluets_classic_requires_supervised_child_opt_in() {
+    assert_eq!(
+        args(&["--out-of-process-bluejs-emitted-blue-ts-classic"]),
+        Err(
+            "--out-of-process-bluejs-emitted-blue-ts-classic requires --out-of-process-bluejs"
+                .to_string()
+        )
+    );
+    let parsed = args(&[
+        "--out-of-process-bluejs",
+        "--out-of-process-bluejs-emitted-blue-ts-classic",
+    ])
+    .unwrap();
+    assert!(parsed.emitted_blue_ts_classic);
+}
+
+#[test]
+fn classic_page_console_ambient_is_owner_only_and_conflicts_with_system() {
+    let flag = "--out-of-process-bluejs-emitted-blue-ts-classic-page-console-ambient";
+    assert_eq!(
+        args(&[flag]),
+        Err(
+            "--out-of-process-bluejs-emitted-blue-ts-classic requires --out-of-process-bluejs"
+                .to_string()
+        )
+    );
+    let selected = args(&["--out-of-process-bluejs", flag]).unwrap();
+    assert!(selected.emitted_blue_ts_classic);
+    assert!(selected.emitted_blue_ts_classic_page_console_ambient);
+    assert!(!selected.emitted_blue_ts_module);
+    assert!(!selected.emitted_blue_ts_module_page_console_ambient);
+    assert_eq!(
+        args(&[
+            "--out-of-process-bluejs",
+            flag,
+            "--out-of-process-bluejs-emitted-blue-ts-classic-system",
+        ]),
+        Err("System emission already owns its console ambient".to_string())
+    );
+}
+
+#[test]
+fn legacy_metadata_profile_is_owner_only_and_implies_emitted_classic() {
+    assert_eq!(
+        args(&["--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata"]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata requires --out-of-process-bluejs".to_string())
+    );
+    let parsed = args(&[
+        "--out-of-process-bluejs",
+        "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata",
+    ])
+    .unwrap();
+    assert!(parsed.emitted_blue_ts_classic);
+    assert!(parsed.emitted_blue_ts_classic_legacy_metadata);
+    assert!(!parsed.emitted_blue_ts_module);
+}
+
+#[test]
+fn legacy_decorators_without_metadata_are_separate_and_owner_only() {
+    assert_eq!(
+        args(&["--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators"]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators requires --out-of-process-bluejs".to_string())
+    );
+    assert_eq!(
+        args(&[
+            "--out-of-process-bluejs",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata",
+        ]),
+        Err("legacy decorator emission profiles are mutually exclusive".to_string())
+    );
+    let parsed = args(&[
+        "--out-of-process-bluejs",
+        "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators",
+    ])
+    .unwrap();
+    assert!(parsed.emitted_blue_ts_classic);
+    assert!(parsed.emitted_blue_ts_classic_legacy_decorators);
+    assert!(!parsed.emitted_blue_ts_classic_legacy_metadata);
+    assert!(!parsed.emitted_blue_ts_module);
+}
+
+#[test]
+fn es5_emission_is_owner_only_and_excludes_legacy_profiles() {
+    assert_eq!(
+        args(&["--out-of-process-bluejs-emitted-blue-ts-classic-es5"]),
+        Err(
+            "--out-of-process-bluejs-emitted-blue-ts-classic-es5 requires --out-of-process-bluejs"
+                .to_string()
+        )
+    );
+    assert_eq!(
+        args(&[
+            "--out-of-process-bluejs",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-es5",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators",
+        ]),
+        Err("emitted classic compiler profiles are mutually exclusive".to_string())
+    );
+    let parsed = args(&[
+        "--out-of-process-bluejs",
+        "--out-of-process-bluejs-emitted-blue-ts-classic-es5",
+    ])
+    .unwrap();
+    assert!(parsed.emitted_blue_ts_classic);
+    assert!(parsed.emitted_blue_ts_classic_es5);
+    assert!(!parsed.emitted_blue_ts_classic_legacy_decorators);
+    assert!(!parsed.emitted_blue_ts_classic_legacy_metadata);
+    assert!(!parsed.emitted_blue_ts_module);
+}
+
+#[test]
+fn system_wrapper_emission_is_owner_only_and_excludes_other_profiles() {
+    assert_eq!(
+        args(&["--out-of-process-bluejs-emitted-blue-ts-classic-system"]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic-system requires --out-of-process-bluejs".to_string())
+    );
+    assert_eq!(
+        args(&[
+            "--out-of-process-bluejs",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-system",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-es5",
+        ]),
+        Err("emitted classic compiler profiles are mutually exclusive".to_string())
+    );
+    let parsed = args(&[
+        "--out-of-process-bluejs",
+        "--out-of-process-bluejs-emitted-blue-ts-classic-system",
+    ])
+    .unwrap();
+    assert!(parsed.emitted_blue_ts_classic);
+    assert!(parsed.emitted_blue_ts_classic_system);
+    assert!(!parsed.emitted_blue_ts_classic_es5);
+    assert!(!parsed.emitted_blue_ts_module);
+}
+
+#[test]
+fn emitted_bluets_module_requires_supervised_child_opt_in() {
+    assert_eq!(
+        args(&["--out-of-process-bluejs-emitted-blue-ts-module"]),
+        Err(
+            "--out-of-process-bluejs-emitted-blue-ts-module requires --out-of-process-bluejs"
+                .to_string()
+        )
+    );
+    let parsed = args(&[
+        "--out-of-process-bluejs",
+        "--out-of-process-bluejs-emitted-blue-ts-module",
+    ])
+    .unwrap();
+    assert!(parsed.emitted_blue_ts_module);
+    assert!(!parsed.emitted_blue_ts_classic);
+    assert!(!parsed.emitted_blue_ts_module_page_console_ambient);
+    assert_eq!(
+        args(&["--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient"]),
+        Err(
+            "--out-of-process-bluejs-emitted-blue-ts-module requires --out-of-process-bluejs"
+                .to_string()
+        )
+    );
+    let selected = args(&[
+        "--out-of-process-bluejs",
+        "--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient",
+    ])
+    .unwrap();
+    assert!(selected.emitted_blue_ts_module);
+    assert!(selected.emitted_blue_ts_module_page_console_ambient);
+    assert!(!selected.emitted_blue_ts_classic);
+}
+
+#[test]
 fn owner_catalog_requires_a_compiler_endpoint() {
     assert!(args(&["--compiler-catalog-file", "/tmp/catalog.json"]).is_err());
     let parsed = args(&[
@@ -273,11 +466,21 @@ fn every_flag_is_parsed() {
             owned_gatekeeper_socket: None,
             out_of_process_bluejs: true,
             page_dom_bindings: false,
+            emitted_blue_ts_classic: false,
+            emitted_blue_ts_classic_page_console_ambient: false,
+            emitted_blue_ts_classic_es5: false,
+            emitted_blue_ts_classic_system: false,
+            emitted_blue_ts_classic_legacy_decorators: false,
+            emitted_blue_ts_classic_legacy_metadata: false,
+            emitted_blue_ts_module: false,
+            emitted_blue_ts_module_page_console_ambient: false,
             compiler_mcp_socket: Some(PathBuf::from("/tmp/compiler-mcp.sock")),
             compiler_catalog_file: None,
             page_http_policy_file: None,
             debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
             debugger_bounded_values: false,
+            debugger_generated_breakpoint: false,
+            debugger_generated_paused_location: false,
             debugger_static_metadata_inventory: true,
             debugger_static_metadata_summary: true,
             debugger_static_metadata_source_inventory: true,

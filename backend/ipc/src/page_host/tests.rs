@@ -20,6 +20,9 @@ fn document() -> PageHostDocument {
             document_origin: "https://example.test".to_string(),
         },
         debugger_execution_control: true,
+        emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
+        emitted_module_page_console_ambient: false,
+        emitted_classic_page_console_ambient: false,
         scripts: vec![PageHostScript {
             ordinal: 0,
             language: PageHostScriptLanguage::JavaScript,
@@ -78,6 +81,13 @@ fn requests_and_replies_round_trip_over_a_real_socket() {
         },
         PageHostRequest::SynchronizeDocument {
             document: document(),
+        },
+        PageHostRequest::SynchronizeDocument {
+            document: PageHostDocument {
+                emitted_module_page_console_ambient: true,
+                emitted_classic_page_console_ambient: true,
+                ..document()
+            },
         },
         PageHostRequest::DispatchClick {
             tab_id: 7,
@@ -1123,6 +1133,8 @@ fn private_script_position_requires_a_bounded_bluets_rejection() {
     report.source_position.as_mut().unwrap().end = PAGE_HOST_REPORT_POSITION_MAX_OFFSET + 1;
     assert!(!report.is_well_formed());
     report.source_position.as_mut().unwrap().end = 2;
+    report.language = PageHostScriptLanguage::BlueTsEmitted;
+    assert!(report.is_well_formed());
     report.language = PageHostScriptLanguage::JavaScript;
     assert!(!report.is_well_formed());
     report.language = PageHostScriptLanguage::BlueTs;

@@ -98,8 +98,8 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }
     );
-    // Reserve the next document explicitly; discovery must not race the
-    // session's ordinary idle execution turn on a loaded test host.
+    // Reserve admission before navigation so scheduler timing cannot run the
+    // fixture while the peer discovers and rejects invalid breakpoint targets.
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -253,6 +253,9 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
             ..
         }
     ));
+    // Cross idle scheduler turns deliberately: the invalid child arm must not
+    // release the negotiated document hold before a valid root arm arrives.
+    thread::sleep(Duration::from_millis(100));
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -342,8 +345,8 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
 
     // A replacement realm must make every old target stale before it can
     // affect the pending module declaration in the successor document.
-    // Reserve the next document explicitly; discovery must not race the
-    // session's ordinary idle execution turn on a loaded test host.
+    // Reserve admission before navigation so scheduler timing cannot run the
+    // fixture while the peer discovers and rejects invalid breakpoint targets.
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -416,19 +419,31 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
             .expect("module fixture must expose a root safe-point inventory"),
         other => panic!("expected module debugger safe points, got {other:?}"),
     };
-    assert!(matches!(
+    let module_root_reply = debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
+            safe_point: module_safe_point,
+        },
+        PAGE_SECRET,
+    );
+    assert!(
+        matches!(
+            module_root_reply,
+            blueice_ipc::debugger::DebuggerReply::Error {
+                code: blueice_ipc::debugger::DebuggerErrorCode::InvalidSafePoint,
+                ..
+            }
+        ),
+        "module root continuation must be refused: {module_root_reply:?}"
+    );
+    assert_eq!(
         debugger_request(
             &mut debugger,
-            &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
-                safe_point: module_safe_point,
-            },
+            &blueice_ipc::debugger::DebuggerRequest::ReleaseNextDocumentHold { tab_id: 1 },
             PAGE_SECRET,
         ),
-        blueice_ipc::debugger::DebuggerReply::Error {
-            code: blueice_ipc::debugger::DebuggerErrorCode::InvalidSafePoint,
-            ..
-        }
-    ));
+        blueice_ipc::debugger::DebuggerReply::NextDocumentHoldReleased { tab_id: 1 }
+    );
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();

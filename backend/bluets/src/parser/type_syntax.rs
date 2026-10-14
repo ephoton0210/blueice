@@ -4,29 +4,77 @@
 
 //! Type expressions and common parser cursor operations.
 
+#[path = "type_syntax/callable_objects.rs"]
+mod callable_objects;
+#[path = "type_syntax/operators.rs"]
+mod operators;
+
 use super::runtime_syntax::*;
 use super::*;
 
 impl Parser {
+    pub(super) fn reject_receiver_parameters(
+        &mut self,
+        parameters: &[Parameter],
+        code: u32,
+        message: &str,
+    ) -> bool {
+        let mut found = false;
+        for parameter in parameters.iter().filter(|p| p.name == "this") {
+            found = true;
+            self.diagnostics.push(
+                Diagnostic::error(DiagnosticCode::ParseError, parameter.span.clone(), message)
+                    .with_typescript(code, Vec::new()),
+            );
+        }
+        found
+    }
+
+    pub(super) fn parse_parameter_name(&mut self, message: &str) -> String {
+        if self.consume("this") {
+            "this".to_string()
+        } else if self.consume("object") {
+            "object".to_string()
+        } else {
+            self.require_identifier(message)
+        }
+    }
+
+    pub(super) fn check_receiver_parameter_position(&mut self, index: usize, span: SourceSpan) {
+        if index != 0 {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::ParseError,
+                    span,
+                    "A 'this' parameter must be the first parameter.",
+                )
+                .with_typescript(2680, Vec::new()),
+            );
+        }
+    }
+
     pub(super) fn parse_method_signature(&mut self, result_stop: &[&str]) -> Type {
         self.expect("(");
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(")") {
             let start = self.current().start;
-            if self.consume("...") {
-                self.unsupported(
-                    self.previous().span(&self.id),
-                    "rest parameters in method signatures are not supported",
-                );
-            }
-            let name = self.require_identifier("expected a method parameter name");
+            let rest = self.consume("...");
+            let name = self.parse_parameter_name("expected a method parameter name");
             let optional = self.consume("?");
             self.expect(":");
             let annotation = self.parse_type_until(&[",", ")"]);
             let end = self.previous().end;
+            if name == "this" {
+                self.check_receiver_parameter_position(
+                    parameters.len(),
+                    SourceSpan::new(&self.id, start, end),
+                );
+            }
             parameters.push(Parameter {
+                decorators: Vec::new(),
                 name,
-                rest: false,
+                pattern: None,
+                rest,
                 optional,
                 annotation: Some(annotation),
                 default: None,
@@ -40,7 +88,7 @@ impl Parser {
         self.expect(":");
         Type::Function {
             parameters,
-            result: Box::new(self.parse_type_until(result_stop)),
+            result: Box::new(self.parse_return_type_until(result_stop)),
         }
     }
 
@@ -51,6 +99,18 @@ impl Parser {
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(">") {
             let start = self.current().start;
+            let is_const = self.consume("const");
+            let variance = if self.consume("in") {
+                Some(if self.consume("out") {
+                    Variance::InOut
+                } else {
+                    Variance::In
+                })
+            } else if self.consume("out") {
+                Some(Variance::Out)
+            } else {
+                None
+            };
             let name = self.require_identifier("expected a type parameter name");
             let constraint = self
                 .consume("extends")
@@ -60,6 +120,8 @@ impl Parser {
                 .then(|| self.parse_type_until(&[",", ">"]));
             let end = self.previous().end;
             parameters.push(TypeParameter {
+                is_const,
+                variance,
                 name,
                 constraint,
                 default,
@@ -74,6 +136,14 @@ impl Parser {
     }
 
     pub(super) fn parse_type_until(&mut self, stop: &[&str]) -> Type {
+        self.parse_type_expression_until(stop, false)
+    }
+
+    pub(super) fn parse_return_type_until(&mut self, stop: &[&str]) -> Type {
+        self.parse_type_expression_until(stop, true)
+    }
+
+    fn parse_type_expression_until(&mut self, stop: &[&str], return_position: bool) -> Type {
         if self.type_depth >= self.max_type_depth {
             self.error_here(
                 DiagnosticCode::ResourceLimit,
@@ -87,13 +157,76 @@ impl Parser {
         }
         self.type_depth += 1;
         let type_start = self.index;
-        let value = self.parse_union(stop);
+        let assertion = self.peek("asserts")
+            && self.tokens.get(self.index + 1).is_some_and(|token| {
+                !token.is("is") && (token.kind == TokenKind::Identifier || token.is("this"))
+            });
+        let predicate = assertion
+            || ((self.current().kind == TokenKind::Identifier || self.peek("this"))
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is("is")));
+        let value = if predicate {
+            self.parse_predicate_until(stop, assertion, return_position)
+        } else {
+            self.parse_conditional(stop)
+        };
         if self.index == type_start && !self.at_eof() && !stop.iter().any(|stop| self.peek(stop)) {
             self.error_here(DiagnosticCode::ParseError, "expected a type");
             self.bump();
         }
         self.type_depth -= 1;
         value
+    }
+
+    fn parse_predicate_until(
+        &mut self,
+        stop: &[&str],
+        asserts: bool,
+        return_position: bool,
+    ) -> Type {
+        let start = self.current().start;
+        if asserts {
+            self.bump();
+        }
+        let parameter = self.current().clone();
+        self.bump();
+        if !return_position && !asserts {
+            self.type_references.push(TypeReference {
+                name: parameter.text.clone(),
+                value_query: false,
+                span: parameter.span(&self.id),
+            });
+        }
+        let is_span = self.peek("is").then(|| self.current().span(&self.id));
+        let (target, target_span) = if self.consume("is") {
+            let start = self.current().start;
+            let value = self.parse_type_until(stop);
+            let span = SourceSpan::new(&self.id, start, self.previous().end);
+            if return_position {
+                // Polymorphic `this` is resolved in the containing signature,
+                // rather than as a module-owned named type.
+                self.type_references.retain(|reference| {
+                    reference.name != "this"
+                        || reference.span.start < span.start
+                        || reference.span.end > span.end
+                });
+            }
+            (Some(Box::new(value)), Some(span))
+        } else {
+            (None, None)
+        };
+        Type::Predicate(Box::new(TypePredicate {
+            parameter: parameter.text.clone(),
+            asserts,
+            target,
+            span: SourceSpan::new(&self.id, start, self.previous().end),
+            parameter_span: parameter.span(&self.id),
+            is_span,
+            target_span,
+            return_position,
+        }))
     }
 
     pub(super) fn skip_type_until(&mut self, stop: &[&str]) {
@@ -134,8 +267,45 @@ impl Parser {
     }
 
     pub(super) fn parse_type_primary(&mut self, _stop: &[&str]) -> Type {
-        let mut value = if self.consume("readonly") {
-            self.parse_type_primary(&[])
+        let mut value = if self.peek("new")
+            || (self.peek("abstract")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is("new")))
+        {
+            self.parse_constructor_type(_stop)
+        } else if self.peek("infer") {
+            self.parse_infer_type()
+        } else if self.current().kind == TokenKind::Template {
+            self.parse_template_type()
+        } else if self.consume("keyof") {
+            Type::KeyOf(Box::new(self.parse_type_primary(_stop)))
+        } else if self.peek("<") {
+            let start = self.current().start;
+            let type_parameters = self.parse_type_parameters();
+            let function = self.parse_type_primary(_stop);
+            match function {
+                Type::Function { parameters, result } => Type::GenericFunction {
+                    type_parameters,
+                    parameters,
+                    result,
+                    span: SourceSpan::new(&self.id, start, self.previous().end),
+                },
+                _ => {
+                    self.error_here(
+                        DiagnosticCode::ParseError,
+                        "expected a generic function type",
+                    );
+                    Type::Unknown
+                }
+            }
+        } else if self.consume("readonly") {
+            Type::Readonly(Box::new(self.parse_type_primary(&[])))
+        } else if self.consume("unique") {
+            let start = self.previous().start;
+            self.expect("symbol");
+            Type::UniqueSymbol(SourceSpan::new(&self.id, start, self.previous().end))
         } else if self.consume("[") {
             let mut values = Vec::new();
             let mut saw_optional = false;
@@ -216,42 +386,38 @@ impl Parser {
             }
             Type::Tuple(values)
         } else if self.consume("{") {
-            let mut fields = Vec::new();
-            while !self.at_eof() && !self.consume("}") {
-                let start = self.current().start;
-                let readonly = self.consume("readonly");
-                let name = self.require_property_name("expected a record field name");
-                let optional = self.consume("?");
-                let value = if self.peek("(") {
-                    self.parse_method_signature(&[";", ",", "}"])
-                } else {
-                    self.expect(":");
-                    self.parse_type_until(&[";", ",", "}"])
-                };
-                let end = self.previous().end;
-                fields.push(TypeField {
-                    name,
-                    readonly,
-                    optional,
-                    value,
-                    span: SourceSpan::new(&self.id, start, end),
-                });
-                self.consume(";");
-                self.consume(",");
+            if self.starts_mapped_type() {
+                self.parse_mapped_type()
+            } else {
+                self.parse_record_type("expected a record field name")
             }
-            Type::Record(fields)
+        } else if self.peek("(") && !self.parenthesis_starts_function_type() {
+            // A parenthesized type only groups: `(A | B)[]`.
+            self.bump();
+            let grouped = self.parse_type_until(&[")"]);
+            self.expect(")");
+            grouped
         } else if self.consume("(") {
             let mut parameters = Vec::new();
             while !self.at_eof() && !self.consume(")") {
                 let start = self.current().start;
-                let name = self.require_identifier("expected a function type parameter name");
+                let rest = self.consume("...");
+                let name = self.parse_parameter_name("expected a function type parameter name");
                 let optional = self.consume("?");
                 self.expect(":");
                 let annotation = self.parse_type_until(&[",", ")"]);
                 let end = self.previous().end;
+                if name == "this" {
+                    self.check_receiver_parameter_position(
+                        parameters.len(),
+                        SourceSpan::new(&self.id, start, end),
+                    );
+                }
                 parameters.push(Parameter {
+                    decorators: Vec::new(),
                     name,
-                    rest: false,
+                    pattern: None,
+                    rest,
                     optional,
                     annotation: Some(annotation),
                     default: None,
@@ -265,7 +431,19 @@ impl Parser {
             self.expect("=>");
             Type::Function {
                 parameters,
-                result: Box::new(self.parse_type_until(_stop)),
+                result: Box::new(self.parse_return_type_until(_stop)),
+            }
+        } else if self.consume("-") {
+            if self.current().kind == TokenKind::Number {
+                let literal = Type::Literal(format!("-{}", self.current().text));
+                self.bump();
+                literal
+            } else {
+                self.error_here(
+                    DiagnosticCode::ParseError,
+                    "expected a numeric literal type",
+                );
+                Type::Unknown
             }
         } else if self.current().kind == TokenKind::String
             || self.current().kind == TokenKind::Number
@@ -279,11 +457,53 @@ impl Parser {
             Type::Null
         } else if self.consume("undefined") {
             Type::Undefined
+        } else if self.consume("typeof") {
+            let start = self.current().start;
+            let mut name = self.consume_identifier_or_keyword().unwrap_or_else(|| {
+                self.error_here(
+                    DiagnosticCode::ParseError,
+                    "expected a value name after `typeof`",
+                );
+                String::new()
+            });
+            while self.consume(".") {
+                name.push('.');
+                name.push_str(&self.require_identifier("expected a qualified value name"));
+            }
+            self.type_references.push(TypeReference {
+                name: name.clone(),
+                value_query: true,
+                span: SourceSpan::new(&self.id, start, self.previous().end),
+            });
+            Type::Named {
+                name: format!("typeof {name}@{start}"),
+                arguments: Vec::new(),
+            }
         } else if let Some(mut name) = self.consume_identifier_or_keyword() {
+            let name_start = self.previous().start;
             while self.consume(".") {
                 let member = self.require_identifier("expected a qualified type name");
                 name.push('.');
                 name.push_str(&member);
+            }
+            let name_end = self.previous().end;
+            if !matches!(
+                name.as_str(),
+                "any"
+                    | "unknown"
+                    | "never"
+                    | "void"
+                    | "boolean"
+                    | "number"
+                    | "string"
+                    | "bigint"
+                    | "symbol"
+            ) {
+                self.type_references.push(TypeReference {
+                    name: name.clone(),
+                    value_query: false,
+                    span: SourceSpan::new(&self.id, name_start, name_end),
+                });
             }
             let mut arguments = Vec::new();
             if self.consume("<") {
@@ -297,11 +517,13 @@ impl Parser {
             }
             match name.as_str() {
                 "any" => Type::Any,
-                "unknown" => Type::Unknown,
+                "unknown" => Type::StrictUnknown,
                 "never" => Type::Never,
                 "void" => Type::Void,
                 "boolean" => Type::Boolean,
                 "number" => Type::Number,
+                "bigint" => Type::BigInt,
+                "symbol" => Type::Symbol,
                 "string" => Type::String,
                 _ => Type::Named { name, arguments },
             }
@@ -311,10 +533,43 @@ impl Parser {
         };
 
         while self.consume("[") {
-            self.expect("]");
-            value = Type::Array(Box::new(value));
+            value = if self.consume("]") {
+                Type::Array(Box::new(value))
+            } else {
+                let start = self.current().start;
+                let index = self.parse_type_until(&["]"]);
+                let index_span = SourceSpan::new(&self.id, start, self.previous().end);
+                self.expect("]");
+                Type::IndexedAccess {
+                    object: Box::new(value),
+                    index: Box::new(index),
+                    index_span,
+                }
+            };
         }
         value
+    }
+
+    /// Whether the `(` at the cursor opens a function type, that is, whether
+    /// its matching `)` is followed by `=>`.
+    fn parenthesis_starts_function_type(&self) -> bool {
+        let mut depth = 0usize;
+        for (offset, token) in self.tokens[self.index..].iter().enumerate() {
+            match token.text.as_str() {
+                "(" | "[" | "{" => depth += 1,
+                ")" | "]" | "}" => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return self
+                            .tokens
+                            .get(self.index + offset + 1)
+                            .is_some_and(|next| next.is("=>"));
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
     }
 
     pub(super) fn collect_until_statement_end(&mut self) -> Vec<Token> {
@@ -385,6 +640,11 @@ impl Parser {
     }
 
     pub(super) fn require_property_name(&mut self, message: impl Into<String>) -> String {
+        if matches!(self.current().kind, TokenKind::Number | TokenKind::String) {
+            let name = self.current().text.trim_matches(['\'', '"']).to_string();
+            self.bump();
+            return name;
+        }
         self.consume_identifier_or_keyword().unwrap_or_else(|| {
             self.error_here(DiagnosticCode::ParseError, message);
             "<error>".to_string()
@@ -392,7 +652,10 @@ impl Parser {
     }
 
     pub(super) fn consume_identifier(&mut self) -> Option<String> {
-        if self.current().kind == TokenKind::Identifier {
+        // Contextual TypeScript words can still name a binding or a type.
+        if self.current().kind == TokenKind::Identifier
+            || matches!(self.current().text.as_str(), "of" | "type")
+        {
             let value = self.current().text.clone();
             self.bump();
             Some(value)

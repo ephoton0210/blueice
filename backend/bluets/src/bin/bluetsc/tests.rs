@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use blueice_bluets::{BuildArtifact, MapLoader, SourceMap};
+use blueice_bluets::{BuildArtifact, MapLoader, ModuleKind, SourceMap};
 use std::collections::BTreeMap;
 
 fn args(values: &[&str]) -> Result<Args, String> {
@@ -35,6 +35,88 @@ fn parses_check_with_a_strict_policy() {
     };
     assert_eq!(options.runtime_policy, RuntimePolicy::StrictRuntime);
     assert_eq!(options.target, EcmaTarget::Es2020);
+}
+
+#[test]
+fn parses_the_class_field_semantics_flag_and_rejects_other_values() {
+    for (value, expected) in [("true", Some(true)), ("false", Some(false))] {
+        let parsed = args(&["check", "main.ts", "--use-define-for-class-fields", value]).unwrap();
+        let Input::Entry { options, .. } = parsed.input else {
+            panic!("expected explicit entry input");
+        };
+        assert_eq!(options.use_define_for_class_fields, expected);
+    }
+    let Input::Entry { options, .. } = args(&["check", "main.ts"]).unwrap().input else {
+        panic!("expected explicit entry input");
+    };
+    assert_eq!(
+        options.use_define_for_class_fields, None,
+        "the target decides by default"
+    );
+    assert_eq!(
+        args(&["check", "main.ts", "--use-define-for-class-fields", "maybe"]),
+        Err(
+            "unsupported --use-define-for-class-fields value `maybe`; expected true or false"
+                .to_string()
+        )
+    );
+    assert_eq!(
+        args(&["check", "main.ts", "--use-define-for-class-fields"]),
+        Err("--use-define-for-class-fields requires a value".to_string())
+    );
+}
+
+#[test]
+fn parses_the_const_enum_flags() {
+    let Input::Entry { options, .. } = args(&["check", "main.ts"]).unwrap().input else {
+        panic!("expected explicit entry input");
+    };
+    assert!(!options.preserve_const_enums && !options.isolated_modules);
+    let Input::Entry { options, .. } = args(&[
+        "check",
+        "main.ts",
+        "--preserve-const-enums",
+        "--isolated-modules",
+    ])
+    .unwrap()
+    .input
+    else {
+        panic!("expected explicit entry input");
+    };
+    assert!(options.preserve_const_enums && options.isolated_modules);
+    assert!(!options.inlines_const_enums());
+}
+
+#[test]
+fn parses_the_module_system_flags() {
+    let Input::Entry { options, .. } = args(&["check", "main.ts"]).unwrap().input else {
+        panic!("expected explicit entry input");
+    };
+    assert_eq!(options.module_kind, ModuleKind::Esm);
+    assert!(!options.es_module_interop);
+    let Input::Entry { options, .. } = args(&[
+        "check",
+        "main.ts",
+        "--module",
+        "commonjs",
+        "--es-module-interop",
+    ])
+    .unwrap()
+    .input
+    else {
+        panic!("expected explicit entry input");
+    };
+    assert_eq!(options.module_kind, ModuleKind::CommonJs);
+    assert!(options.es_module_interop);
+    for (name, expected) in [("amd", ModuleKind::Amd), ("umd", ModuleKind::Umd)] {
+        let Input::Entry { options, .. } =
+            args(&["check", "main.ts", "--module", name]).unwrap().input
+        else {
+            panic!("expected explicit entry input");
+        };
+        assert_eq!(options.module_kind, expected);
+    }
+    assert!(args(&["check", "main.ts", "--module", "unsupported-kind"]).is_err());
 }
 
 #[test]
@@ -130,10 +212,12 @@ fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
         &CompileSummary {
             artifacts: BTreeMap::new(),
             declaration_modules: BTreeMap::new(),
+            assets: BTreeMap::new(),
             fingerprint: "test".to_string(),
             module_count: 1,
             has_errors: false,
         },
+        None,
     );
     let serialized = serde_json::to_value(metadata).unwrap();
     assert_eq!(
@@ -164,15 +248,46 @@ fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
 
 fn test_metadata() -> BuildMetadata {
     BuildMetadata {
+        downlevel_iteration: false,
+        import_helpers: false,
+        no_emit_helpers: false,
+        verbatim_module_syntax: false,
+        root_dir: None,
+        standard_library: blueice_bluets::standard_library::identity(EcmaTarget::Es2022),
         language_version: "blue-ts-test",
         fingerprint: "bts-project-test".to_string(),
         target: "es2022",
+        use_define_for_class_fields: true,
+        preserve_const_enums: false,
+        inline_const_enums: true,
+        module: "esm",
+        es_module_interop: false,
+        jsx: None,
+        jsx_factory: None,
+        jsx_fragment_factory: None,
+        jsx_import_source: None,
+        package_resolution: None,
+        remote_declarations: Vec::new(),
+        class_helper_version: "bluets-class-helper-v1",
+        target_helper_version: blueice_bluets::TARGET_HELPER_V1_VERSION,
+        decorator_helper_version: "bluets-decorator-helper-v1",
+        legacy_decorator_helper_version: "bluets-legacy-decorator-helper-v1",
+        experimental_decorators: false,
+        emit_decorator_metadata: false,
         runtime_policy: "checked",
         runtime_helper: None,
         strict_boundaries: Vec::new(),
         strict_artifacts: Vec::new(),
         source_map: true,
+        inline_source_map: None,
         declaration: true,
+        remove_comments: false,
+        new_line: "lf",
+        emit_bom: false,
+        inline_sources: true,
+        strip_internal: false,
+        source_root: None,
+        map_root: None,
         entries: vec!["src/main.js".to_string()],
         declaration_modules: Vec::new(),
         imports: BTreeMap::new(),
@@ -232,9 +347,13 @@ fn publishing_replaces_a_complete_output_directory_only_after_staging() {
                 file: "main.js".to_string(),
                 sources: vec!["src/main.ts".to_string()],
                 sources_content: vec!["export const answer: number = 42;".to_string()],
+                inline_sources: true,
+                source_root: String::new(),
+                names: Vec::new(),
                 mappings: "AAAA".to_string(),
             }),
             declaration: Some("export declare const answer: number;\n".to_string()),
+            declaration_map: None,
             fingerprint: "test".to_string(),
             strict_runtime: None,
         },
@@ -244,6 +363,7 @@ fn publishing_replaces_a_complete_output_directory_only_after_staging() {
         &root,
         &output,
         &artifacts,
+        &BTreeMap::new(),
         &BTreeMap::new(),
         &test_metadata(),
     )
@@ -271,7 +391,15 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     let output = temporary.join("output");
     fs::create_dir_all(&root).unwrap();
     let (artifacts, mut metadata) = strict_fixture(&root);
-    publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).unwrap();
+    publish_build(
+        &root,
+        &output,
+        &artifacts,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &metadata,
+    )
+    .unwrap();
     assert_eq!(
         fs::read_to_string(output.join(RUNTIME_HELPER_V1_FILE)).unwrap(),
         RUNTIME_HELPER_V1_SOURCE
@@ -292,19 +420,36 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     );
 
     metadata.runtime_helper.as_mut().unwrap().sha256 = "sha256:wrong".into();
-    assert!(publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).is_err());
+    assert!(publish_build(
+        &root,
+        &output,
+        &artifacts,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &metadata
+    )
+    .is_err());
     assert_eq!(
         fs::read_to_string(output.join(RUNTIME_HELPER_V1_FILE)).unwrap(),
         RUNTIME_HELPER_V1_SOURCE
     );
     metadata.runtime_helper = None;
-    assert!(publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).is_err());
+    assert!(publish_build(
+        &root,
+        &output,
+        &artifacts,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &metadata
+    )
+    .is_err());
 
     metadata.runtime_policy = RuntimePolicy::Checked.as_str();
     metadata.runtime_helper = Some(runtime_helper_v1_identity());
     assert!(publish_build(
         &root,
         &output,
+        &BTreeMap::new(),
         &BTreeMap::new(),
         &BTreeMap::new(),
         &metadata
@@ -314,6 +459,7 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     assert!(publish_build(
         &root,
         &output,
+        &BTreeMap::new(),
         &BTreeMap::new(),
         &BTreeMap::new(),
         &metadata
@@ -324,6 +470,7 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     publish_build(
         &root,
         &output,
+        &BTreeMap::new(),
         &BTreeMap::new(),
         &BTreeMap::new(),
         &metadata,
@@ -340,7 +487,15 @@ fn strict_publisher_rejects_manifest_and_call_tampering_before_replacement() {
     let output = temporary.join("output");
     fs::create_dir_all(&root).unwrap();
     let (artifacts, metadata) = strict_fixture(&root);
-    publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).unwrap();
+    publish_build(
+        &root,
+        &output,
+        &artifacts,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &metadata,
+    )
+    .unwrap();
     let original_js = fs::read(output.join("main.js")).unwrap();
     let original_manifest = fs::read(output.join("bluetsc.manifest.json")).unwrap();
     let assert_refused =
@@ -350,6 +505,7 @@ fn strict_publisher_rejects_manifest_and_call_tampering_before_replacement() {
                 &root,
                 &output,
                 candidate_artifacts,
+                &BTreeMap::new(),
                 &BTreeMap::new(),
                 candidate_metadata,
             )
@@ -465,6 +621,7 @@ fn staging_failure_does_not_replace_an_existing_output_directory() {
             javascript: String::new(),
             source_map: None,
             declaration: None,
+            declaration_map: None,
             fingerprint: "test".to_string(),
             strict_runtime: None,
         },
@@ -474,6 +631,7 @@ fn staging_failure_does_not_replace_an_existing_output_directory() {
         &root,
         &output,
         &artifacts,
+        &BTreeMap::new(),
         &BTreeMap::new(),
         &test_metadata(),
     )

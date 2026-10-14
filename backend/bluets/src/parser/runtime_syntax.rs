@@ -9,6 +9,35 @@ use super::*;
 /// Splits a lexically valid JavaScript shift-token run into individual generic
 /// closers for the TypeScript grammar. Every replacement token keeps its
 /// original source byte, so diagnostics and erasure edits remain source-based.
+/// Joins a `#` and the name written right after it into one identifier token
+/// (`#count`), so a private name is an ordinary member name everywhere the
+/// checker looks at member accesses. Its span still covers both source bytes,
+/// so emission, which copies source text, is unchanged.
+pub(super) fn merge_private_names(tokens: Vec<Token>) -> Vec<Token> {
+    let mut merged: Vec<Token> = Vec::with_capacity(tokens.len());
+    let mut tokens = tokens.into_iter().peekable();
+    while let Some(token) = tokens.next() {
+        if token.kind == TokenKind::Punct && token.text == "#" {
+            if let Some(name) = tokens.peek() {
+                if matches!(name.kind, TokenKind::Identifier | TokenKind::Keyword)
+                    && name.start == token.end
+                {
+                    let name = tokens.next().expect("peeked a name");
+                    merged.push(Token {
+                        kind: TokenKind::Identifier,
+                        text: format!("#{}", name.text),
+                        start: token.start,
+                        end: name.end,
+                    });
+                    continue;
+                }
+            }
+        }
+        merged.push(token);
+    }
+    merged
+}
+
 pub(super) fn split_generic_closers(tokens: Vec<Token>) -> Vec<Token> {
     let mut split = Vec::with_capacity(tokens.len());
     for token in tokens {
@@ -154,50 +183,6 @@ pub(super) fn is_unparenthesized_unary_exponent_base(tokens: &[Token], operator:
     }
 }
 
-/// Generic arrow functions need type-parameter erasure, but the initial
-/// matrix only supports generic declarations and direct calls. Recognize the
-/// complete `<...>(...) =>` shape so it cannot be preserved as invalid
-/// JavaScript by an otherwise opaque expression span.
-pub(super) fn is_generic_arrow_function(tokens: &[Token], start: usize, end: usize) -> bool {
-    if !tokens.get(start).is_some_and(|token| token.is("<")) {
-        return false;
-    }
-    let Some(type_parameters_end) = matching_angle_bracket(tokens, start, end) else {
-        return false;
-    };
-    let parameters_start = type_parameters_end + 1;
-    if !tokens
-        .get(parameters_start)
-        .is_some_and(|token| token.is("("))
-    {
-        return false;
-    }
-    let Some(parameters_end) = matching_parenthesis(tokens, parameters_start, end) else {
-        return false;
-    };
-    tokens
-        .get(parameters_end + 1)
-        .is_some_and(|token| token.is("=>"))
-}
-
-pub(super) fn matching_parenthesis(tokens: &[Token], start: usize, limit: usize) -> Option<usize> {
-    debug_assert!(tokens.get(start).is_some_and(|token| token.is("(")));
-    let mut depth = 0usize;
-    for (index, token) in tokens.iter().enumerate().take(limit).skip(start) {
-        match token.text.as_str() {
-            "(" => depth += 1,
-            ")" => {
-                depth = depth.checked_sub(1)?;
-                if depth == 0 {
-                    return Some(index);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
 pub(super) fn find_balanced_delimiter(
     tokens: &[Token],
     start: usize,
@@ -254,10 +239,13 @@ pub(super) fn starts_runtime_expression_statement(token: &Token) -> bool {
             | "null"
             | "undefined"
             | "this"
+            | "super"
             | "new"
             | "delete"
             | "typeof"
             | "void"
+            | "yield"
+            | "await"
     )
 }
 
@@ -335,12 +323,25 @@ pub(super) fn is_direct_braced_try_statement(tokens: &[Token], start: usize) -> 
             || !tokens
                 .get(next + 2)
                 .is_some_and(|token| token.kind == TokenKind::Identifier)
-            || !tokens.get(next + 3).is_some_and(|token| token.is(")"))
-            || !tokens.get(next + 4).is_some_and(|token| token.is("{"))
         {
             return false;
         }
-        let Some(catch_end) = matching_closing_delimiter(tokens, next + 4, limit, "{", "}") else {
+        // `(name)` or `(name: Type)`; the annotation is erased by the parser.
+        let Some(catch_close) = matching_closing_delimiter(tokens, next + 1, limit, "(", ")")
+        else {
+            return false;
+        };
+        let bare = catch_close == next + 3;
+        let annotated = catch_close > next + 4 && tokens[next + 3].is(":");
+        if !(bare || annotated)
+            || !tokens
+                .get(catch_close + 1)
+                .is_some_and(|token| token.is("{"))
+        {
+            return false;
+        }
+        let Some(catch_end) = matching_closing_delimiter(tokens, catch_close + 1, limit, "{", "}")
+        else {
             return false;
         };
         next = catch_end + 1;

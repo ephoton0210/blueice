@@ -1,0 +1,890 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "modexport-declarations-alias-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-declarations-alias-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-declarations-default-function-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-declarations-default-function-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-declarations-generic-ctor-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-declarations-generic-ctor-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-default-alias-duplicate-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2528,
+        "message": "A module cannot have multiple default exports.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 35,
+          "length": 7
+        },
+        "related": [
+          {
+            "code": 2753,
+            "message": "Another export default is here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 60,
+              "length": 5
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modexport-default-anon-call-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2345,
+        "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 32,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-default-async-fn/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modexport-default-call/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modexport-default-conditional/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modexport-default-ctor-field-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 36,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-default-duplicate-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2528,
+        "message": "A module cannot have multiple default exports.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 1,
+          "length": 17
+        },
+        "related": [
+          {
+            "code": 2753,
+            "message": "Another export default is here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 19,
+              "length": 17
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modexport-default-local-alias/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modexport-default-type-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 38,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-default-unknown-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2304,
+        "message": "Cannot find name 'missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 16,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-named-default/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modexport-named-missing-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2305,
+        "message": "Module '\"./base.ts\"' has no exported member 'missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 9,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-named-mutation-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2632,
+        "message": "Cannot assign to 'value' because it is an import.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 36,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-named-private-identity-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'Right' is not assignable to type 'Left'.\n  Types have separate declarations of a private property 'value'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 48,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-named-type-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 42,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-named-type-value-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2693,
+        "message": "'Item' only refers to a type, but is being used as a value here.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 47,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-named-types/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modexport-ns-import-write-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2540,
+        "message": "Cannot assign to 'value' because it is a read-only property.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-ns-missing-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2339,
+        "message": "Property 'missing' does not exist on type 'typeof import(\"base\")'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 38,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-ns-type-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 40,
+          "length": 3
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-ns-write-accepted/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-anon-ctor-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-anon-ctor-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-anon-fn-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-anon-fn-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-arrow-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-arrow-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-ctor-chain-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-ctor-chain-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-cycle-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-cycle-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-default-alias-live-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-default-alias-live-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-es2020-ctor-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs",
+        "--target",
+        "ES2020"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-es2020-ctor-esm/main.ts",
+      "accepts": true,
+      "flags": [
+        "--target",
+        "ES2020"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-evaluation-once-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-evaluation-once-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-generic-fn-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-generic-fn-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-named-ctor-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-named-ctor-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-named-live-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-named-live-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-ns-ctor-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-ns-ctor-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-ns-live-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-ns-live-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-number-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-number-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-record-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-record-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-snapshot-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-snapshot-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-star-default-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-star-default-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-star-diamond-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-star-diamond-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-star-explicit-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-star-explicit-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-star-live-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-star-live-esm/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-runtime-star-own-cjs/main.ts",
+      "accepts": true,
+      "flags": [
+        "--module",
+        "commonjs"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modexport-star-conflict-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2308,
+        "message": "Module \"./left.ts\" has already exported a member named 'value'. Consider explicitly re-exporting to resolve the ambiguity.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 28,
+          "length": 27
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-star-default-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1192,
+        "message": "Module '\"barrel\"' has no default export.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 8,
+          "length": 5
+        },
+        "related": [
+          {
+            "code": 1195,
+            "message": "'export *' does not re-export a default.",
+            "module": "barrel.ts",
+            "position": {
+              "line": 5,
+              "column": 1,
+              "length": 26
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modexport-star-disjoint/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modexport-star-missing-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2305,
+        "message": "Module '\"./barrel.ts\"' has no exported member 'missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 9,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modexport-star-types/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modexport-unknown-module-error/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2792,
+        "message": "Cannot find module './missing.ts'. Did you mean to set the 'moduleResolution' option to 'nodenext', or to add aliases to the 'paths' option?",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 15,
+          "length": 14
+        },
+        "related": []
+      }
+    }
+  ]
+}

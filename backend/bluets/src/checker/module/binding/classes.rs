@@ -4,22 +4,37 @@
 
 //! Bounded class constructor and method checks before runtime admission.
 
+use super::functions::hoist_local_functions;
 use super::*;
-use crate::parser::{ClassConstructor, ClassDeclaration, ClassMethod};
+use crate::parser::{ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMethod, Visibility};
 
+mod accessors;
+mod aliases;
+mod bodies;
+mod computed_keys;
+mod constructors;
+mod expressions;
+mod types;
+
+pub(in crate::checker::module) use types::class_constructor_side_type;
+pub(in crate::checker::module) use types::class_is_fully_structured;
+use types::*;
+mod fields;
+mod generics;
+mod heritage;
+mod merging;
+pub(in crate::checker) use heritage::{heritage_substitutions, specialize_constructor};
+pub(in crate::checker) use merging::class_with_interface_heritage;
+mod implements;
+mod indices;
+mod modifiers;
+mod parameters;
+pub(super) use parameters::class_body_this_type;
+use parameters::*;
+pub(in crate::checker) use parameters::{class_definition_parameters, formal_class_type};
 mod overrides;
-
-#[derive(Clone, Copy)]
-enum ClassBodyReturnRule<'a> {
-    Constructor {
-        class_name: &'a str,
-        instance_type: &'a Type,
-    },
-    Method {
-        return_type: Option<&'a Type>,
-        allows_implicit_undefined: bool,
-    },
-}
+mod super_calls;
+mod visibility;
 
 fn specialize_class_rest_annotation(
     annotation: &Type,
@@ -98,11 +113,19 @@ impl ModuleChecker<'_> {
                 );
                 return;
             }
-            self.type_error(
-                &SourceSpan::new(&span.module, token.start, token.end),
-                format!("type-only class {} cannot be used as a value", token.text),
-                DiagnosticCode::UnknownName,
-            );
+            let imported_type = self.module.declarations.iter().any(|declaration| {
+                matches!(declaration, Declaration::Import(import) if import.bindings.iter().any(|binding| binding.local == token.text && (import.type_only || binding.type_only)))
+            });
+            let location = SourceSpan::new(&span.module, token.start, token.end);
+            let message = format!("type-only class {} cannot be used as a value", token.text);
+            if imported_type {
+                self.diagnostics.push(
+                    Diagnostic::error(DiagnosticCode::UnknownName, location, message)
+                        .with_typescript(1361, vec![token.text.clone()]),
+                );
+            } else {
+                self.type_error(&location, message, DiagnosticCode::UnknownName);
+            }
         }
     }
 
@@ -120,7 +143,7 @@ impl ModuleChecker<'_> {
             local_name.to_string(),
             TypeDefinition {
                 kind: TypeDefinitionKind::Class,
-                parameters: Vec::new(),
+                parameters: class.type_parameters.clone(),
                 value: specialize_imported_class_type(
                     &class.instance_type,
                     &class.source_name,
@@ -157,8 +180,10 @@ impl ModuleChecker<'_> {
         self.class_constructors.insert(
             local_name.to_string(),
             ClassConstructorBinding {
+                modifiers: class.constructor_binding.modifiers.clone(),
                 signatures,
                 inherited: class.constructor_binding.inherited,
+                visibility: class.constructor_binding.visibility,
             },
         );
     }
@@ -169,6 +194,10 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
     ) -> bool {
         self.class_constructors.contains_key(name)
+            && self
+                .types
+                .get(name)
+                .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
             && scope
                 .get(name)
                 .is_some_and(|value| self.values.get(name) == Some(value))
@@ -183,10 +212,63 @@ impl ModuleChecker<'_> {
         receiver: &Token,
         scope: &BTreeMap<String, Type>,
     ) -> bool {
-        receiver.is("this") && matches!(scope.get("this"), Some(Type::Record(_)))
+        receiver.is("this")
+            && matches!(
+                scope.get("this"),
+                Some(Type::Record(_) | Type::CallableRecord { .. })
+            )
     }
 
     pub(super) fn bind_class(&mut self, class: &ClassDeclaration) {
+        if self.target < crate::EcmaTarget::Es2015 {
+            for key in class
+                .members
+                .iter()
+                .filter_map(|member| member.key.first())
+                .filter(|key| key.kind == TokenKind::Identifier && key.text.starts_with('#'))
+            {
+                self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::UnsupportedSyntax,
+                    key.span(&self.module.id),
+                    "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+                ).with_typescript(18028, Vec::new()));
+            }
+        }
+        if self.target < crate::EcmaTarget::Es2015 {
+            for member in &class.members {
+                if member
+                    .field
+                    .as_ref()
+                    .is_some_and(|field| field.accessor && !field.name.starts_with('#'))
+                {
+                    if let Some(key) = member.key.first() {
+                        self.diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::UnsupportedSyntax,
+                            key.span(&self.module.id),
+                            "Properties with the 'accessor' modifier are only available when targeting ECMAScript 2015 and higher.",
+                        ).with_typescript(18045, Vec::new()));
+                    }
+                }
+            }
+        }
+        self.check_es5_super_properties(class);
+        if class.default_export
+            && class.anonymous
+            && self.target == crate::EcmaTarget::Es2020
+            && class.members.iter().any(|member| {
+                member
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| name.starts_with('#'))
+            })
+        {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                class.span.clone(),
+                "an anonymous default class with private names on ES2020 is not supported: the pinned TypeScript 5.9.3 output fails at runtime; use a named default class or ES2022",
+            ));
+            return;
+        }
         let existing_type = self
             .types
             .get(&class.name)
@@ -203,13 +285,13 @@ impl ModuleChecker<'_> {
 
         // TypeScript permits an interface with the same name as a class.
         // Retain the prior interface surface until declaration merging is
-        // checked later; class output is refused throughout this phase.
+        // checked later.
         if existing_type.is_none() {
             self.types.insert(
                 class.name.clone(),
                 TypeDefinition {
                     kind: TypeDefinitionKind::Class,
-                    parameters: Vec::new(),
+                    parameters: class_definition_parameters(class),
                     value: class_instance_type(class),
                 },
             );
@@ -219,8 +301,10 @@ impl ModuleChecker<'_> {
         self.class_constructors.insert(
             class.name.clone(),
             ClassConstructorBinding {
+                modifiers: ClassModifierSurface::declared(class),
                 signatures: class_constructor_signatures(class),
                 inherited: class.extends_name.is_some() && !class_declares_constructor(class),
+                visibility: class_constructor_visibility(class),
             },
         );
     }
@@ -242,24 +326,44 @@ impl ModuleChecker<'_> {
             if declared_later {
                 self.type_error(
                     span,
-                    format!("class {base_name} is used before its declaration"),
-                    DiagnosticCode::TypeMismatch,
+                    format!("TS2449: class {base_name} is used before its declaration"),
+                    DiagnosticCode::UsedBeforeDeclaration,
                 );
             }
             return;
         }
         match self.values.get(base_name) {
-            None => self.type_error(
-                span,
-                format!("unknown class heritage name {base_name}"),
-                DiagnosticCode::UnknownName,
-            ),
+            None => {
+                let message = format!("unknown class heritage name {base_name}");
+                if let Some((namespace, member)) = base_name
+                    .rsplit_once('.')
+                    .filter(|(namespace, _)| self.values.contains_key(*namespace))
+                {
+                    self.typescript_type_error(
+                        span,
+                        message,
+                        DiagnosticCode::UnknownName,
+                        2339,
+                        vec![member.into(), format!("typeof {namespace}")],
+                    );
+                } else {
+                    self.typescript_type_error(
+                        span,
+                        message,
+                        DiagnosticCode::UnknownName,
+                        2304,
+                        vec![base_name.clone()],
+                    );
+                }
+            }
             Some(Type::Any | Type::Unknown) => {}
             Some(_) if self.functions.contains_key(base_name) => {}
-            Some(_) => self.type_error(
+            Some(value) => self.typescript_type_error(
                 span,
                 format!("class heritage {base_name} is not a constructor"),
                 DiagnosticCode::TypeMismatch,
+                2507,
+                vec![crate::diagnostic::type_text::render_in(value, self.project)],
             ),
         }
     }
@@ -311,166 +415,6 @@ impl ModuleChecker<'_> {
         }
         for (span, code, message) in failures {
             self.type_error(&span, message, code);
-        }
-    }
-
-    pub(super) fn bind_inherited_class_instance_methods(&mut self) {
-        let local_classes = self
-            .module
-            .declarations
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Class(class) => Some((class.name.as_str(), class)),
-                _ => None,
-            })
-            .collect::<BTreeMap<_, _>>();
-        let mut surfaces = Vec::new();
-        for class in local_classes.values() {
-            if !self
-                .types
-                .get(&class.name)
-                .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
-            {
-                continue;
-            }
-            let mut fields = class_method_fields(class, false);
-            let mut names = fields
-                .iter()
-                .map(|field| field.name.clone())
-                .collect::<BTreeSet<_>>();
-            let mut visited = BTreeSet::new();
-            let mut base_name = class.extends_name.as_deref();
-            for _ in 0..self.max_type_expansions {
-                let Some(name) = base_name else {
-                    break;
-                };
-                if !visited.insert(name) {
-                    break;
-                }
-                let inherited = if let Some(base) = local_classes.get(name) {
-                    base_name = base.extends_name.as_deref();
-                    class_method_fields(base, false)
-                } else if let Some(TypeDefinition {
-                    kind: TypeDefinitionKind::Class,
-                    value: Type::Record(fields),
-                    ..
-                }) = self.types.get(name)
-                {
-                    base_name = None;
-                    fields.clone()
-                } else {
-                    break;
-                };
-                fields.extend(
-                    inherited
-                        .iter()
-                        .filter(|field| !names.contains(&field.name))
-                        .cloned(),
-                );
-                names.extend(inherited.iter().map(|field| field.name.clone()));
-            }
-            surfaces.push((class.name.clone(), Type::Record(fields)));
-        }
-        for (name, value) in surfaces {
-            if let Some(definition) = self.types.get_mut(&name) {
-                definition.value = value;
-            }
-        }
-    }
-
-    pub(super) fn bind_inherited_class_static_methods(&mut self) {
-        let local_classes = self
-            .module
-            .declarations
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Class(class) => Some((class.name.as_str(), class)),
-                _ => None,
-            })
-            .collect::<BTreeMap<_, _>>();
-        let mut surfaces = Vec::new();
-        for class in local_classes.values() {
-            if !self.class_constructors.contains_key(&class.name) {
-                continue;
-            }
-            let Type::Record(mut fields) = class_constructor_side_type(class) else {
-                unreachable!("class constructor side is a record")
-            };
-            let mut names = fields
-                .iter()
-                .map(|field| field.name.clone())
-                .collect::<BTreeSet<_>>();
-            let mut visited = BTreeSet::new();
-            let mut base_name = class.extends_name.as_deref();
-            for _ in 0..self.max_type_expansions {
-                let Some(name) = base_name else {
-                    break;
-                };
-                if !visited.insert(name) {
-                    break;
-                }
-                let inherited = if let Some(base) = local_classes.get(name) {
-                    base_name = base.extends_name.as_deref();
-                    class_constructor_side_type(base)
-                } else if self.class_constructors.contains_key(name) {
-                    base_name = None;
-                    self.values.get(name).cloned().unwrap_or(Type::Unknown)
-                } else {
-                    break;
-                };
-                let Type::Record(inherited) = inherited else {
-                    break;
-                };
-                fields.extend(
-                    inherited
-                        .iter()
-                        .filter(|field| !names.contains(&field.name))
-                        .cloned(),
-                );
-                names.extend(inherited.iter().map(|field| field.name.clone()));
-            }
-            surfaces.push((class.name.clone(), Type::Record(fields)));
-        }
-        for (name, value) in surfaces {
-            self.values.insert(name, value);
-        }
-    }
-
-    pub(super) fn bind_inherited_class_constructors(&mut self) {
-        for declaration in &self.module.declarations {
-            let Declaration::Class(class) = declaration else {
-                continue;
-            };
-            let Some(base_name) = class.extends_name.as_deref() else {
-                continue;
-            };
-            if class_declares_constructor(class) {
-                continue;
-            }
-            let Some(base) = self.class_constructors.get(base_name).cloned() else {
-                continue;
-            };
-            if base.inherited {
-                continue;
-            }
-            let signatures = base
-                .signatures
-                .into_iter()
-                .map(|mut signature| {
-                    signature.return_type = Type::Named {
-                        name: class.name.clone(),
-                        arguments: Vec::new(),
-                    };
-                    signature
-                })
-                .collect();
-            self.class_constructors.insert(
-                class.name.clone(),
-                ClassConstructorBinding {
-                    signatures,
-                    inherited: false,
-                },
-            );
         }
     }
 
@@ -575,10 +519,16 @@ impl ModuleChecker<'_> {
                 );
             }
             if parameter.rest && parameter.optional {
-                self.type_error(
+                self.typescript_type_error(
                     &parameter.span,
                     "a rest parameter cannot be optional or have a default initializer".to_string(),
                     DiagnosticCode::TypeMismatch,
+                    if parameter.default.is_some() {
+                        1048
+                    } else {
+                        2370
+                    },
+                    Vec::new(),
                 );
             }
             if parameter.rest
@@ -652,251 +602,6 @@ impl ModuleChecker<'_> {
         }
     }
 
-    pub(super) fn check_class_constructor_bodies(&mut self, class: &ClassDeclaration) {
-        let instance_type = self
-            .types
-            .get(&class.name)
-            .filter(|definition| definition.kind == TypeDefinitionKind::Class)
-            .map(|definition| definition.value.clone())
-            .unwrap_or_else(|| class_instance_type(class));
-        for constructor in class
-            .members
-            .iter()
-            .filter_map(|member| member.constructor.as_ref())
-        {
-            let Some(body) = &constructor.body else {
-                continue;
-            };
-            let mut scope = self.class_body_parameter_scope(&constructor.parameters);
-            scope.insert(
-                "this".to_string(),
-                Type::Named {
-                    name: class.name.clone(),
-                    arguments: Vec::new(),
-                },
-            );
-            self.check_class_body_items(
-                body,
-                &scope,
-                ClassBodyReturnRule::Constructor {
-                    class_name: &class.name,
-                    instance_type: &instance_type,
-                },
-            );
-        }
-    }
-
-    pub(super) fn check_class_method_bodies(&mut self, class: &ClassDeclaration) {
-        let constructor_side = self
-            .values
-            .get(&class.name)
-            .cloned()
-            .unwrap_or_else(|| class_constructor_side_type(class));
-        for method in class
-            .members
-            .iter()
-            .filter_map(|member| member.method.as_ref())
-        {
-            self.validate_class_parameters(&method.parameters, method.body.is_some(), "method");
-            let return_type = method.return_type.as_ref().filter(|return_type| {
-                let before = self.diagnostics.len();
-                self.check_type(
-                    return_type,
-                    method.return_type_span.as_ref().unwrap_or(&method.span),
-                );
-                !self.diagnostics[before..]
-                    .iter()
-                    .any(|diagnostic| diagnostic.code == DiagnosticCode::UnknownType)
-            });
-            if let Some(body) = &method.body {
-                let mut scope = self.class_body_parameter_scope(&method.parameters);
-                scope.insert(
-                    "this".to_string(),
-                    if method.is_static {
-                        constructor_side.clone()
-                    } else {
-                        Type::Named {
-                            name: class.name.clone(),
-                            arguments: Vec::new(),
-                        }
-                    },
-                );
-                let allows_implicit_undefined = return_type.is_none_or(|return_type| {
-                    self.return_type_allows_implicit_undefined(return_type, &method.span)
-                });
-                self.check_class_body_items(
-                    body,
-                    &scope,
-                    ClassBodyReturnRule::Method {
-                        return_type,
-                        allows_implicit_undefined,
-                    },
-                );
-                if let Some(return_type) = return_type {
-                    if !allows_implicit_undefined
-                        && matches!(
-                            Self::function_body_termination(body),
-                            StructuredTermination::FallsThrough
-                        )
-                    {
-                        self.type_error(
-                            &method.span,
-                            format!(
-                                "class method with return type `{}` can complete without returning a value",
-                                type_label(return_type)
-                            ),
-                            DiagnosticCode::ReturnTypeMismatch,
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    fn class_body_parameter_scope(&self, parameters: &[Parameter]) -> BTreeMap<String, Type> {
-        let mut scope = self.values.clone();
-        for parameter in parameters {
-            let value = parameter
-                .annotation
-                .clone()
-                .or_else(|| {
-                    parameter
-                        .default
-                        .as_ref()
-                        .map(|tokens| self.infer_expression(tokens, &scope))
-                })
-                .unwrap_or(Type::Unknown);
-            scope.insert(parameter.name.clone(), value);
-        }
-        scope
-    }
-
-    fn check_class_body_items(
-        &mut self,
-        items: &[FunctionBodyItem],
-        scope: &BTreeMap<String, Type>,
-        return_rule: ClassBodyReturnRule<'_>,
-    ) {
-        let mut scope = scope.clone();
-        for item in items {
-            match item {
-                FunctionBodyItem::Function(function) => {
-                    self.check_function_in_scope(function, &scope)
-                }
-                FunctionBodyItem::Variable(variable) => {
-                    self.check_variable_in_scope(variable, &scope);
-                    let value = variable
-                        .annotation
-                        .clone()
-                        .unwrap_or_else(|| self.infer_expression(&variable.initializer, &scope));
-                    scope.insert(variable.name.clone(), value);
-                }
-                FunctionBodyItem::Expression { tokens, span }
-                | FunctionBodyItem::Throw { tokens, span } => {
-                    self.check_direct_runtime_expression(tokens, &scope, span);
-                }
-                FunctionBodyItem::Return { tokens, span } => {
-                    if !tokens.is_empty() {
-                        self.check_direct_runtime_expression(tokens, &scope, span);
-                    }
-                    match return_rule {
-                        ClassBodyReturnRule::Constructor {
-                            class_name,
-                            instance_type,
-                        } if !tokens.is_empty() => {
-                            let actual = self.infer_expression(tokens, &scope);
-                            let primitive = Type::Union(vec![
-                                Type::Null,
-                                Type::Undefined,
-                                Type::Boolean,
-                                Type::Number,
-                                Type::String,
-                            ]);
-                            if !self.is_assignable_bounded(&actual, &primitive, span)
-                                && !self.is_assignable_bounded(&actual, instance_type, span)
-                            {
-                                self.type_error(
-                                    span,
-                                    format!(
-                                        "constructor return type `{}` is not assignable to class `{}`",
-                                        type_label(&actual),
-                                        class_name
-                                    ),
-                                    DiagnosticCode::ReturnTypeMismatch,
-                                );
-                            }
-                        }
-                        ClassBodyReturnRule::Method {
-                            return_type: Some(return_type),
-                            allows_implicit_undefined,
-                        } => {
-                            let actual = if tokens.is_empty() {
-                                Type::Undefined
-                            } else {
-                                self.infer_expression(tokens, &scope)
-                            };
-                            if (!tokens.is_empty() || !allows_implicit_undefined)
-                                && !self.is_assignable_bounded(&actual, return_type, span)
-                            {
-                                self.type_error(
-                                    span,
-                                    format!(
-                                        "class method return type `{}` is not assignable to `{}`",
-                                        type_label(&actual),
-                                        type_label(return_type)
-                                    ),
-                                    DiagnosticCode::ReturnTypeMismatch,
-                                );
-                            }
-                        }
-                        ClassBodyReturnRule::Constructor { .. }
-                        | ClassBodyReturnRule::Method {
-                            return_type: None, ..
-                        } => {}
-                    }
-                }
-                FunctionBodyItem::If(statement) => {
-                    self.check_class_body_if(statement, &scope, return_rule)
-                }
-                FunctionBodyItem::While(statement) => {
-                    self.check_direct_runtime_expression(&statement.test, &scope, &statement.span);
-                    self.check_class_body_items(&statement.body, &scope, return_rule);
-                }
-                FunctionBodyItem::Try(statement) => {
-                    self.check_class_body_items(&statement.block, &scope, return_rule);
-                    if let Some(handler) = &statement.handler {
-                        let mut catch_scope = scope.clone();
-                        catch_scope.insert(handler.binding.clone(), Type::Unknown);
-                        self.check_class_body_items(&handler.body, &catch_scope, return_rule);
-                    }
-                    if let Some(finalizer) = &statement.finalizer {
-                        self.check_class_body_items(finalizer, &scope, return_rule);
-                    }
-                }
-                FunctionBodyItem::Opaque(_) => {}
-            }
-        }
-    }
-
-    fn check_class_body_if(
-        &mut self,
-        statement: &FunctionIfStatement,
-        scope: &BTreeMap<String, Type>,
-        return_rule: ClassBodyReturnRule<'_>,
-    ) {
-        self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
-        self.check_class_body_items(&statement.consequent, scope, return_rule);
-        match &statement.alternate {
-            Some(FunctionElseBranch::Braced(body)) => {
-                self.check_class_body_items(body, scope, return_rule);
-            }
-            Some(FunctionElseBranch::ElseIf(branch)) => {
-                self.check_class_body_if(branch, scope, return_rule);
-            }
-            None => {}
-        }
-    }
-
     pub(super) fn validate_class_method_groups(&mut self, class: &ClassDeclaration) {
         let mut implementations: BTreeMap<(bool, &str), usize> = BTreeMap::new();
         for group in &class.method_groups {
@@ -930,6 +635,13 @@ impl ModuleChecker<'_> {
             }
 
             let Some(implementation_index) = group.implementation_member_index else {
+                if group
+                    .signature_member_indices
+                    .iter()
+                    .all(|&index| class.members[index].abstract_modifier.is_some())
+                {
+                    continue;
+                }
                 if let Some(&last_signature) = group.signature_member_indices.last() {
                     self.type_error(
                         &class.members[last_signature].span,
@@ -995,83 +707,93 @@ impl ModuleChecker<'_> {
         let Some(call) = constructor_call_parts(tokens) else {
             return;
         };
-        if !self.is_bound_class_constructor_value(&call.callee.text, scope) {
-            let Some(constructor) = scope.get(&call.callee.text) else {
-                if self.require_declared_global_calls {
-                    self.type_error(
-                        span,
-                        format!(
-                            "constructor {} is not declared by this page profile",
-                            call.callee.text
-                        ),
-                        DiagnosticCode::UnknownName,
-                    );
-                }
-                return;
-            };
-            if matches!(constructor, Type::Any | Type::Unknown) {
-                return;
-            }
-            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-            let member = property_type(
-                constructor,
-                "new",
-                &self.types,
-                &mut HashSet::new(),
-                &mut budget,
-            );
-            let signature = match member {
-                PropertyType::Found {
-                    value: Type::Function { parameters, result },
-                    ..
-                } => FunctionSignature {
-                    parameters,
-                    type_parameters: Vec::new(),
-                    return_type: *result,
-                },
-                PropertyType::Exhausted => {
-                    self.type_error(
-                        span,
-                        "host constructor lookup exceeds the type-expansion limit".to_string(),
-                        DiagnosticCode::ResourceLimit,
-                    );
-                    return;
-                }
-                _ => {
-                    self.type_error(
-                        span,
-                        format!("value {} has no construct signature", call.callee.text),
-                        DiagnosticCode::TypeMismatch,
-                    );
-                    return;
-                }
-            };
+        if call
+            .receiver
+            .is_some_and(|receiver| scope.get(&receiver.text) != self.values.get(&receiver.text))
+        {
+            return;
+        }
+        if self.reject_abstract_construction(tokens, &call.callee.text, scope) {
+            return;
+        }
+        if self.reject_inaccessible_aliased_constructor(tokens, &call.callee.text, scope) {
+            return;
+        }
+        if let Some(signatures) = self.function_value_signatures(&call.callee.text, scope, true) {
             let Some(arguments) = split_call_arguments(call.arguments) else {
                 return;
             };
-            let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
-                self.type_error(
-                    span,
-                    "host constructor spread requires a fixed-length tuple".to_string(),
-                    DiagnosticCode::TypeMismatch,
-                );
+            let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, &signatures)
+            else {
                 return;
             };
-            match self.select_function_signature(&[signature], &actuals, None) {
+            let explicit = call
+                .generic
+                .then(|| self.module.generic_call_type_arguments[&call.callee.start].as_slice());
+            match self.select_function_signature(&signatures, &actuals, explicit) {
                 Ok(Some(_)) => {}
-                Ok(None) => self.type_error(
+                Ok(None) => {
+                    self.rejected_call_error(
+                        span,
+                        format!(
+                            "no constructor of value {} accepts the supplied argument types",
+                            call.callee.text
+                        ),
+                        &signatures,
+                        &actuals,
+                        false,
+                    );
+                    if let Some(argument) = arguments.first() {
+                        self.point_last_typescript(argument);
+                    }
+                }
+                Err(()) => self.type_error(
                     span,
+                    "construct signature selection exceeds its expansion limit".into(),
+                    DiagnosticCode::ResourceLimit,
+                ),
+            }
+            return;
+        }
+        if !self.is_bound_class_constructor_value(&call.callee.text, scope) {
+            if self
+                .symbols
+                .iter()
+                .any(|symbol| symbol.kind == SymbolKind::Import && symbol.name == call.callee.text)
+                && scope
+                    .get(&call.callee.text)
+                    .is_some_and(|value| !matches!(value, Type::Any | Type::Unknown))
+            {
+                let callable = self.functions.contains_key(&call.callee.text)
+                    || matches!(scope.get(&call.callee.text), Some(Type::Function { .. }));
+                self.typescript_type_error(
+                    &call.callee.span(&span.module),
                     format!(
-                        "no construct signature of {} accepts the supplied argument types",
+                        "imported value `{}` has no construct signature",
                         call.callee.text
                     ),
                     DiagnosticCode::TypeMismatch,
-                ),
-                Err(()) => self.type_error(
-                    span,
-                    "host constructor selection exceeds the type-expansion limit".to_string(),
-                    DiagnosticCode::ResourceLimit,
-                ),
+                    if callable { 7009 } else { 2351 },
+                    Vec::new(),
+                );
+                if !callable {
+                    if let (Some(value), Some(counterpart)) = (
+                        scope.get(&call.callee.text),
+                        self.diagnostics
+                            .last_mut()
+                            .and_then(|diagnostic| diagnostic.typescript.as_mut()),
+                    ) {
+                        let value = match value {
+                            Type::Number => "Number".into(),
+                            Type::String => "String".into(),
+                            Type::Boolean => "Boolean".into(),
+                            _ => crate::diagnostic::type_text::render(value),
+                        };
+                        counterpart
+                            .message
+                            .push_str(&format!("\n  Type '{value}' has no construct signatures."));
+                    }
+                }
             }
             return;
         }
@@ -1086,14 +808,54 @@ impl ModuleChecker<'_> {
                 .expect("constructor call has closing paren")
                 .end,
         );
+        let constructor_visibility = binding.visibility;
+        if !self.constructor_is_accessible(&call.callee.text, constructor_visibility) {
+            self.type_error(
+                &call_span,
+                format!(
+                    "constructor of class {} is {} and is not accessible here",
+                    call.callee.text,
+                    constructor_visibility.keyword()
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+        let Some(binding) = self.class_constructors.get(&call.callee.text) else {
+            return;
+        };
         if binding.inherited {
-            // The base signature is unresolved. Its heritage diagnostic and
-            // the class-output refusal prevent an invented constructor check.
+            // Keep the unresolved base and its refusal. TypeScript diagnoses
+            // arguments against the omitted constructor's zero-argument
+            // recovery signature; this metadata cannot admit the class.
+            let arguments = split_call_arguments(call.arguments)
+                .expect("constructor call has a balanced argument list");
+            if !arguments.is_empty() {
+                self.typescript_type_error(
+                    &call_span,
+                    format!(
+                        "no constructor of class {} accepts the supplied argument types",
+                        call.callee.text
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                    2554,
+                    vec!["0".into(), arguments.len().to_string()],
+                );
+            }
             return;
         }
         let arguments = split_call_arguments(call.arguments)
             .expect("constructor call has a balanced argument list");
-        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
+            let before = self.diagnostics.len();
+            for alternative in &alternatives {
+                self.check_class_construction(tokens, alternative, span);
+            }
+            self.dedupe_diagnostics_since(before);
+            return;
+        }
+        let signatures = binding.signatures.clone();
+        let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, &signatures)
+        else {
             self.type_error(
                 &call_span,
                 "a class constructor spread must have a fixed-length tuple type".to_string(),
@@ -1101,15 +863,67 @@ impl ModuleChecker<'_> {
             );
             return;
         };
-        match self.select_function_signature(&binding.signatures, &actuals, None) {
+        let explicit = call
+            .generic
+            .then(|| {
+                self.module
+                    .generic_call_type_arguments
+                    .get(&call.callee.start)
+                    .map(Vec::as_slice)
+            })
+            .flatten();
+        if let Some(arguments) = explicit {
+            if let Some(signature) = signatures.first() {
+                if self
+                    .check_explicit_function_type_arguments(
+                        signature,
+                        arguments,
+                        &call_span,
+                        call.callee.start,
+                    )
+                    .is_none()
+                {
+                    return;
+                }
+            }
+        }
+        let presented = explicit.and_then(|arguments| {
+            let signature = signatures.first()?;
+            let completed = complete_type_arguments(&signature.type_parameters, arguments)?;
+            let substitutions = type_parameter_substitutions(&signature.type_parameters, completed);
+            Some(
+                signatures
+                    .iter()
+                    .map(|signature| FunctionSignature {
+                        parameters: signature
+                            .parameters
+                            .iter()
+                            .map(|p| Parameter {
+                                annotation: p
+                                    .annotation
+                                    .as_ref()
+                                    .map(|ty| substitute_type(ty, &substitutions)),
+                                ..p.clone()
+                            })
+                            .collect(),
+                        type_parameters: Vec::new(),
+                        return_type: substitute_type(&signature.return_type, &substitutions),
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        });
+        match self.select_function_signature(&signatures, &actuals, explicit) {
             Ok(Some(_)) => {}
-            Ok(None) => self.type_error(
+            Ok(None) => self.rejected_call_error(
                 &call_span,
                 format!(
                     "no constructor of class {} accepts the supplied argument types",
                     call.callee.text
                 ),
-                DiagnosticCode::TypeMismatch,
+                presented.as_deref().unwrap_or(&signatures),
+                &actuals,
+                self.library_values.contains(&call.callee.text)
+                    && crate::diagnostic::templates::constructor_overloads(&call.callee.text) > 1,
             ),
             Err(()) => self.type_error(
                 &call_span,
@@ -1119,6 +933,14 @@ impl ModuleChecker<'_> {
                 ),
                 DiagnosticCode::ResourceLimit,
             ),
+        }
+        self.present_hidden_implementation(&call.callee.text, &actuals, true);
+        if self.library_values.contains(&call.callee.text) {
+            self.present_library_overloads(
+                &format!("new {}", call.callee.text),
+                &actuals,
+                &BTreeMap::new(),
+            );
         }
     }
 
@@ -1144,13 +966,27 @@ impl ModuleChecker<'_> {
         }
         let mut checked = 0usize;
         for start in 0..tokens.len().saturating_sub(2) {
-            if !tokens[start].is("new")
-                || tokens[start + 1].kind != TokenKind::Identifier
-                || !tokens[start + 2].is("(")
-            {
+            if !tokens[start].is("new") || tokens[start + 1].kind != TokenKind::Identifier {
                 continue;
             }
-            let Some(end) = closes[start + 2] else {
+            let mut opening = start + 2;
+            while tokens.get(opening).is_some_and(|token| token.is("."))
+                && tokens
+                    .get(opening + 1)
+                    .is_some_and(|token| token.kind == TokenKind::Identifier)
+            {
+                opening += 2;
+            }
+            if tokens.get(opening).is_some_and(|token| token.is("<")) {
+                let Some(close) = explicit_generic_call_close(tokens, opening - 1) else {
+                    continue;
+                };
+                opening = close + 1;
+            }
+            if !tokens.get(opening).is_some_and(|token| token.is("(")) {
+                continue;
+            }
+            let Some(end) = closes[opening] else {
                 continue;
             };
             checked += 1;
@@ -1223,63 +1059,21 @@ impl ModuleChecker<'_> {
     }
 }
 
-fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<FunctionSignature> {
-    let constructors = class
-        .members
-        .iter()
-        .filter_map(|member| member.constructor.as_ref())
-        .collect::<Vec<_>>();
-    let overloads = constructors
-        .iter()
-        .copied()
-        .filter(|constructor| constructor.body.is_none())
-        .collect::<Vec<_>>();
-    let selected = if overloads.is_empty() {
-        constructors
-            .into_iter()
-            .filter(|constructor| constructor.body.is_some())
-            .collect::<Vec<_>>()
-    } else {
-        overloads
-    };
-    if selected.is_empty() {
-        return vec![FunctionSignature {
-            parameters: Vec::new(),
-            type_parameters: Vec::new(),
-            return_type: Type::Named {
-                name: class.name.clone(),
-                arguments: Vec::new(),
-            },
-        }];
-    }
-    selected
-        .into_iter()
-        .map(|constructor| FunctionSignature {
-            parameters: constructor.parameters.clone(),
-            type_parameters: Vec::new(),
-            return_type: Type::Named {
-                name: class.name.clone(),
-                arguments: Vec::new(),
-            },
-        })
-        .collect()
-}
-
-fn class_declares_constructor(class: &ClassDeclaration) -> bool {
-    class
-        .members
-        .iter()
-        .any(|member| member.constructor.is_some())
-}
-
 pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClass {
     ExportedClass {
         source_name: class.name.clone(),
-        instance_type: class_instance_type(class),
-        constructor_type: class_constructor_side_type(class),
+        type_parameters: class_definition_parameters(class),
+        instance_type: indices::class_indexed_type(class, false, class_instance_type(class)),
+        constructor_type: indices::class_indexed_type(
+            class,
+            true,
+            class_constructor_side_type(class),
+        ),
         constructor_binding: ClassConstructorBinding {
+            modifiers: ClassModifierSurface::declared(class),
             signatures: class_constructor_signatures(class),
             inherited: class.extends_name.is_some() && !class_declares_constructor(class),
+            visibility: class_constructor_visibility(class),
         },
         value_exported: class.exported,
         heritage_depth: 0,
@@ -1287,154 +1081,5 @@ pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClas
 }
 
 pub(in crate::checker) fn class_instance_type(class: &ClassDeclaration) -> Type {
-    Type::Record(class_method_fields(class, false))
-}
-
-fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> Vec<TypeField> {
-    let mut fields = Vec::new();
-    for group in &class.method_groups {
-        if group.is_static != is_static {
-            continue;
-        }
-        let members = group.signature_member_indices.iter().copied().chain(
-            group
-                .signature_member_indices
-                .is_empty()
-                .then_some(group.implementation_member_index)
-                .flatten(),
-        );
-        for index in members {
-            let method = class.members[index]
-                .method
-                .as_ref()
-                .expect("method group member is parsed");
-            fields.push(TypeField {
-                name: method.name.clone(),
-                readonly: false,
-                optional: false,
-                value: Type::Function {
-                    parameters: method.parameters.clone(),
-                    result: Box::new(method.return_type.clone().unwrap_or(Type::Unknown)),
-                },
-                span: method.span.clone(),
-            });
-        }
-    }
-    fields
-}
-
-fn class_constructor_side_type(class: &ClassDeclaration) -> Type {
-    let mut fields = vec![TypeField {
-        name: "prototype".to_string(),
-        readonly: true,
-        optional: false,
-        value: Type::Named {
-            name: class.name.clone(),
-            arguments: Vec::new(),
-        },
-        span: class.name_span.clone(),
-    }];
-    fields.extend(class_method_fields(class, true));
-    Type::Record(fields)
-}
-
-fn class_constructor_overload_is_compatible(
-    signature: &ClassConstructor,
-    implementation: &ClassConstructor,
-    aliases: &BTreeMap<String, TypeDefinition>,
-    max_type_expansions: usize,
-) -> Result<bool, ()> {
-    let required_signature = signature
-        .parameters
-        .iter()
-        .filter(|parameter| !parameter.optional)
-        .count();
-    let required_implementation = implementation
-        .parameters
-        .iter()
-        .filter(|parameter| !parameter.optional)
-        .count();
-    if required_signature < required_implementation
-        || signature.parameters.len() > implementation.parameters.len()
-    {
-        return Ok(false);
-    }
-
-    let mut budget = TypeExpansionBudget::new(max_type_expansions);
-    let substitutions = BTreeMap::new();
-    for (signature_parameter, implementation_parameter) in
-        signature.parameters.iter().zip(&implementation.parameters)
-    {
-        let actual = parameter_expected_type(signature_parameter, &substitutions);
-        let expected = parameter_expected_type(implementation_parameter, &substitutions);
-        if !is_assignable(
-            &actual,
-            &expected,
-            aliases,
-            &mut HashSet::new(),
-            &mut budget,
-        ) {
-            return if budget.exhausted { Err(()) } else { Ok(false) };
-        }
-        if budget.exhausted {
-            return Err(());
-        }
-    }
-    Ok(true)
-}
-
-fn class_method_overload_is_compatible(
-    signature: &ClassMethod,
-    implementation: &ClassMethod,
-    aliases: &BTreeMap<String, TypeDefinition>,
-    max_type_expansions: usize,
-) -> Result<bool, ()> {
-    let required_signature = signature
-        .parameters
-        .iter()
-        .filter(|parameter| !parameter.optional)
-        .count();
-    let required_implementation = implementation
-        .parameters
-        .iter()
-        .filter(|parameter| !parameter.optional)
-        .count();
-    if required_signature < required_implementation
-        || signature.parameters.len() > implementation.parameters.len()
-    {
-        return Ok(false);
-    }
-
-    let mut budget = TypeExpansionBudget::new(max_type_expansions);
-    let substitutions = BTreeMap::new();
-    for (signature_parameter, implementation_parameter) in
-        signature.parameters.iter().zip(&implementation.parameters)
-    {
-        let actual = parameter_expected_type(signature_parameter, &substitutions);
-        let expected = parameter_expected_type(implementation_parameter, &substitutions);
-        if !is_assignable(
-            &actual,
-            &expected,
-            aliases,
-            &mut HashSet::new(),
-            &mut budget,
-        ) {
-            return if budget.exhausted { Err(()) } else { Ok(false) };
-        }
-        if budget.exhausted {
-            return Err(());
-        }
-    }
-
-    let actual = signature.return_type.as_ref().unwrap_or(&Type::Unknown);
-    let expected = implementation
-        .return_type
-        .as_ref()
-        .unwrap_or(&Type::Unknown);
-    let compatible = is_assignable(actual, expected, aliases, &mut HashSet::new(), &mut budget);
-    if budget.exhausted {
-        Err(())
-    } else {
-        Ok(compatible)
-    }
+    formal_class_type(class, &Type::Record(class_method_fields(class, false)))
 }

@@ -1,0 +1,6 @@
+{
+  "extends": "./base",
+  "compilerOptions": {
+    "target": "ES2022"
+  }
+}

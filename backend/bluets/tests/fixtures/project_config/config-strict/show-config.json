@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "alwaysStrict": true,
+    "module": "esnext",
+    "moduleResolution": "classic",
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strict": true,
+    "strictBindCallApply": true,
+    "strictBuiltinIteratorReturn": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "target": "es2022",
+    "useDefineForClassFields": true,
+    "useUnknownInCatchVariables": true
+  },
+  "files": [
+    "src/main.test.ts",
+    "src/main.ts",
+    "src/nested/tool.ts",
+    "src/other.ts"
+  ]
+}

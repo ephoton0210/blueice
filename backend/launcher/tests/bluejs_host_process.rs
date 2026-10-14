@@ -10,10 +10,11 @@
 //! document generation lifecycle, source-free responses, and cleanup path.
 
 use blueice_ipc::page_host::{
-    PageHostDebuggerExecutionState, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
-    PageHostStaticResolution,
+    PageHostBlueTsEmissionProfile, PageHostDebuggerEmittedOriginalPosition,
+    PageHostDebuggerEmittedPausedRootLocation, PageHostDebuggerExecutionState, PageHostDocument,
+    PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostReply,
+    PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
 };
 use blueice_launcher::bluejs_host::{BlueJsHostRuntimeLimits, SpawnedBlueJsHost};
 use std::os::unix::net::UnixStream;
@@ -47,6 +48,9 @@ fn document(generation: u64, scripts: Vec<PageHostScript>) -> PageHostDocument {
             document_origin: "https://example.test".to_string(),
         },
         debugger_execution_control: false,
+        emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
+        emitted_module_page_console_ambient: false,
+        emitted_classic_page_console_ambient: false,
         scripts,
     }
 }

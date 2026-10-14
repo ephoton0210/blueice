@@ -637,6 +637,80 @@ impl PageHostClient for PageHostConnection {
         })
     }
 
+    fn debugger_emitted_original_position(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
+            tab_id,
+            document_generation,
+            program,
+            generated_line,
+            generated_column_utf16,
+        })
+    }
+
+    fn debugger_emitted_map_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_emitted_safe_point(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
+            tab_id,
+            document_generation,
+            program,
+            generated_line,
+            generated_column_utf16,
+        })
+    }
+
+    fn debugger_system_emitted_safe_point(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResolveDebuggerSystemEmittedSafePoint {
+            tab_id,
+            document_generation,
+            loader_program,
+            program,
+            generated_line,
+            generated_column_utf16,
+        })
+    }
+
+    fn debugger_emitted_paused_root_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+            tab_id,
+            document_generation,
+            program,
+        })
+    }
+
+    fn debugger_emitted_paused_root_location_available(&self) -> bool {
+        true
+    }
+
     fn debugger_bluets_metadata_symbol_type(
         &mut self,
         tab_id: u64,
@@ -814,6 +888,47 @@ impl PageHostClient for PageHostConnection {
             tab_id,
             document_generation,
             safe_point,
+        })
+    }
+
+    fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+            tab_id,
+            document_generation,
+            loader_program,
+            safe_point,
+        })
+    }
+
+    fn debugger_system_stack_snapshot(
+        &mut self,
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerSystemStackSnapshot {
+            frame,
+            loader_program,
+            max_scope_entries,
+        })
+    }
+
+    fn debugger_system_stack_locations(
+        &mut self,
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerSystemStackLocations {
+            frame,
+            loader_program,
+            max_scope_entries,
         })
     }
 

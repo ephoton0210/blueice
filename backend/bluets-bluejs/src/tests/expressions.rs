@@ -541,7 +541,7 @@ fn preserves_an_opaque_braced_branch_for_direct_bridge_rejection() {
         ENTRY,
         &MapLoader::from([ModuleSource::new(
             ENTRY,
-            "function answer(value: number): number { if (value > 0) { if (value > 1) return value; } else { return 0; } } answer(2);",
+            "function answer(value: number): number { if (value > 0) { if (value > 1) return value; } else { return 0; } return 0; } answer(2);",
         )]),
         CompilerOptions::default(),
     );
@@ -628,6 +628,40 @@ fn lowers_braced_try_catch_finally_to_bluejs_ast() {
 }
 
 #[test]
+fn direct_try_lowers_a_typed_catch_binding_without_its_annotation() {
+    for annotation in ["any", "unknown"] {
+        let source = format!(
+            "function f(): void {{ try {{ throw 1; }} catch (error: {annotation}) {{ 1; }} }} f();"
+        );
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source.as_str())]),
+            CompilerOptions::default(),
+        )
+        .unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+            panic!("expected a script program");
+        };
+        let bluejs::Stmt::FunctionDecl(function) = &program.body[0] else {
+            panic!("expected the function declaration");
+        };
+        assert!(
+            matches!(
+                function.body.as_slice(),
+                [bluejs::Stmt::Try {
+                    handler: Some(bluejs::CatchClause {
+                        param: Some(bluejs::Pattern::Identifier(binding)),
+                        ..
+                    }),
+                    ..
+                }] if binding == "error"
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn direct_try_rejects_excluded_blocks_without_reparsing_javascript() {
     for source in [
         "function f(): void { try { let inner = 1; } finally { 0; } } f();",
@@ -639,7 +673,6 @@ fn direct_try_rejects_excluded_blocks_without_reparsing_javascript() {
         "function f(): void { try { try { 0; } finally { 1; } } finally { 2; } } f();",
         "function f(): void { try { 0; } catch (error) { if (true) { try { 1; } finally { 2; } } } } f();",
         "function f(): void { try { 0; } catch { 1; } } f();",
-        "function f(): void { try { 0; } catch (error: any) { 1; } } f();",
         "function f(): void { try { 0; } catch ({error}) { 1; } } f();",
         "function f(): void { try { 0; } catch (first) { 1; } catch (second) { 2; } } f();",
         "function f(): void { try { 0; } } f();",
@@ -715,8 +748,10 @@ fn lowers_local_named_and_default_exports_to_a_bluejs_module() {
     };
     assert!(matches!(
         module.body.as_slice(),
-        [bluejs::Stmt::VarDecl(_, _), bluejs::Stmt::Expr(bluejs::Expr::Identifier(name))]
-            if name == "answer"
+        [bluejs::Stmt::VarDecl(_, _), bluejs::Stmt::VarDecl(bluejs::DeclKind::Const, snapshot), bluejs::Stmt::Expr(bluejs::Expr::Identifier(name))]
+            if name == "answer" && matches!(snapshot.as_slice(), [bluejs::VarDeclarator {
+                pattern: bluejs::Pattern::Identifier(binding), init: Some(bluejs::Expr::Identifier(source))
+            }] if binding == "\0bluejs_module_default" && source == "answer")
     ));
     assert!(module.imports.is_empty());
     assert!(module.requests.is_empty());
@@ -729,7 +764,7 @@ fn lowers_local_named_and_default_exports_to_a_bluejs_module() {
             },
             bluejs::ExportEntry::Local {
                 export_name: "default".to_string(),
-                local_name: "answer".to_string(),
+                local_name: "\0bluejs_module_default".to_string(),
             },
         ]
     );
@@ -869,5 +904,99 @@ fn direct_graph_retains_host_authorized_canonical_module_records() {
             .execute_module_graph(&graph.entry, &graph.bytecode_map())
             .unwrap(),
         bluejs::Value::Number(42.0)
+    );
+}
+
+#[test]
+fn a_direct_module_graph_exports_and_imports_enums_like_node() {
+    let graph = compile_direct_module_graph(
+        GRAPH_ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(
+                GRAPH_ENTRY,
+                "import { Level, Mode } from './dep.ts'; \
+                 export const answer: number = Level.High * 10 + Mode.Fast.length + Level[1].length; answer;",
+            ),
+            ModuleSource::new(
+                "graph/dep.ts",
+                "export enum Level { Low = 1, High = 2 } \
+                 export const enum Mode { Fast = 'fast', Slow = 'slow' }",
+            ),
+        ]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Module(dependency) = &graph.modules["graph/dep.ts"].program else {
+        panic!("the dependency must lower to a BlueJS module AST");
+    };
+    assert!(dependency.exports.iter().any(|entry| matches!(
+        entry,
+        bluejs::ExportEntry::Local { export_name, .. } if export_name == "Level"
+    )));
+    // Node runs the same program (Level.High * 10 + "fast".length + "Low".length) to 27.
+    assert_eq!(
+        bluejs::Vm::default()
+            .execute_module_graph(&graph.entry, &graph.bytecode_map())
+            .unwrap(),
+        bluejs::Value::Number(27.0)
+    );
+}
+
+#[test]
+fn a_direct_module_graph_exports_and_imports_namespaces_like_node() {
+    let graph = compile_direct_module_graph(
+        GRAPH_ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(
+                GRAPH_ENTRY,
+                "import { Geo } from './dep.ts'; \
+                 export const answer: number = Geo.area(3) + Geo.Deep.depth + Geo.counter; answer;",
+            ),
+            ModuleSource::new(
+                "graph/dep.ts",
+                "export namespace Geo { export let counter: number = 1; \
+                 export function area(n: number): number { counter += 1; return n * 2; } \
+                 export namespace Deep { export const depth: number = counter + 3; } }",
+            ),
+        ]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Module(dependency) = &graph.modules["graph/dep.ts"].program else {
+        panic!("the dependency must lower to a BlueJS module AST");
+    };
+    assert!(dependency.exports.iter().any(|entry| matches!(
+        entry,
+        bluejs::ExportEntry::Local { export_name, .. } if export_name == "Geo"
+    )));
+    // Node runs the same program: area(3) is 6, Deep.depth was 1 + 3 = 4 when it ran,
+    // and counter is 2 afterwards: 6 + 4 + 2 = 12.
+    assert_eq!(
+        bluejs::Vm::default()
+            .execute_module_graph(&graph.entry, &graph.bytecode_map())
+            .unwrap(),
+        bluejs::Value::Number(12.0)
+    );
+}
+
+#[test]
+fn a_direct_module_graph_awaits_at_the_top_level_and_in_async_functions_like_node() {
+    // Node runs the same module: a is 2, later(2) is load(2) + 1 = 5, and 2 + 5 is 7.
+    let graph = compile_direct_module_graph(
+        GRAPH_ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            GRAPH_ENTRY,
+            "async function load(n: number): Promise<number> { return n * 2; } \
+             async function later(n: number): Promise<number> { const m: number = await load(n); return m + 1; } \
+             export const a: number = await load(1); const b: number = await later(a); a + b;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        bluejs::Vm::default()
+            .execute_module_graph(&graph.entry, &graph.bytecode_map())
+            .unwrap(),
+        bluejs::Value::Number(7.0)
     );
 }

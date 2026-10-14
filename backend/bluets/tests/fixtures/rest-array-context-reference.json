@@ -1,0 +1,81 @@
+{
+  "version": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ES2022",
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "cases": [
+    {
+      "name": "array-rest",
+      "accepts": true,
+      "source": "function first(...values: number[]): number { return values[0]; } const values = [42]; export const answer = first(...values);",
+      "diagnostics": []
+    },
+    {
+      "name": "prefix-array-rest",
+      "accepts": true,
+      "source": "function first(prefix: string, ...values: number[]): number { return values[0]; } const values = [42]; export const answer = first(\"ok\", ...values);",
+      "diagnostics": []
+    },
+    {
+      "name": "array-before-fixed-prefix",
+      "accepts": false,
+      "source": "function first(prefix: number, ...values: number[]): number { return prefix; } const values = [42]; export const answer = first(...values);",
+      "diagnostics": [
+        {
+          "code": 2556,
+          "start": 128,
+          "length": 9,
+          "message": "A spread argument must either have a tuple type or be passed to a rest parameter."
+        }
+      ]
+    },
+    {
+      "name": "wrong-rest-element",
+      "accepts": false,
+      "source": "function first(...values: number[]): number { return values[0]; } const values = [\"wrong\"]; export const answer = first(...values);",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "start": 120,
+          "length": 9,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "member-array-rest",
+      "accepts": true,
+      "source": "const box = { first(...values: number[]): number { return values[0]; } }; const values = [42]; export const answer = box.first(...values);",
+      "diagnostics": []
+    },
+    {
+      "name": "numeric-reduce",
+      "accepts": true,
+      "source": "const values = [20, 22]; export const answer = values.reduce((left, right) => left + right, 0);",
+      "diagnostics": []
+    },
+    {
+      "name": "string-reduce",
+      "accepts": true,
+      "source": "const values = [\"blue\", \"ice\"]; export const answer = values.reduce((left, right) => left + right, \"\");",
+      "diagnostics": []
+    },
+    {
+      "name": "reduce-return-error",
+      "accepts": false,
+      "source": "const values = [20, 22]; export const answer = values.reduce((left: number, right: number): number => \"wrong\", 0);",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 102,
+          "length": 7,
+          "message": "Type 'string' is not assignable to type 'number'."
+        }
+      ]
+    }
+  ]
+}

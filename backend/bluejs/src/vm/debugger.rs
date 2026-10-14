@@ -9,8 +9,10 @@
 //! instruction merely by remembering its offset: the operand stack, handler
 //! stack, active iterator records and execution-context fields are also live.
 //! This module retains those states for a classic or module root and one
-//! explicitly selected synchronous child invocation. The nested frame has a
-//! distinct serial and continuation; root-only controls cannot resume it.
+//! explicitly selected synchronous child invocation. Classic scripts can
+//! also retain one intermediate direct synchronous caller. The selected
+//! nested frame has a distinct serial and continuation; root-only controls
+//! cannot resume it.
 
 use super::*;
 
@@ -76,11 +78,20 @@ pub(super) struct NestedDebuggerPauseRequest {
     pub(super) code_unit_ordinal: u32,
     pub(super) bytecode_offset: usize,
     pub(super) caller_program_generation: Option<u64>,
+    pub(super) intermediate_program_generation: Option<u64>,
 }
 
 pub(super) struct NestedDebuggerContinuation {
     pub(super) frame_serial: u64,
     pub(super) code_unit_ordinal: u32,
+    pub(super) code: Bytecode,
+    pub(super) pc: usize,
+    pub(super) execution: SuspendedModuleExecution,
+    pub(super) iterators: Vec<Value>,
+    pub(super) handlers: Vec<HandlerFrame>,
+}
+
+pub(super) struct IntermediateDebuggerContinuation {
     pub(super) code: Bytecode,
     pub(super) pc: usize,
     pub(super) execution: SuspendedModuleExecution,
@@ -410,18 +421,59 @@ impl Vm {
         Ok(generation)
     }
 
-    /// Runs a classic root until one verified instruction of a directly
-    /// called synchronous closure. The parent call site and child invocation
-    /// remain VM-owned; this first native seam does not yet expose a public
-    /// child debugger route or resume operation.
+    /// Runs a classic root until one verified instruction of a synchronous
+    /// child reached through at most one intermediate direct closure call.
+    /// Every waiting call site and child invocation remains VM-owned.
     pub fn execute_script_until_nested_debugger_pause(
         &mut self,
         code: &Bytecode,
         code_unit_ordinal: u32,
         bytecode_offset: u32,
     ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        self.execute_script_until_nested_debugger_pause_with_intermediate(
+            code,
+            code_unit_ordinal,
+            bytecode_offset,
+            None,
+        )
+    }
+
+    /// Pauses an installed child called by one exact synchronous closure
+    /// supplied by a separately installed script (for example, a System
+    /// loader). The embedding owner must bind `intermediate_generation` to
+    /// its live loader handle before invoking this VM-only primitive.
+    pub fn execute_script_until_foreign_intermediate_debugger_pause(
+        &mut self,
+        code: &Bytecode,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+        intermediate_generation: u64,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        self.execute_script_until_nested_debugger_pause_with_intermediate(
+            code,
+            code_unit_ordinal,
+            bytecode_offset,
+            Some(intermediate_generation),
+        )
+    }
+
+    fn execute_script_until_nested_debugger_pause_with_intermediate(
+        &mut self,
+        code: &Bytecode,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+        foreign_intermediate_generation: Option<u64>,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
         let generation =
             Self::nested_debugger_target_generation(code, code_unit_ordinal, bytecode_offset)?;
+        if foreign_intermediate_generation
+            .is_some_and(|foreign| foreign == 0 || foreign == generation)
+        {
+            return Err(RuntimeError::Unsupported(
+                "foreign debugger intermediate must have a distinct installed generation",
+            ));
+        }
+        let intermediate_generation = foreign_intermediate_generation.unwrap_or(generation);
         self.prepare_root_execution(code, false)?;
         if let Err(error) = self.prepare_global_declarations(code) {
             return Err(self
@@ -432,7 +484,8 @@ impl Vm {
             program_generation: generation,
             code_unit_ordinal,
             bytecode_offset: bytecode_offset as usize,
-            caller_program_generation: Some(generation),
+            caller_program_generation: Some(intermediate_generation),
+            intermediate_program_generation: Some(intermediate_generation),
         });
         let result = self.run_debugger_script(code, None);
         self.debugger_nested_pause_request = None;
@@ -569,6 +622,13 @@ impl Vm {
             code_unit_ordinal,
             bytecode_offset: bytecode_offset as usize,
             caller_program_generation: Some(caller_generation),
+            // A same-generation module may reach a verified child through
+            // one synchronous caller (for example, a decorator's IIFE).
+            // Retain that bounded frame just as the classic route does;
+            // linked dependency calls keep their distinct entry generation
+            // and cannot borrow this same-program intermediate allowance.
+            intermediate_program_generation: (generation == caller_generation)
+                .then_some(generation),
         });
         let result = (|| {
             self.execute_module_graph_inner(entry, modules, false, false, ImportPhase::Evaluation)?;
@@ -720,6 +780,11 @@ impl Vm {
                     self.finish_debugger_interpret_result(result, &mut iterators, 0, 0);
                 self.restore_module_execution(parent);
                 self.remaining_instructions = child_remaining_instructions;
+                let completion = if self.debugger_nested_intermediate_continuation.is_some() {
+                    self.finish_nested_intermediate_after_child(completion)
+                } else {
+                    completion
+                };
                 match completion {
                     Ok(value) => {
                         if let Err(error) = self.check_string(&value) {
@@ -736,11 +801,23 @@ impl Vm {
                                 .code
                                 .instruction(root.pc)
                                 .expect("waiting module root retains a verified Call instruction");
-                            debug_assert_eq!(call.opcode, Opcode::Call);
-                            let call_base =
-                                root.execution.stack.len() - call.operand.unwrap_or(0) as usize - 2;
-                            root.execution.stack.truncate(call_base);
-                            root.execution.stack.push(value);
+                            match call.opcode {
+                                Opcode::Call => {
+                                    let call_base = root.execution.stack.len()
+                                        - call.operand.unwrap_or(0) as usize
+                                        - 2;
+                                    root.execution.stack.truncate(call_base);
+                                    root.execution.stack.push(value);
+                                }
+                                Opcode::CallClassStaticBlock => {
+                                    let _ = root
+                                        .execution
+                                        .stack
+                                        .pop()
+                                        .expect("paused static call retains its closure");
+                                }
+                                _ => unreachable!("nested caller retains a direct-call opcode"),
+                            }
                             root.execution.remaining_instructions = child_remaining_instructions;
                             root.pc += call.opcode.width();
                             return Ok(VmDebuggerNestedExecutionState::FrameReturned {
@@ -756,10 +833,21 @@ impl Vm {
                             .code
                             .instruction(root.pc)
                             .expect("waiting root retains a verified Call instruction");
-                        debug_assert_eq!(call.opcode, Opcode::Call);
-                        let call_base = self.stack.len() - call.operand.unwrap_or(0) as usize - 2;
-                        self.stack.truncate(call_base);
-                        self.stack.push(value);
+                        match call.opcode {
+                            Opcode::Call => {
+                                let call_base =
+                                    self.stack.len() - call.operand.unwrap_or(0) as usize - 2;
+                                self.stack.truncate(call_base);
+                                self.stack.push(value);
+                            }
+                            Opcode::CallClassStaticBlock => {
+                                let _ = self
+                                    .stack
+                                    .pop()
+                                    .expect("paused static call retains its closure");
+                            }
+                            _ => unreachable!("nested caller retains a direct-call opcode"),
+                        }
                         root.pc += call.opcode.width();
                         Ok(VmDebuggerNestedExecutionState::FrameReturned {
                             root_bytecode_offset: u32::try_from(root.pc)
@@ -803,6 +891,94 @@ impl Vm {
                 }
             }
         }
+    }
+
+    /// Rejoins one retained synchronous caller between the selected child
+    /// and the classic root. The child's instruction is never replayed: its
+    /// completion is applied to the exact waiting call operand stack before
+    /// the intermediate frame continues to its own return or throw.
+    fn finish_nested_intermediate_after_child(
+        &mut self,
+        child: Result<Value, RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
+        let mut intermediate = self
+            .debugger_nested_intermediate_continuation
+            .take()
+            .expect("a depth-two pause retains its intermediate caller");
+        let root = self.suspend_module_execution();
+        let remaining_instructions = root.remaining_instructions;
+        self.restore_module_execution(intermediate.execution);
+        self.remaining_instructions = remaining_instructions;
+        let previous_call_depth = self.call_depth;
+        let previous_call_stack_len = self.call_stack.len();
+        self.call_depth += 1;
+        self.call_stack.extend(self.callee.object_id());
+        let child = child.and_then(|value| {
+            self.check_string(&value)?;
+            Ok(value)
+        });
+        let resume_pc = match child {
+            Ok(value) => {
+                let call = intermediate
+                    .code
+                    .instruction(intermediate.pc)
+                    .expect("intermediate caller retains a verified call instruction");
+                match call.opcode {
+                    Opcode::Call => {
+                        let base = self.stack.len() - call.operand.unwrap_or(0) as usize - 2;
+                        self.stack.truncate(base);
+                        self.stack.push(value);
+                    }
+                    Opcode::CallClassStaticBlock => {
+                        let _ = self
+                            .stack
+                            .pop()
+                            .expect("paused static call retains its closure");
+                    }
+                    _ => unreachable!("intermediate caller retains a direct-call opcode"),
+                }
+                Ok(intermediate.pc + call.opcode.width())
+            }
+            Err(error) if error.is_catchable() => {
+                match NestedThrowAction::classify(self.resolve_completion(
+                    &intermediate.code,
+                    &mut intermediate.handlers,
+                    &mut intermediate.iterators,
+                    Completion::Throw(error),
+                )) {
+                    NestedThrowAction::Handler(pc) => Ok(pc),
+                    NestedThrowAction::Failed(error) => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        };
+        let result = match resume_pc {
+            Ok(pc) => match DebuggerInterpreterExit::classify(
+                self.interpret(
+                    &intermediate.code,
+                    &mut intermediate.iterators,
+                    pc,
+                    None,
+                    None,
+                    Some((intermediate.handlers, 0)),
+                ),
+                DebuggerFrameKind::NestedResume,
+            ) {
+                DebuggerInterpreterExit::Completed(result) => result,
+                DebuggerInterpreterExit::Suspended { .. } => Err(RuntimeError::Unsupported(
+                    "intermediate debugger frame suspended after its child returned",
+                )),
+            },
+            Err(error) => Err(error),
+        };
+        let result =
+            self.finish_debugger_interpret_result(result, &mut intermediate.iterators, 0, 0);
+        self.call_stack.truncate(previous_call_stack_len);
+        self.call_depth = previous_call_depth;
+        let remaining_instructions = self.remaining_instructions;
+        self.restore_module_execution(root);
+        self.remaining_instructions = remaining_instructions;
+        result
     }
 
     fn resume_nested_module_throw(
@@ -1048,6 +1224,10 @@ impl Vm {
             Err(RuntimeError::Unsupported(
                 "a debugger-paused nested frame must resume before another execution starts",
             ))
+        } else if self.debugger_nested_intermediate_continuation.is_some() {
+            Err(RuntimeError::Unsupported(
+                "a debugger-paused intermediate frame must resume before another execution starts",
+            ))
         } else {
             Ok(())
         }
@@ -1127,6 +1307,12 @@ impl Vm {
             references.extend(continuation.iterators.iter().filter_map(Value::object_id));
         }
         if let Some(continuation) = &self.debugger_nested_continuation {
+            references.extend(Self::suspended_execution_references(
+                &continuation.execution,
+            ));
+            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
+        }
+        if let Some(continuation) = &self.debugger_nested_intermediate_continuation {
             references.extend(Self::suspended_execution_references(
                 &continuation.execution,
             ));

@@ -85,6 +85,23 @@ pub struct CoreLaunchOptions {
     /// The assistant the launcher supervises, reproduced on every core.
     assistant: Option<AssistantWiring>,
     supervise_out_of_process_bluejs: bool,
+    /// Selects BlueTSC-emitted classic scripts for the supervised core.
+    /// The private page-host protocol still owns the exact map artifact.
+    emitted_blue_ts_classic: bool,
+    /// Owner-only type ambient for a page-provided classic console.
+    emitted_blue_ts_classic_page_console_ambient: bool,
+    /// Owner-only ES5 target for emitted classic BlueTS.
+    emitted_blue_ts_classic_es5: bool,
+    /// Owner-only System wrapper emission for classic BlueTS.
+    emitted_blue_ts_classic_system: bool,
+    /// Owner-only legacy decorators without metadata for classic BlueTS.
+    emitted_blue_ts_classic_legacy_decorators: bool,
+    /// Owner-only legacy decorator and metadata emit for classic BlueTS.
+    emitted_blue_ts_classic_legacy_metadata: bool,
+    /// Independent owner-selected emitted ESM graph route.
+    emitted_blue_ts_module: bool,
+    /// Separate owner-only type input for a page-supplied ESM console.
+    emitted_blue_ts_module_page_console_ambient: bool,
     /// Immutable launcher-owner resource envelope forwarded only through
     /// trusted child bootstrap. The public launcher CLI, core, page, and
     /// page-host IPC cannot inspect or change it.
@@ -198,6 +215,10 @@ pub struct CoreLaunchOptions {
     debugger_static_metadata_symbol_contract: bool,
     /// Independent owner policy for compiler-only paused-slot relations.
     debugger_static_scope_relation: bool,
+    /// Independent owner policy for generated-token breakpoint binding.
+    debugger_generated_breakpoint: bool,
+    /// Independent owner policy for paused generated/original projection.
+    debugger_generated_paused_location: bool,
 }
 
 mod launch_options;

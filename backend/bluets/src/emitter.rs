@@ -5,11 +5,54 @@
 //! ESM, declaration, and source-map emission from the shared checked graph.
 
 use crate::checker::CheckedProject;
-use crate::compiler::{fingerprint, is_declaration_module, CompilerOptions, Project};
+use crate::compiler::{
+    fingerprint, is_declaration_module, is_external_library_module, CompilerOptions, Project,
+};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{Declaration, Module, TextEdit, Type, TypeParameter};
 use crate::strict_boundaries;
 use std::collections::BTreeMap;
+
+pub use decorators::DECORATOR_HELPER_V1_VERSION;
+pub use legacy_decorators::LEGACY_DECORATOR_HELPER_V1_VERSION;
+pub(crate) use module_wrappers::VERSION as MODULE_WRAPPERS_VERSION;
+pub use private_lowering::CLASS_HELPER_V1_VERSION;
+pub use source_map_lookup::{SourceMapLookupError, SourceMapOriginalPosition};
+pub(crate) use system::HELPER_SOURCE as SYSTEM_HELPER_SOURCE;
+pub(crate) use targets::TARGET_HELPER_V1_SOURCES;
+pub use targets::TARGET_HELPER_V1_VERSION;
+
+mod callable_objects;
+mod class_expressions;
+mod class_lowering;
+mod classes;
+mod commonjs;
+mod computed_fields;
+mod declaration_maps;
+mod declarations;
+mod decorators;
+mod enums;
+mod global_declarations;
+mod helper_selection;
+mod inferred_declarations;
+mod inferred_returns;
+mod jsx;
+mod legacy_decorators;
+mod module_wrappers;
+mod namespaces;
+mod output_options;
+mod private_lowering;
+mod reexports;
+mod relocations;
+mod source_map_lookup;
+mod system;
+mod targets;
+mod token_maps;
+mod type_elision;
+
+use declarations::{
+    emit_declaration, emit_type_parameters, is_default_export_name, is_value_export_name,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildOutput {
@@ -18,6 +61,8 @@ pub struct BuildOutput {
     /// Root-relative declaration modules preserved for declaration-consuming
     /// builds. They are never JavaScript artifacts.
     pub declaration_modules: BTreeMap<String, String>,
+    /// Original owner-authorized data, copied without JavaScript lowering.
+    pub assets: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +71,7 @@ pub struct BuildArtifact {
     pub javascript: String,
     pub source_map: Option<SourceMap>,
     pub declaration: Option<String>,
+    pub declaration_map: Option<SourceMap>,
     pub fingerprint: String,
     /// Present only when every admitted strict crossing has an emitted helper
     /// call. Publishers must verify these byte locations before release.
@@ -64,22 +110,34 @@ pub struct SourceMap {
     pub file: String,
     pub sources: Vec<String>,
     pub sources_content: Vec<String>,
+    pub inline_sources: bool,
+    pub source_root: String,
+    /// Source Map v3 names referenced by optional fifth fields in mappings.
+    pub names: Vec<String>,
     pub mappings: String,
 }
 
 impl SourceMap {
     pub fn to_json(&self) -> String {
         format!(
-            "{{\"version\":3,\"file\":\"{}\",\"sources\":[{}],\"sourcesContent\":[{}],\"names\":[],\"mappings\":\"{}\"}}",
+            "{{\"version\":3,\"file\":\"{}\",\"sourceRoot\":\"{}\",\"sources\":[{}]{},\"names\":[{}],\"mappings\":\"{}\"}}",
             json_escape(&self.file),
+            json_escape(&self.source_root),
             self.sources
                 .iter()
                 .map(|source| format!("\"{}\"", json_escape(source)))
                 .collect::<Vec<_>>()
                 .join(","),
-            self.sources_content
+            if self.inline_sources {
+                format!(",\"sourcesContent\":[{}]", self.sources_content
+                    .iter()
+                    .map(|source| format!("\"{}\"", json_escape(source)))
+                    .collect::<Vec<_>>()
+                    .join(","))
+            } else { String::new() },
+            self.names
                 .iter()
-                .map(|source| format!("\"{}\"", json_escape(source)))
+                .map(|name| format!("\"{}\"", json_escape(name)))
                 .collect::<Vec<_>>()
                 .join(","),
             json_escape(&self.mappings),
@@ -93,14 +151,41 @@ pub(crate) fn emit(
     options: &CompilerOptions,
 ) -> Result<BuildOutput, Diagnostic> {
     let build_fingerprint = fingerprint(project, options);
+    let exported_enums = crate::checker::exported_enums(project);
     let artifacts = checked
         .modules
         .iter()
-        .filter(|(id, _)| !is_declaration_module(id))
+        .filter(|(id, _)| {
+            !is_declaration_module(id)
+                && !is_external_library_module(id)
+                && !project.json_modules.contains_key(*id)
+        })
         .map(|(id, checked_module)| {
-            let (emitted, strict_runtime) = emit_javascript(&checked_module.module, options)?;
+            let mut file_options = options.clone();
+            file_options.module_kind = project.module_kind(id, options.module_kind);
+            file_options.isolated_modules |= options.verbatim_module_syntax;
+            let (emitted, strict_runtime) = if options.emit_declaration_only {
+                (
+                    EmittedJavaScript {
+                        javascript: String::new(),
+                        provenance: Vec::new(),
+                        segment_limit: None,
+                        overflowed: false,
+                    },
+                    None,
+                )
+            } else {
+                emit_javascript(
+                    &checked_module.module,
+                    project,
+                    &exported_enums,
+                    &file_options,
+                )?
+            };
             if options.source_map
-                && emitted.provenance.len() > options.limits.max_source_map_segments
+                && !options.emit_declaration_only
+                && (emitted.overflowed
+                    || emitted.provenance.len() > options.limits.max_source_map_segments)
             {
                 return Err(Diagnostic::error(
                     DiagnosticCode::ResourceLimit,
@@ -108,12 +193,29 @@ pub(crate) fn emit(
                     "emitted source map exceeded the segment limit",
                 ));
             }
-            let source_map = options
-                .source_map
-                .then(|| source_map(id, &checked_module.module.source, &emitted));
+            let source_map = (options.source_map && !options.emit_declaration_only)
+                .then(|| source_map(id, &checked_module.module.source, &emitted, options));
             let declaration = options
                 .declaration
-                .then(|| emit_declaration(&checked_module.module));
+                .then(|| {
+                    let context = inferred_declarations::Context::new(checked_module, project)?;
+                    emit_declaration(
+                        &inferred_returns::declaration_module(checked_module),
+                        &checked_module.symbols,
+                        Some(&context),
+                        options,
+                    )
+                })
+                .transpose()?;
+            let declaration = declaration.map(|text| output_options::format_text(text, options));
+            let declaration_map = if options.declaration_map {
+                declaration
+                    .as_deref()
+                    .map(|text| declaration_maps::build(id, &checked_module.module, text, options))
+                    .transpose()?
+            } else {
+                None
+            };
             Ok((
                 id.clone(),
                 BuildArtifact {
@@ -121,6 +223,7 @@ pub(crate) fn emit(
                     javascript: emitted.javascript,
                     source_map,
                     declaration,
+                    declaration_map,
                     fingerprint: build_fingerprint.clone(),
                     strict_runtime,
                 },
@@ -133,7 +236,9 @@ pub(crate) fn emit(
                 .modules
                 .iter()
                 .filter(|(id, _)| {
-                    is_declaration_module(id) && !project.is_ambient_declaration_module(id)
+                    is_declaration_module(id)
+                        && !is_external_library_module(id)
+                        && !project.is_ambient_declaration_module(id)
                 })
                 .map(|(id, checked_module)| (id.clone(), checked_module.module.source.clone()))
                 .collect()
@@ -145,12 +250,18 @@ pub(crate) fn emit(
         fingerprint: build_fingerprint,
         artifacts,
         declaration_modules,
+        assets: project
+            .json_modules
+            .keys()
+            .filter(|id| !is_external_library_module(id))
+            .map(|id| (id.clone(), project.modules[id].source.clone()))
+            .collect(),
     })
 }
 
-/// Rejects a source-map request before allocating an unbounded provenance
-/// vector. The bound is conservative: erased/replaced spans and physical line
-/// boundaries are the only sites that can add a mapping segment.
+/// Preflight the copied-source token marks, edit boundaries and physical lines
+/// before emitting a map. Later generated transforms have their own final
+/// segment-count check because helper expansion is not bounded by source tokens.
 pub(crate) fn validate_source_map_limits(
     checked: &CheckedProject,
     options: &CompilerOptions,
@@ -168,11 +279,14 @@ pub(crate) fn validate_source_map_limits(
                 .filter(|character| matches!(character, '\r' | '\n'))
                 .count()
                 .saturating_add(1);
+            let token_marks = crate::syntax::lex(id, &module.source)
+                .map(|tokens| tokens.len().saturating_mul(2))
+                .unwrap_or(0);
             let rewritten_imports = module
                 .declarations
                 .iter()
                 .filter(|declaration| {
-                    matches!(declaration, Declaration::Import(import) if !import.type_only)
+                    matches!(declaration, Declaration::Import(import) if !import.is_type_only())
                 })
                 .count();
             let strict_functions = module
@@ -195,7 +309,7 @@ pub(crate) fn validate_source_map_limits(
             } else {
                 1usize.saturating_add(strict_functions.iter().sum::<usize>())
             };
-            let bound = physical_lines.saturating_add(
+            let bound = physical_lines.saturating_add(token_marks).saturating_add(
                 module
                     .edits
                     .len()
@@ -219,6 +333,8 @@ pub(crate) fn validate_source_map_limits(
 struct EmittedJavaScript {
     javascript: String,
     provenance: Vec<ProvenanceSegment>,
+    segment_limit: Option<usize>,
+    overflowed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,21 +343,72 @@ struct ProvenanceSegment {
     generated_column: usize,
     source_line: usize,
     source_column: usize,
+    mapped: bool,
+    /// Index into `SourceMap::names`; absent for unnamed segments.
+    name_index: Option<usize>,
 }
 
 fn emit_javascript(
     module: &Module,
+    project: &Project,
+    exported_enums: &BTreeMap<String, BTreeMap<String, crate::checker::ExportedEnum>>,
     options: &CompilerOptions,
 ) -> Result<(EmittedJavaScript, Option<EmittedStrictModule>), Diagnostic> {
+    let mut script_options;
+    let options = if options.import_helpers && !project.is_external_module(module) {
+        script_options = options.clone();
+        script_options.import_helpers = false;
+        &script_options
+    } else {
+        options
+    };
+    let wrapper = options.module_kind;
+    let mut wrapper_options;
+    let options = if matches!(
+        wrapper,
+        crate::ModuleKind::Amd | crate::ModuleKind::Umd | crate::ModuleKind::System
+    ) {
+        wrapper_options = options.clone();
+        wrapper_options.module_kind = crate::ModuleKind::CommonJs;
+        if wrapper == crate::ModuleKind::System {
+            wrapper_options.es_module_interop = false;
+        }
+        &wrapper_options
+    } else {
+        options
+    };
+    let emitting_module = if options.verbatim_module_syntax {
+        std::borrow::Cow::Borrowed(module)
+    } else {
+        type_elision::queries(module)
+    };
+    let module = emitting_module.as_ref();
     let mut edits = module.edits.clone();
+    output_options::erase_type_comments(module, &mut edits);
+    if wrapper == crate::ModuleKind::System {
+        system::validate(module)?;
+    }
+    let lexical = targets::es5::prepare(module, project, options, &mut edits)?;
+    type_elision::lower(module, options.module_kind, &mut edits);
     for declaration in &module.declarations {
-        let Declaration::Import(import) = declaration else {
-            continue;
+        let (specifier, span) = match declaration {
+            Declaration::Import(import) if !import.is_type_only() => {
+                (&import.specifier, &import.specifier_span)
+            }
+            Declaration::ValueExport(export)
+                if export.specifier.is_some() && !export.is_type_only() =>
+            {
+                (
+                    export.specifier.as_ref().unwrap(),
+                    export.specifier_span.as_ref().unwrap(),
+                )
+            }
+            _ => continue,
         };
-        if import.type_only {
+        if options.module_kind == crate::compiler::ModuleKind::CommonJs {
             continue;
         }
-        let raw = &module.source[import.specifier_span.start..import.specifier_span.end];
+        let raw = &module.source[span.start..span.end];
         let Some(quote) = raw.chars().next() else {
             continue;
         };
@@ -251,37 +418,174 @@ fn emit_javascript(
         if quote != last || !matches!(quote, '\'' | '\"') {
             continue;
         }
-        let emitted_specifier = javascript_specifier(&import.specifier);
+        let emitted_specifier = javascript_specifier(
+            specifier,
+            options.jsx == Some(crate::compiler::JsxMode::Preserve),
+        );
         edits.push(TextEdit {
-            start: import.specifier_span.start,
-            end: import.specifier_span.end,
+            start: span.start,
+            end: span.end,
             replacement: format!("{quote}{emitted_specifier}{quote}"),
         });
     }
+    let signatures = classes::overload_signature_erasures(module);
+    // Whole-member erasure owns its modifier/annotation edits as well.
+    edits.retain(|edit| {
+        !signatures
+            .iter()
+            .any(|signature| edit.start >= signature.start && edit.end <= signature.end)
+    });
+    edits.extend(signatures);
+    // CommonJS name rewriting goes first so that the lowerings below, which copy
+    // or move source text (a static initializer, a decorator expression), take
+    // the rewritten text with them.
+    let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
+        commonjs::lower_commonjs(
+            module,
+            options,
+            &mut edits,
+            wrapper == crate::ModuleKind::System,
+        )?
+    } else {
+        BTreeMap::new()
+    };
+    class_lowering::lower_class_members(module, options, &mut edits)?;
+    enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
+    namespaces::lower_namespaces(module, options, &mut edits)?;
+    if options.experimental_decorators {
+        legacy_decorators::lower_legacy_decorators(module, options, &mut edits)?;
+    } else {
+        decorators::lower_decorators(module, options, &mut edits)?;
+    }
+    jsx::lower_jsx(module, options, &references, &mut edits)?;
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {
         edits.extend(strict_edits);
         strict_runtime = Some(record);
     }
-    let emitted = apply_edits(&module.source, edits);
+    let emitted = decorators::targets::lower(
+        apply_edits_with_provenance(
+            &module.source,
+            edits,
+            options
+                .source_map
+                .then_some(options.limits.max_source_map_segments),
+        ),
+        module,
+        project,
+        options,
+    )?;
+    let emitted = targets::lower(emitted, module, options)?;
+    let emitted = targets::es5::lower(emitted, module, options, &lexical)?;
+    helper_selection::validate(&emitted, module, options)?;
+    let emitted = if wrapper == crate::ModuleKind::System {
+        system::wrap(emitted, module, options)?
+    } else {
+        emitted
+    };
+    let emitted = module_wrappers::wrap(emitted, module, options, wrapper);
+    let emitted = output_options::format_javascript(emitted, module, options)?;
     if let Some(record) = &mut strict_runtime {
+        record.helper_import.expected_text =
+            output_options::format_text(record.helper_import.expected_text.clone(), options);
         strict_boundaries::locate_emitted_calls(module, &emitted.javascript, record)?;
     }
     Ok((emitted, strict_runtime))
 }
 
-fn javascript_specifier(specifier: &str) -> String {
+/// Every declaration of a module in source order, descending into namespace
+/// bodies, each with whether it is inside one.
+fn runtime_declarations(declarations: &[Declaration]) -> Vec<(&Declaration, bool)> {
+    fn visit<'a>(
+        declarations: &'a [Declaration],
+        nested: bool,
+        into: &mut Vec<(&'a Declaration, bool)>,
+    ) {
+        for declaration in declarations {
+            into.push((declaration, nested));
+            if let Declaration::Namespace(namespace) = declaration {
+                visit(&namespace.body, true, into);
+            }
+        }
+    }
+    let mut all = Vec::new();
+    visit(declarations, false, &mut all);
+    all
+}
+
+/// The specifier an emitted module is imported by: a TypeScript extension becomes
+/// the JavaScript one (`.tsx` stays `.jsx` when JSX is preserved).
+pub fn javascript_specifier(specifier: &str, preserve_jsx: bool) -> String {
+    for (source, output) in [(".mts", ".mjs"), (".cts", ".cjs")] {
+        if let Some(stem) = specifier.strip_suffix(source) {
+            return format!("{stem}{output}");
+        }
+    }
+    if let Some(stem) = specifier.strip_suffix(".tsx") {
+        return format!("{stem}{}", if preserve_jsx { ".jsx" } else { ".js" });
+    }
     specifier
-        .strip_suffix(".tsx")
-        .or_else(|| specifier.strip_suffix(".ts"))
+        .strip_suffix(".ts")
         .map(|stem| format!("{stem}.js"))
         .unwrap_or_else(|| specifier.to_string())
 }
 
-fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
+/// One-line text of an expression: runs of whitespace become one space, and a
+/// space an erased annotation left before a closing bracket or comma goes
+/// (outside string and template literals).
+fn compact_expression(text: &str) -> String {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut output = String::with_capacity(collapsed.len());
+    let mut quote: Option<char> = None;
+    let mut chars = collapsed.chars().peekable();
+    let mut escaped = false;
+    while let Some(character) = chars.next() {
+        match quote {
+            Some(open) => {
+                output.push(character);
+                if escaped {
+                    escaped = false;
+                } else if character == '\\' {
+                    escaped = true;
+                } else if character == open {
+                    quote = None;
+                }
+            }
+            None => {
+                if matches!(character, '"' | '\'' | '`') {
+                    quote = Some(character);
+                    output.push(character);
+                } else if character == ' '
+                    && chars
+                        .peek()
+                        .is_some_and(|next| matches!(next, ')' | ']' | ','))
+                {
+                    // dropped
+                } else {
+                    output.push(character);
+                }
+            }
+        }
+    }
+    output
+}
+
+fn apply_edits(source: &str, edits: Vec<TextEdit>) -> EmittedJavaScript {
+    apply_edits_with_provenance(source, edits, None)
+}
+
+fn apply_edits_with_provenance(
+    source: &str,
+    mut edits: Vec<TextEdit>,
+    segment_limit: Option<usize>,
+) -> EmittedJavaScript {
     edits.sort_by_key(|edit| (edit.start, edit.end));
-    let mut emitted = ProvenanceEmitter::new(source, source.len());
+    // A replacement may carry relocation markers (see `decorators::relocated`):
+    // the text of another source range, with the edits inside it applied.
+    let relocating = edits.iter().any(|edit| edit.replacement.contains('\u{0}'));
+    let snapshot = relocating.then(|| edits.clone());
+    let mut emitted = ProvenanceEmitter::new(source, source.len(), segment_limit);
     let mut cursor = 0usize;
     for edit in edits {
         if edit.start < cursor || edit.end < edit.start || edit.end > source.len() {
@@ -290,224 +594,87 @@ fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
             continue;
         }
         emitted.copy(&source[cursor..edit.start], cursor);
-        if edit.replacement.is_empty() {
+        let parts = snapshot
+            .as_deref()
+            .filter(|_| edit.replacement.contains('\u{0}'))
+            .map(|all| relocations::expand(&edit.replacement, source, all));
+        let replacement = parts.as_ref().map_or_else(
+            || edit.replacement.clone(),
+            |parts| parts.iter().map(relocations::Part::text).collect(),
+        );
+        if replacement.is_empty() {
             // Preserve physical lines so line-level source maps, diagnostics,
             // and ordinary text diffs remain stable after type erasure.
             emitted.preserve_line_breaks(&source[edit.start..edit.end], edit.start);
+        } else if segment_limit.is_some()
+            && (decorators::is_helper_insertion(&edit)
+                || legacy_decorators::is_helper_insertion(&edit))
+        {
+            emitted.insert_unmapped(&replacement);
+        } else if let Some(parts) = parts {
+            let mut anchored = false;
+            for part in parts {
+                match part {
+                    relocations::Part::Generated(text) if anchored => {
+                        emitted.append_generated(&text);
+                        anchored = false;
+                    }
+                    relocations::Part::Generated(text) => emitted.replace(&text, edit.start),
+                    relocations::Part::Anchor(offset) => {
+                        if segment_limit.is_some() {
+                            emitted.mark(offset);
+                            anchored = true;
+                        }
+                    }
+                    relocations::Part::Unmapped => {
+                        if segment_limit.is_some() {
+                            emitted.insert_unmapped("");
+                            anchored = true;
+                        }
+                    }
+                    relocations::Part::Relocated {
+                        text,
+                        start,
+                        end,
+                        erased,
+                        rewritten,
+                    } => {
+                        emitted.relocate(&text, start, end, &erased, rewritten);
+                        anchored = true;
+                    }
+                }
+            }
         } else {
-            emitted.replace(&edit.replacement, edit.start);
+            emitted.replace(&replacement, edit.start);
         }
-        emitted.mark(edit.end);
+        if segment_limit.is_none() || !replacement.is_empty() {
+            emitted.mark(edit.end);
+        }
         cursor = edit.end;
     }
     emitted.copy(&source[cursor..], cursor);
     emitted.finish()
 }
 
-fn emit_declaration(module: &Module) -> String {
-    let mut output = String::new();
-    for declaration in &module.declarations {
-        match declaration {
-            Declaration::Import(import) if import.type_only => {
-                output.push_str(&module.source[import.span.start..import.span.end]);
-                if !output.ends_with('\n') {
-                    output.push('\n');
-                }
-            }
-            Declaration::TypeAlias(alias) if alias.exported => {
-                output.push_str("export type ");
-                output.push_str(&alias.name);
-                emit_type_parameters(&mut output, &alias.type_parameters);
-                output.push_str(" = ");
-                output.push_str(&type_to_ts(&alias.value));
-                output.push_str(";\n");
-            }
-            Declaration::Interface(interface) if interface.exported => {
-                output.push_str("export interface ");
-                output.push_str(&interface.name);
-                emit_type_parameters(&mut output, &interface.type_parameters);
-                if !interface.heritage.is_empty() {
-                    output.push_str(" extends ");
-                    output.push_str(
-                        &interface
-                            .heritage
-                            .iter()
-                            .map(type_to_ts)
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                    );
-                }
-                output.push_str(" {\n");
-                for field in &interface.fields {
-                    output.push_str("  ");
-                    if field.readonly {
-                        output.push_str("readonly ");
-                    }
-                    output.push_str(&field.name);
-                    if field.optional {
-                        output.push('?');
-                    }
-                    if let Type::Function { parameters, result } = &field.value {
-                        output.push_str(&method_signature_to_ts(parameters, result));
-                    } else {
-                        output.push_str(": ");
-                        output.push_str(&type_to_ts(&field.value));
-                    }
-                    output.push_str(";\n");
-                }
-                output.push_str("}\n");
-            }
-            Declaration::Variable(variable)
-                if !variable.declared
-                    && (variable.exported
-                        || is_default_export_name(module, &variable.name)
-                        || is_value_export_name(module, &variable.name)) =>
-            {
-                if variable.exported {
-                    output.push_str("export declare ");
-                } else {
-                    output.push_str("declare ");
-                }
-                output.push_str(variable.kind.as_str());
-                output.push(' ');
-                output.push_str(&variable.name);
-                output.push_str(": ");
-                output.push_str(
-                    &variable
-                        .annotation
-                        .as_ref()
-                        .map(type_to_ts)
-                        .unwrap_or_else(|| "unknown".to_string()),
-                );
-                output.push_str(";\n");
-            }
-            Declaration::Function(function)
-                if (function.exported
-                    || is_default_export_name(module, &function.name)
-                    || is_value_export_name(module, &function.name))
-                    && (function.overload
-                        || !module.declarations.iter().any(|declaration| {
-                            matches!(
-                                declaration,
-                                Declaration::Function(other)
-                                    if other.name == function.name && other.overload
-                            )
-                        })) =>
-            {
-                if function.default_export {
-                    output.push_str("export default function ");
-                } else if function.exported {
-                    output.push_str("export declare function ");
-                } else {
-                    output.push_str("declare function ");
-                }
-                output.push_str(&function.name);
-                emit_type_parameters(&mut output, &function.type_parameters);
-                output.push('(');
-                for (index, parameter) in function.parameters.iter().enumerate() {
-                    if index > 0 {
-                        output.push_str(", ");
-                    }
-                    output.push_str(&parameter.name);
-                    if parameter.optional {
-                        output.push('?');
-                    }
-                    output.push_str(": ");
-                    output.push_str(
-                        &parameter
-                            .annotation
-                            .as_ref()
-                            .map(type_to_ts)
-                            .unwrap_or_else(|| "unknown".to_string()),
-                    );
-                }
-                output.push_str("): ");
-                output.push_str(
-                    &function
-                        .return_type
-                        .as_ref()
-                        .map(type_to_ts)
-                        .unwrap_or_else(|| "unknown".to_string()),
-                );
-                output.push_str(";\n");
-            }
-            Declaration::TypeExport(export) => {
-                output.push_str("export type ");
-                if export.bindings.len() == 1 && export.bindings[0] == "*" {
-                    output.push('*');
-                } else {
-                    output.push_str("{ ");
-                    output.push_str(&export.bindings.join(", "));
-                    output.push_str(" }");
-                }
-                if let Some(specifier) = &export.specifier {
-                    output.push_str(" from ");
-                    output.push_str(&format!("\"{specifier}\""));
-                }
-                output.push_str(";\n");
-            }
-            Declaration::DefaultExport(export) => {
-                output.push_str("export default ");
-                output.push_str(&export.name);
-                output.push_str(";\n");
-            }
-            Declaration::ValueExport(export) => {
-                output.push_str("export { ");
-                for (index, binding) in export.bindings.iter().enumerate() {
-                    if index > 0 {
-                        output.push_str(", ");
-                    }
-                    output.push_str(&binding.local);
-                    if binding.local != binding.exported {
-                        output.push_str(" as ");
-                        output.push_str(&binding.exported);
-                    }
-                }
-                output.push_str(" };\n");
-            }
-            _ => {}
-        }
-    }
-    output
-}
-
-fn is_default_export_name(module: &Module, name: &str) -> bool {
-    module.declarations.iter().any(|declaration| {
-        matches!(declaration, Declaration::DefaultExport(export) if export.name == name)
-    })
-}
-
-fn is_value_export_name(module: &Module, name: &str) -> bool {
-    module.declarations.iter().any(|declaration| {
-        matches!(declaration, Declaration::ValueExport(export) if export.bindings.iter().any(|binding| binding.local == name))
-    })
-}
-
-fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
-    if !parameters.is_empty() {
-        output.push('<');
-        for (index, parameter) in parameters.iter().enumerate() {
-            if index > 0 {
-                output.push_str(", ");
-            }
-            output.push_str(&parameter.name);
-            if let Some(constraint) = &parameter.constraint {
-                output.push_str(" extends ");
-                output.push_str(&type_to_ts(constraint));
-            }
-            if let Some(default) = &parameter.default {
-                output.push_str(" = ");
-                output.push_str(&type_to_ts(default));
-            }
-        }
-        output.push('>');
-    }
-}
-
 fn type_to_ts(value: &Type) -> String {
     match value {
+        Type::Conditional(_)
+        | Type::Infer(_)
+        | Type::Mapped(_)
+        | Type::TemplateLiteral(_)
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. } => value.operator_text(type_to_ts).expect("operator type"),
+        Type::KeyOf(value) => format!("keyof {}", type_to_ts(value)),
+        Type::IndexedAccess { object, index, .. } => {
+            format!("{}[{}]", type_to_ts(object), type_to_ts(index))
+        }
+        Type::Predicate(predicate) => predicate.text(type_to_ts),
         Type::Any => "any".to_string(),
-        Type::Unknown => "unknown".to_string(),
+        Type::Unknown | Type::StrictUnknown => "unknown".to_string(),
+        Type::BigInt => "bigint".to_string(),
+        Type::Symbol => "symbol".to_string(),
+        Type::UniqueSymbol(_) => "unique symbol".to_string(),
+        Type::ConstAssertion => "const".to_string(),
         Type::Never => "never".to_string(),
         Type::Void => "void".to_string(),
         Type::Null => "null".to_string(),
@@ -516,7 +683,9 @@ fn type_to_ts(value: &Type) -> String {
         Type::Number => "number".to_string(),
         Type::String => "string".to_string(),
         Type::Literal(value) => value.clone(),
-        Type::Named { name, arguments } if arguments.is_empty() => name.clone(),
+        Type::Named { name, arguments } if arguments.is_empty() => {
+            crate::parser::source_type_name(name).to_string()
+        }
         Type::Named { name, arguments } => format!(
             "{name}<{}>",
             arguments
@@ -525,7 +694,7 @@ fn type_to_ts(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        Type::Array(value) => format!("{}[]", type_to_ts(value)),
+        Type::Array(value) => value.array_element_text(type_to_ts),
         Type::Tuple(values) => format!(
             "[{}]",
             values
@@ -550,6 +719,7 @@ fn type_to_ts(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        Type::CallableRecord { fields, signatures } => callable_objects::render(fields, signatures),
         Type::Record(fields) => format!(
             "{{ {} }}",
             fields
@@ -570,6 +740,20 @@ fn type_to_ts(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        Type::GenericFunction {
+            type_parameters,
+            parameters,
+            result,
+            ..
+        } => {
+            let mut generic = String::new();
+            emit_type_parameters(&mut generic, type_parameters);
+            format!(
+                "{generic}{} => {}",
+                method_parameters_to_ts(parameters),
+                type_to_ts(result)
+            )
+        }
         Type::Function { parameters, result } => {
             format!(
                 "{} => {}",
@@ -595,7 +779,8 @@ fn method_parameters_to_ts(parameters: &[crate::parser::Parameter]) -> String {
         .iter()
         .map(|parameter| {
             format!(
-                "{}{}: {}",
+                "{}{}{}: {}",
+                if parameter.rest { "..." } else { "" },
                 parameter.name,
                 if parameter.optional { "?" } else { "" },
                 parameter
@@ -624,26 +809,75 @@ struct ProvenanceEmitter<'a> {
     provenance: Vec<ProvenanceSegment>,
     generated_line: usize,
     generated_column: usize,
+    segment_limit: Option<usize>,
+    overflowed: bool,
+    tokens: Vec<crate::syntax::Token>,
+    source_cursor: usize,
+    source_line: usize,
+    source_column: usize,
 }
 
 impl<'a> ProvenanceEmitter<'a> {
-    fn new(source: &'a str, capacity: usize) -> Self {
+    fn new(source: &'a str, capacity: usize, segment_limit: Option<usize>) -> Self {
         Self {
             source,
             javascript: String::with_capacity(capacity),
             provenance: Vec::new(),
             generated_line: 0,
             generated_column: 0,
+            segment_limit,
+            overflowed: false,
+            tokens: if segment_limit.is_some() {
+                crate::syntax::lex("<source-map>", source).unwrap_or_default()
+            } else {
+                Vec::new()
+            },
+            source_cursor: 0,
+            source_line: 0,
+            source_column: 0,
         }
     }
 
     fn copy(&mut self, value: &str, source_offset: usize) {
-        self.mark(source_offset);
+        let mut token_index = self
+            .tokens
+            .partition_point(|token| token.end <= source_offset);
+        if self.segment_limit.is_none() || source_offset == 0 {
+            self.mark(source_offset);
+        }
         let mut characters = value.char_indices().peekable();
         while let Some((offset, character)) = characters.next() {
+            let position = source_offset + offset;
+            if let Some(token) = self.tokens.get(token_index) {
+                if token.start == position
+                    && token_maps::mark_start(self.source, &self.tokens, token_index)
+                {
+                    self.mark(position);
+                }
+            }
             let next = characters.peek().map(|(_, character)| *character);
+            if self.segment_limit.is_some() && is_line_break(character, next) {
+                let line_start = self.source[..position]
+                    .rfind('\n')
+                    .map_or(0, |index| index + 1);
+                if self.source[line_start..position]
+                    .trim_start()
+                    .starts_with("//")
+                {
+                    self.mark(position);
+                }
+            }
             self.push(character, next);
-            if is_line_break(character, next) {
+            if let Some(token) = self.tokens.get(token_index) {
+                if token.end == position + character.len_utf8() {
+                    if token_maps::mark_end(token) {
+                        self.mark(token.end);
+                    }
+                    token_index += 1;
+                }
+            }
+            if is_line_break(character, next) && position + character.len_utf8() < self.source.len()
+            {
                 self.mark(source_offset + offset + character.len_utf8());
             }
         }
@@ -674,21 +908,80 @@ impl<'a> ProvenanceEmitter<'a> {
         }
     }
 
+    fn insert_unmapped(&mut self, value: &str) {
+        self.push_segment(ProvenanceSegment {
+            generated_line: self.generated_line,
+            generated_column: self.generated_column,
+            source_line: 0,
+            source_column: 0,
+            mapped: false,
+            name_index: None,
+        });
+        self.append_generated(value);
+    }
+
+    fn append_generated(&mut self, value: &str) {
+        let mut characters = value.chars().peekable();
+        while let Some(character) = characters.next() {
+            self.push(character, characters.peek().copied());
+        }
+    }
+
     fn mark(&mut self, source_offset: usize) {
-        let (source_line, source_column) = source_line_column(self.source, source_offset);
-        let segment = ProvenanceSegment {
+        let (source_line, source_column) = self.source_location(source_offset);
+        self.push_segment(ProvenanceSegment {
             generated_line: self.generated_line,
             generated_column: self.generated_column,
             source_line,
             source_column,
-        };
+            mapped: true,
+            name_index: None,
+        });
+    }
+
+    fn push_segment(&mut self, segment: ProvenanceSegment) {
         if self.provenance.last().is_some_and(|previous| {
             previous.generated_line == segment.generated_line
                 && previous.generated_column == segment.generated_column
         }) {
             self.provenance.pop();
         }
+        if self.overflowed
+            || self
+                .segment_limit
+                .is_some_and(|limit| self.provenance.len() >= limit)
+        {
+            self.overflowed = true;
+            return;
+        }
         self.provenance.push(segment);
+    }
+
+    fn source_location(&mut self, offset: usize) -> (usize, usize) {
+        if offset < self.source_cursor {
+            self.source_cursor = 0;
+            self.source_line = 0;
+            self.source_column = 0;
+        }
+        let skip_leading_lf = self.source_cursor > 0
+            && self.source[..self.source_cursor].ends_with('\r')
+            && self.source[self.source_cursor..offset].starts_with('\n');
+        let mut characters = self.source[self.source_cursor..offset].chars().peekable();
+        let mut first = true;
+        while let Some(character) = characters.next() {
+            let next = characters.peek().copied();
+            if !(first && skip_leading_lf && character == '\n') {
+                if is_line_break(character, next) {
+                    self.source_line += 1;
+                    self.source_column = 0;
+                } else {
+                    self.source_column += character.len_utf16();
+                }
+            }
+            first = false;
+        }
+        self.source_cursor = offset;
+        (self.source_line, self.source_column)
     }
 
     fn push(&mut self, character: char, next: Option<char>) {
@@ -705,6 +998,8 @@ impl<'a> ProvenanceEmitter<'a> {
         EmittedJavaScript {
             javascript: self.javascript,
             provenance: self.provenance,
+            segment_limit: self.segment_limit,
+            overflowed: self.overflowed,
         }
     }
 }
@@ -713,6 +1008,7 @@ fn is_line_break(character: char, next: Option<char>) -> bool {
     character == '\n' || (character == '\r' && next != Some('\n'))
 }
 
+#[cfg(test)]
 fn source_line_column(source: &str, offset: usize) -> (usize, usize) {
     let prefix = &source[..offset];
     let mut line = 0usize;
@@ -729,11 +1025,29 @@ fn source_line_column(source: &str, offset: usize) -> (usize, usize) {
     (line, column)
 }
 
-fn source_map(module_id: &str, source: &str, emitted: &EmittedJavaScript) -> SourceMap {
+fn source_map(
+    module_id: &str,
+    source: &str,
+    emitted: &EmittedJavaScript,
+    options: &CompilerOptions,
+) -> SourceMap {
     SourceMap {
         file: output_file_name(module_id),
         sources: vec![module_id.to_string()],
         sources_content: vec![source.to_string()],
+        inline_sources: options.inline_sources,
+        source_root: options
+            .source_root
+            .as_deref()
+            .filter(|root| !root.is_empty())
+            .map_or_else(String::new, |root| {
+                if root.ends_with('/') {
+                    root.to_string()
+                } else {
+                    format!("{root}/")
+                }
+            }),
+        names: Vec::new(),
         mappings: encode_mappings(&emitted.provenance),
     }
 }
@@ -747,6 +1061,7 @@ fn encode_mappings(segments: &[ProvenanceSegment]) -> String {
     let mut index = 0usize;
     let mut previous_source_line = 0i64;
     let mut previous_source_column = 0i64;
+    let mut previous_name_index = 0i64;
     for line in 0..=last_line {
         if line > 0 {
             mappings.push(';');
@@ -764,16 +1079,22 @@ fn encode_mappings(segments: &[ProvenanceSegment]) -> String {
             mappings.push_str(&base64_vlq(
                 segment.generated_column as i64 - previous_generated_column,
             ));
-            mappings.push('A');
-            mappings.push_str(&base64_vlq(
-                segment.source_line as i64 - previous_source_line,
-            ));
-            mappings.push_str(&base64_vlq(
-                segment.source_column as i64 - previous_source_column,
-            ));
+            if segment.mapped {
+                mappings.push('A');
+                mappings.push_str(&base64_vlq(
+                    segment.source_line as i64 - previous_source_line,
+                ));
+                mappings.push_str(&base64_vlq(
+                    segment.source_column as i64 - previous_source_column,
+                ));
+                if let Some(name_index) = segment.name_index {
+                    mappings.push_str(&base64_vlq(name_index as i64 - previous_name_index));
+                    previous_name_index = name_index as i64;
+                }
+                previous_source_line = segment.source_line as i64;
+                previous_source_column = segment.source_column as i64;
+            }
             previous_generated_column = segment.generated_column as i64;
-            previous_source_line = segment.source_line as i64;
-            previous_source_column = segment.source_column as i64;
             index += 1;
         }
     }
@@ -781,6 +1102,16 @@ fn encode_mappings(segments: &[ProvenanceSegment]) -> String {
 }
 
 fn output_file_name(module_id: &str) -> String {
+    for (source, output) in [(".mts", ".mjs"), (".cts", ".cjs")] {
+        if let Some(stem) = module_id
+            .rsplit('/')
+            .next()
+            .unwrap_or(module_id)
+            .strip_suffix(source)
+        {
+            return format!("{stem}{output}");
+        }
+    }
     module_id
         .rsplit('/')
         .next()

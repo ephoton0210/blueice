@@ -484,7 +484,10 @@ impl Compiler {
             }
             let start = self.offset();
             let child_index = self.metadata_index(self.bytecode.functions.len())?;
-            self.function_declaration(statement)?;
+            self.current_root_statement_index = Some(index);
+            let declaration = self.function_declaration(statement);
+            self.current_root_statement_index = None;
+            declaration?;
             // A successful declaration emits its closure and adds exactly one
             // direct child. The metadata cap above makes its index a u32.
             offsets[index] = Some(start);
@@ -571,18 +574,27 @@ impl Compiler {
         statements: &[Stmt],
         offsets: &mut [Option<u32>],
         ranges: &mut [Option<(u32, u32)>],
+        child_ranges: &mut [Option<(u32, u32)>],
     ) -> Result<(), CompileError> {
         debug_assert_eq!(statements.len(), offsets.len());
         debug_assert_eq!(statements.len(), ranges.len());
+        debug_assert_eq!(statements.len(), child_ranges.len());
         for (index, statement) in statements.iter().enumerate() {
             if is_function_declaration(statement) {
                 continue;
             }
             let start = self.offset();
+            let children_before = self.bytecode.functions.len();
+            self.current_root_statement_index = Some(index);
             self.statement(statement, true)?;
+            self.current_root_statement_index = None;
             if self.offset() > start {
                 offsets[index] = Some(start);
                 ranges[index] = Some((start, self.offset()));
+            }
+            let children_after = self.bytecode.functions.len();
+            if children_after > children_before {
+                child_ranges[index] = Some((children_before as u32, children_after as u32));
             }
         }
         Ok(())

@@ -107,6 +107,12 @@ pub enum DebuggerCapability {
     StaticMetadataSourceBreakpoint,
     /// An exact, receipt-bound BlueTS source-span step from a paused root.
     StaticMetadataSourceSpanStep,
+    /// Resolves one exact generated-JavaScript token to a verified safe point
+    /// under an independent default-deny owner/client grant.
+    GeneratedBreakpoint,
+    /// Projects one exact paused generated root location only under its own
+    /// grant and same-stream program receipt.
+    GeneratedPausedLocation,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -202,6 +208,13 @@ pub enum DebuggerMetadataCapability {
     /// compiler symbol/type IDs. This is independent from `OpaqueSymbolType`
     /// and bounded runtime values.
     OpaqueStaticScopeRelation,
+    /// Exact emitted-JavaScript breakpoint binding under a previously
+    /// inventoried opaque program identity; no source text is disclosed.
+    OpaqueGeneratedBreakpoint,
+    /// Exact paused generated/root original coordinate under a previously
+    /// inventoried opaque program identity. This is independent of breakpoint
+    /// resolution, static metadata reads, and runtime values.
+    OpaqueGeneratedPausedLocation,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -241,6 +254,10 @@ impl DebuggerMetadataCapability {
             }
             Self::OpaqueSourceSpanStep => Some(DebuggerCapability::StaticMetadataSourceSpanStep),
             Self::OpaqueStaticScopeRelation => Some(DebuggerCapability::StaticScopeRelation),
+            Self::OpaqueGeneratedBreakpoint => Some(DebuggerCapability::GeneratedBreakpoint),
+            Self::OpaqueGeneratedPausedLocation => {
+                Some(DebuggerCapability::GeneratedPausedLocation)
+            }
             Self::Unknown => None,
         }
     }
@@ -267,6 +284,8 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSourceBreakpoint => Some(17),
             Self::OpaqueSourceSpanStep => Some(18),
             Self::OpaqueStaticScopeRelation => Some(19),
+            Self::OpaqueGeneratedBreakpoint => Some(20),
+            Self::OpaqueGeneratedPausedLocation => Some(21),
             Self::Unknown => None,
         }
     }
@@ -276,7 +295,7 @@ impl DebuggerMetadataCapability {
 /// capability manifest. It is intentionally separate from the transport
 /// version so future metadata operations cannot be inferred from a transport
 /// upgrade alone.
-pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 5;
+pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 6;
 
 /// A canonical requested or granted metadata-capability set for one debugger
 /// transport session. It carries capability identifiers only: no realm,
@@ -317,6 +336,8 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub source_breakpoint: bool,
     pub source_span_step: bool,
     pub static_scope_relation: bool,
+    pub generated_breakpoint: bool,
+    pub generated_paused_location: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -573,6 +594,25 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants generated-position binding without any static-metadata
+    /// inventory. A public handler still needs an exact same-stream program
+    /// receipt, a live realm report and a child-verified safe point.
+    pub fn opaque_generated_breakpoint() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![DebuggerMetadataCapability::OpaqueGeneratedBreakpoint],
+        }
+    }
+
+    /// Grants paused generated-location projection independently of
+    /// breakpoint resolution and without static-metadata inventory.
+    pub fn opaque_generated_paused_location() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![DebuggerMetadataCapability::OpaqueGeneratedPausedLocation],
+        }
+    }
+
     /// Grants one symbol-to-static-type relation only with its parent,
     /// symbol, and type inventory prerequisites.
     pub fn opaque_symbol_type() -> Self {
@@ -625,8 +665,10 @@ impl DebuggerMetadataCapabilityManifest {
             source_breakpoint,
             source_span_step,
             static_scope_relation,
+            generated_breakpoint,
+            generated_paused_location,
         } = selection;
-        let any = summary
+        let any_static = summary
             || source_inventory
             || source_provenance
             || type_inventory
@@ -646,7 +688,7 @@ impl DebuggerMetadataCapabilityManifest {
             || source_span_step
             || static_scope_relation;
         let mut capabilities = Vec::new();
-        if any {
+        if any_static {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
         }
         if summary {
@@ -722,6 +764,12 @@ impl DebuggerMetadataCapabilityManifest {
         }
         if static_scope_relation {
             capabilities.push(DebuggerMetadataCapability::OpaqueStaticScopeRelation);
+        }
+        if generated_breakpoint {
+            capabilities.push(DebuggerMetadataCapability::OpaqueGeneratedBreakpoint);
+        }
+        if generated_paused_location {
+            capabilities.push(DebuggerMetadataCapability::OpaqueGeneratedPausedLocation);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,

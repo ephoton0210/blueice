@@ -35,7 +35,8 @@ use debugger_support::{
     PendingDebuggerExecution,
 };
 pub use debugger_support::{
-    JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
+    JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerEmittedOriginalPosition,
+    JavaScriptPageDebuggerEmittedPausedRootLocation, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExceptionLocation, JavaScriptPageDebuggerExceptionLocationTarget,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
     JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerLinkedScopeSnapshot,
@@ -68,8 +69,9 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
     JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerStaticScopeRelation,
-    JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerValuePreview,
-    JavaScriptPageDebuggerValueTarget,
+    JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerSystemStackFrame,
+    JavaScriptPageDebuggerSystemStackLocations, JavaScriptPageDebuggerSystemStackSnapshot,
+    JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerValueTarget,
 };
 
 mod debugger_locations;

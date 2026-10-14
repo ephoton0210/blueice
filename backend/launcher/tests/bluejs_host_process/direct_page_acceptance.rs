@@ -7,6 +7,490 @@
 use super::*;
 
 #[test]
+fn real_child_executes_the_closed_emitted_bluets_module_graph() {
+    const ENTRY: &str = "blueice://page/emitted-module-entry.ts";
+    const DEPENDENCY: &str = "blueice://page/emitted-module-dependency.ts";
+    let mut source_graph = graph(
+        ENTRY,
+        vec![
+            PageHostSource::new(
+                ENTRY,
+                "import { value } from './emitted-module-dependency.ts'; if (value !== 41) throw 'wrong emitted import';",
+            ),
+            PageHostSource::new(DEPENDENCY, "export const value: number = 41;"),
+        ],
+    );
+    source_graph.resolutions.push(PageHostStaticResolution {
+        from_module: ENTRY.into(),
+        specifier: "./emitted-module-dependency.ts".into(),
+        canonical_target: DEPENDENCY.into(),
+    });
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![PageHostScript {
+                ordinal: 0,
+                language: PageHostScriptLanguage::BlueTsEmitted,
+                kind: PageHostScriptKind::Module,
+                graph: source_graph,
+            }],
+        ))
+        .unwrap();
+    assert!(
+        matches!(
+            &reply,
+            PageHostReply::Synchronized { reports, .. }
+                if matches!(reports.as_slice(), [report]
+                    if report.outcome == PageHostScriptOutcome::Executed)
+        ),
+        "{reply:?}"
+    );
+    host.shutdown().unwrap();
+}
+
+#[test]
+fn real_child_pauses_and_projects_an_emitted_module_entry_artifact() {
+    const ENTRY: &str = "blueice://page/emitted-debugger-module.ts";
+    const SOURCE: &str = "const marker: number = 0; export const answer: number = 42;";
+    let compilation = blueice_bluets::compile(
+        ENTRY,
+        &blueice_bluets::MapLoader::from([blueice_bluets::ModuleSource::new(ENTRY, SOURCE)]),
+        blueice_bluets::CompilerOptions {
+            source_map: true,
+            inline_sources: true,
+            ..Default::default()
+        },
+    );
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    let output = compilation.output.unwrap();
+    let generated = &output.artifacts[ENTRY].javascript;
+    let marker_byte = generated.find("const marker").unwrap();
+    let before_marker = &generated[..marker_byte];
+    let generated_line = before_marker.bytes().filter(|byte| *byte == b'\n').count() as u32;
+    let generated_column_utf16 = before_marker
+        .rsplit('\n')
+        .next()
+        .unwrap()
+        .encode_utf16()
+        .count() as u32;
+    let original_column_utf16 = SOURCE.find("const marker").unwrap() as u32;
+
+    let mut page = document(
+        1,
+        vec![PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTsEmitted,
+            kind: PageHostScriptKind::Module,
+            graph: graph(ENTRY, vec![PageHostSource::new(ENTRY, SOURCE)]),
+        }],
+    );
+    page.debugger_execution_control = true;
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    assert!(matches!(
+        host.synchronize_document(page).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let program = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } if programs.len() == 1 => programs[0],
+        reply => panic!("expected one emitted module, got {reply:?}"),
+    };
+    assert_eq!(
+        host.request(PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line,
+            generated_column_utf16,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerEmittedOriginalPosition {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line,
+            generated_column_utf16,
+            original: Some(PageHostDebuggerEmittedOriginalPosition {
+                source_index: 0,
+                line: 0,
+                column_utf16: original_column_utf16,
+            }),
+        }
+    );
+    let safe_point = match host
+        .request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line,
+            generated_column_utf16,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerEmittedSafePoint {
+            safe_point: Some(safe_point),
+            ..
+        } => safe_point,
+        reply => panic!("the emitted module's first mapped item must bind: {reply:?}"),
+    };
+    assert!(matches!(
+        host.request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+            tab_id: 41,
+            document_generation: 1,
+            safe_point,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    assert_eq!(
+        host.request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerEmittedPausedRootLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            safe_point,
+            location: Some(PageHostDebuggerEmittedPausedRootLocation {
+                generated_line,
+                generated_column_utf16,
+                original: Some(PageHostDebuggerEmittedOriginalPosition {
+                    source_index: 0,
+                    line: 0,
+                    column_utf16: original_column_utf16,
+                }),
+            }),
+        }
+    );
+    assert!(matches!(
+        host.request(PageHostRequest::ResumeDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionResumed { .. }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            if matches!(reports.as_slice(), [report]
+                if report.outcome == PageHostScriptOutcome::Executed)
+    ));
+    host.shutdown().unwrap();
+}
+
+#[test]
+fn real_child_binds_emitted_map_lookup_to_one_live_program_generation() {
+    const ENTRY: &str = "blueice://page/emitted-entry.ts";
+    const SOURCE: &str = "const answer: number = 42; answer;";
+    assert!(std::path::Path::new(CHILD_BINARY).exists());
+    let mut page = document(
+        1,
+        vec![PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTsEmitted,
+            kind: PageHostScriptKind::Classic,
+            graph: graph(ENTRY, vec![PageHostSource::new(ENTRY, SOURCE)]),
+        }],
+    );
+    page.debugger_execution_control = true;
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    assert!(matches!(
+        host.synchronize_document(page).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let programs = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs,
+        reply => panic!("expected generated program inventory, got {reply:?}"),
+    };
+    assert_eq!(programs.len(), 1);
+    let program = programs[0];
+    assert_eq!(
+        host.request(PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line: 0,
+            generated_column_utf16: 0,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerEmittedOriginalPosition {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line: 0,
+            generated_column_utf16: 0,
+            original: Some(PageHostDebuggerEmittedOriginalPosition {
+                source_index: 0,
+                line: 0,
+                column_utf16: 0,
+            }),
+        }
+    );
+    let safe_point = match host
+        .request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line: 0,
+            generated_column_utf16: 0,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerEmittedSafePoint {
+            safe_point: Some(safe_point),
+            ..
+        } => safe_point,
+        reply => panic!("the exact mapped statement must bind, got {reply:?}"),
+    };
+    assert_eq!(
+        host.request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line: 0,
+            generated_column_utf16: 6,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerEmittedSafePoint {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line: 0,
+            generated_column_utf16: 6,
+            safe_point: None,
+        },
+        "a mapped inner token must not borrow its enclosing statement's safe point"
+    );
+    assert_eq!(safe_point.program, program);
+    assert!(matches!(
+        host.request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+    assert_eq!(
+        host.request(PageHostRequest::ValidateDebuggerSafePoint {
+            tab_id: 41,
+            document_generation: 1,
+            safe_point,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerSafePointValidated {
+            tab_id: 41,
+            document_generation: 1,
+            safe_point,
+        }
+    );
+    assert!(matches!(
+        host.request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+            tab_id: 41,
+            document_generation: 1,
+            safe_point,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerRootSafePointBreakpointArmed {
+            safe_point: armed,
+            ..
+        } if armed == safe_point
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    assert_eq!(
+        host.request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionState {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            state: PageHostDebuggerExecutionState::Paused { safe_point },
+        }
+    );
+    assert_eq!(
+        host.request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerEmittedPausedRootLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            safe_point,
+            location: Some(PageHostDebuggerEmittedPausedRootLocation {
+                generated_line: 0,
+                generated_column_utf16: 0,
+                original: Some(PageHostDebuggerEmittedOriginalPosition {
+                    source_index: 0,
+                    line: 0,
+                    column_utf16: 0,
+                }),
+            }),
+        }
+    );
+    let PageHostReply::DebuggerStackSnapshot { snapshot, .. } = host
+        .request(PageHostRequest::GetDebuggerStackSnapshot {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            frame: None,
+            max_frames: 2,
+            max_scope_entries: 8,
+        })
+        .unwrap()
+    else {
+        panic!("the exact generated statement must have a paused stack");
+    };
+    assert_eq!(snapshot.frames.len(), 1);
+    assert_eq!(
+        snapshot.frames[0].code_unit_ordinal,
+        safe_point.code_unit_ordinal
+    );
+    assert_eq!(
+        snapshot.frames[0].bytecode_offset,
+        safe_point.bytecode_offset
+    );
+    assert_eq!(
+        host.request(PageHostRequest::StepDebuggerRootInstruction {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionStepRequested {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        }
+    );
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    let PageHostReply::DebuggerExecutionState {
+        state: PageHostDebuggerExecutionState::Paused { safe_point: next },
+        ..
+    } = host
+        .request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap()
+    else {
+        panic!("one generated root instruction must yield a verified next pause");
+    };
+    assert_eq!(next.program, program);
+    assert_ne!(next.bytecode_offset, safe_point.bytecode_offset);
+    assert_eq!(
+        host.request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerEmittedPausedRootLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            safe_point: next,
+            location: None,
+        },
+        "an instruction inside a statement must not inherit its start location"
+    );
+    assert!(matches!(
+        host.request(PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line: u32::MAX,
+            generated_column_utf16: 0,
+        })
+        .unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        }
+    ));
+    host.synchronize_document(document(2, vec![])).unwrap();
+    assert!(matches!(
+        host.request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            generated_line: 0,
+            generated_column_utf16: 0,
+        })
+        .unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn real_classic_bluets_page_elides_type_import_and_maps_original_declaration() {
     const ENTRY: &str = "blueice://page/classic-entry.ts";
     const TYPES: &str = "blueice://page/types.d.ts";

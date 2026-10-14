@@ -60,7 +60,8 @@ pub(super) fn verify(
                 "strict artifact has a noncanonical module identity",
             ));
         }
-        let output_id = Path::new(module_id).with_extension("js");
+        let emitted = tsconfig::emitted_path(module_id, metadata)?;
+        let output_id = emitted.with_extension("js");
         if metadata.entries[0] == output_path(&output_id) {
             entry_found = true;
         }
@@ -100,17 +101,21 @@ pub(super) fn verify(
         {
             return Err(invalid("strict artifact has an incomplete helper import"));
         }
-        let helper_path = if module_id.contains('/') {
-            format!(
-                "{}{}",
-                "../".repeat(module_id.split('/').count() - 1),
-                RUNTIME_HELPER_V1_FILE
-            )
+        let depth = emitted.components().count().saturating_sub(1);
+        let helper_path = if depth > 0 {
+            format!("{}{}", "../".repeat(depth), RUNTIME_HELPER_V1_FILE)
         } else {
             format!("./{RUNTIME_HELPER_V1_FILE}")
         };
-        let expected_import =
-            format!("import {{ validateStringV1 as {HELPER_ALIAS} }} from '{helper_path}';\n");
+        let newline = if metadata.new_line == "crlf" {
+            "\r\n"
+        } else {
+            "\n"
+        };
+        let bom = if metadata.emit_bom { "\u{feff}" } else { "" };
+        let expected_import = format!(
+            "{bom}import {{ validateStringV1 as {HELPER_ALIAS} }} from '{helper_path}';{newline}"
+        );
         if record.helper_import.expected_text != expected_import
             || !artifact.javascript.starts_with(&expected_import)
         {

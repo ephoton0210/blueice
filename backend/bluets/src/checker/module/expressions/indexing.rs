@@ -9,7 +9,7 @@ use super::*;
 /// Preserve every declared possibility rather than losing readonly types in
 /// an inferred local alias. A canonical index selects one tuple element;
 /// otherwise a heterogeneous container yields a union of its value types.
-pub(super) fn indexed_value_type(
+pub(in crate::checker::module) fn indexed_value_type(
     value: &Type,
     index: Option<usize>,
     aliases: &BTreeMap<String, TypeDefinition>,
@@ -17,7 +17,17 @@ pub(super) fn indexed_value_type(
     budget: &mut TypeExpansionBudget,
 ) -> Type {
     match value {
-        Type::Array(element) => (**element).clone(),
+        Type::Readonly(value) => indexed_value_type(value, index, aliases, visited, budget),
+        Type::IndexedRecord { indices, .. } => {
+            alternatives_type(indices.iter().map(|index| index.value.clone()).collect())
+        }
+        Type::Array(element) => {
+            if budget.checking.no_unchecked_indexed_access {
+                Type::Union(vec![(**element).clone(), Type::Undefined])
+            } else {
+                (**element).clone()
+            }
+        }
         Type::Tuple(values) => {
             if values.iter().any(|element| {
                 element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))

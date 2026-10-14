@@ -11,7 +11,19 @@ use crate::emitter;
 use crate::parser::{parse_module, parse_module_with_limits, Module, ParserLimits};
 use crate::strict_boundaries;
 use crate::{Compilation, LANGUAGE_VERSION};
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+mod fingerprint;
+mod isolated_declarations;
+mod json;
+mod native_emit;
+mod node_modules;
+mod project_builder;
+mod resolutions;
+mod targets;
+
+pub(crate) use fingerprint::fingerprint;
+use project_builder::ProjectBuilder;
+pub use targets::EcmaTarget;
 
 /// Closed-project work limits. They are part of [`CompilerOptions`] so a
 /// cached result or artifact cannot be reused under a looser resource policy.
@@ -43,18 +55,75 @@ impl Default for CompilerLimits {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EcmaTarget {
-    Es2020,
-    Es2022,
+/// The module system emitted JavaScript uses (TypeScript's `module`): ECMAScript
+/// modules, CommonJS, or owner-loaded AMD/UMD wrappers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModuleKind {
+    #[default]
+    Esm,
+    CommonJs,
+    Amd,
+    Umd,
+    System,
+    Node16,
+    NodeNext,
 }
 
-impl EcmaTarget {
+impl ModuleKind {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Es2020 => "es2020",
-            Self::Es2022 => "es2022",
+            Self::Esm => "esm",
+            Self::CommonJs => "commonjs",
+            Self::Amd => "amd",
+            Self::Umd => "umd",
+            Self::System => "system",
+            Self::Node16 => "node16",
+            Self::NodeNext => "nodenext",
         }
+    }
+}
+
+/// TypeScript's `jsx` option for `.tsx` modules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JsxMode {
+    /// Keep the JSX syntax (the output is `.jsx`).
+    Preserve,
+    /// Keep the JSX syntax; the output is `.js` (React Native's Metro reads it).
+    ReactNative,
+    /// `React.createElement` (or the configured factory) calls.
+    React,
+    /// The automatic runtime: calls of `jsx`/`jsxs` imported from
+    /// `<jsxImportSource>/jsx-runtime`.
+    ReactJsx,
+    /// As `ReactJsx` with `jsxDEV` and source locations.
+    ReactJsxDev,
+}
+
+impl JsxMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Preserve => "preserve",
+            Self::ReactNative => "react-native",
+            Self::React => "react",
+            Self::ReactJsx => "react-jsx",
+            Self::ReactJsxDev => "react-jsxdev",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "preserve" => Some(Self::Preserve),
+            "react-native" => Some(Self::ReactNative),
+            "react" => Some(Self::React),
+            "react-jsx" => Some(Self::ReactJsx),
+            "react-jsxdev" => Some(Self::ReactJsxDev),
+            _ => None,
+        }
+    }
+
+    /// Whether the JSX syntax is lowered to calls.
+    pub fn lowers(self) -> bool {
+        matches!(self, Self::React | Self::ReactJsx | Self::ReactJsxDev)
     }
 }
 
@@ -86,14 +155,104 @@ impl RuntimePolicy {
     }
 }
 
+/// Line terminators used for generated JavaScript and declarations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NewLine {
+    #[default]
+    Lf,
+    CrLf,
+}
+
+impl NewLine {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Lf => "lf",
+            Self::CrLf => "crlf",
+        }
+    }
+}
+
 /// All values that affect checking and output are explicit, so callers can
 /// persist this alongside build artifacts and cache keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompilerOptions {
+    /// Independent diagnostic selection. `None` retains the legacy checking
+    /// surface; explicit options never select JavaScript emit or runtime grants.
+    pub checking: Option<crate::CheckingOptions>,
     pub target: EcmaTarget,
+    /// Explicit whole ECMAScript library profiles. `None` follows `target`;
+    /// an empty list selects no library. Typings never supply runtime authority.
+    pub libraries: Option<Vec<EcmaTarget>>,
+    /// Use iterator protocols when lowering iteration below ES2015.
+    pub downlevel_iteration: bool,
+    /// Import supported runtime helper ABIs from an owner-resolved provider.
+    pub import_helpers: bool,
+    /// Leave supported runtime helper ABIs to the emitted realm's owner.
+    pub no_emit_helpers: bool,
+    /// TypeScript's `useDefineForClassFields`: `Some(true)` defines class
+    /// fields (native ES2022 fields, or `Object.defineProperty` below it),
+    /// `Some(false)` assigns them in the constructor, and `None` follows the
+    /// target, as TypeScript does (define for ES2022 and later).
+    pub use_define_for_class_fields: Option<bool>,
+    /// Emit the runtime object of a `const enum` even though its uses are
+    /// replaced by their values (TypeScript's `preserveConstEnums`).
+    pub preserve_const_enums: bool,
+    /// Each module must be emittable on its own (TypeScript's `isolatedModules`,
+    /// for enums): a `const enum` is emitted as an ordinary enum and referenced
+    /// through its object, never inlined, and an ambient `const enum` cannot be
+    /// used, since another module's values are not assumed to be known.
+    pub isolated_modules: bool,
+    /// The module system of the emitted JavaScript.
+    pub module_kind: ModuleKind,
+    /// Preserve value module syntax and diagnose CommonJS ES declarations.
+    pub verbatim_module_syntax: bool,
+    /// The selected module grammar permits runtime import attributes (ESNext).
+    pub import_attributes: bool,
+    /// Owner-enabled JSON sources become typed data assets, never script code.
+    pub resolve_json_module: bool,
+    /// Owner-enabled JavaScript sources share the bounded source graph.
+    pub allow_js: bool,
+    /// Check JavaScript source bodies as well as their inferred public surfaces.
+    pub check_js: bool,
+    /// TypeScript's `esModuleInterop`: a default or namespace import of a
+    /// CommonJS `export =` module is allowed and goes through a helper that gives
+    /// it a `default` member. Only meaningful with `ModuleKind::CommonJs`.
+    pub es_module_interop: bool,
+    /// TypeScript's `experimentalDecorators`: the legacy (pre-TC39) decorators,
+    /// with their own evaluation and application order, parameter decorators and
+    /// `__decorate` helper, instead of the standard ones.
+    pub experimental_decorators: bool,
+    /// TypeScript's `emitDecoratorMetadata`: `design:type`, `design:paramtypes` and
+    /// `design:returntype` metadata for decorated elements. Needs
+    /// `experimental_decorators`.
+    pub emit_decorator_metadata: bool,
+    /// How `.tsx` JSX is emitted; `None` makes any JSX an error, as in
+    /// TypeScript (TS17004).
+    pub jsx: Option<JsxMode>,
+    /// `jsxFactory` (classic mode): an entity name such as `h` or `Preact.h`.
+    pub jsx_factory: Option<String>,
+    /// `jsxFragmentFactory` (classic mode): defaults to `React.Fragment`.
+    pub jsx_fragment_factory: Option<String>,
+    /// `jsxImportSource` (automatic mode): defaults to `react`.
+    pub jsx_import_source: Option<String>,
     pub runtime_policy: RuntimePolicy,
     pub source_map: bool,
     pub declaration: bool,
+    /// Publish a map for declaration output within the measured mapping surface.
+    pub declaration_map: bool,
+    /// Generate declaration artifacts while omitting JavaScript and data publication.
+    pub emit_declaration_only: bool,
+    /// Require exported declarations to be inferable from their own admitted syntax.
+    pub isolated_declarations: bool,
+    pub remove_comments: bool,
+    pub new_line: NewLine,
+    pub emit_bom: bool,
+    /// Include source bytes in serialized maps. Legacy API callers retain
+    /// their existing embedded-source default; native config selects false.
+    pub inline_sources: bool,
+    pub strip_internal: bool,
+    pub source_root: Option<String>,
+    pub map_root: Option<String>,
     /// Host-supplied identity for resolution inputs such as an import map.
     /// This prevents an artifact/cache key from being reused under a resolver
     /// policy different from the one that selected its module graph.
@@ -114,13 +273,67 @@ pub struct CompilerOptions {
     pub limits: CompilerLimits,
 }
 
+impl CompilerOptions {
+    pub(crate) fn library_target(&self) -> Option<EcmaTarget> {
+        self.libraries
+            .as_ref()
+            .map(|libraries| libraries.iter().copied().max())
+            .unwrap_or(Some(self.target))
+    }
+    /// Whether a use of a `const enum` member is replaced by its value.
+    /// Transpile-only compiles without types, so it cannot know the value.
+    pub fn inlines_const_enums(&self) -> bool {
+        !self.isolated_modules
+            && !self.verbatim_module_syntax
+            && self.runtime_policy != RuntimePolicy::TranspileOnly
+    }
+
+    /// Whether class fields are defined rather than assigned, once the target's
+    /// default is applied.
+    pub fn defines_class_fields(&self) -> bool {
+        self.use_define_for_class_fields
+            .unwrap_or(self.target >= EcmaTarget::Es2022)
+    }
+}
+
 impl Default for CompilerOptions {
     fn default() -> Self {
         Self {
             target: EcmaTarget::Es2022,
+            libraries: None,
+            downlevel_iteration: false,
+            import_helpers: false,
+            no_emit_helpers: false,
+            checking: None,
+            use_define_for_class_fields: None,
+            preserve_const_enums: false,
+            isolated_modules: false,
+            module_kind: ModuleKind::Esm,
+            verbatim_module_syntax: false,
+            import_attributes: false,
+            resolve_json_module: false,
+            allow_js: false,
+            check_js: false,
+            es_module_interop: false,
+            experimental_decorators: false,
+            emit_decorator_metadata: false,
+            jsx: None,
+            jsx_factory: None,
+            jsx_fragment_factory: None,
+            jsx_import_source: None,
             runtime_policy: RuntimePolicy::Checked,
             source_map: false,
             declaration: false,
+            declaration_map: false,
+            emit_declaration_only: false,
+            isolated_declarations: false,
+            remove_comments: false,
+            new_line: NewLine::Lf,
+            emit_bom: false,
+            inline_sources: true,
+            strip_internal: false,
+            source_root: None,
+            map_root: None,
             resolver_fingerprint: "relative-v1".to_string(),
             ambient_declaration_modules: Vec::new(),
             require_declared_global_calls: false,
@@ -152,8 +365,83 @@ impl ModuleSource {
 pub trait ModuleLoader {
     fn load(&self, module_id: &str) -> Result<ModuleSource, String>;
 
+    /// Supplies a Node file's format using only the owner's authorized inputs.
+    /// File owners may inspect package manifests; the compiler performs no I/O.
+    fn implied_module_kind(&self, module_id: &str) -> Result<ModuleKind, String> {
+        Ok(
+            if module_id.ends_with(".mts") || module_id.ends_with(".mjs") {
+                ModuleKind::Esm
+            } else {
+                ModuleKind::CommonJs
+            },
+        )
+    }
+
     fn resolve(&self, from_module: &str, specifier: &str) -> Result<String, String> {
         resolve_relative_module(from_module, specifier)
+    }
+
+    /// Resolves one static edge under its explicit package condition. The
+    /// default retains the host's existing closed-world resolution policy.
+    fn resolve_with_mode(
+        &self,
+        from_module: &str,
+        specifier: &str,
+        _mode: Option<crate::package_resolution::ImportMode>,
+    ) -> Result<String, String> {
+        self.resolve(from_module, specifier)
+    }
+
+    /// Supplies an optional static JSX provider through the owner's resolver.
+    /// This does not authorize or load the emitted JavaScript runtime. Owners
+    /// with filesystem bounds must preserve denied lookups as errors.
+    fn resolve_jsx_runtime_namespace(
+        &self,
+        from_module: &str,
+        specifier: &str,
+        mode: Option<crate::package_resolution::ImportMode>,
+    ) -> Result<Option<String>, String> {
+        Ok(self.resolve_with_mode(from_module, specifier, mode).ok())
+    }
+
+    /// Supplies the owner's missing-module diagnostic mode without performing
+    /// a lookup or changing an authorized source identity.
+    fn resolution_error_typescript_code(&self, _message: &str) -> Option<u32> {
+        None
+    }
+
+    /// Provides diagnostic arguments from an already completed owner lookup.
+    fn resolution_error_typescript_arguments(
+        &self,
+        _message: &str,
+        specifier: &str,
+    ) -> Vec<String> {
+        vec![specifier.to_string()]
+    }
+
+    /// Resolves a static path directive under the owner's ordinary root policy.
+    fn resolve_reference_path(&self, from_module: &str, path: &str) -> Result<String, String> {
+        let relative = if path.starts_with('.') || path.starts_with('/') || path.contains("://") {
+            path.to_string()
+        } else {
+            format!("./{path}")
+        };
+        self.resolve(from_module, &relative)
+    }
+
+    /// An owner must explicitly supply its authorized type-package resolver.
+    /// The compiler never searches a host filesystem for a types directive.
+    fn resolve_reference_types(&self, _from_module: &str, name: &str) -> Result<String, String> {
+        Err(format!(
+            "type definition `{name}` is not exposed by this owner"
+        ))
+    }
+
+    /// Identity of owner-authorized resolution observations after the graph
+    /// has been loaded. File hosts include absent candidates, canonical paths
+    /// and manifest content here; the compiler does not acquire any I/O grant.
+    fn resolution_fingerprint(&self) -> String {
+        String::new()
     }
 }
 
@@ -187,7 +475,22 @@ impl ModuleLoader for MapLoader {
 /// host is still responsible for authorizing that source identity before it
 /// reaches BlueTS; this helper only controls static-only compiler behavior.
 pub(crate) fn is_declaration_module(module_id: &str) -> bool {
-    module_id.ends_with(".d.ts")
+    [".d.ts", ".d.mts", ".d.cts"]
+        .iter()
+        .any(|extension| module_id.ends_with(extension))
+}
+
+/// Whether a module comes from an installed package: its path has a
+/// `node_modules` segment, it is a package file reached through a symlink to a
+/// directory without one (`@package/..`), a pinned remote declaration (`@remote/..`), or it is in an owner-authorized
+/// external package root (`@external/<n>/..`). Like TypeScript's external-library files it is checked
+/// and its types are used, but it is not emitted: the importing program keeps
+/// the package's own specifier for the runtime to resolve.
+pub fn is_external_library_module(module_id: &str) -> bool {
+    module_id.starts_with("@external/")
+        || module_id.starts_with("@package/")
+        || module_id.starts_with("@remote/")
+        || module_id.split('/').any(|part| part == "node_modules")
 }
 
 /// The source graph after parsing and host-controlled resolution.  It contains
@@ -197,11 +500,58 @@ pub(crate) fn is_declaration_module(module_id: &str) -> bool {
 pub struct Project {
     pub entry: String,
     pub modules: BTreeMap<String, Module>,
+    pub(crate) module_kinds: BTreeMap<String, ModuleKind>,
     pub(crate) resolutions: BTreeMap<(String, String), String>,
+    pub(crate) jsx_runtime_modules: BTreeMap<String, String>,
+    mode_resolutions: BTreeMap<(String, String, crate::package_resolution::ImportMode), String>,
+    // Static namespace keys never appear as runtime/physical source targets.
+    pub(crate) ambient_resolutions: BTreeMap<
+        (
+            String,
+            String,
+            Option<crate::package_resolution::ImportMode>,
+        ),
+        String,
+    >,
+    pub(crate) json_modules: BTreeMap<String, crate::Type>,
+    pub(crate) augmentation_resolutions: BTreeMap<(String, String), String>,
+    pub(crate) reference_resolutions: BTreeMap<(String, String, String), String>,
+    pub(crate) referenced_declaration_modules: BTreeSet<String>,
+    pub(crate) referenced_libraries: BTreeSet<String>,
+    resolution_fingerprint: String,
     pub(crate) ambient_declaration_modules: BTreeSet<String>,
+    failed_sources: BTreeMap<String, String>,
 }
 
 impl Project {
+    /// Returns a static provider already resolved and loaded by the owner.
+    /// This grants no JavaScript runtime or additional input lookup.
+    pub fn jsx_runtime_namespace_provider(&self, module: &str) -> Option<&str> {
+        self.jsx_runtime_modules.get(module).map(String::as_str)
+    }
+
+    /// Node16 and NodeNext default to module detection for runtime inputs;
+    /// declaration files retain their syntax-based global/module distinction.
+    pub(crate) fn is_external_module(&self, module: &Module) -> bool {
+        module.is_external_module()
+            || !is_declaration_module(&module.id) && self.module_kinds.contains_key(&module.id)
+    }
+
+    /// Returns an owner-selected Node format, or the caller's fixed format.
+    pub fn module_kind(&self, module_id: &str, fallback: ModuleKind) -> ModuleKind {
+        self.module_kinds
+            .get(module_id)
+            .copied()
+            .unwrap_or(fallback)
+    }
+    /// Returns input already supplied by the owner, including a source whose
+    /// parsing failed. This performs no I/O and does not resolve new inputs.
+    pub fn source(&self, module_id: &str) -> Option<&str> {
+        self.modules
+            .get(module_id)
+            .map(|module| module.source.as_str())
+            .or_else(|| self.failed_sources.get(module_id).map(String::as_str))
+    }
     /// Returns the caller-authorized canonical target selected for one source
     /// module request. Runtime bridges use this rather than independently
     /// resolving a TypeScript specifier under a potentially different policy.
@@ -295,8 +645,19 @@ impl Project {
         Self {
             entry: entry.into(),
             modules: BTreeMap::new(),
+            module_kinds: BTreeMap::new(),
             resolutions: BTreeMap::new(),
+            jsx_runtime_modules: BTreeMap::new(),
+            mode_resolutions: BTreeMap::new(),
+            ambient_resolutions: BTreeMap::new(),
+            json_modules: BTreeMap::new(),
+            resolution_fingerprint: String::new(),
             ambient_declaration_modules: BTreeSet::new(),
+            augmentation_resolutions: BTreeMap::new(),
+            reference_resolutions: BTreeMap::new(),
+            referenced_declaration_modules: BTreeSet::new(),
+            referenced_libraries: BTreeSet::new(),
+            failed_sources: BTreeMap::new(),
         }
     }
 }
@@ -314,12 +675,20 @@ fn compile_with_cache(
     options: CompilerOptions,
     cached: Option<&CachedCompilation>,
 ) -> IncrementalResult {
+    let performance = crate::performance::Session::new();
+    let graph_started = std::time::Instant::now();
     let previous_project = cached.map(|cached| &cached.compilation.project);
     let mut builder = ProjectBuilder::new(loader, previous_project, options.limits.clone());
+    builder.resolve_json_module = options.resolve_json_module;
+    builder.module_kind = options.module_kind;
     builder.visit(entry, 0);
+    builder.resolve_helper_providers(&options);
+    builder.resolve_jsx_runtime_namespaces(&options);
     for declaration in &options.ambient_declaration_modules {
         builder.visit_ambient_declaration(declaration);
     }
+    builder.resolve_ambient_imports();
+    builder.project.resolution_fingerprint = loader.resolution_fingerprint();
     let ProjectBuilder {
         project,
         mut diagnostics,
@@ -327,16 +696,28 @@ fn compile_with_cache(
         reused_parsed_modules,
         ..
     } = builder;
+    diagnostics.extend(node_modules::validate(&project, &options));
     let project_fingerprint = fingerprint(&project, &options);
+    let graph_time = graph_started.elapsed();
 
     let changed_modules = previous_project
         .map(|previous| changed_modules(previous, &project))
         .unwrap_or_else(|| project.modules.keys().cloned().collect());
     let all_modules = project.modules.keys().cloned().collect::<BTreeSet<_>>();
 
-    if let Some(cached) = cached.filter(|_| changed_modules.is_empty()) {
+    if let Some(cached) = cached.filter(|cached| {
+        changed_modules.is_empty() && cached.compilation.project_fingerprint == project_fingerprint
+    }) {
+        let mut compilation = cached.compilation.clone();
+        compilation.performance = performance.finish(
+            &project,
+            compilation.checked.as_ref(),
+            graph_time,
+            std::time::Duration::ZERO,
+            std::time::Duration::ZERO,
+        );
         return IncrementalResult {
-            compilation: cached.compilation.clone(),
+            compilation,
             cache_hit: true,
             parsed_modules,
             reused_parsed_modules,
@@ -350,17 +731,54 @@ fn compile_with_cache(
         .unwrap_or_else(|| all_modules.clone());
     let previous_checked = cached.and_then(|cached| cached.compilation.checked.as_ref());
 
+    let check_started = std::time::Instant::now();
+    if options.runtime_policy == RuntimePolicy::StrictRuntime && !project.json_modules.is_empty() {
+        diagnostics.push(Diagnostic::error(
+            DiagnosticCode::UnsupportedSyntax,
+            SourceSpan::new(entry, 0, 0),
+            "strict-runtime JSON assets require a supported runtime profile",
+        ));
+    }
     let (checked, checker_diagnostics) = checker::check_incremental(
         &project,
-        !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
-        options.require_declared_global_calls,
+        checker::CheckerPolicy {
+            target: options.target,
+            library_target: options
+                .library_target()
+                .into_iter()
+                .chain(
+                    project
+                        .referenced_libraries
+                        .iter()
+                        .filter_map(|name| EcmaTarget::parse(name)),
+                )
+                .max(),
+            checking: options.checking,
+            enforce_types: !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
+            check_javascript: options.allow_js.then_some(options.check_js),
+            require_declared_global_calls: options.require_declared_global_calls,
+            define_class_fields: options.defines_class_fields(),
+            isolated_modules: options.isolated_modules || options.verbatim_module_syntax,
+            module_kind: options.module_kind,
+            import_attributes: options.import_attributes,
+            es_module_interop: options.es_module_interop,
+            jsx: options.jsx,
+            experimental_decorators: options.experimental_decorators,
+            jsx_factory: options.jsx_factory.clone(),
+            jsx_fragment_factory: options.jsx_fragment_factory.clone(),
+        },
         previous_checked,
         &rechecked_modules,
         options.limits.max_type_expansions,
     );
     diagnostics.extend(checker_diagnostics);
+    diagnostics.extend(isolated_declarations::validate_options(&options));
+    if options.isolated_declarations {
+        diagnostics.extend(isolated_declarations::check(&checked));
+    }
+    let check_time = check_started.elapsed();
     diagnostics.extend(strict_boundaries::validate_descriptors(&project, &options));
-    if options.source_map {
+    if options.source_map && !options.emit_declaration_only {
         diagnostics.extend(emitter::validate_source_map_limits(&checked, &options));
     }
     diagnostics.sort_by(|left, right| {
@@ -373,6 +791,7 @@ fn compile_with_cache(
     let has_errors = diagnostics
         .iter()
         .any(|diagnostic| diagnostic.severity == crate::diagnostic::Severity::Error);
+    let emit_started = std::time::Instant::now();
     let output = if has_errors {
         None
     } else {
@@ -384,9 +803,15 @@ fn compile_with_cache(
             }
         }
     };
+    let emit_time = emit_started.elapsed();
+    crate::diagnostic::positions::attach(&project, &mut diagnostics);
+    crate::diagnostic::rendered::attach(&project, &mut diagnostics);
+    crate::diagnostic::related::attach(&project, &mut diagnostics);
     let debug_info = output
         .as_ref()
         .map(|_| debug_info::build(&checked, &options));
+    let performance =
+        performance.finish(&project, Some(&checked), graph_time, check_time, emit_time);
     IncrementalResult {
         compilation: Compilation {
             project,
@@ -395,6 +820,7 @@ fn compile_with_cache(
             debug_info,
             diagnostics,
             output,
+            performance,
         },
         cache_hit: false,
         parsed_modules,
@@ -409,9 +835,15 @@ fn compile_with_cache(
 
 fn changed_modules(previous: &Project, current: &Project) -> BTreeSet<String> {
     let mut changed = BTreeSet::new();
-    for module_id in previous.modules.keys().chain(current.modules.keys()) {
-        if previous.modules.get(module_id).map(|module| &module.source)
-            != current.modules.get(module_id).map(|module| &module.source)
+    for module_id in previous
+        .modules
+        .keys()
+        .chain(current.modules.keys())
+        .chain(previous.failed_sources.keys())
+        .chain(current.failed_sources.keys())
+    {
+        if previous.source(module_id) != current.source(module_id)
+            || previous.module_kinds.get(module_id) != current.module_kinds.get(module_id)
         {
             changed.insert(module_id.clone());
         }
@@ -426,6 +858,44 @@ fn changed_modules(previous: &Project, current: &Project) -> BTreeSet<String> {
             changed.insert(module_id.clone());
         }
     }
+    for (module_id, specifier, mode) in previous
+        .mode_resolutions
+        .keys()
+        .chain(current.mode_resolutions.keys())
+    {
+        let key = (module_id.clone(), specifier.clone(), *mode);
+        if previous.mode_resolutions.get(&key) != current.mode_resolutions.get(&key) {
+            changed.insert(module_id.clone());
+        }
+    }
+    for (module, specifier, mode) in previous
+        .ambient_resolutions
+        .keys()
+        .chain(current.ambient_resolutions.keys())
+    {
+        let key = (module.clone(), specifier.clone(), *mode);
+        if previous.ambient_resolutions.get(&key) != current.ambient_resolutions.get(&key) {
+            changed.insert(module.clone());
+        }
+    }
+    for key in previous
+        .augmentation_resolutions
+        .keys()
+        .chain(current.augmentation_resolutions.keys())
+    {
+        if previous.augmentation_resolutions.get(key) != current.augmentation_resolutions.get(key) {
+            changed.insert(key.0.clone());
+        }
+    }
+    for key in previous
+        .reference_resolutions
+        .keys()
+        .chain(current.reference_resolutions.keys())
+    {
+        if previous.reference_resolutions.get(key) != current.reference_resolutions.get(key) {
+            changed.insert(key.0.clone());
+        }
+    }
     changed
 }
 
@@ -434,16 +904,27 @@ fn affected_modules(
     current: &Project,
     changed: &BTreeSet<String>,
 ) -> BTreeSet<String> {
+    if previous.referenced_libraries != current.referenced_libraries {
+        return current.modules.keys().cloned().collect();
+    }
+    fn augments_global(declarations: &[crate::parser::Declaration]) -> bool {
+        declarations.iter().any(|declaration| match declaration {
+            crate::parser::Declaration::Ambient(item) => {
+                item.specifier.is_none() || augments_global(&item.body)
+            }
+            crate::parser::Declaration::Namespace(item) => augments_global(&item.body),
+            _ => false,
+        })
+    }
     let mut reverse_dependencies = BTreeMap::<String, BTreeSet<String>>::new();
-    for ((module_id, _), dependency) in previous
-        .resolutions
-        .iter()
-        .chain(current.resolutions.iter())
+    for (module_id, dependency) in previous
+        .resolution_edges()
+        .chain(current.resolution_edges())
     {
         reverse_dependencies
-            .entry(dependency.clone())
+            .entry(dependency.to_string())
             .or_default()
-            .insert(module_id.clone());
+            .insert(module_id.to_string());
     }
 
     let mut affected = changed.clone();
@@ -455,250 +936,25 @@ fn affected_modules(
             }
         }
     }
+    // An augmentation's consumers need not import the module supplying it.
+    // Include its transitive imports above, then invalidate every consumer if
+    // either graph contains an affected global augmentation or a referenced
+    // script declaration that supplies names to otherwise unconnected modules.
+    if affected.iter().any(|id| {
+        [previous, current].iter().any(|project| {
+            project.modules.get(id).is_some_and(|module| {
+                augments_global(&module.declarations)
+                    || (project.referenced_declaration_modules.contains(id)
+                        && !crate::parser::has_module_syntax(&module.declarations))
+            })
+        })
+    }) {
+        return current.modules.keys().cloned().collect();
+    }
     affected
         .into_iter()
         .filter(|module_id| current.modules.contains_key(module_id))
         .collect()
-}
-
-struct ProjectBuilder<'a> {
-    loader: &'a dyn ModuleLoader,
-    previous: Option<&'a Project>,
-    project: Project,
-    diagnostics: Vec<Diagnostic>,
-    state: HashMap<String, VisitState>,
-    limits: CompilerLimits,
-    total_source_bytes: usize,
-    parsed_modules: BTreeSet<String>,
-    reused_parsed_modules: BTreeSet<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum VisitState {
-    Visiting,
-    Done,
-}
-
-impl<'a> ProjectBuilder<'a> {
-    fn new(
-        loader: &'a dyn ModuleLoader,
-        previous: Option<&'a Project>,
-        limits: CompilerLimits,
-    ) -> Self {
-        Self {
-            loader,
-            previous,
-            project: Project::empty(""),
-            diagnostics: Vec::new(),
-            state: HashMap::new(),
-            limits,
-            total_source_bytes: 0,
-            parsed_modules: BTreeSet::new(),
-            reused_parsed_modules: BTreeSet::new(),
-        }
-    }
-
-    fn visit(&mut self, module_id: &str, depth: usize) {
-        if self.project.entry.is_empty() {
-            self.project.entry = module_id.to_string();
-        }
-        match self.state.get(module_id) {
-            Some(VisitState::Done) => return,
-            Some(VisitState::Visiting) => {
-                self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::CircularModuleDependency,
-                    SourceSpan::new(module_id, 0, 0),
-                    format!("cyclic dependency includes `{module_id}`"),
-                ));
-                return;
-            }
-            None => {}
-        }
-        if depth > self.limits.max_module_depth {
-            self.diagnostics.push(Diagnostic::error(
-                DiagnosticCode::ResourceLimit,
-                SourceSpan::new(module_id, 0, 0),
-                format!(
-                    "module graph exceeds the {} import-depth limit",
-                    self.limits.max_module_depth
-                ),
-            ));
-            return;
-        }
-        if self.state.len() >= self.limits.max_modules {
-            self.diagnostics.push(Diagnostic::error(
-                DiagnosticCode::ResourceLimit,
-                SourceSpan::new(module_id, 0, 0),
-                format!(
-                    "project exceeds the {} module limit",
-                    self.limits.max_modules
-                ),
-            ));
-            return;
-        }
-        self.state
-            .insert(module_id.to_string(), VisitState::Visiting);
-        let source = match self.loader.load(module_id) {
-            Ok(source) => source,
-            Err(message) => {
-                self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::ModuleNotFound,
-                    SourceSpan::new(module_id, 0, 0),
-                    message,
-                ));
-                self.state.insert(module_id.to_string(), VisitState::Done);
-                return;
-            }
-        };
-        self.visit_loaded_source(module_id, source, depth);
-    }
-
-    fn visit_ambient_declaration(&mut self, source: &ModuleSource) {
-        let module_id = source.id.as_str();
-        if !is_declaration_module(module_id) {
-            self.diagnostics.push(Diagnostic::error(
-                DiagnosticCode::InvalidDeclarationFile,
-                SourceSpan::new(module_id, 0, 0),
-                "ambient host declaration modules must use a `.d.ts` identity",
-            ));
-            return;
-        }
-        if self.state.contains_key(module_id) {
-            self.diagnostics.push(Diagnostic::error(
-                DiagnosticCode::InvalidDeclarationFile,
-                SourceSpan::new(module_id, 0, 0),
-                "ambient host declaration module duplicates a source-graph module",
-            ));
-            return;
-        }
-        if self.state.len() >= self.limits.max_modules {
-            self.diagnostics.push(Diagnostic::error(
-                DiagnosticCode::ResourceLimit,
-                SourceSpan::new(module_id, 0, 0),
-                format!(
-                    "project exceeds the {} module limit",
-                    self.limits.max_modules
-                ),
-            ));
-            return;
-        }
-        self.state
-            .insert(module_id.to_string(), VisitState::Visiting);
-        self.project
-            .ambient_declaration_modules
-            .insert(module_id.to_string());
-        self.visit_loaded_source(module_id, source.clone(), 0);
-    }
-
-    fn visit_loaded_source(&mut self, module_id: &str, source: ModuleSource, depth: usize) {
-        if source.id != module_id {
-            self.diagnostics.push(Diagnostic::error(
-                DiagnosticCode::ModuleNotFound,
-                SourceSpan::new(module_id, 0, 0),
-                format!(
-                    "loader returned `{}` while `{module_id}` was requested; module identities must be stable",
-                    source.id
-                ),
-            ));
-            self.state.insert(module_id.to_string(), VisitState::Done);
-            return;
-        }
-        let Some(total_source_bytes) = self.total_source_bytes.checked_add(source.text.len())
-        else {
-            self.diagnostics.push(Diagnostic::error(
-                DiagnosticCode::ResourceLimit,
-                SourceSpan::new(module_id, 0, 0),
-                "project source-byte accounting overflowed",
-            ));
-            self.state.insert(module_id.to_string(), VisitState::Done);
-            return;
-        };
-        if total_source_bytes > self.limits.max_total_source_bytes {
-            self.diagnostics.push(Diagnostic::error(
-                DiagnosticCode::ResourceLimit,
-                SourceSpan::new(module_id, 0, 0),
-                format!(
-                    "project exceeds the {} total source-byte limit",
-                    self.limits.max_total_source_bytes
-                ),
-            ));
-            self.state.insert(module_id.to_string(), VisitState::Done);
-            return;
-        }
-        self.total_source_bytes = total_source_bytes;
-        let module = if let Some(module) = self
-            .previous
-            .and_then(|previous| previous.modules.get(module_id))
-            .filter(|module| module.source == source.text)
-        {
-            self.reused_parsed_modules.insert(module_id.to_string());
-            module.clone()
-        } else {
-            self.parsed_modules.insert(module_id.to_string());
-            let parsed = if self.limits.parser == ParserLimits::default() {
-                parse_module(source.id.clone(), source.text)
-            } else {
-                parse_module_with_limits(source.id.clone(), source.text, self.limits.parser.clone())
-            };
-            match parsed {
-                Ok(module) => module,
-                Err(mut parse_diagnostics) => {
-                    self.diagnostics.append(&mut parse_diagnostics);
-                    self.state.insert(module_id.to_string(), VisitState::Done);
-                    return;
-                }
-            }
-        };
-        for declaration in &module.declarations {
-            let (specifier, span) = match declaration {
-                crate::parser::Declaration::Import(import) => (&import.specifier, &import.span),
-                crate::parser::Declaration::TypeExport(export) => {
-                    let Some(specifier) = &export.specifier else {
-                        continue;
-                    };
-                    (specifier, &export.span)
-                }
-                _ => continue,
-            };
-            if self.project.ambient_declaration_modules.contains(module_id) {
-                self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::InvalidDeclarationFile,
-                    span.clone(),
-                    "ambient host declaration modules cannot import or re-export another module",
-                ));
-                continue;
-            }
-            match self.loader.resolve(module_id, specifier) {
-                Ok(resolved) => {
-                    let resolution_key = (module_id.to_string(), specifier.clone());
-                    if !self.project.resolutions.contains_key(&resolution_key)
-                        && self.project.resolutions.len() >= self.limits.max_module_edges
-                    {
-                        self.diagnostics.push(Diagnostic::error(
-                            DiagnosticCode::ResourceLimit,
-                            span.clone(),
-                            format!(
-                                "module graph exceeds the {} import-edge limit",
-                                self.limits.max_module_edges
-                            ),
-                        ));
-                        continue;
-                    }
-                    self.project
-                        .resolutions
-                        .insert(resolution_key, resolved.clone());
-                    self.visit(&resolved, depth.saturating_add(1));
-                }
-                Err(message) => self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::ModuleNotFound,
-                    span.clone(),
-                    message,
-                )),
-            }
-        }
-        self.project.modules.insert(module_id.to_string(), module);
-        self.state.insert(module_id.to_string(), VisitState::Done);
-    }
 }
 
 fn resolve_relative_module(from_module: &str, specifier: &str) -> Result<String, String> {
@@ -745,59 +1001,5 @@ fn normalize_module_id(value: &str) -> String {
 
 /// A stable, non-cryptographic content fingerprint for artifact provenance and
 /// cache keys.  It intentionally includes compiler policy and source identity.
-pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> String {
-    let mut hash = 0xcbf29ce484222325u64;
-    let mut add = |text: &str| {
-        for byte in text.bytes() {
-            hash ^= u64::from(byte);
-            hash = hash.wrapping_mul(0x100000001b3);
-        }
-        hash ^= 0xff;
-        hash = hash.wrapping_mul(0x100000001b3);
-    };
-    add(LANGUAGE_VERSION);
-    add(options.target.as_str());
-    add(options.runtime_policy.as_str());
-    add(&options.resolver_fingerprint);
-    add(&options.require_declared_global_calls.to_string());
-    for boundary in &options.strict_runtime_boundaries {
-        add(&boundary.contract_id);
-        add(&boundary.function);
-        add(&boundary.span.module);
-        add(&boundary.span.start.to_string());
-        add(&boundary.span.end.to_string());
-        add(&boundary.max_string_bytes.to_string());
-        add(&boundary.helper_version);
-    }
-    for declaration in &options.ambient_declaration_modules {
-        add(&declaration.id);
-        add(&declaration.text);
-    }
-    add(&options.limits.max_modules.to_string());
-    add(&options.limits.max_module_edges.to_string());
-    add(&options.limits.max_module_depth.to_string());
-    add(&options.limits.max_total_source_bytes.to_string());
-    add(&options.limits.parser.max_source_bytes.to_string());
-    add(&options.limits.parser.max_tokens.to_string());
-    add(&options.limits.parser.max_type_depth.to_string());
-    add(&options.limits.max_type_expansions.to_string());
-    add(&options.limits.max_source_map_segments.to_string());
-    add(if options.source_map {
-        "source-map"
-    } else {
-        "no-source-map"
-    });
-    add(if options.declaration {
-        "declaration"
-    } else {
-        "no-declaration"
-    });
-    for (id, module) in &project.modules {
-        add(id);
-        add(&module.source);
-    }
-    format!("bts-{hash:016x}")
-}
-
 #[cfg(test)]
 mod tests;

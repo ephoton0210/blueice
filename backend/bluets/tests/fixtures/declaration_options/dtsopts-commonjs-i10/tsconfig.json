@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "outDir": "out",
+    "isolatedDeclarations": true
+  },
+  "files": [
+    "main.ts"
+  ]
+}

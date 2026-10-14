@@ -11,6 +11,30 @@
 
 use blueice_bluejs::{parse, parse_module};
 
+#[test]
+fn named_async_exports_preserve_function_flags_and_binding_validation() {
+    for source in [
+        "export async function answer() { return 42; }",
+        "export async function* sequence() { yield 42; }",
+    ] {
+        let module = parse_module(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let blueice_bluejs::Stmt::FunctionDecl(function) = &module.body[0] else {
+            panic!("expected an exported function: {module:?}");
+        };
+        assert!(function.is_async);
+        assert_eq!(function.generator, source.contains("function*"));
+        assert_eq!(module.exports.len(), 1);
+    }
+    for source in [
+        "export async function () {}",
+        "export async\nfunction answer() {}",
+        "export \\u0061sync function answer() {}",
+        "export async function answer() {} export function answer() {}",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
 fn assert_module_syntax_error(source: &str) {
     let error = parse_module(source).expect_err(source);
     assert!(error.known_syntax, "{source}: {error:?}");

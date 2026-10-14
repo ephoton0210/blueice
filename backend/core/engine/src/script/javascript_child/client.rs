@@ -486,6 +486,71 @@ pub trait PageHostClient {
         ))
     }
 
+    fn debugger_emitted_original_position(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement emitted-map original positions",
+        ))
+    }
+
+    /// Private transport support only. Public generated-position operations
+    /// still require an independent owner/client grant and stream receipt.
+    fn debugger_emitted_map_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_emitted_safe_point(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement emitted-map safe points",
+        ))
+    }
+
+    fn debugger_system_emitted_safe_point(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _loader_program: PageHostDebuggerProgram,
+        _program: PageHostDebuggerProgram,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement System emitted safe points",
+        ))
+    }
+
+    fn debugger_emitted_paused_root_location(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement emitted-map paused root locations",
+        ))
+    }
+
+    fn debugger_emitted_paused_root_location_available(&self) -> bool {
+        false
+    }
+
     fn debugger_bluets_metadata_symbol_type(
         &mut self,
         _tab_id: u64,
@@ -660,6 +725,43 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement nested debugger control",
+        ))
+    }
+
+    fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _loader_program: PageHostDebuggerProgram,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement System debugger control",
+        ))
+    }
+
+    fn debugger_system_stack_snapshot(
+        &mut self,
+        _frame: PageHostDebuggerFrame,
+        _loader_program: PageHostDebuggerProgram,
+        _max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement System debugger stack inspection",
+        ))
+    }
+
+    fn debugger_system_stack_locations(
+        &mut self,
+        _frame: PageHostDebuggerFrame,
+        _loader_program: PageHostDebuggerProgram,
+        _max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement System debugger locations",
         ))
     }
 
@@ -862,6 +964,9 @@ mod tests {
                 document_origin: String::new(),
             },
             debugger_execution_control: false,
+            emitted_bluets_profile: page_host::PageHostBlueTsEmissionProfile::Standard,
+            emitted_module_page_console_ambient: false,
+            emitted_classic_page_console_ambient: false,
             scripts: Vec::new(),
         }
     }
@@ -1046,6 +1151,15 @@ mod tests {
     }
 
     #[test]
+    fn default_system_emitted_lookup_is_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.debugger_system_emitted_safe_point(1, 1, program(), program(), 0, 0),
+            "page-host child does not implement System emitted safe points",
+        );
+    }
+
+    #[test]
     fn default_bluets_metadata_operations_are_unsupported() {
         let mut client = MinimalClient;
         assert_unsupported(
@@ -1185,6 +1299,18 @@ mod tests {
         assert_unsupported(
             client.arm_debugger_nested_safe_point_breakpoint(1, 1, safe_point()),
             "page-host child does not implement nested debugger control",
+        );
+        assert_unsupported(
+            client.arm_debugger_system_nested_breakpoint(1, 1, program(), safe_point()),
+            "page-host child does not implement System debugger control",
+        );
+        assert_unsupported(
+            client.debugger_system_stack_snapshot(frame(), program(), 1),
+            "page-host child does not implement System debugger stack inspection",
+        );
+        assert_unsupported(
+            client.debugger_system_stack_locations(frame(), program(), 1),
+            "page-host child does not implement System debugger locations",
         );
         assert_unsupported(
             client.step_debugger_nested_instruction(frame()),

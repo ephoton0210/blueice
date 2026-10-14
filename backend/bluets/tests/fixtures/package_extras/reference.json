@@ -1,0 +1,2570 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "pkgextra-node10-tv0",
+      "form": "tv0",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6834361a94e5654f52c9145ca9f3374afb3a7429a2c5b60c84a90f76254e94e2",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node10-tv1",
+      "form": "tv1",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6834361a94e5654f52c9145ca9f3374afb3a7429a2c5b60c84a90f76254e94e2",
+        "main.ts": "abd4e7f9f25ae92263fbac4b1f1c3d28a4e38bdfd3f3abeef99b6c982fe12414",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg/feature\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/feature.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node10-tv2",
+      "form": "tv2",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6a1d9183581ac586a82a4f69036660016590c9c559d67fd7ca9d11cd80f35bb9",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node10-tv3",
+      "form": "tv3",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "e766d39122138834190211a74f2975bdc0cffaa44a417ef625df25de93869c6a",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 272,
+          "length": 2,
+          "message": "Type 'number' is not assignable to type 'string'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/wrong/index.d.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node10-tv4",
+      "form": "tv4",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "333aa9f3d6b9ed3065bc7041215dc2760979d1c1fa55d8b9059cd4391b820ff4",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node10-tv5",
+      "form": "tv5",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6ab95dc7e806f768b27a480469a7a5abc6e8b81538dc276c25218e27a8222de7",
+        "main.ts": "abd4e7f9f25ae92263fbac4b1f1c3d28a4e38bdfd3f3abeef99b6c982fe12414",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg/feature\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/feature.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node10-tv6",
+      "form": "tv6",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "3790c031d526b0e7097a8603c3cb818ae428775ac083124351680e6939a8b860",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node10-tv7",
+      "form": "tv7",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "5b1924da79dc277d55348ad921d09a1ce1e3f5d290e03feee7bf77c2d59be54f",
+        "main.ts": "a20588129ef57e0c5c8f6c078114c223052dad05460482e420bacd568d3f83c2",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg/feature/item\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/feature/item.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv0",
+      "form": "tv0",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6834361a94e5654f52c9145ca9f3374afb3a7429a2c5b60c84a90f76254e94e2",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv1",
+      "form": "tv1",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6834361a94e5654f52c9145ca9f3374afb3a7429a2c5b60c84a90f76254e94e2",
+        "main.ts": "abd4e7f9f25ae92263fbac4b1f1c3d28a4e38bdfd3f3abeef99b6c982fe12414",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [
+        {
+          "code": 2307,
+          "file": "main.ts",
+          "start": 232,
+          "length": 13,
+          "message": "Cannot find module 'pkg/feature' or its corresponding type declarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv2",
+      "form": "tv2",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6a1d9183581ac586a82a4f69036660016590c9c559d67fd7ca9d11cd80f35bb9",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv3",
+      "form": "tv3",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "e766d39122138834190211a74f2975bdc0cffaa44a417ef625df25de93869c6a",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 272,
+          "length": 2,
+          "message": "Type 'number' is not assignable to type 'string'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/wrong/index.d.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv4",
+      "form": "tv4",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "333aa9f3d6b9ed3065bc7041215dc2760979d1c1fa55d8b9059cd4391b820ff4",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv5",
+      "form": "tv5",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6ab95dc7e806f768b27a480469a7a5abc6e8b81538dc276c25218e27a8222de7",
+        "main.ts": "abd4e7f9f25ae92263fbac4b1f1c3d28a4e38bdfd3f3abeef99b6c982fe12414",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [
+        {
+          "code": 2307,
+          "file": "main.ts",
+          "start": 232,
+          "length": 13,
+          "message": "Cannot find module 'pkg/feature' or its corresponding type declarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv6",
+      "form": "tv6",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "3790c031d526b0e7097a8603c3cb818ae428775ac083124351680e6939a8b860",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv7",
+      "form": "tv7",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "5b1924da79dc277d55348ad921d09a1ce1e3f5d290e03feee7bf77c2d59be54f",
+        "main.ts": "a20588129ef57e0c5c8f6c078114c223052dad05460482e420bacd568d3f83c2",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [
+        {
+          "code": 2307,
+          "file": "main.ts",
+          "start": 232,
+          "length": 18,
+          "message": "Cannot find module 'pkg/feature/item' or its corresponding type declarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv0",
+      "form": "tv0",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6834361a94e5654f52c9145ca9f3374afb3a7429a2c5b60c84a90f76254e94e2",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv1",
+      "form": "tv1",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6834361a94e5654f52c9145ca9f3374afb3a7429a2c5b60c84a90f76254e94e2",
+        "main.ts": "abd4e7f9f25ae92263fbac4b1f1c3d28a4e38bdfd3f3abeef99b6c982fe12414",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg/feature\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/feature.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv2",
+      "form": "tv2",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6a1d9183581ac586a82a4f69036660016590c9c559d67fd7ca9d11cd80f35bb9",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv3",
+      "form": "tv3",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "e766d39122138834190211a74f2975bdc0cffaa44a417ef625df25de93869c6a",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 272,
+          "length": 2,
+          "message": "Type 'number' is not assignable to type 'string'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/wrong/index.d.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv4",
+      "form": "tv4",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "333aa9f3d6b9ed3065bc7041215dc2760979d1c1fa55d8b9059cd4391b820ff4",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv5",
+      "form": "tv5",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "6ab95dc7e806f768b27a480469a7a5abc6e8b81538dc276c25218e27a8222de7",
+        "main.ts": "abd4e7f9f25ae92263fbac4b1f1c3d28a4e38bdfd3f3abeef99b6c982fe12414",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg/feature\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/feature.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv6",
+      "form": "tv6",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "3790c031d526b0e7097a8603c3cb818ae428775ac083124351680e6939a8b860",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv7",
+      "form": "tv7",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "5b1924da79dc277d55348ad921d09a1ce1e3f5d290e03feee7bf77c2d59be54f",
+        "main.ts": "a20588129ef57e0c5c8f6c078114c223052dad05460482e420bacd568d3f83c2",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg/feature/item\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/feature/item.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-self0",
+      "form": "self0",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "self.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "package.json": "8301b93c6dfd65c6690fbce7e76652b4a71350131783be6f6b52a99c036adcd0",
+        "main.ts": "f053cb219e7cdf23fae7a7a4af14913eb6047082fa4c948fd6cdea90cf2975f9"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"@ice/self\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "self.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-self1",
+      "form": "self1",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "self.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "package.json": "574275d87108043b7e044b60c9df82991a0ebbb847a7a7639389c753bd2e8248",
+        "main.ts": "a4ca9bc291158598eddf5b9df12a43534861b54201041381af10eb7df9e008e5"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"@ice/self/feature\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "feature.d.ts",
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-self2",
+      "form": "self2",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "self.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "package.json": "c06b60b8039a519178cdb578a5866cf9ec3c26140b7f12729bad05413df3dcc4",
+        "main.ts": "f053cb219e7cdf23fae7a7a4af14913eb6047082fa4c948fd6cdea90cf2975f9"
+      },
+      "diagnostics": [
+        {
+          "code": 2307,
+          "file": "main.ts",
+          "start": 232,
+          "length": 11,
+          "message": "Cannot find module '@ice/self' or its corresponding type declarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-self3",
+      "form": "self3",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "self.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/@ice/self/package.json": "abc93d0ac22dde0266542192fedd141fedba194e2d167eb2270ca0305a724ac7",
+        "node_modules/@ice/self/wrong.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "package.json": "8301b93c6dfd65c6690fbce7e76652b4a71350131783be6f6b52a99c036adcd0",
+        "main.ts": "f053cb219e7cdf23fae7a7a4af14913eb6047082fa4c948fd6cdea90cf2975f9"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"@ice/self\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "self.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-suffix0",
+      "form": "suffix0",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "bbba7db07564f6461fbad1d6b14df83e35da12bdc7c395950c40994411d37d21",
+        "node_modules/pkg/api.d.mts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.d.mts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-suffix1",
+      "form": "suffix1",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "f6695f69f57dc3d607908274f950d49fd230568499b3df716d62359cc8d95e5c",
+        "node_modules/pkg/api.d.cts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.d.cts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-suffix2",
+      "form": "suffix2",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "2574fea396f6a669a62ea18666f0356b600032a85664697e14c73741f12c74e3",
+        "node_modules/pkg/api.d.mts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.d.mts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-suffix3",
+      "form": "suffix3",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "bbba7db07564f6461fbad1d6b14df83e35da12bdc7c395950c40994411d37d21",
+        "node_modules/pkg/api.mts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.mts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-suffix4",
+      "form": "suffix4",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "f6695f69f57dc3d607908274f950d49fd230568499b3df716d62359cc8d95e5c",
+        "node_modules/pkg/api.cts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.cts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-suffix5",
+      "form": "suffix5",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "87539c60afb4cc7e27584e90f7d5a5bafdf7befb3236aa83332499d8932597a7",
+        "node_modules/pkg/api.d.mts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.d.mts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-self0",
+      "form": "self0",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "self.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "package.json": "8301b93c6dfd65c6690fbce7e76652b4a71350131783be6f6b52a99c036adcd0",
+        "main.ts": "f053cb219e7cdf23fae7a7a4af14913eb6047082fa4c948fd6cdea90cf2975f9"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"@ice/self\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "self.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-self1",
+      "form": "self1",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "self.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "package.json": "574275d87108043b7e044b60c9df82991a0ebbb847a7a7639389c753bd2e8248",
+        "main.ts": "a4ca9bc291158598eddf5b9df12a43534861b54201041381af10eb7df9e008e5"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"@ice/self/feature\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "feature.d.ts",
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-self2",
+      "form": "self2",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "self.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "package.json": "c06b60b8039a519178cdb578a5866cf9ec3c26140b7f12729bad05413df3dcc4",
+        "main.ts": "f053cb219e7cdf23fae7a7a4af14913eb6047082fa4c948fd6cdea90cf2975f9"
+      },
+      "diagnostics": [
+        {
+          "code": 2307,
+          "file": "main.ts",
+          "start": 232,
+          "length": 11,
+          "message": "Cannot find module '@ice/self' or its corresponding type declarations."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-self3",
+      "form": "self3",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "self.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/@ice/self/package.json": "abc93d0ac22dde0266542192fedd141fedba194e2d167eb2270ca0305a724ac7",
+        "node_modules/@ice/self/wrong.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "package.json": "8301b93c6dfd65c6690fbce7e76652b4a71350131783be6f6b52a99c036adcd0",
+        "main.ts": "f053cb219e7cdf23fae7a7a4af14913eb6047082fa4c948fd6cdea90cf2975f9"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"@ice/self\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "self.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-suffix0",
+      "form": "suffix0",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "bbba7db07564f6461fbad1d6b14df83e35da12bdc7c395950c40994411d37d21",
+        "node_modules/pkg/api.d.mts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.d.mts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-suffix1",
+      "form": "suffix1",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "f6695f69f57dc3d607908274f950d49fd230568499b3df716d62359cc8d95e5c",
+        "node_modules/pkg/api.d.cts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.d.cts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-suffix2",
+      "form": "suffix2",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "2574fea396f6a669a62ea18666f0356b600032a85664697e14c73741f12c74e3",
+        "node_modules/pkg/api.d.mts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.d.mts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-suffix3",
+      "form": "suffix3",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "bbba7db07564f6461fbad1d6b14df83e35da12bdc7c395950c40994411d37d21",
+        "node_modules/pkg/api.mts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.mts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-suffix4",
+      "form": "suffix4",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "f6695f69f57dc3d607908274f950d49fd230568499b3df716d62359cc8d95e5c",
+        "node_modules/pkg/api.cts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.cts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-suffix5",
+      "form": "suffix5",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/package.json": "87539c60afb4cc7e27584e90f7d5a5bafdf7befb3236aa83332499d8932597a7",
+        "node_modules/pkg/api.d.mts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/api.d.mts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-classic-classic0",
+      "form": "classic0",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "classic",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "values.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "08621b8e9fed5eff0c5f2b1da818772336c1963fbba17c49425400e2576801fd",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js",
+        "out/values.d.ts",
+        "out/values.js"
+      ],
+      "outputs": {
+        "out/values.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\n",
+        "out/values.d.ts": "export type Answer = number;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"./values\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "values.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-classic-classic1",
+      "form": "classic1",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "classic",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "values.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "e1922f8cfd5020083237bd0bc0d0fc4b87db01df019d4b6b9a8b2b9fb0b88c5d",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js",
+        "out/values.d.ts",
+        "out/values.js"
+      ],
+      "outputs": {
+        "out/values.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\n",
+        "out/values.d.ts": "export type Answer = number;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"values\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "values.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-classic-classic2",
+      "form": "classic2",
+      "entry": "src/main.ts",
+      "rootFiles": [
+        "src/main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "classic",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "values.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "src/main.ts": "e1922f8cfd5020083237bd0bc0d0fc4b87db01df019d4b6b9a8b2b9fb0b88c5d",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/src/main.d.ts",
+        "out/src/main.js",
+        "out/values.d.ts",
+        "out/values.js"
+      ],
+      "outputs": {
+        "out/values.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\n",
+        "out/values.d.ts": "export type Answer = number;\n",
+        "out/src/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/src/main.d.ts": "import type { Answer } from \"values\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "src/main.ts",
+        "values.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-classic-classic3",
+      "form": "classic3",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "classic",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [
+        {
+          "code": 2792,
+          "file": "main.ts",
+          "start": 232,
+          "length": 5,
+          "message": "Cannot find module 'pkg'. Did you mean to set the 'moduleResolution' option to 'nodenext', or to add aliases to the 'paths' option?"
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node10-tv8",
+      "form": "tv8",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "3ca41d0bfbe6a580d9695caedab87d207b73b6a0e64162a112a346a12ef54031",
+        "main.ts": "abd4e7f9f25ae92263fbac4b1f1c3d28a4e38bdfd3f3abeef99b6c982fe12414",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg/feature\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/feature.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node10-tv9",
+      "form": "tv9",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "470679fd8e0d56a84622964ac979b16bb1cfefd75e95a26d9c5289b5a937f3fd",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31",
+        "node_modules/pkg/exported.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/index.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv8",
+      "form": "tv8",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "3ca41d0bfbe6a580d9695caedab87d207b73b6a0e64162a112a346a12ef54031",
+        "main.ts": "abd4e7f9f25ae92263fbac4b1f1c3d28a4e38bdfd3f3abeef99b6c982fe12414",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg/feature\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/feature.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-node16-tv9",
+      "form": "tv9",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "node16",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "470679fd8e0d56a84622964ac979b16bb1cfefd75e95a26d9c5289b5a937f3fd",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979",
+        "node_modules/pkg/exported.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 272,
+          "length": 2,
+          "message": "Type 'number' is not assignable to type 'string'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/exported.d.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv8",
+      "form": "tv8",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "3ca41d0bfbe6a580d9695caedab87d207b73b6a0e64162a112a346a12ef54031",
+        "main.ts": "abd4e7f9f25ae92263fbac4b1f1c3d28a4e38bdfd3f3abeef99b6c982fe12414",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = [42];\n",
+        "out/main.d.ts": "import type { Answer } from \"pkg/feature\";\nexport declare const result: Answer[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/current/feature.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxError": null
+    },
+    {
+      "id": "pkgextra-bundler-tv9",
+      "form": "tv9",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "node_modules/pkg/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/current/index.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/current/feature/item.d.ts": "c82f7a0a4e2ca0e0ee7bfed4662c5e94359a32ee4e05b8fae96b8540c4176673",
+        "node_modules/pkg/wrong/index.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/wrong/feature/item.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6",
+        "node_modules/pkg/package.json": "470679fd8e0d56a84622964ac979b16bb1cfefd75e95a26d9c5289b5a937f3fd",
+        "main.ts": "8ff0000f57db39896891b47447e609b6c321c45574465dcf28bdcf89d23886d8",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979",
+        "node_modules/pkg/exported.d.ts": "1ed25b08b0c6ae48a3b9b6914d7315258161b2adf391fe6e7e8284af9ca58ec6"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 272,
+          "length": 2,
+          "message": "Type 'number' is not assignable to type 'string'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts",
+        "node_modules/pkg/exported.d.ts"
+      ],
+      "observation": null,
+      "syntaxError": null
+    }
+  ]
+}

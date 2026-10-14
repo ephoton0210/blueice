@@ -17,57 +17,14 @@ impl Parser {
         let mut depth = 1usize;
         let mut parentheses = 0usize;
         let mut brackets = 0usize;
-        while !self.at_eof() && depth > 0 {
-            if parentheses == 0 && brackets == 0 && self.peek("function") {
-                let token = self.current().clone();
-                if self.nested_function_depth >= 64 {
-                    self.error_at(
-                        token.span(&self.id),
-                        DiagnosticCode::ResourceLimit,
-                        "nested function declarations exceed the 64-level limit",
-                    );
-                    let mut braces = 0;
-                    let mut entered = false;
-                    while !self.at_eof() {
-                        if self.peek("{") {
-                            braces += 1;
-                            entered = true;
-                        } else if self.peek("}") {
-                            if !entered {
-                                break;
-                            }
-                            braces -= 1;
-                        }
-                        let end = (entered && braces == 0) || (!entered && self.peek(";"));
-                        self.bump();
-                        if end {
-                            break;
-                        }
-                    }
-                    continue;
-                }
-                self.bump();
-                self.nested_function_depth += 1;
-                self.parse_function(token.start, false, false, false, false);
-                self.nested_function_depth -= 1;
-                let Declaration::Function(function) =
-                    self.declarations.pop().expect("parsed nested function")
-                else {
-                    unreachable!("parse_function emits one declaration")
-                };
-                body.push(FunctionBodyItem::Function(Box::new(function)));
-                continue;
-            }
+        while !self.at_eof()
+            && depth > 0
+            && self.emitted_body_end.is_none_or(|end| self.index < end)
+        {
             self.diagnose_unsupported_opaque_syntax(
                 self.index,
                 self.index.saturating_add(2).min(self.tokens.len()),
             );
-            if is_generic_arrow_function(&self.tokens, self.index, self.tokens.len() - 1) {
-                self.unsupported(
-                    self.tokens[self.index].span(&self.id),
-                    "generic arrow functions are not in the initial BlueTS matrix",
-                );
-            }
             if parentheses == 0
                 && brackets == 0
                 && is_direct_braced_if_statement(&self.tokens, self.index)
@@ -179,6 +136,28 @@ impl Parser {
                 });
                 continue;
             }
+            if parentheses == 0 && brackets == 0 && self.peek("function") {
+                if let Some(item) = self.try_parse_local_function(false) {
+                    body.push(item);
+                    continue;
+                }
+            }
+            if parentheses == 0
+                && brackets == 0
+                && self.peek("async")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is("function"))
+            {
+                let saved = self.index;
+                self.bump();
+                if let Some(item) = self.try_parse_local_function(true) {
+                    body.push(item);
+                    continue;
+                }
+                self.index = saved;
+            }
             if self.peek("as") || self.peek("satisfies") {
                 body.push(FunctionBodyItem::Opaque(self.current().span(&self.id)));
                 let end = find_balanced_delimiter(
@@ -204,7 +183,7 @@ impl Parser {
             }
             self.bump();
         }
-        if depth != 0 {
+        if depth != 0 && self.emitted_body_end.is_none_or(|end| self.index < end) {
             self.error_at(
                 SourceSpan::new(&self.id, body_start, self.source.len()),
                 DiagnosticCode::ParseError,
@@ -291,10 +270,32 @@ impl Parser {
             self.expect("(");
             let binding = self.current().text.clone();
             self.bump();
+            let annotation_start = self.current().start;
+            let annotation = if self.consume(":") {
+                let span_start = self.previous().start;
+                let value = self.parse_type_until(&[")"]);
+                let span_end = self.previous().end;
+                self.edits.push(TextEdit {
+                    start: annotation_start,
+                    end: span_end,
+                    replacement: String::new(),
+                });
+                if !matches!(value, Type::Any | Type::Unknown | Type::StrictUnknown) {
+                    self.error_at(
+                        SourceSpan::new(&self.id, span_start, span_end),
+                        DiagnosticCode::ParseError,
+                        "a catch clause variable type annotation must be `any` or `unknown`",
+                    );
+                }
+                Some(value)
+            } else {
+                None
+            };
             self.expect(")");
             let body = self.parse_direct_function_block(returns, locals);
             Some(FunctionCatchClause {
                 binding,
+                annotation,
                 body,
                 span: SourceSpan::new(&self.id, catch_start, self.previous().end),
             })

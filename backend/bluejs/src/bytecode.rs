@@ -532,6 +532,15 @@ pub(crate) struct AbruptJump {
     pub target: u32,
 }
 
+/// One identifier expression's exact instruction, recorded by the
+/// compiler while lowering the owning source-order statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IdentifierOffset {
+    pub statement_index: usize,
+    pub name: String,
+    pub bytecode_offset: u32,
+}
+
 /// Read-only compiled code plus its constant pool and binding/scope
 /// metadata. Can execute repeatedly in the same or independent VMs;
 /// runtime object handles are never stored in its constant pool.
@@ -550,12 +559,21 @@ pub struct Bytecode {
     /// order statements. `None` means the statement emits no root-code-unit
     /// instruction and therefore has no executable safe point.
     pub(crate) root_statement_offsets: Vec<Option<u32>>,
+    /// Exact code-unit instruction starts emitted while evaluating an
+    /// identifier expression inside a root statement. These records are
+    /// compiler provenance, not inferred from neighboring instructions.
+    pub(crate) identifier_offsets: Vec<IdentifierOffset>,
     /// Exact emitted instruction ranges for root statements, in source order.
     /// The compiler records both ends; consumers must not infer ownership by
     /// searching for a nearby statement start.
     pub(crate) root_statement_ranges: Vec<Option<(u32, u32)>>,
     /// Direct child closure created by each root function declaration.
     pub(crate) root_function_child_indices: Vec<Option<u32>>,
+    /// The direct child closures (`start..end` indices into the child code
+    /// units) that compiling a root statement other than a function
+    /// declaration created, such as the constructor and methods of a class.
+    /// A statement that created none has no range.
+    pub(crate) root_statement_child_ranges: Vec<Option<(u32, u32)>>,
     /// Compiler-resolved root-scope lexical slot for each supported direct
     /// single-identifier declaration, in root statement order. A nested,
     /// erased, or compound statement has no declaration-slot evidence.
@@ -674,8 +692,10 @@ impl Bytecode {
             debugger_code_unit_ordinal: None,
             debugger_program_generation: None,
             root_statement_offsets: Vec::new(),
+            identifier_offsets: Vec::new(),
             root_statement_ranges: Vec::new(),
             root_function_child_indices: Vec::new(),
+            root_statement_child_ranges: Vec::new(),
             root_declaration_binding_slots: Vec::new(),
             constants: Vec::new(),
             bindings: Vec::new(),
@@ -742,6 +762,15 @@ impl Bytecode {
     /// Direct child closure index for each root function declaration.
     pub fn root_function_child_indices(&self) -> &[Option<u32>] {
         &self.root_function_child_indices
+    }
+
+    /// The direct child closures each root statement other than a function
+    /// declaration created, as `start..end` indices into
+    /// [`Bytecode::child_code_units`]: a class declaration owns its constructor
+    /// and methods. The compiler records both ends; consumers must not infer
+    /// ownership from source order.
+    pub fn root_statement_child_ranges(&self) -> &[Option<(u32, u32)>] {
+        &self.root_statement_child_ranges
     }
 
     /// Exact root-scope binding for each root statement's supported single

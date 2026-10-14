@@ -1,0 +1,1 @@
+error TS18003: No inputs were found in config file '<project>/tsconfig.json'. Specified 'include' paths were '[".sources"]' and 'exclude' paths were '[]'.

@@ -1,0 +1,16 @@
+{
+  "version": "5.9.3",
+  "coordinateUnit": "UTF-16; one-based line/column",
+  "language": {
+    "version": "5.9.3",
+    "programs": 1398,
+    "comparedPrimaries": 800,
+    "explicitSubsetRefusals": 5,
+    "mismatches": []
+  },
+  "projects": {
+    "version": "5.9.3",
+    "cases": 867,
+    "mismatches": []
+  }
+}

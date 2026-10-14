@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "esModuleInterop": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "files": [
+    "main.js"
+  ]
+}

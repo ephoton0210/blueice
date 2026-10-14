@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "isolatedModules": true,
+    "module": "esnext",
+    "moduleResolution": "classic",
+    "preserveConstEnums": true,
+    "target": "es2022",
+    "useDefineForClassFields": true
+  },
+  "files": [
+    "src/main.test.ts",
+    "src/main.ts",
+    "src/nested/tool.ts",
+    "src/other.ts"
+  ]
+}

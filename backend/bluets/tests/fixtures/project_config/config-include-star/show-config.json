@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "classic",
+    "target": "es2022",
+    "useDefineForClassFields": true
+  },
+  "files": [
+    "src/main.test.ts",
+    "src/main.ts",
+    "src/other.ts"
+  ]
+}

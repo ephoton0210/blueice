@@ -269,9 +269,11 @@ dependencies = [
 name = "blueice-bluets"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "ring",
  "serde",
  "serde_json",
+ "ureq",
 ]
 
 [[package]]
@@ -280,6 +282,7 @@ version = "0.1.0"
 dependencies = [
  "blueice-bluejs",
  "blueice-bluets",
+ "serde_json",
 ]
 
 [[package]]
@@ -4904,6 +4907,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af5546be8f5378d5414f83733f5c9a2526f4645829edbc1c41790aeef1b38e8b"
 dependencies = [
  "base64 0.23.1",
+ "flate2",
  "log",
  "percent-encoding",
  "rustls",

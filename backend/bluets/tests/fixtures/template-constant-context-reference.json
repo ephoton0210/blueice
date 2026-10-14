@@ -1,0 +1,99 @@
+{
+  "version": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "noEmit": true
+  },
+  "cases": [
+    {
+      "name": "constant-arithmetic",
+      "accepts": true,
+      "source": "const left=20; const right=22; export const result=`${left+right}`; const witness:\"42\"=result;",
+      "diagnostics": []
+    },
+    {
+      "name": "inline-arithmetic",
+      "accepts": true,
+      "source": "export const result=`${20+22}`; const witness:\"42\"=result;",
+      "diagnostics": []
+    },
+    {
+      "name": "affixes",
+      "accepts": true,
+      "source": "const left=20; export const result=`value:${left+22}!`; const witness:\"value:42!\"=result;",
+      "diagnostics": []
+    },
+    {
+      "name": "string-operand",
+      "accepts": true,
+      "source": "const left=\"a\"; export const result=`${left+\"bc\"}`; const witness:\"abc\"=result;",
+      "diagnostics": []
+    },
+    {
+      "name": "plain-template",
+      "accepts": true,
+      "source": "export const result=`plain`; const witness:\"plain\"=result;",
+      "diagnostics": []
+    },
+    {
+      "name": "escaped-prefix",
+      "accepts": true,
+      "source": "const value=42; export const result=`line\\n${value}`; const witness:\"line\\n42\"=result;",
+      "diagnostics": []
+    },
+    {
+      "name": "mutable-operand",
+      "accepts": false,
+      "source": "let left=20; export const result=`${left+22}`; const witness:\"42\"=result;",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 53,
+          "length": 7,
+          "message": "Type 'string' is not assignable to type '\"42\"'."
+        }
+      ]
+    },
+    {
+      "name": "annotated-operand",
+      "accepts": false,
+      "source": "const left:number=20; export const result=`${left+22}`; const witness:\"42\"=result;",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 62,
+          "length": 7,
+          "message": "Type 'string' is not assignable to type '\"42\"'."
+        }
+      ]
+    },
+    {
+      "name": "call-operand",
+      "accepts": false,
+      "source": "function read():number{return 42;} export const result=`${read()}`; const witness:\"42\"=result;",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 74,
+          "length": 7,
+          "message": "Type 'string' is not assignable to type '\"42\"'."
+        }
+      ]
+    },
+    {
+      "name": "wrong-literal",
+      "accepts": false,
+      "source": "const left=20; export const result=`${left+22}`; const witness:\"wrong\"=result;",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 55,
+          "length": 7,
+          "message": "Type '\"42\"' is not assignable to type '\"wrong\"'."
+        }
+      ]
+    }
+  ]
+}

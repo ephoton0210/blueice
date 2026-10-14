@@ -16,6 +16,8 @@ impl Parser {
         if !self.eat_contextual_keyword("with")? {
             return Ok(ModuleType::JavaScript);
         }
+        self.edition
+            .require(SyntaxEdition::EsNext, "import attributes")?;
         self.expect_punct(Punct::LBrace)?;
         let mut keys = std::collections::HashSet::new();
         let mut module_type = ModuleType::JavaScript;
@@ -408,6 +410,16 @@ impl Parser {
             Token::Keyword(Keyword::Function) => {
                 self.advance();
                 let function = self.parse_function()?;
+                let Some(name) = function.name.clone() else {
+                    return Err(self.syntax_error("function declarations require a name"));
+                };
+                (Stmt::FunctionDecl(function), vec![name])
+            }
+            Token::Identifier(name) if name == "async" && self.async_function_follows() => {
+                self.require_unescaped_async()?;
+                self.advance();
+                self.advance(); // `async_function_follows` checked `function`.
+                let function = self.parse_function_with_async(true)?;
                 let Some(name) = function.name.clone() else {
                     return Err(self.syntax_error("function declarations require a name"));
                 };

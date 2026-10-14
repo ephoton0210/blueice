@@ -1,0 +1,93 @@
+{
+  "version": "5.9.3",
+  "options": {
+    "target": "ES2022",
+    "strict": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "cases": [
+    {
+      "name": "computed-top",
+      "source": "const receiver: any = { [Symbol.iterator]() { return this; } };",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "computed-nested",
+      "source": "function owner() { const receiver: any = { [Symbol.iterator]() { return this; } }; return receiver; }",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "named-nested",
+      "source": "function owner() { const receiver: any = { method() { return this; } }; return receiver; }",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "string-key",
+      "source": "function owner() { const receiver: any = { \"method\"() { return this; } }; return receiver; }",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "lexical-arrow",
+      "source": "function owner() { const receiver: any = { method() { const read = () => this; return read(); } }; return receiver; }",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "get-accessor",
+      "source": "function owner() { const receiver: any = { get value() { return this; } }; return receiver; }",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "plain-function",
+      "source": "function owner() { return this; }",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2683,
+          "start": 26,
+          "length": 4,
+          "message": "'this' implicitly has type 'any' because it does not have a type annotation."
+        }
+      ]
+    },
+    {
+      "name": "function-property",
+      "source": "const receiver: any = { method: function () { return this; } };",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "nested-function",
+      "source": "const receiver: any = { method() { function read() { return this; } return read(); } };",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2683,
+          "start": 60,
+          "length": 4,
+          "message": "'this' implicitly has type 'any' because it does not have a type annotation."
+        }
+      ]
+    },
+    {
+      "name": "computed-key-outer",
+      "source": "function owner() { const receiver: any = { [this.name]() { return this; } }; return receiver; }",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2683,
+          "start": 44,
+          "length": 4,
+          "message": "'this' implicitly has type 'any' because it does not have a type annotation."
+        }
+      ]
+    }
+  ]
+}

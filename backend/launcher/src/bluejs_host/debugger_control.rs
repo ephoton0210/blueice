@@ -233,7 +233,7 @@ impl BlueJsChildHost {
             } => {
                 let Ok(expected) = self
                     .runtime
-                    .module_evaluate_entry_safe_point(tab_id, attachment.entry.handle)
+                    .module_evaluate_entry_safe_point(tab_id, attachment.entry_handle())
                 else {
                     return invalid_debugger_state();
                 };
@@ -281,6 +281,16 @@ impl BlueJsChildHost {
             return Err(invalid_debugger_state());
         }
         let document = self.documents.get_mut(&tab_id).expect("validated document");
+        if document
+            .emitted_maps
+            .get(&safe_point.program)
+            .is_some_and(|map| map.emission_profile == PageHostBlueTsEmissionProfile::System)
+        {
+            // The foreign page loader's caller chain cannot be retained by
+            // the bounded classic nested debugger. Raw safe-point arming
+            // must not bypass generated-position resolution's refusal.
+            return Err(invalid_debugger_state());
+        }
         if !document.debugger_execution_control
             || document.debugger_execution_states.get(&safe_point.program)
                 != Some(&ChildDebuggerExecutionStatus::Pending)
@@ -320,6 +330,135 @@ impl BlueJsChildHost {
         document.debugger_breakpoints.insert(safe_point);
         pending.nested_safe_point = Some(safe_point);
         Ok(())
+    }
+
+    /// Read-only ownership relation shared by private System lookup and arm.
+    /// It does not expose a breakpoint or mutate the pending scheduler.
+    pub(super) fn validate_system_pending_loader(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        emitted_program: PageHostDebuggerProgram,
+    ) -> Result<(), PageHostReply> {
+        if !loader_program.is_well_formed()
+            || !emitted_program.is_well_formed()
+            || loader_program == emitted_program
+        {
+            return Err(invalid_debugger_state());
+        }
+        let document = self.exact_document(tab_id, document_generation)?;
+        let target_pending = document
+            .pending_debugger_executions
+            .iter()
+            .find(|pending| pending.program == Some(emitted_program))
+            .ok_or_else(invalid_debugger_state)?;
+        let target_ordinal = target_pending.ordinal;
+        if !document.debugger_execution_control
+            || document.debugger_execution_states.get(&emitted_program)
+                != Some(&ChildDebuggerExecutionStatus::Pending)
+            || document
+                .emitted_maps
+                .get(&emitted_program)
+                .is_none_or(|map| map.emission_profile != PageHostBlueTsEmissionProfile::System)
+            || target_pending.language != PageHostScriptLanguage::BlueTsEmitted
+            || target_pending.kind != PageHostScriptKind::Classic
+            || target_pending.nested_safe_point.is_some()
+            || target_pending.system_loader_program.is_some()
+            || target_pending.linked_safe_point.is_some()
+            || !matches!(
+                target_pending.execution,
+                DeferredChildExecution::JavaScriptClassic {
+                    root_safe_point: None,
+                    ..
+                }
+            )
+        {
+            return Err(invalid_debugger_state());
+        }
+        let loader_is_earlier = document.pending_debugger_executions.iter().any(|pending| {
+            pending.program == Some(loader_program)
+                && pending.ordinal < target_ordinal
+                && pending.language == PageHostScriptLanguage::JavaScript
+                && pending.kind == PageHostScriptKind::Classic
+                && matches!(
+                    pending.execution,
+                    DeferredChildExecution::JavaScriptClassic { .. }
+                )
+        });
+        if !loader_is_earlier
+            || document.debugger_execution_states.get(&loader_program)
+                != Some(&ChildDebuggerExecutionStatus::Pending)
+            || document
+                .debugger_programs
+                .get(&loader_program.program_handle)
+                .is_none_or(|record| record.program_generation != loader_program.program_generation)
+        {
+            return Err(invalid_debugger_state());
+        }
+        Ok(())
+    }
+
+    /// Child-private System arm with an explicit, earlier page-owned loader.
+    /// This is not reachable from raw or generated public arming until core
+    /// can require independent same-stream receipts for both programs.
+    pub(super) fn arm_debugger_system_target(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> Result<(), PageHostReply> {
+        self.exact_debugger_safe_point(tab_id, document_generation, safe_point)?;
+        if safe_point.code_unit_ordinal == 0 {
+            return Err(invalid_debugger_state());
+        }
+        self.validate_system_pending_loader(
+            tab_id,
+            document_generation,
+            loader_program,
+            safe_point.program,
+        )?;
+        let document = self.documents.get_mut(&tab_id).expect("validated document");
+        let max = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
+            .expect("page-host debugger breakpoint cap fits usize");
+        if !document.debugger_breakpoints.contains(&safe_point)
+            && document.debugger_breakpoints.len() == max
+        {
+            return Err(resource_limit());
+        }
+        document.debugger_breakpoints.insert(safe_point);
+        let pending = document
+            .pending_debugger_executions
+            .iter_mut()
+            .find(|pending| pending.program == Some(safe_point.program))
+            .expect("validated pending System script");
+        pending.nested_safe_point = Some(safe_point);
+        pending.system_loader_program = Some(loader_program);
+        Ok(())
+    }
+
+    pub(super) fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        match self.arm_debugger_system_target(
+            tab_id,
+            document_generation,
+            loader_program,
+            safe_point,
+        ) {
+            Ok(()) => PageHostReply::DebuggerSystemNestedBreakpointArmed {
+                tab_id,
+                document_generation,
+                loader_program,
+                safe_point,
+            },
+            Err(reply) => reply,
+        }
     }
 
     pub(super) fn arm_debugger_nested_safe_point_breakpoint(
@@ -387,11 +526,8 @@ impl BlueJsChildHost {
         };
         if pending.nested_safe_point.is_some()
             || pending.linked_safe_point.is_some()
-            || attachment.entry.handle != entry_handle
-            || !attachment
-                .modules
-                .values()
-                .any(|module| module.handle == dependency_handle)
+            || attachment.entry_handle() != entry_handle
+            || !attachment.module_handles().contains(&dependency_handle)
         {
             return Err(invalid_debugger_state());
         }
@@ -415,7 +551,7 @@ impl BlueJsChildHost {
                 tab_id,
                 entry_handle,
                 dependency_handle,
-                attachment.modules.values().map(|module| module.handle),
+                attachment.module_handles(),
                 point,
             )
             .map_err(|_| invalid_request())?;
@@ -831,6 +967,148 @@ impl BlueJsChildHost {
                     .collect(),
                 stack_truncated: snapshot.stack_truncated,
             },
+        }
+    }
+
+    /// Re-maps the exact retained System execute path without passing through
+    /// the single-program classic stack or relabeling the foreign caller.
+    pub(super) fn debugger_system_stack_snapshot(
+        &self,
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> PageHostReply {
+        if !frame.is_well_formed()
+            || !loader_program.is_well_formed()
+            || loader_program == frame.program
+            || !(1..=PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&max_scope_entries)
+            || max_scope_entries > VM_DEBUGGER_MAX_SCOPE_ENTRIES
+        {
+            return invalid_request();
+        }
+        let document = match self.exact_document(frame.tab_id, frame.document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        if !document.debugger_execution_control
+            || !document
+                .pending_debugger_executions
+                .front()
+                .is_some_and(|pending| {
+                    pending.program == Some(frame.program)
+                        && pending.system_loader_program == Some(loader_program)
+                })
+        {
+            return invalid_debugger_state();
+        }
+        let Some(ChildDebuggerExecutionStatus::NestedPaused {
+            frame: active,
+            safe_point,
+        }) = document
+            .debugger_execution_states
+            .get(&frame.program)
+            .copied()
+        else {
+            return invalid_debugger_state();
+        };
+        if frame
+            != child_debugger_frame(
+                frame.tab_id,
+                frame.document_generation,
+                frame.program,
+                active,
+            )
+            || !frame.matches_safe_point(safe_point)
+        {
+            return invalid_debugger_state();
+        }
+        let runtime_handle = |program: PageHostDebuggerProgram| {
+            document
+                .debugger_programs
+                .get(&program.program_handle)
+                .filter(|record| record.program_generation == program.program_generation)
+                .map(|record| record.runtime_handle)
+                .ok_or_else(invalid_debugger_state)
+        };
+        let emitted_handle = match runtime_handle(frame.program) {
+            Ok(handle) if handle == active.program() => handle,
+            _ => return invalid_debugger_state(),
+        };
+        let loader_handle = match runtime_handle(loader_program) {
+            Ok(handle) => handle,
+            Err(reply) => return reply,
+        };
+        let snapshot = match self.runtime.debugger_foreign_intermediate_stack_snapshot(
+            frame.tab_id,
+            active,
+            loader_handle,
+            3,
+            max_scope_entries,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(_) => return invalid_debugger_state(),
+        };
+        let [child, loader, root] = snapshot.frames.as_slice() else {
+            return invalid_debugger_state();
+        };
+        if snapshot.stack_truncated
+            || [
+                child.program_generation,
+                loader.program_generation,
+                root.program_generation,
+            ] != [
+                emitted_handle.generation().as_u64(),
+                loader_handle.generation().as_u64(),
+                emitted_handle.generation().as_u64(),
+            ]
+        {
+            return invalid_debugger_state();
+        }
+        let remap = |source: &blueice_bluejs::VmDebuggerStackFrame,
+                     program: PageHostDebuggerProgram| {
+            PageHostDebuggerSystemStackFrame {
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: source.code_unit_ordinal,
+                    bytecode_offset: source.bytecode_offset,
+                },
+                scope_entries: source
+                    .scope_entries
+                    .iter()
+                    .map(|entry| PageHostDebuggerScopeEntry {
+                        slot_ordinal: entry.slot_ordinal,
+                        scope_depth: entry.scope_depth,
+                    })
+                    .collect(),
+                scope_truncated: source.scope_truncated,
+            }
+        };
+        let mapped = PageHostDebuggerSystemStackSnapshot {
+            frames: [
+                remap(child, frame.program),
+                remap(loader, loader_program),
+                remap(root, frame.program),
+            ],
+            stack_truncated: false,
+            max_scope_entries,
+        };
+        if !mapped.is_well_formed(frame, loader_program)
+            || mapped.frames[0].safe_point != safe_point
+            || mapped.frames.iter().any(|entry| {
+                self.exact_debugger_safe_point(
+                    frame.tab_id,
+                    frame.document_generation,
+                    entry.safe_point,
+                )
+                .is_err()
+            })
+        {
+            return invalid_debugger_state();
+        }
+        PageHostReply::DebuggerSystemStackSnapshot {
+            frame,
+            loader_program,
+            snapshot: Box::new(mapped),
         }
     }
 

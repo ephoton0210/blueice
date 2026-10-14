@@ -172,6 +172,272 @@ fn config_builds_multiple_entries_and_resolves_only_declared_imports() {
 }
 
 #[test]
+fn class_fields_build_for_es2020_under_either_semantics_and_the_manifest_records_which() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/main.ts"),
+        "class A { x: number = 1; y?: number; static s: number = 2; }\n\
+         const a = new A();\n\
+         console.log(Object.keys(a).join(','), 'y' in a, A.s);\n",
+    )
+    .unwrap();
+    let node = Command::new("node").arg("--version").output().is_ok();
+    // (arguments, whether `y` exists on the instance, manifest value)
+    let flag_cases: [(&[&str], &str, bool); 3] = [
+        (&["--target", "es2020"], "x false 2", false),
+        (
+            &[
+                "--target",
+                "es2020",
+                "--use-define-for-class-fields",
+                "true",
+            ],
+            "x,y true 2",
+            true,
+        ),
+        (
+            &[
+                "--target",
+                "es2022",
+                "--use-define-for-class-fields",
+                "false",
+            ],
+            "x false 2",
+            false,
+        ),
+    ];
+    for (index, (flags, expected_stdout, defines)) in flag_cases.iter().enumerate() {
+        let output = temporary.join(format!("flags-{index}"));
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args([
+                "build",
+                root.join("src/main.ts").to_str().unwrap(),
+                "--project-root",
+                root.to_str().unwrap(),
+                "--out-dir",
+                output.to_str().unwrap(),
+            ])
+            .args(*flags)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("bluetsc.manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["useDefineForClassFields"], *defines, "{flags:?}");
+        if node {
+            fs::write(output.join("package.json"), r#"{"type":"module"}"#).unwrap();
+            let executed = Command::new("node")
+                .arg(output.join("src/main.js"))
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&executed.stdout).trim(),
+                *expected_stdout,
+                "{flags:?}: {}",
+                String::from_utf8_lossy(&executed.stderr)
+            );
+        }
+    }
+
+    // The same choice through a configuration file.
+    let config = root.join("bluetsc.json");
+    for (value, defines) in [(true, true), (false, false)] {
+        let out_dir = format!("dist-config-{value}");
+        fs::write(
+            &config,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "entries": ["src/main.ts"],
+                "outDir": out_dir,
+                "target": "es2020",
+                "useDefineForClassFields": value,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args(["build", "--config", config.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &fs::read(root.join(&out_dir).join("bluetsc.manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["useDefineForClassFields"], defines);
+        assert_eq!(manifest["target"], "es2020");
+    }
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
+fn lowered_private_names_build_for_es2020_run_under_node_and_the_manifest_names_the_helper_version()
+{
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/main.ts"),
+        "class Counter {\n    #n: number = 0;\n    static #made: number = 0;\n    \
+         static make(): Counter { Counter.#made += 1; return new Counter(); }\n    \
+         bump(by: number): number { this.#n += by; return this.#n; }\n    \
+         static get made(): number { return Counter.#made; }\n    \
+         static has(o: any): boolean { return #n in o; }\n}\n\
+         const c = Counter.make();\n\
+         console.log(c.bump(2), c.bump(3), Counter.made, Counter.has(c), Counter.has({}));\n",
+    )
+    .unwrap();
+    for target in ["es2020", "es2022"] {
+        let output = temporary.join(format!("out-{target}"));
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args([
+                "build",
+                root.join("src/main.ts").to_str().unwrap(),
+                "--project-root",
+                root.to_str().unwrap(),
+                "--out-dir",
+                output.to_str().unwrap(),
+                "--target",
+                target,
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let javascript = fs::read_to_string(output.join("src/main.js")).unwrap();
+        assert_eq!(
+            javascript.contains("#n"),
+            target == "es2022",
+            "{target}: {javascript}"
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("bluetsc.manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["classHelperVersion"], "bluets-class-helper-v1");
+        if Command::new("node").arg("--version").output().is_ok() {
+            fs::write(output.join("package.json"), r#"{"type":"module"}"#).unwrap();
+            let executed = Command::new("node")
+                .arg(output.join("src/main.js"))
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&executed.stdout).trim(),
+                "2 5 1 true false",
+                "{target}: {}",
+                String::from_utf8_lossy(&executed.stderr)
+            );
+        }
+    }
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
+fn const_enums_build_inlined_preserved_or_isolated_and_the_manifest_says_which() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/main.ts"),
+        "const enum E { A = 1, B }\nconsole.log(E.A + E.B, E['B']);\n",
+    )
+    .unwrap();
+    let cases: [(&[&str], bool, bool, bool); 3] = [
+        (&[], false, true, false),
+        (&["--preserve-const-enums"], true, true, true),
+        (&["--isolated-modules"], false, false, true),
+    ];
+    for (index, (flags, preserve, inline, object)) in cases.iter().enumerate() {
+        let output = temporary.join(format!("out-{index}"));
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args([
+                "build",
+                root.join("src/main.ts").to_str().unwrap(),
+                "--project-root",
+                root.to_str().unwrap(),
+                "--out-dir",
+                output.to_str().unwrap(),
+            ])
+            .args(*flags)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let javascript = fs::read_to_string(output.join("src/main.js")).unwrap();
+        assert_eq!(
+            javascript.contains("var E;"),
+            *object,
+            "{flags:?}: {javascript}"
+        );
+        assert_eq!(
+            javascript.contains("/* E.A */"),
+            *inline,
+            "{flags:?}: {javascript}"
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("bluetsc.manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["preserveConstEnums"], *preserve, "{flags:?}");
+        assert_eq!(manifest["inlineConstEnums"], *inline, "{flags:?}");
+        if Command::new("node").arg("--version").output().is_ok() {
+            fs::write(output.join("package.json"), r#"{"type":"module"}"#).unwrap();
+            let executed = Command::new("node")
+                .arg(output.join("src/main.js"))
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&executed.stdout).trim(),
+                "3 2",
+                "{flags:?}"
+            );
+        }
+    }
+    // The same choices through a configuration file.
+    let config = root.join("bluetsc.json");
+    fs::write(
+        &config,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "entries": ["src/main.ts"],
+            "outDir": "dist-config",
+            "isolatedModules": true,
+            "preserveConstEnums": true,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["build", "--config", config.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("dist-config/bluetsc.manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(manifest["inlineConstEnums"], false);
+    assert_eq!(manifest["preserveConstEnums"], true);
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
 fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
     let temporary = unique_test_directory();
     let root = temporary.join("project");
@@ -179,9 +445,15 @@ fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
     let source_file = root.join("src/main.ts");
     let config_file = root.join("bluetsc.json");
     let good_source = "export function echo(value: string): string { return value; }";
-    for target in ["es2020", "es2022"] {
+    for (target, new_line, emit_bom) in ["es2020", "es2022"].into_iter().flat_map(|target| {
+        ["lf", "crlf"].into_iter().flat_map(move |new_line| {
+            [false, true]
+                .into_iter()
+                .map(move |emit_bom| (target, new_line, emit_bom))
+        })
+    }) {
         fs::write(&source_file, good_source).unwrap();
-        let out_dir = format!("dist-{target}");
+        let out_dir = format!("dist-{target}-{new_line}-{emit_bom}");
         let mut config = serde_json::json!({
             "entries": ["src/main.ts"],
             "outDir": out_dir,
@@ -189,6 +461,10 @@ fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
             "runtimePolicy": "strict-runtime",
             "sourceMap": true,
             "declaration": true,
+            "removeComments": true,
+            "newLine": new_line,
+            "emitBOM": emit_bom,
+            "inlineSources": false,
             "strictBoundaries": [{
                 "contractId": "echo-string-v1",
                 "module": "src/main.ts",
@@ -211,6 +487,12 @@ fn strict_config_builds_only_complete_string_boundaries_for_both_targets() {
         );
         let output = root.join(&out_dir);
         let javascript = fs::read_to_string(output.join("src/main.js")).unwrap();
+        assert_eq!(javascript.starts_with('\u{feff}'), emit_bom);
+        if new_line == "crlf" {
+            assert!(!javascript.replace("\r\n", "").contains('\n'));
+        } else {
+            assert!(!javascript.contains('\r'));
+        }
         let manifest_bytes = fs::read(output.join("bluetsc.manifest.json")).unwrap();
         let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
         assert_eq!(manifest["runtimePolicy"], "strict-runtime");
@@ -477,4 +759,68 @@ fn unique_test_directory() -> PathBuf {
     ));
     fs::create_dir(&path).unwrap();
     path
+}
+
+#[test]
+fn builds_commonjs_output_runs_it_under_node_and_records_the_module_system() {
+    let temporary = std::env::temp_dir().join(format!("bluetsc-commonjs-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temporary);
+    fs::create_dir_all(&temporary).unwrap();
+    fs::write(
+        temporary.join("main.ts"),
+        "import { two } from \"./lib.ts\";\nexport const answer = two() * 21;\nconsole.log(answer);\n",
+    )
+    .unwrap();
+    fs::write(
+        temporary.join("lib.ts"),
+        "export function two(): number { return 2; }\n",
+    )
+    .unwrap();
+    for (flags, module) in [
+        (&["--module", "commonjs"][..], "commonjs"),
+        (&["--module", "amd"][..], "amd"),
+        (&["--module", "umd"][..], "umd"),
+        (&[][..], "esm"),
+    ] {
+        let output = temporary.join(format!("out-{module}"));
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .current_dir(&temporary)
+            .args(["build", "main.ts", "--out-dir", output.to_str().unwrap()])
+            .args(flags)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("bluetsc.manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["module"], module);
+        let javascript = fs::read_to_string(output.join("main.js")).unwrap();
+        assert_eq!(
+            javascript.contains("require("),
+            module != "esm",
+            "{javascript}"
+        );
+        if module == "commonjs" && Command::new("node").arg("--version").output().is_ok() {
+            fs::write(output.join("package.json"), r#"{"type":"commonjs"}"#).unwrap();
+            let executed = Command::new("node")
+                .arg(output.join("main.js"))
+                .output()
+                .unwrap();
+            assert_eq!(String::from_utf8_lossy(&executed.stdout).trim(), "42");
+        }
+    }
+    let rejected = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .current_dir(&temporary)
+        .args(["check", "main.ts", "--module", "unsupported-kind"])
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    assert!(
+        String::from_utf8_lossy(&rejected.stderr).contains("unsupported module `unsupported-kind`")
+    );
+    fs::remove_dir_all(temporary).unwrap();
 }

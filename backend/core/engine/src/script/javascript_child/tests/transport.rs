@@ -5,6 +5,286 @@
 use super::*;
 
 #[test]
+fn system_emitted_lookup_connection_sends_both_private_programs_and_position() {
+    let (core, mut child) = UnixStream::pair().unwrap();
+    let loader_program = PageHostDebuggerProgram {
+        program_handle: 11,
+        program_generation: 13,
+    };
+    let program = PageHostDebuggerProgram {
+        program_handle: 17,
+        program_generation: 19,
+    };
+    let expected_reply = PageHostReply::DebuggerSystemEmittedSafePoint {
+        tab_id: 7,
+        document_generation: 3,
+        loader_program,
+        program,
+        generated_line: 5,
+        generated_column_utf16: 8,
+        safe_point: None,
+    };
+    let child_task = thread::spawn({
+        let expected_reply = expected_reply.clone();
+        move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::ResolveDebuggerSystemEmittedSafePoint {
+                    tab_id: 7,
+                    document_generation: 3,
+                    loader_program,
+                    program,
+                    generated_line: 5,
+                    generated_column_utf16: 8,
+                }
+            );
+            page_host::write_page_host_reply(&mut child, &expected_reply).unwrap();
+        }
+    });
+    assert_eq!(
+        PageHostConnection { stream: core }
+            .debugger_system_emitted_safe_point(7, 3, loader_program, program, 5, 8)
+            .unwrap(),
+        expected_reply
+    );
+    child_task.join().unwrap();
+}
+
+#[test]
+fn system_loader_connection_sends_exact_private_program_pair() {
+    let (core, mut child) = UnixStream::pair().unwrap();
+    let loader_program = PageHostDebuggerProgram {
+        program_handle: 11,
+        program_generation: 13,
+    };
+    let safe_point = PageHostDebuggerSafePoint {
+        program: PageHostDebuggerProgram {
+            program_handle: 17,
+            program_generation: 19,
+        },
+        code_unit_ordinal: 2,
+        bytecode_offset: 4,
+    };
+    let expected_reply = PageHostReply::DebuggerSystemNestedBreakpointArmed {
+        tab_id: 7,
+        document_generation: 3,
+        loader_program,
+        safe_point,
+    };
+    let child_task = thread::spawn({
+        let expected_reply = expected_reply.clone();
+        move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+                    tab_id: 7,
+                    document_generation: 3,
+                    loader_program,
+                    safe_point,
+                }
+            );
+            page_host::write_page_host_reply(&mut child, &expected_reply).unwrap();
+        }
+    });
+    let reply = PageHostConnection { stream: core }
+        .arm_debugger_system_nested_breakpoint(7, 3, loader_program, safe_point)
+        .unwrap();
+    assert_eq!(reply, expected_reply);
+    child_task.join().unwrap();
+}
+
+#[test]
+fn system_stack_connection_sends_exact_frame_loader_and_budget() {
+    let (core, mut child) = UnixStream::pair().unwrap();
+    let emitted = PageHostDebuggerProgram {
+        program_handle: 11,
+        program_generation: 13,
+    };
+    let loader_program = PageHostDebuggerProgram {
+        program_handle: 17,
+        program_generation: 19,
+    };
+    let frame = PageHostDebuggerFrame {
+        tab_id: 7,
+        document_generation: 3,
+        program: emitted,
+        code_unit_ordinal: 2,
+        invocation_serial: 23,
+    };
+    let child_task = thread::spawn(move || {
+        assert_eq!(
+            page_host::read_page_host_request(&mut child).unwrap(),
+            PageHostRequest::GetDebuggerSystemStackSnapshot {
+                frame,
+                loader_program,
+                max_scope_entries: 7,
+            }
+        );
+        page_host::write_page_host_reply(&mut child, &PageHostReply::ShutdownAck).unwrap();
+    });
+    assert_eq!(
+        PageHostConnection { stream: core }
+            .debugger_system_stack_snapshot(frame, loader_program, 7)
+            .unwrap(),
+        PageHostReply::ShutdownAck
+    );
+    child_task.join().unwrap();
+}
+
+#[test]
+fn system_location_connection_sends_exact_frame_loader_and_budget() {
+    let (core, mut child) = UnixStream::pair().unwrap();
+    let frame = PageHostDebuggerFrame {
+        tab_id: 7,
+        document_generation: 3,
+        program: PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        },
+        code_unit_ordinal: 2,
+        invocation_serial: 23,
+    };
+    let loader_program = PageHostDebuggerProgram {
+        program_handle: 17,
+        program_generation: 19,
+    };
+    let child_task = thread::spawn(move || {
+        assert_eq!(
+            page_host::read_page_host_request(&mut child).unwrap(),
+            PageHostRequest::GetDebuggerSystemStackLocations {
+                frame,
+                loader_program,
+                max_scope_entries: 7,
+            }
+        );
+        page_host::write_page_host_reply(&mut child, &PageHostReply::ShutdownAck).unwrap();
+    });
+    assert_eq!(
+        PageHostConnection { stream: core }
+            .debugger_system_stack_locations(frame, loader_program, 7)
+            .unwrap(),
+        PageHostReply::ShutdownAck
+    );
+    child_task.join().unwrap();
+}
+
+#[test]
+fn emitted_debugger_connection_preserves_exact_private_request_and_reply_tuples() {
+    let (core, mut child) = UnixStream::pair().unwrap();
+    let program = PageHostDebuggerProgram {
+        program_handle: 11,
+        program_generation: 13,
+    };
+    let safe_point = PageHostDebuggerSafePoint {
+        program,
+        code_unit_ordinal: 0,
+        bytecode_offset: 4,
+    };
+    let original = page_host::PageHostDebuggerEmittedOriginalPosition {
+        source_index: 0,
+        line: 2,
+        column_utf16: 3,
+    };
+    let child_task = thread::spawn(move || {
+        assert_eq!(
+            page_host::read_page_host_request(&mut child).unwrap(),
+            PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                generated_line: 5,
+                generated_column_utf16: 8,
+            }
+        );
+        page_host::write_page_host_reply(
+            &mut child,
+            &PageHostReply::DebuggerEmittedOriginalPosition {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                generated_line: 5,
+                generated_column_utf16: 8,
+                original: Some(original),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            page_host::read_page_host_request(&mut child).unwrap(),
+            PageHostRequest::ResolveDebuggerEmittedSafePoint {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                generated_line: 5,
+                generated_column_utf16: 8,
+            }
+        );
+        page_host::write_page_host_reply(
+            &mut child,
+            &PageHostReply::DebuggerEmittedSafePoint {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                generated_line: 5,
+                generated_column_utf16: 8,
+                safe_point: Some(safe_point),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            page_host::read_page_host_request(&mut child).unwrap(),
+            PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+            }
+        );
+        page_host::write_page_host_reply(
+            &mut child,
+            &PageHostReply::DebuggerEmittedPausedRootLocation {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                safe_point,
+                location: Some(page_host::PageHostDebuggerEmittedPausedRootLocation {
+                    generated_line: 5,
+                    generated_column_utf16: 8,
+                    original: Some(original),
+                }),
+            },
+        )
+        .unwrap();
+    });
+    let mut connection = PageHostConnection { stream: core };
+    assert!(connection.debugger_emitted_map_available());
+    assert!(connection.debugger_emitted_paused_root_location_available());
+    assert!(matches!(
+        connection
+            .debugger_emitted_original_position(7, 3, program, 5, 8)
+            .unwrap(),
+        PageHostReply::DebuggerEmittedOriginalPosition { original: Some(value), .. }
+            if value == original
+    ));
+    assert!(matches!(
+        connection
+            .debugger_emitted_safe_point(7, 3, program, 5, 8)
+            .unwrap(),
+        PageHostReply::DebuggerEmittedSafePoint { safe_point: Some(value), .. }
+            if value == safe_point
+    ));
+    assert!(matches!(
+        connection
+            .debugger_emitted_paused_root_location(7, 3, program)
+            .unwrap(),
+        PageHostReply::DebuggerEmittedPausedRootLocation {
+            safe_point: value,
+            location: Some(_),
+            ..
+        } if value == safe_point
+    ));
+    child_task.join().unwrap();
+}
+
+#[test]
 fn page_host_connection_waits_for_a_bound_socket_to_start_listening() {
     use std::os::unix::net::UnixListener;
 
@@ -547,7 +827,7 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
 
     let (core, mut child) = UnixStream::pair().unwrap();
     let canned = PageHostReply::ShutdownAck;
-    let expected_calls = 45;
+    let expected_calls = 49;
     let child_task = thread::spawn(move || {
         for _ in 0..expected_calls {
             page_host::read_page_host_request(&mut child).unwrap();
@@ -831,6 +1111,34 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
     assert_eq!(
         connection
             .arm_debugger_nested_safe_point_breakpoint(1, 1, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .arm_debugger_system_nested_breakpoint(1, 1, program, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_system_emitted_safe_point(1, 1, program, dependency_program, 0, 0)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection.resume_debugger_nested_execution(frame).unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_system_stack_snapshot(frame, program, 1)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_system_stack_locations(frame, program, 1)
             .unwrap(),
         canned.clone()
     );

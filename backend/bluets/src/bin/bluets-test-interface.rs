@@ -167,6 +167,8 @@ fn diagnostic_reply(diagnostic: &Diagnostic) -> Value {
         | DiagnosticCode::DuplicateDeclaration
         | DiagnosticCode::UnknownName
         | DiagnosticCode::UnknownType
+        | DiagnosticCode::UsedBeforeDeclaration
+        | DiagnosticCode::ImmutableAssignment
         | DiagnosticCode::TypeMismatch
         | DiagnosticCode::ReturnTypeMismatch => ("type", "TypeError"),
         DiagnosticCode::InvalidContract => ("compile", "TypeError"),

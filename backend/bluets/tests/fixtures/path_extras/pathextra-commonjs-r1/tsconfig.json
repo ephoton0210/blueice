@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "rootDirs": [
+      "src",
+      "generated"
+    ]
+  },
+  "files": [
+    "src/view/main.ts"
+  ]
+}

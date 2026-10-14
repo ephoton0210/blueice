@@ -12,6 +12,17 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 48 adds a child-private System execute-body arm that binds an
+//! explicit earlier, same-document page-loader program. The public debugger
+//! cannot reach this operation until both program receipts and the complete
+//! three-frame projection are available. Version 46 allows the existing emitted-artifact private lookup to return
+//! compiler-recorded nested identifier safe points and an active-frame-
+//! verified paused projection; no map or AST record crosses the boundary.
+//! Version 45 distinguishes an explicitly selected child-compiled BlueTS
+//! emitted-JavaScript classic script from the existing direct AST bridge. The
+//! child creates both emitted bytes and map from one closed source graph;
+//! neither a map nor a compiler option crosses from page code. This changes
+//! neither public debugger authority nor the default direct BlueTS route.
 //! Version 42 adds a child-private, exact linked entry-root value preview
 //! behind the core's separate public Value gate. It accepts only a complete
 //! live linked stack and returns a bounded copied preview with no type data.
@@ -62,9 +73,10 @@
 //! transport has no profile or capability
 //! selector: every accepted document contains exactly the immutable text and
 //! canonical-origin copies selected by core.
-//! BlueTS stays a child-fixed, direct-lowering profile with no ambient host
-//! typings, compiler option, resolver, or emitted JavaScript crossing this
-//! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
+//! The default BlueTS route stays child-fixed direct lowering. The distinct
+//! v45 emitted route still receives no page-selected compiler option,
+//! resolver or emitted JavaScript through this channel. Apart from the two
+//! fixed JavaScript primitive snapshot callbacks,
 //! version 10 exposes only a core-proxied, source-free debugger location
 //! inventory and configuration records. A core-selected document may opt in
 //! to the root-classic arm/state/resume lifecycle and, since v27, one
@@ -132,16 +144,26 @@ pub use drag_drop::{
 };
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-/// V49 carries document-bound drag image requests.
-/// V46 adds document-bound drag events and post-default drag string tasks.
-/// V45 adds document-bound native file-selection event dispatch.
-/// V44 adds a bounded private BlueTS rejection-position candidate. V43 adds
+/// V56 carries document-bound drag image requests. V55 adds document-bound drag
+/// events and post-default drag string tasks. V54 adds document-bound native
+/// file-selection event dispatch. (These three were V49/V46/V45 on the
+/// browsable-web branch and were renumbered after the BlueTS V45-V53 family.)
+/// V51 adds an all-or-nothing private System three-frame generated/original
+/// location projection, without granting public debugger access.
+/// V50 adds exact System generated-token lookup through a separately
+/// installed pending loader, without exposing public debugger authority.
+/// V49 adds a generation-labeled, exact three-frame private System stack.
+/// V48 adds an exact System loader-to-emitted-execute arm without granting
+/// any public debugger client access. V45 distinguishes compiler-emitted BlueTS JavaScript from direct AST
+/// lowering for a separately admitted classic-script execution path. It
+/// grants no debugger map read by itself. V44 adds a bounded private BlueTS
+/// rejection-position candidate. V43 adds
 /// bounded child-retained static and deferred payload totals to realm
 /// accounting. V42 adds the private linked entry-root value route. V41 adds the private
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 49;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 56;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -181,6 +203,10 @@ pub const PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM: u32 = 256;
 /// carry at most eight closed graph modules. The accounting reply cannot name
 /// more live BlueJS programs than that fixed document envelope permits.
 pub const PAGE_HOST_REALM_STATS_MAX_PROGRAMS: u32 = 2_048;
+
+/// A source-map source index for one child-authorized closed script graph
+/// cannot name more inputs than this exact child admission limit.
+pub const PAGE_HOST_MAX_MODULES_PER_GRAPH: usize = 8;
 
 /// Maximum combined child-retained static/deferred payload reported for one
 /// realm. A child that exceeds this private accounting envelope fails closed.
@@ -286,6 +312,11 @@ pub enum PageHostScriptKind {
 pub enum PageHostScriptLanguage {
     JavaScript,
     BlueTs,
+    /// Compile the original closed BlueTS graph inside the child, then
+    /// execute the exact emitted JavaScript with a privately retained map.
+    /// This remains distinct from direct AST lowering and is never inferred
+    /// from source spelling or filename.
+    BlueTsEmitted,
 }
 
 /// One declaration in document order. Its graph is fully supplied before the
@@ -311,6 +342,20 @@ pub struct PageHostDocumentSnapshot {
     pub document_origin: String,
 }
 
+/// Core-owned compiler selection for emitted BlueTS page scripts. The page,
+/// debugger and compiler/MCP clients cannot assert this private value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PageHostBlueTsEmissionProfile {
+    #[default]
+    Standard,
+    ModulePageConsole,
+    Es5,
+    System,
+    LegacyDecorators,
+    LegacyDecoratorsWithMetadata,
+}
+
 /// One caller-authorized document snapshot. `snapshot` is supplied only by
 /// the core-owned page lifecycle adapter after it has validated the live DOM
 /// text and canonical origin. A page cannot add, remove, rename, or widen
@@ -325,6 +370,13 @@ pub struct PageHostDocument {
     /// advance turn so core can inspect and arm an exact root-classic safe
     /// point. Page content and frontend IPC cannot select this mode.
     pub debugger_execution_control: bool,
+    pub emitted_bluets_profile: PageHostBlueTsEmissionProfile,
+    /// Owner-selected type-only console declaration for emitted classic scripts.
+    /// This does not install a runtime global or change the page's source bytes.
+    pub emitted_classic_page_console_ambient: bool,
+    /// Owner-selected type-only console declaration for emitted ESM graphs.
+    /// The page must install any runtime console itself as ordinary JavaScript.
+    pub emitted_module_page_console_ambient: bool,
     pub scripts: Vec<PageHostScript>,
 }
 
@@ -365,8 +417,10 @@ impl PageHostScriptSourcePosition {
 impl PageHostScriptReport {
     pub fn is_well_formed(&self) -> bool {
         self.source_position.as_ref().is_none_or(|position| {
-            self.language == PageHostScriptLanguage::BlueTs
-                && matches!(self.outcome, PageHostScriptOutcome::Rejected { .. })
+            matches!(
+                self.language,
+                PageHostScriptLanguage::BlueTs | PageHostScriptLanguage::BlueTsEmitted
+            ) && matches!(self.outcome, PageHostScriptOutcome::Rejected { .. })
                 && position.is_well_formed()
         })
     }
@@ -390,7 +444,8 @@ pub struct PageHostRealmStats {
     pub program_count: u32,
     pub bytecode_bytes: u64,
     pub heap_bytes: u64,
-    /// Child-owned static BlueTS debugger metadata, outside VM heap/bytecode.
+    /// Child-owned static BlueTS debugger metadata and emitted maps, outside
+    /// VM heap/bytecode. This is an aggregate byte count, not a payload.
     pub static_metadata_bytes: u64,
     /// Child-owned pending debugger queue and nested graph/AST/attachment data.
     pub deferred_payload_bytes: u64,
@@ -652,6 +707,49 @@ pub enum PageHostRequest {
         source_id: u32,
         source_byte: u32,
     },
+    /// Resolves one generated UTF-16 position only in the compiler map
+    /// retained for this exact emitted-JavaScript program generation. It
+    /// returns a source-table coordinate or explicit unmapped result, never
+    /// a safe point. This private core/child operation is not a public grant.
+    ResolveDebuggerEmittedOriginalPosition {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    },
+    /// Resolves only an exact parser-recorded top-level statement start or
+    /// unique identifier token to a compiler-verified safe point. Unsupported
+    /// nesting and unmapped positions remain explicitly unbound; no nearest
+    /// guess is permitted. This private operation is not a public grant.
+    ResolveDebuggerEmittedSafePoint {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    },
+    /// Binds one mapped System execute-body token to its exact nested BlueJS
+    /// instruction only while the named earlier page loader is still pending.
+    /// No breakpoint is retained by this read-only private operation.
+    ResolveDebuggerSystemEmittedSafePoint {
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    },
+    /// Projects one current root, same-program nested, or verified linked
+    /// frame safe point through that program's exact emitted artifact. A
+    /// linked query requires a complete live two-program pause in the child;
+    /// an instruction without a unique parser/bytecode token stays unlocated.
+    /// This private operation is not a public debugger grant.
+    GetDebuggerEmittedPausedRootLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
     /// Verifies exactly one symbol-to-static-type pair under the same private
     /// attachment. The reply does not return an unrequested type ID.
     DescribeDebuggerBlueTsMetadataSymbolType {
@@ -732,6 +830,15 @@ pub enum PageHostRequest {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    /// Arms a System execute-body target through one exact earlier JavaScript
+    /// page loader. The child verifies both installed program generations;
+    /// this private operation carries no public debugger authority.
+    ArmDebuggerSystemNestedBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Arms a dependency child under an exact pending BlueTS module entry.
     ArmDebuggerLinkedNestedSafePointBreakpoint {
         tab_id: u64,
@@ -781,6 +888,20 @@ pub enum PageHostRequest {
         program: PageHostDebuggerProgram,
         frame: Option<PageHostDebuggerFrame>,
         max_frames: u32,
+        max_scope_entries: u32,
+    },
+    /// Reads only the exact suspended emitted/foreign-loader/emitted stack.
+    /// Every frame retains its own child-private program generation.
+    GetDebuggerSystemStackSnapshot {
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    },
+    /// Projects only exact emitted tokens on the live three-frame System
+    /// pause. The foreign loader has no BlueTS map and remains unlocated.
+    GetDebuggerSystemStackLocations {
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
         max_scope_entries: u32,
     },
     GetDebuggerLinkedStackSnapshot {
@@ -1025,6 +1146,45 @@ pub enum PageHostReply {
         source_byte: u32,
         safe_point: Option<PageHostDebuggerSafePoint>,
     },
+    /// One exact child-private map lookup; `None` means generated-only code.
+    /// Core must independently authorize any later public disclosure.
+    DebuggerEmittedOriginalPosition {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+        original: Option<PageHostDebuggerEmittedOriginalPosition>,
+    },
+    /// One exact generated-position binding or explicit unbound result. Core
+    /// must independently authorize and remint any public safe point.
+    DebuggerEmittedSafePoint {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+        safe_point: Option<PageHostDebuggerSafePoint>,
+    },
+    DebuggerSystemEmittedSafePoint {
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+        safe_point: Option<PageHostDebuggerSafePoint>,
+    },
+    /// The exact current paused root, nested, or linked-frame instruction
+    /// and, only when independently bound to a parser-proven generated token,
+    /// its location. Core must separately authorize any public projection.
+    DebuggerEmittedPausedRootLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+        location: Option<PageHostDebuggerEmittedPausedRootLocation>,
+    },
     /// A verified relation that repeats only the two requested opaque IDs.
     DebuggerBlueTsMetadataSymbolType {
         tab_id: u64,
@@ -1085,6 +1245,12 @@ pub enum PageHostReply {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    DebuggerSystemNestedBreakpointArmed {
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     DebuggerLinkedNestedSafePointBreakpointArmed {
         tab_id: u64,
         document_generation: u64,
@@ -1126,6 +1292,17 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         frame: Option<PageHostDebuggerFrame>,
         snapshot: PageHostDebuggerStackSnapshot,
+    },
+    DebuggerSystemStackSnapshot {
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        snapshot: Box<PageHostDebuggerSystemStackSnapshot>,
+    },
+    DebuggerSystemStackLocations {
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        snapshot: Box<PageHostDebuggerSystemStackSnapshot>,
+        locations: Box<[Option<PageHostDebuggerEmittedPausedRootLocation>; 3]>,
     },
     DebuggerLinkedStackSnapshot {
         frame: PageHostDebuggerLinkedFrame,

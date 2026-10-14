@@ -7,6 +7,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  # All-target and coverage builds create many test binaries. Keep runner disk
+  # usage bounded without changing assertions or LLVM coverage instrumentation.
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
 jobs:
   # A change that touches only Markdown cannot alter any build, test or
   # coverage result, so the heavy jobs below are skipped for it. The workflow
@@ -121,6 +128,11 @@ jobs:
       - name: Install SUSE prerequisites
         if: matrix.family == 'suse'
         run: |
+          # These build dependencies do not use the optional codec repository.
+          # Its availability must not prevent installing the required packages.
+          if [ -f /etc/zypp/repos.d/repo-openh264.repo ]; then
+            zypper --non-interactive modifyrepo --disable repo-openh264
+          fi
           zypper --non-interactive install --no-recommends git-core gcc gcc-c++ make tar gzip xz zstd diffutils timezone findutils curl
           # These images declare no PATH of their own, so the first entry a
           # later step adds to GITHUB_PATH (rustup's) would become the whole
@@ -139,10 +151,29 @@ jobs:
         run: git config --global core.autocrlf false
       - name: Checkout pinned Test262 corpus
         uses: actions/checkout@v4
+        env:
+          # Test262 asserts the original LF, CR and CRLF source sequences.
+          # Override Windows Git defaults only for this corpus checkout.
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: "false"
         with:
           repository: tc39/test262
           ref: 72faf8ec1445c55149615e8b35187830783aba1a
           path: development/browser_core/reference/test262
+      - name: Verify Test262 line-terminator fixture bytes
+        shell: bash
+        run: |
+          corpus=development/browser_core/reference/test262
+          for ending in LF CR CR-LF; do
+            fixture="test/built-ins/Function/prototype/toString/line-terminator-normalisation-${ending}.js"
+            expected=$(git -C "$corpus" rev-parse "HEAD:$fixture")
+            actual=$(git -C "$corpus" hash-object --no-filters "$fixture")
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::Test262 checkout changed source bytes: $fixture"
+              exit 1
+            fi
+          done
       # The checked-in .b64 provider is a source input, not a build cache.
       # Rebuild it from its exact CLDR source on every CI platform so a
       # provider update cannot be generated on one OS and silently diverge on
@@ -229,6 +260,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rustfmt
+        if: runner.os != 'Windows'
         run: cargo fmt --all -- --check
       # The in-process `candle` backend is behind a cargo feature that no
       # default build enables, so it is built, linted, and tested explicitly.
@@ -236,6 +268,19 @@ jobs:
         run: |
           cargo clippy -p blueice-ai-assistant --features candle --all-targets -- -D warnings
           cargo test -p blueice-ai-assistant --features candle
+      - name: Rustfmt (Windows packages)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # A single workspace rustfmt invocation exceeds Windows' command-line
+          # limit. Discover every workspace member and check all its targets.
+          $metadata = cargo metadata --no-deps --offline --format-version 1 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "cargo metadata failed" }
+          $members = @($metadata.packages | Where-Object { $_.id -in $metadata.workspace_members })
+          foreach ($package in $members) {
+            cargo fmt --package $package.name -- --check
+            if ($LASTEXITCODE -ne 0) { throw "Rustfmt failed for $($package.name)" }
+          }
 
   coverage:
     name: Coverage
@@ -255,10 +300,27 @@ jobs:
         run: git config --global core.autocrlf false
       - name: Checkout pinned Test262 corpus
         uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: "false"
         with:
           repository: tc39/test262
           ref: 72faf8ec1445c55149615e8b35187830783aba1a
           path: development/browser_core/reference/test262
+      - name: Verify Test262 line-terminator fixture bytes
+        shell: bash
+        run: |
+          corpus=development/browser_core/reference/test262
+          for ending in LF CR CR-LF; do
+            fixture="test/built-ins/Function/prototype/toString/line-terminator-normalisation-${ending}.js"
+            expected=$(git -C "$corpus" rev-parse "HEAD:$fixture")
+            actual=$(git -C "$corpus" hash-object --no-filters "$fixture")
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::Test262 checkout changed source bytes: $fixture"
+              exit 1
+            fi
+          done
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -310,10 +372,20 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   typescript-oracle:
-    name: BlueTSC TypeScript compatibility oracle
+    name: BlueTSC TypeScript compatibility oracles (${{ matrix.os }})
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The differential suites compare BlueTSC with the pinned compiler by
+        # running both outputs under Node, so they run wherever Node and the pinned
+        # `tsc` do. Windows is not in this list: those suites call `tsc` through
+        # `npm exec`, whose `tsc.cmd` shim the harness does not yet launch, and the
+        # symlink tests are Unix-only. `COMPATIBILITY_INVENTORY.md` records that as
+        # an open gap, so full parity is not advertised.
+        os: [ubuntu-24.04, macos-15]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -321,11 +393,15 @@ jobs:
         with:
           node-version: 24
       - uses: Swatinem/rust-cache@v2
-      - name: Run the pinned TypeScript 5.9.3 BlueTSC compatibility matrix
+      - name: Run every pinned TypeScript 5.9.3 oracle of BlueTSC and its direct bridge
+        # Every `#[ignore]` test of the two crates is a differential suite against
+        # the pinned compiler (accepted/rejected matrices, emitted JavaScript run
+        # under Node, declarations, option combinations, direct-runtime parity), so
+        # none may be skipped: one that fails fails the job.
         run: >-
-          npm exec --yes --package typescript@5.9.3 --
-          env BLUEICE_BLUETSC_ORACLE=tsc
-          cargo test -p blueice-bluets --test typescript_oracle -- --ignored
+          npm exec --yes --package typescript@5.9.3 --package acorn@8.15.0 --
+          env BLUEICE_BLUETSC_ORACLE=tsc BLUEICE_ACORN_ORACLE=acorn FORCE_COLOR=0
+          cargo test -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --ignored
 
 
   chromium-differential:

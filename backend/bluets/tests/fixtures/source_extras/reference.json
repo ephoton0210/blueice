@@ -1,0 +1,1285 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "sourceextra-commonjs-j0",
+      "form": "j0",
+      "entry": "main.ts",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "main.ts": "1bc630faeb53fb6171c1d6ee27210e9352a659d88703847e7506e1f105d299ab",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31",
+        "value.js": "abae3364c7762b98286d200cb0ab631c927f652950054e390e22635a80bc9bd5"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js",
+        "out/value.d.ts",
+        "out/value.js"
+      ],
+      "outputs": {
+        "out/value.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.answer = void 0;\nexports.answer = 42;\n",
+        "out/value.d.ts": "export const answer: 42;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst value_js_1 = require(\"./value.js\");\nexports.result = [value_js_1.answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "value.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-j1",
+      "form": "j1",
+      "entry": "main.ts",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "main.ts": "1bc630faeb53fb6171c1d6ee27210e9352a659d88703847e7506e1f105d299ab",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31",
+        "value.js": "abae3364c7762b98286d200cb0ab631c927f652950054e390e22635a80bc9bd5"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js",
+        "out/value.d.ts",
+        "out/value.js"
+      ],
+      "outputs": {
+        "out/value.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.answer = void 0;\nexports.answer = 42;\n",
+        "out/value.d.ts": "export const answer: 42;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst value_js_1 = require(\"./value.js\");\nexports.result = [value_js_1.answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "value.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-j2",
+      "form": "j2",
+      "entry": "main.js",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "00b161b5ed9f2d9e206249ed105aa6ab279ab6d1a125abe737e2a5d25ebc8f97",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.answer = 42;\nexports.result = [exports.answer];\n",
+        "out/main.d.ts": "export const answer: 42;\nexport const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-j3",
+      "form": "j3",
+      "entry": "main.js",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": true
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "00b161b5ed9f2d9e206249ed105aa6ab279ab6d1a125abe737e2a5d25ebc8f97",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.answer = void 0;\nexports.answer = 42;\nexports.result = [exports.answer];\n",
+        "out/main.d.ts": "export const answer: 42;\nexport const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-j4",
+      "form": "j4",
+      "entry": "main.js",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "89da576de60b7c1c208af4a5243cde84d572eaeb64dd371b6588a19f29f713a4",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nlet value = 42;\nvalue = 'wrong';\nexports.result = [42];\n",
+        "out/main.d.ts": "export const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-j5",
+      "form": "j5",
+      "entry": "main.js",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": true
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "89da576de60b7c1c208af4a5243cde84d572eaeb64dd371b6588a19f29f713a4",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.js",
+          "start": 220,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-j6",
+      "form": "j6",
+      "entry": "main.js",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "b48236936633f711015380dd7c2d3217e482214a0635950fc15f77d02e7003d1",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.identity = identity;\nfunction identity(value) { return value; }\nexports.result = [identity(42)];\n",
+        "out/main.d.ts": "export function identity(value: any): any;\nexport const result: any[];\n"
+      },
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-j7",
+      "form": "j7",
+      "entry": "main.js",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": true
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "b48236936633f711015380dd7c2d3217e482214a0635950fc15f77d02e7003d1",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [
+        {
+          "code": 7006,
+          "file": "main.js",
+          "start": 229,
+          "length": 5,
+          "message": "Parameter 'value' implicitly has an 'any' type."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-j8",
+      "form": "j8",
+      "entry": "main.ts",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": false,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "main.ts": "1bc630faeb53fb6171c1d6ee27210e9352a659d88703847e7506e1f105d299ab",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31",
+        "value.js": "abae3364c7762b98286d200cb0ab631c927f652950054e390e22635a80bc9bd5"
+      },
+      "diagnostics": [
+        {
+          "code": 7016,
+          "file": "main.ts",
+          "start": 227,
+          "length": 12,
+          "message": "Could not find a declaration file for module './value.js'. '<root>/value.js' implicitly has an 'any' type."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-q0",
+      "form": "q0",
+      "entry": "main.ts",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "6297c882716ee2339934294f8708ef190eaf51bb7c7523fd9e57b6d8b337912e",
+        "main.ts": "74653a7f7b72473e86f55d70837beb9d1e15cf883cf97d9ec206f0fd0019abe3",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/data.json",
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/data.json": "{ \"answer\": 42, \"nested\": { \"enabled\": true } }\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __importDefault = (this && this.__importDefault) || function (mod) {\n    return (mod && mod.__esModule) ? mod : { \"default\": mod };\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst data_json_1 = __importDefault(require(\"./data.json\"));\nexports.result = [data_json_1.default.answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "data.json",
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-q1",
+      "form": "q1",
+      "entry": "main.ts",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "e400da948437d73751f5cbca5f7c98b9bc4ab709d8ba394d90326725dae59ed1",
+        "main.ts": "dca502d8df845b9ee8c4984b2a6a9c16ae3e4649431edc61d0422407136c0dc1",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 249,
+          "length": 5,
+          "message": "Type 'number' is not assignable to type 'string'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "data.json",
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-q2",
+      "form": "q2",
+      "entry": "main.ts",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "ff7c45ead8d5b725d00b3002b08b8608cddcdef845894529dfaf743fd50c588e",
+        "main.ts": "ab69c8e433690989a61dcdea4857851c1e68b06cf2ffe86eae1c0c70deabcae4",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/data.json",
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/data.json": "{ \"answer\": 42, \"nullable\": null }\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __importDefault = (this && this.__importDefault) || function (mod) {\n    return (mod && mod.__esModule) ? mod : { \"default\": mod };\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = exports.nullable = void 0;\nconst data_json_1 = __importDefault(require(\"./data.json\"));\nexports.nullable = data_json_1.default.nullable;\nexports.result = [data_json_1.default.answer];\n",
+        "out/main.d.ts": "export declare const nullable: null;\nexport declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "data.json",
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-q3",
+      "form": "q3",
+      "entry": "main.ts",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "53f2207f9b6f2a0355407acd6b800c3c3298cffb2aa5a7e3349afdb2f2f107a0",
+        "main.ts": "fca88d10c65a6472ce6adb7eb74a5d8d3aae2247e0b5d00724fb8e171fe51d83",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/data.json",
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/data.json": "{ \"values\": [42, 7] }\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __importDefault = (this && this.__importDefault) || function (mod) {\n    return (mod && mod.__esModule) ? mod : { \"default\": mod };\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst data_json_1 = __importDefault(require(\"./data.json\"));\nexports.result = data_json_1.default.values;\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "data.json",
+        "main.ts"
+      ],
+      "observation": [
+        42,
+        7
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-commonjs-q4",
+      "form": "q4",
+      "entry": "main.ts",
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": false
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "e400da948437d73751f5cbca5f7c98b9bc4ab709d8ba394d90326725dae59ed1",
+        "main.ts": "89d8ba184302cde56543b0b3945d4f1812879ad9e3ebacf162741d4486faf573",
+        "package.json": "e78adbbbe5741f27e8d900be349911234c1ae45c20a3f2fa293e2c8e5abf3c31"
+      },
+      "diagnostics": [
+        {
+          "code": 2732,
+          "file": "main.ts",
+          "start": 221,
+          "length": 13,
+          "message": "Cannot find module './data.json'. Consider using '--resolveJsonModule' to import module with '.json' extension."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-j0",
+      "form": "j0",
+      "entry": "main.ts",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "main.ts": "1bc630faeb53fb6171c1d6ee27210e9352a659d88703847e7506e1f105d299ab",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979",
+        "value.js": "abae3364c7762b98286d200cb0ab631c927f652950054e390e22635a80bc9bd5"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js",
+        "out/value.d.ts",
+        "out/value.js"
+      ],
+      "outputs": {
+        "out/value.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\n",
+        "out/value.d.ts": "export const answer: 42;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport { answer } from './value.js';\nexport const result = [answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "value.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-j1",
+      "form": "j1",
+      "entry": "main.ts",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "main.ts": "1bc630faeb53fb6171c1d6ee27210e9352a659d88703847e7506e1f105d299ab",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979",
+        "value.js": "abae3364c7762b98286d200cb0ab631c927f652950054e390e22635a80bc9bd5"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js",
+        "out/value.d.ts",
+        "out/value.js"
+      ],
+      "outputs": {
+        "out/value.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\n",
+        "out/value.d.ts": "export const answer: 42;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport { answer } from './value.js';\nexport const result = [answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts",
+        "value.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-j2",
+      "form": "j2",
+      "entry": "main.js",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "00b161b5ed9f2d9e206249ed105aa6ab279ab6d1a125abe737e2a5d25ebc8f97",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\nexport const result = [answer];\n",
+        "out/main.d.ts": "export const answer: 42;\nexport const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-j3",
+      "form": "j3",
+      "entry": "main.js",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": true
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "00b161b5ed9f2d9e206249ed105aa6ab279ab6d1a125abe737e2a5d25ebc8f97",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const answer = 42;\nexport const result = [answer];\n",
+        "out/main.d.ts": "export const answer: 42;\nexport const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-j4",
+      "form": "j4",
+      "entry": "main.js",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "89da576de60b7c1c208af4a5243cde84d572eaeb64dd371b6588a19f29f713a4",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nlet value = 42;\nvalue = 'wrong';\nexport const result = [42];\n",
+        "out/main.d.ts": "export const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-j5",
+      "form": "j5",
+      "entry": "main.js",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": true
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "89da576de60b7c1c208af4a5243cde84d572eaeb64dd371b6588a19f29f713a4",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.js",
+          "start": 220,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-j6",
+      "form": "j6",
+      "entry": "main.js",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "b48236936633f711015380dd7c2d3217e482214a0635950fc15f77d02e7003d1",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport function identity(value) { return value; }\nexport const result = [identity(42)];\n",
+        "out/main.d.ts": "export function identity(value: any): any;\nexport const result: any[];\n"
+      },
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-j7",
+      "form": "j7",
+      "entry": "main.js",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": true,
+        "checkJs": true
+      },
+      "rootFiles": [
+        "main.js"
+      ],
+      "sources": {
+        "main.js": "b48236936633f711015380dd7c2d3217e482214a0635950fc15f77d02e7003d1",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [
+        {
+          "code": 7006,
+          "file": "main.js",
+          "start": 229,
+          "length": 5,
+          "message": "Parameter 'value' implicitly has an 'any' type."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.js"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-j8",
+      "form": "j8",
+      "entry": "main.ts",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "allowJs": false,
+        "checkJs": false
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "main.ts": "1bc630faeb53fb6171c1d6ee27210e9352a659d88703847e7506e1f105d299ab",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979",
+        "value.js": "abae3364c7762b98286d200cb0ab631c927f652950054e390e22635a80bc9bd5"
+      },
+      "diagnostics": [
+        {
+          "code": 7016,
+          "file": "main.ts",
+          "start": 227,
+          "length": 12,
+          "message": "Could not find a declaration file for module './value.js'. '<root>/value.js' implicitly has an 'any' type."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-q0",
+      "form": "q0",
+      "entry": "main.ts",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "6297c882716ee2339934294f8708ef190eaf51bb7c7523fd9e57b6d8b337912e",
+        "main.ts": "4d198952694987af16a6ececc04922a1781dc4a421efe5b1c80b82e73acaa616",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/data.json",
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/data.json": "{ \"answer\": 42, \"nested\": { \"enabled\": true } }\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport data from './data.json' with { type: 'json' };\nexport const result = [data.answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "data.json",
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-q1",
+      "form": "q1",
+      "entry": "main.ts",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "e400da948437d73751f5cbca5f7c98b9bc4ab709d8ba394d90326725dae59ed1",
+        "main.ts": "581b946f8a1eb209bbad98449c8bd6c4bda73c856ade1b13d3a9759a0678938b",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 268,
+          "length": 5,
+          "message": "Type 'number' is not assignable to type 'string'."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "data.json",
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-q2",
+      "form": "q2",
+      "entry": "main.ts",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "ff7c45ead8d5b725d00b3002b08b8608cddcdef845894529dfaf743fd50c588e",
+        "main.ts": "80ea7c012de0a1683ec6d8f5cb3eaff9eca325ee3dbf724a974a174c7f246f7e",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/data.json",
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/data.json": "{ \"answer\": 42, \"nullable\": null }\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport data from './data.json' with { type: 'json' };\nexport const nullable = data.nullable;\nexport const result = [data.answer];\n",
+        "out/main.d.ts": "export declare const nullable: null;\nexport declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "data.json",
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-q3",
+      "form": "q3",
+      "entry": "main.ts",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": true
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "53f2207f9b6f2a0355407acd6b800c3c3298cffb2aa5a7e3349afdb2f2f107a0",
+        "main.ts": "311cb028e9fc42ec89e565f66f2c087cac8542fafd2c96be9bfb1fdea08fe0e4",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/data.json",
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/data.json": "{ \"values\": [42, 7] }\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport data from './data.json' with { type: 'json' };\nexport const result = data.values;\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "data.json",
+        "main.ts"
+      ],
+      "observation": [
+        42,
+        7
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "sourceextra-esnext-q4",
+      "form": "q4",
+      "entry": "main.ts",
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "LF",
+        "rootDir": ".",
+        "outDir": "out",
+        "esModuleInterop": true,
+        "resolveJsonModule": false
+      },
+      "rootFiles": [
+        "main.ts"
+      ],
+      "sources": {
+        "data.json": "e400da948437d73751f5cbca5f7c98b9bc4ab709d8ba394d90326725dae59ed1",
+        "main.ts": "458b34692d01b3c36212dcc7011bd1c1b8c325a4a796841ca1e67ea440b94379",
+        "package.json": "48e847860dd4f0907ce91e346dbb00a4a12213163ad3d80a953c343eb9a11979"
+      },
+      "diagnostics": [
+        {
+          "code": 2732,
+          "file": "main.ts",
+          "start": 221,
+          "length": 13,
+          "message": "Cannot find module './data.json'. Consider using '--resolveJsonModule' to import module with '.json' extension."
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    }
+  ]
+}

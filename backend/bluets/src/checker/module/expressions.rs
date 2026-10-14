@@ -6,33 +6,28 @@
 
 use super::*;
 
+mod call_presentation;
+mod diagnostics;
+mod flow_checks;
+mod freshness;
+mod function_methods;
+mod generic_inference;
+mod implementation_origin;
+mod indexed_calls;
 mod indexing;
 mod inference;
-mod method_overloads;
+mod library_presentation;
+mod more_types;
 mod optional_property;
+mod property_diagnostics;
 mod readonly;
+mod receivers;
+pub(super) mod signatures;
 
-use indexing::{canonical_index_key, indexed_value_type, tuple_indexed_candidates};
-use method_overloads::{
-    has_literal_method_tags, select_callback_method_overload, supports_callback_method_receiver,
-    MethodOverloadError,
-};
-use optional_property::optional_property_type;
-
+pub(super) use indexing::indexed_value_type;
+use indexing::{canonical_index_key, tuple_indexed_candidates};
 fn method_overload_signatures(overloads: &[Type]) -> Option<Vec<FunctionSignature>> {
-    overloads
-        .iter()
-        .map(|overload| {
-            let Type::Function { parameters, result } = overload else {
-                return None;
-            };
-            Some(FunctionSignature {
-                parameters: parameters.clone(),
-                type_parameters: Vec::new(),
-                return_type: *result.clone(),
-            })
-        })
-        .collect()
+    signatures::callable_signatures(&Type::Intersection(overloads.to_vec()), false)
 }
 
 impl<'a> ModuleChecker<'a> {
@@ -46,7 +41,19 @@ impl<'a> ModuleChecker<'a> {
         let Some(arguments) = split_call_arguments(tokens) else {
             return Type::Unknown;
         };
-        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
+            let mut results = alternatives.iter().map(|alternative| {
+                self.infer_function_call(signatures, tokens, alternative, explicit_type_arguments)
+            });
+            let first = results.next().unwrap_or(Type::Unknown);
+            return if results.all(|result| result == first) {
+                first
+            } else {
+                Type::Unknown
+            };
+        }
+        let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, signatures)
+        else {
             return Type::Unknown;
         };
         let Ok(Some(signature)) =
@@ -54,10 +61,17 @@ impl<'a> ModuleChecker<'a> {
         else {
             return Type::Unknown;
         };
-        let substitutions =
-            function_call_substitutions(signature, &actuals, explicit_type_arguments)
-                .expect("selected function signature has valid substitutions");
-        substitute_type(&signature.return_type, &substitutions)
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        budget.checking = self.checking;
+        let substitutions = function_call_substitutions(
+            signature,
+            &actuals,
+            explicit_type_arguments,
+            &self.types,
+            &mut budget,
+        )
+        .expect("selected function signature has valid substitutions");
+        substitute_type(&signature.return_type, &substitutions).runtime_result()
     }
 
     pub(super) fn check_function_call(
@@ -66,10 +80,23 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
+        self.check_function_call_with_receiver(tokens, scope, span, None);
+    }
+
+    pub(super) fn check_function_call_with_receiver(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+        receiver: Option<&[Token]>,
+    ) {
         let Some(call) = direct_call_parts(tokens) else {
             return;
         };
-        let Some(signatures) = self.functions.get(&call.callee.text).cloned() else {
+        let value_signature = self.function_value_signatures(&call.callee.text, scope, false);
+        let Some(signatures) =
+            value_signature.or_else(|| self.functions.get(&call.callee.text).cloned())
+        else {
             if self.require_declared_global_calls && !scope.contains_key(&call.callee.text) {
                 self.type_error(
                     span,
@@ -93,17 +120,65 @@ impl<'a> ModuleChecker<'a> {
             };
             self.check_direct_property_access(argument, scope, span);
         }
-        let actuals = match self.expanded_call_argument_types(&arguments, scope) {
+        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
+            let before = self.diagnostics.len();
+            for alternative in &alternatives {
+                self.check_function_call_with_receiver(tokens, alternative, span, receiver);
+            }
+            self.dedupe_diagnostics_since(before);
+            return;
+        }
+        let actuals = match self.expanded_call_argument_types_for(&arguments, scope, &signatures) {
             Ok(actuals) => actuals,
             Err(()) => {
-                self.type_error(
-                    span,
-                    format!(
-                        "a spread argument for function {} must have a fixed-length tuple type",
-                        call.callee.text
-                    ),
-                    DiagnosticCode::TypeMismatch,
+                let message = format!(
+                    "a spread argument for function {} must have a fixed-length tuple type",
+                    call.callee.text,
                 );
+                let mut argument_position = 0usize;
+                let mut fixed_array_spread = None;
+                for argument in &arguments {
+                    if argument.first().is_some_and(|token| token.is("..."))
+                        && matches!(self.infer_expression(&argument[1..], scope), Type::Array(_))
+                        && signatures.iter().all(|signature| {
+                            !function_parameter_for_argument(signature, argument_position)
+                                .is_some_and(|parameter| parameter.rest)
+                        })
+                    {
+                        fixed_array_spread = Some(*argument);
+                        break;
+                    }
+                    match self.expanded_call_argument_types(&[argument], scope) {
+                        Ok(types) => argument_position += types.len(),
+                        Err(()) => break,
+                    }
+                }
+                if fixed_array_spread.is_none()
+                    && signatures
+                        .iter()
+                        .any(|signature| signature.parameters.last().is_some_and(|p| p.rest))
+                {
+                    self.blue_only_type_error(
+                        span, message, DiagnosticCode::TypeMismatch,
+                        "BlueTSC's call spread subset requires a fixed tuple even when TypeScript permits an array passed to a rest parameter.",
+                    );
+                } else {
+                    self.typescript_type_error(
+                        span,
+                        message,
+                        DiagnosticCode::TypeMismatch,
+                        2556,
+                        Vec::new(),
+                    );
+                    if let Some(argument) = fixed_array_spread.or_else(|| {
+                        arguments
+                            .iter()
+                            .find(|argument| argument.first().is_some_and(|token| token.is("...")))
+                            .copied()
+                    }) {
+                        self.point_last_typescript(argument);
+                    }
+                }
                 return;
             }
         };
@@ -129,19 +204,38 @@ impl<'a> ModuleChecker<'a> {
             }
         };
         if signatures.len() > 1 && selected.is_none() {
-            self.type_error(
+            self.rejected_call_error(
                 span,
                 format!(
                     "no overload of function {} accepts the supplied argument types",
                     call.callee.text
                 ),
-                DiagnosticCode::TypeMismatch,
+                &signatures,
+                &actuals,
+                false,
             );
+            self.present_callback_return_error(&signatures, &actuals, &arguments, call.callee);
+            self.present_hidden_implementation(&call.callee.text, &actuals, false);
+            if self
+                .diagnostics
+                .last()
+                .and_then(|d| d.typescript.as_ref())
+                .is_some_and(|d| d.code == 2554)
+            {
+                self.point_last_typescript(std::slice::from_ref(call.callee));
+            }
             return;
         }
         let Some(signature) = selected.or_else(|| signatures.first().cloned()) else {
             return;
         };
+        self.check_call_receiver(
+            &signature.parameters,
+            receiver,
+            scope,
+            span,
+            receiver.unwrap_or(tokens),
+        );
         let required = function_signature_required_arguments(&signature);
         if !function_signature_accepts_argument_count(&signature, actuals.len()) {
             let expected = if signature
@@ -151,7 +245,14 @@ impl<'a> ModuleChecker<'a> {
             {
                 format!("at least {required}")
             } else {
-                format!("{required} to {}", signature.parameters.len())
+                format!(
+                    "{required} to {}",
+                    signature
+                        .parameters
+                        .iter()
+                        .filter(|p| p.name != "this")
+                        .count()
+                )
             };
             self.type_error(
                 span,
@@ -163,43 +264,310 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::TypeMismatch,
             );
+            self.point_last_typescript(std::slice::from_ref(call.callee));
             return;
         }
+        let mut rejected_constraint = None;
         let substitutions = if let Some(explicit) = explicit {
-            let Some(substitutions) =
-                self.check_explicit_function_type_arguments(&signature, explicit, span)
-            else {
+            let Some(substitutions) = self.check_explicit_function_type_arguments(
+                &signature,
+                explicit,
+                span,
+                call.callee.start,
+            ) else {
                 return;
             };
             substitutions
         } else {
-            let substitutions = infer_call_substitutions(&signature, &actuals);
-            self.check_call_type_parameter_constraints(
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
+            let inferred = crate::checker::inference::infer_contextual_result(
                 &signature,
-                &substitutions,
-                span,
-                "inferred type",
+                &actuals,
+                &self.types,
+                &mut budget,
+                None,
             );
-            substitutions
+            if budget.exhausted {
+                self.type_error(
+                    span,
+                    "generic inference exceeds its expansion limit".into(),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            rejected_constraint = inferred.rejected_constraint;
+            inferred.substitutions
         };
         for (index, actual) in actuals.iter().enumerate() {
             let parameter = function_parameter_for_argument(&signature, index)
                 .expect("an accepted function call has a parameter for every argument");
             let expected = call_parameter_expected_type(parameter, &substitutions);
+            if self.check_fresh_properties(
+                arguments.get(index).copied().unwrap_or(&[]),
+                &expected,
+                scope,
+                span,
+            ) {
+                continue;
+            }
+
             if !self.is_assignable_bounded(actual, &expected, span) {
-                self.type_error(
-                    span,
-                    format!(
+                let displayed_expected =
+                    crate::diagnostic::type_text::default_parameter(&expected, parameter);
+                let overloaded =
+                    call.callee
+                        .text
+                        .split_once('.')
+                        .is_some_and(|(receiver, member)| {
+                            self.library_values.contains(receiver)
+                                && crate::diagnostic::templates::member_overloads(
+                                    &format!("{receiver}Constructor"),
+                                    member,
+                                ) > 1
+                        });
+                let message = rejected_constraint.as_ref().filter(|(_, candidate, _)| {
+                    matches!(candidate, Type::Number | Type::String | Type::Boolean | Type::Literal(_))
+                }).map_or_else(
+                    || format!(
                         "argument {} has type `{}`, which is not assignable to parameter `{}` of type `{}`",
-                        index + 1,
-                        type_label(actual),
-                        parameter.name,
-                        type_label(&expected)
+                        index + 1, type_label(actual), parameter.name, type_label(&expected)
                     ),
-                    DiagnosticCode::TypeMismatch,
+                    |(name, candidate, constraint)| format!(
+                        "inferred type `{}` does not satisfy constraint `{}` for `{name}`",
+                        type_label(candidate), type_label(constraint)
+                    ),
                 );
+                self.call_argument_error(
+                    span,
+                    message,
+                    actual,
+                    &displayed_expected,
+                    arguments.get(index).copied().unwrap_or(&[]),
+                    overloaded,
+                );
+                self.present_hidden_implementation(&call.callee.text, &actuals, false);
+                if overloaded {
+                    if let Some((receiver, member)) = call.callee.text.split_once('.') {
+                        self.present_library_overloads(
+                            &format!("{receiver}Constructor.{member}"),
+                            &actuals,
+                            &substitutions,
+                        );
+                    }
+                }
             }
         }
+    }
+
+    /// When the last call argument spreads a variable whose tuple type ends
+    /// in optional elements, the scopes to check: one per possible spread
+    /// length, with the variable replaced by that fixed-length prefix. The
+    /// call is valid only if every length is, so no position is invented.
+    /// `None` when there is no such spread, or when the variable is also used
+    /// by another argument (replacing it would change that argument's type).
+    pub(in crate::checker::module) fn optional_spread_scopes(
+        &self,
+        arguments: &[&[Token]],
+        scope: &BTreeMap<String, Type>,
+    ) -> Option<Vec<BTreeMap<String, Type>>> {
+        let (last, others) = arguments.split_last()?;
+        let [dots, name] = *last else {
+            return None;
+        };
+        if !dots.is("...") || name.kind != TokenKind::Identifier {
+            return None;
+        }
+        let Some(Type::Tuple(values)) = scope.get(&name.text) else {
+            return None;
+        };
+        if values.iter().any(|value| value.rest) || !values.iter().any(|value| value.optional) {
+            return None;
+        }
+        if others
+            .iter()
+            .any(|argument| argument.iter().any(|token| token.text == name.text))
+        {
+            return None;
+        }
+        let required = values.iter().filter(|value| !value.optional).count();
+        Some(
+            (required..=values.len())
+                .map(|length| {
+                    let mut alternative = scope.clone();
+                    alternative.insert(
+                        name.text.clone(),
+                        Type::Tuple(
+                            values[..length]
+                                .iter()
+                                .map(|value| TupleTypeElement {
+                                    optional: false,
+                                    ..value.clone()
+                                })
+                                .collect(),
+                        ),
+                    );
+                    alternative
+                })
+                .collect(),
+        )
+    }
+
+    /// Drops repeated diagnostics added since `before`, which the per-length
+    /// re-checks of an optional spread can produce.
+    pub(in crate::checker::module) fn dedupe_diagnostics_since(&mut self, before: usize) {
+        let mut seen = Vec::new();
+        let mut index = before;
+        while index < self.diagnostics.len() {
+            let diagnostic = &self.diagnostics[index];
+            let key = (
+                diagnostic.code,
+                diagnostic.span.clone(),
+                diagnostic.message.clone(),
+            );
+            if seen.contains(&key) {
+                self.diagnostics.remove(index);
+            } else {
+                seen.push(key);
+                index += 1;
+            }
+        }
+    }
+
+    /// Argument types where a bracketed literal takes its type from the
+    /// parameter it is passed to. Each candidate signature is tried in order
+    /// and the first parameter type that accepts the literal, read against
+    /// that type, is used; otherwise the literal keeps its plain inferred
+    /// type, so context can only turn a rejection into an acceptance. After a
+    /// spread argument, later positions have no fixed parameter and use plain
+    /// inference.
+    pub(super) fn expanded_call_argument_types_for(
+        &self,
+        arguments: &[&[Token]],
+        scope: &BTreeMap<String, Type>,
+        signatures: &[FunctionSignature],
+    ) -> Result<Vec<Type>, ()> {
+        let mut ordered = signatures.to_vec();
+        ordered.sort_by_key(|signature| {
+            !signature.parameters.iter().any(|parameter| {
+                matches!(parameter.annotation, Some(Type::Literal(_) | Type::Null))
+            })
+        });
+        let signatures = ordered.as_slice();
+        let mut actuals = Vec::new();
+        let mut positions_known = true;
+        for argument in arguments {
+            if argument.first().is_some_and(|token| token.is("...")) {
+                positions_known = false;
+                let spread = self.infer_expression(&argument[1..], scope);
+                if let Type::Array(element) = spread {
+                    if signatures.iter().any(|signature| {
+                        function_parameter_for_argument(signature, actuals.len())
+                            .is_some_and(|parameter| parameter.rest)
+                    }) {
+                        // The array may supply any number of rest arguments.
+                        // Its element type is checked once at the rest position;
+                        // fixed parameters must already have their own arguments.
+                        actuals.push(*element);
+                        continue;
+                    }
+                }
+                actuals.extend(self.expanded_call_argument_types(&[argument], scope)?);
+                continue;
+            }
+            if positions_known {
+                if let [token] = strip_outer_parentheses(argument) {
+                    if matches!(token.kind, TokenKind::Number | TokenKind::String)
+                        || token.is("true")
+                        || token.is("false")
+                    {
+                        let preserve = signatures.iter().any(|signature| {
+                            let Some(parameter) = function_parameter_for_argument(signature, actuals.len()) else { return false };
+                            let annotation = if parameter.rest { rest_parameter_element_annotation(parameter) } else { parameter.annotation.as_ref() };
+                            matches!(annotation, Some(Type::Literal(_))) || (matches!(annotation, Some(Type::Named { name, arguments }) if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name))
+                                && matches!(&signature.return_type, Type::Named { name, arguments } if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name)))
+                        });
+                        if preserve {
+                            actuals.push(Type::Literal(token.text.clone()));
+                            continue;
+                        }
+                    }
+                }
+            }
+            // A number literal passed where an enum is expected stays a literal.
+            if positions_known {
+                let enum_literal = signatures.iter().find_map(|signature| {
+                    let parameter = function_parameter_for_argument(signature, actuals.len())?;
+                    let expected = call_parameter_expected_type(parameter, &BTreeMap::new());
+                    self.enum_literal_for(argument, &expected)
+                });
+                if let Some(literal) = enum_literal {
+                    actuals.push(literal);
+                    continue;
+                }
+            }
+            let contextual = (positions_known
+                && argument.first().is_some_and(|token| {
+                    token.is("[")
+                        || token.is("{")
+                        || self.module.nested_functions.contains_key(&token.start)
+                }))
+            .then(|| self.contextual_argument_type(argument, scope, &actuals, signatures))
+            .flatten();
+            match contextual {
+                Some(actual) => actuals.push(actual),
+                None => actuals.extend(self.expanded_call_argument_types(&[argument], scope)?),
+            }
+        }
+        Ok(actuals)
+    }
+
+    fn contextual_argument_type(
+        &self,
+        argument: &[Token],
+        scope: &BTreeMap<String, Type>,
+        actuals: &[Type],
+        signatures: &[FunctionSignature],
+    ) -> Option<Type> {
+        let mut rejected = None;
+        for signature in signatures {
+            let Some(parameter) = function_parameter_for_argument(signature, actuals.len()) else {
+                continue;
+            };
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
+            let substitutions =
+                infer_call_substitutions(signature, actuals, &self.types, &mut budget);
+            if actuals.iter().enumerate().any(|(index, actual)| {
+                let Some(parameter) = function_parameter_for_argument(signature, index) else {
+                    return true;
+                };
+                !is_assignable(
+                    actual,
+                    &call_parameter_expected_type(parameter, &substitutions),
+                    &self.types,
+                    &mut HashSet::new(),
+                    &mut budget,
+                )
+            }) {
+                continue;
+            }
+            let expected = call_parameter_expected_type(parameter, &substitutions);
+            let actual = self.infer_in_context(argument, scope, &expected);
+            if is_assignable(
+                &actual,
+                &expected,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) {
+                return Some(actual);
+            }
+            if rejected.is_none() {
+                rejected = Some(actual);
+            }
+        }
+        rejected
     }
 
     pub(super) fn expanded_call_argument_types(
@@ -235,13 +603,20 @@ impl<'a> ModuleChecker<'a> {
         actuals: &[Type],
         explicit_type_arguments: Option<&[Type]>,
     ) -> Result<Option<&'b FunctionSignature>, ()> {
-        for signature in signatures {
+        let mut candidates = signatures.iter().collect::<Vec<_>>();
+        candidates.sort_by_key(|signature| {
+            !signature.parameters.iter().any(|parameter| {
+                matches!(parameter.annotation, Some(Type::Literal(_) | Type::Null))
+            })
+        });
+        for signature in candidates {
             if function_signature_matches(
                 signature,
                 actuals,
                 explicit_type_arguments,
                 &self.types,
                 self.max_type_expansions,
+                self.checking,
             )? {
                 return Ok(Some(signature));
             }
@@ -255,17 +630,34 @@ impl<'a> ModuleChecker<'a> {
         expected: &Type,
         span: &SourceSpan,
     ) -> bool {
+        let actual = canonical_parameter_references(actual, &self.types);
+        let expected = canonical_parameter_references(expected, &self.types);
+        let (actual, expected) = (&actual, &expected);
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        budget.checking = self.checking;
         let assignable = if self.strict_catch_unknown && matches!(actual, Type::Unknown) {
             accepts_strict_unknown(expected, &self.types, &mut HashSet::new(), &mut budget)
         } else {
-            is_assignable(
+            let direct = is_assignable(
                 actual,
                 expected,
                 &self.types,
                 &mut HashSet::new(),
                 &mut budget,
-            )
+            );
+            // A symbolic tuple spread is assignable to a wider target through
+            // its constraint; only the source side may widen, so distinct
+            // parameters are never treated as equal.
+            direct
+                || (!budget.exhausted
+                    && !self.allowed_tuple_spread_parameters.is_empty()
+                    && is_assignable(
+                        &substitute_type(actual, &self.allowed_tuple_spread_parameters),
+                        expected,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ))
         };
         if budget.exhausted {
             self.type_error(
@@ -287,9 +679,10 @@ impl<'a> ModuleChecker<'a> {
         signature: &FunctionSignature,
         substitutions: &BTreeMap<String, Type>,
         span: &SourceSpan,
+        argument_span: &SourceSpan,
         actual_description: &str,
     ) {
-        for parameter in &signature.type_parameters {
+        for (index, parameter) in signature.type_parameters.iter().enumerate() {
             let Some(constraint) = &parameter.constraint else {
                 continue;
             };
@@ -308,6 +701,7 @@ impl<'a> ModuleChecker<'a> {
                     ),
                     DiagnosticCode::TypeMismatch,
                 );
+                self.point_last_type_argument(argument_span, Some(index));
             }
         }
     }
@@ -317,22 +711,34 @@ impl<'a> ModuleChecker<'a> {
         signature: &FunctionSignature,
         arguments: &[Type],
         span: &SourceSpan,
+        call_start: usize,
     ) -> Option<BTreeMap<String, Type>> {
+        let argument_span = SourceSpan::new(&span.module, call_start, span.end);
         let required = signature
             .type_parameters
             .iter()
             .filter(|parameter| parameter.default.is_none())
             .count();
         if arguments.len() < required || arguments.len() > signature.type_parameters.len() {
-            self.type_error(
+            self.typescript_type_error(
                 span,
                 format!(
                     "function type arguments require {required} to {} argument(s), got {}",
                     signature.type_parameters.len(),
-                    arguments.len(),
+                    arguments.len()
                 ),
                 DiagnosticCode::TypeMismatch,
+                2558,
+                vec![
+                    if required == signature.type_parameters.len() {
+                        required.to_string()
+                    } else {
+                        format!("{required}-{}", signature.type_parameters.len())
+                    },
+                    arguments.len().to_string(),
+                ],
             );
+            self.point_last_type_argument(&argument_span, None);
             return None;
         }
         for argument in arguments {
@@ -344,6 +750,7 @@ impl<'a> ModuleChecker<'a> {
             signature,
             &substitutions,
             span,
+            &argument_span,
             "type argument",
         );
         Some(substitutions)
@@ -376,6 +783,7 @@ fn erased_assertion_operand(tokens: &[Token]) -> Option<&[Token]> {
 /// other keys remain dynamic rather than guessed.
 mod arithmetic;
 mod calls;
+mod enum_access;
 mod mutation;
 
-use mutation::{contains_readonly_member, member_access_target, unescaped_property_name};
+use mutation::{member_access_target, unescaped_property_name};

@@ -7,24 +7,47 @@
 use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{
-    Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
-    FunctionWhileStatement, InterfaceDeclaration, Module, Parameter, TupleTypeElement, TypeField,
-    TypeParameter,
+    BindingPattern, Declaration, FunctionBodyItem, FunctionCatchClause, FunctionDeclaration,
+    FunctionElseBranch, FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement,
+    InterfaceDeclaration, Module, Parameter, TupleTypeElement, TypeField, TypeParameter,
 };
 use crate::syntax::{Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub use crate::parser::Type;
 
+mod interfaces;
+use interfaces::merge_interface_values;
+mod inference;
+use inference::infer_call_substitutions;
+
+mod checking;
+mod reexports;
+pub(crate) use checking::check_incremental;
+mod member_calls;
+use member_calls::{
+    indexed_call_parts, indexed_call_ranges, member_call_parts, member_call_ranges,
+};
+mod decorator_types;
+pub(crate) use decorator_types::replacement_type as decorator_replacement_type;
 mod properties;
+mod scopes;
+pub(crate) use scopes::emission::{lexical_emission, LexicalEmission};
+pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
+pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
+pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v4";
+mod type_operators;
 mod type_relations;
-use properties::{property_type, PropertyType, TypeExpansionBudget};
+use properties::{
+    contains_readonly_member, mutation_field_type, property_type, property_write_type,
+    readonly_property, PropertyType, TypeExpansionBudget,
+};
 pub(crate) use type_relations::type_label;
 use type_relations::{
-    accepts_strict_unknown, complete_type_arguments, expand_concrete_tuple_spreads,
-    instantiate_named, is_assignable, substitute_type, tuple_type_at_length, type_identity,
-    TupleSpreadError,
+    accepts_strict_unknown, canonical_parameter_references, expand_concrete_tuple_spreads,
+    instantiate_named, is_assignable, tuple_type_at_length, type_identity, TupleSpreadError,
 };
+pub(crate) use type_relations::{complete_type_arguments, substitute_type};
 
 const MAX_LITERAL_INFERENCE_CONTAINERS: usize = 128;
 const MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS: usize = 128;
@@ -57,6 +80,21 @@ pub struct Symbol {
 pub struct CheckedModule {
     pub module: Module,
     pub symbols: Vec<Symbol>,
+    /// Return types inferred without changing source annotations or runtime policy.
+    pub(crate) inferred_returns: BTreeMap<usize, Type>,
+    pub(crate) inferred_parameters: BTreeMap<usize, Type>,
+    pub(crate) class_expression_surfaces: BTreeMap<String, ClassExpressionSurface>,
+    /// The namespaces the module exports, as an importer binds them.
+    pub(crate) namespace_exports: BTreeMap<String, NamespaceExport>,
+    /// Checked runtime bindings, retained for incremental importers.
+    pub(crate) value_exports: BTreeMap<String, module::ExportedValue>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ClassExpressionSurface {
+    pub(crate) parameters: Vec<TypeParameter>,
+    pub(crate) instance: Type,
+    pub(crate) constructor: Type,
 }
 
 #[derive(Debug, Clone)]
@@ -77,9 +115,23 @@ struct TypeDefinition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TypeDefinitionKind {
+    Parameter,
     Alias,
     Interface,
+    /// An original library interface; owner/source replacements use Interface.
+    LibraryInterface,
     Class,
+    /// An enum type: the union of its member types.
+    Enum,
+    /// One member of an enum, keyed `E.A`. Its value is the member's constant
+    /// as a literal type (`0`, `"a"`); the type the member has in annotations
+    /// and expressions is the literal type named `E.A`.
+    EnumMember,
+    /// The value `E`: an object with the enum's members, keyed `typeof E`.
+    EnumObject,
+    /// The value `N` of a namespace: an object with its exported values, keyed
+    /// `typeof N`.
+    NamespaceObject,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,14 +143,25 @@ struct FunctionSignature {
 
 #[derive(Clone, PartialEq, Eq)]
 struct ClassConstructorBinding {
+    modifiers: ClassModifierSurface,
     signatures: Vec<FunctionSignature>,
     /// An omitted derived constructor whose base signature is not yet bound.
     inherited: bool,
+    /// Who may `new` the class: an omitted constructor takes its base's.
+    visibility: crate::parser::Visibility,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ClassModifierSurface {
+    abstract_class: bool,
+    abstract_members: BTreeSet<String>,
+    declared_members: BTreeSet<String>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
 struct ExportedClass {
     source_name: String,
+    type_parameters: Vec<TypeParameter>,
     instance_type: Type,
     constructor_type: Type,
     constructor_binding: ClassConstructorBinding,
@@ -106,7 +169,27 @@ struct ExportedClass {
     heritage_depth: usize,
 }
 
+/// An enum another module can import: its members, evaluated.
+#[derive(Clone)]
+pub(crate) struct ExportedEnum {
+    pub(crate) is_const: bool,
+    pub(crate) declared: bool,
+    pub(crate) members: Vec<crate::enum_eval::EvaluatedMember>,
+}
+
+/// The enums each module exports, by module and exported name.
+pub(crate) fn exported_enums(
+    project: &Project,
+) -> BTreeMap<String, BTreeMap<String, ExportedEnum>> {
+    project::exported_enums(project)
+}
+
 struct ProjectExports {
+    values: BTreeMap<String, BTreeMap<String, module::ExportedValue>>,
+    /// The names each module exports (and whether more may be re-exported), to
+    /// check what is imported.
+    exported_names: BTreeMap<String, (BTreeSet<String>, bool)>,
+    enums: BTreeMap<String, BTreeMap<String, ExportedEnum>>,
     types: BTreeMap<String, BTreeMap<String, TypeDefinition>>,
     classes: BTreeMap<String, BTreeMap<String, ExportedClass>>,
 }
@@ -119,124 +202,95 @@ struct ProjectExports {
 /// metadata look like a source-local debugger symbol.
 #[derive(Default)]
 struct AmbientDeclarations {
+    enforce_types: bool,
+    private_types: BTreeMap<String, TypeDefinition>,
+    module_types: BTreeMap<String, BTreeMap<String, TypeDefinition>>,
+    contexts: BTreeMap<String, BTreeMap<String, Type>>,
     types: BTreeMap<String, TypeDefinition>,
+    type_namespaces: Vec<crate::parser::NamespaceDeclaration>,
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
+    binding_kinds: BTreeMap<String, scopes::BindingKind>,
 }
 
-/// Rechecks the requested modules while retaining checker output for modules
-/// that the incremental project graph proved unaffected. The caller must only
-/// supply a previous project checked under the same compiler policy and must
-/// include every reverse dependency of a changed module in `rechecked`.
-pub(crate) fn check_incremental(
+fn ambient_declarations(
     project: &Project,
+    exports: &ProjectExports,
     enforce_types: bool,
-    require_declared_global_calls: bool,
-    previous: Option<&CheckedProject>,
-    rechecked: &BTreeSet<String>,
     max_type_expansions: usize,
-) -> (CheckedProject, Vec<Diagnostic>) {
-    let mut diagnostics = project::declaration_module_diagnostics(project);
-    let (ambient, mut ambient_diagnostics) = ambient_declarations(project);
-    diagnostics.append(&mut ambient_diagnostics);
-    let exports = ProjectExports {
-        types: project::exported_types(project),
-        classes: project::exported_classes(project, max_type_expansions),
+) -> (AmbientDeclarations, Vec<Diagnostic>) {
+    let mut ambient = AmbientDeclarations {
+        enforce_types,
+        ..AmbientDeclarations::default()
     };
-    let mut checked_modules = BTreeMap::new();
-
-    for (module_id, module) in &project.modules {
-        if !rechecked.contains(module_id) {
-            if let Some(previous) = previous.and_then(|previous| previous.modules.get(module_id)) {
-                checked_modules.insert(module_id.clone(), previous.clone());
-                continue;
-            }
-        }
-        let mut checker = module::ModuleChecker::new(
-            project,
-            module,
-            &exports,
-            (!project.ambient_declaration_modules.contains(module_id)).then_some(&ambient),
-            enforce_types,
-            require_declared_global_calls,
-            max_type_expansions,
-        );
-        checker.bind();
-        if enforce_types {
-            checker.check_types();
-        }
-        diagnostics.extend(checker.diagnostics);
-        checked_modules.insert(
-            module_id.clone(),
-            CheckedModule {
-                module: module.clone(),
-                symbols: checker.symbols,
-            },
-        );
-    }
-    (
-        CheckedProject {
-            modules: checked_modules,
-        },
-        diagnostics,
-    )
-}
-
-fn ambient_declarations(project: &Project) -> (AmbientDeclarations, Vec<Diagnostic>) {
-    let mut ambient = AmbientDeclarations::default();
     let mut diagnostics = Vec::new();
-    for module_id in &project.ambient_declaration_modules {
+    ambient::collect_contexts(
+        project,
+        exports,
+        &mut ambient,
+        &mut diagnostics,
+        max_type_expansions,
+    );
+    for target in project.augmentation_resolutions.values() {
+        if let Some(types) = exports.types.get(target) {
+            ambient.module_types.insert(target.clone(), types.clone());
+        }
+    }
+    for module_id in project
+        .ambient_declaration_modules
+        .union(&project.referenced_declaration_modules)
+    {
         let Some(module) = project.modules.get(module_id) else {
             continue;
         };
-        for declaration in &module.declarations {
-            match declaration {
-                Declaration::TypeAlias(alias) => insert_ambient_type(
-                    &mut ambient,
-                    &mut diagnostics,
-                    &alias.name,
-                    TypeDefinition {
-                        kind: TypeDefinitionKind::Alias,
-                        parameters: alias.type_parameters.clone(),
-                        value: alias.value.clone(),
-                    },
-                    &alias.span,
-                ),
-                Declaration::Interface(interface) => insert_ambient_type(
-                    &mut ambient,
-                    &mut diagnostics,
-                    &interface.name,
-                    TypeDefinition {
-                        kind: TypeDefinitionKind::Interface,
-                        parameters: interface.type_parameters.clone(),
-                        value: interface_value(interface),
-                    },
-                    &interface.span,
-                ),
-                Declaration::Variable(variable) if variable.declared => insert_ambient_value(
-                    &mut ambient,
-                    &mut diagnostics,
-                    &variable.name,
-                    variable.annotation.clone().unwrap_or(Type::Unknown),
-                    &variable.span,
-                ),
-                Declaration::Function(function) if function.declared || function.overload => {
-                    insert_ambient_function(&mut ambient, &mut diagnostics, function);
-                }
-                _ => {}
-            }
+        if ambient::has_module_syntax(&module.declarations) {
+            continue;
         }
+        ambient::insert_body(
+            project,
+            &module.declarations,
+            &mut ambient,
+            &mut diagnostics,
+        );
+    }
+    for module in project.modules.values() {
+        ambient::collect_augmentations(
+            project,
+            &module.declarations,
+            project.is_external_module(module),
+            &mut ambient,
+            &mut diagnostics,
+        );
     }
     (ambient, diagnostics)
 }
 
 fn insert_ambient_type(
+    project: &Project,
     ambient: &mut AmbientDeclarations,
     diagnostics: &mut Vec<Diagnostic>,
     name: &str,
     definition: TypeDefinition,
     span: &SourceSpan,
 ) {
+    if definition.kind == TypeDefinitionKind::Interface {
+        if let Some(existing) = ambient
+            .types
+            .get_mut(name)
+            .filter(|existing| existing.kind == TypeDefinitionKind::Interface)
+        {
+            if ambient.enforce_types {
+                ambient::check_merged_members(
+                    project,
+                    diagnostics,
+                    &existing.value,
+                    &definition.value,
+                );
+            }
+            existing.value = merge_interface_values(&existing.value, &definition.value);
+            return;
+        }
+    }
     if ambient.types.insert(name.to_string(), definition).is_some() {
         diagnostics.push(Diagnostic::error(
             DiagnosticCode::DuplicateDeclaration,
@@ -294,73 +348,41 @@ fn insert_ambient_function(
 }
 
 mod module;
+pub(crate) use module::CheckerPolicy;
+pub(crate) use module::NamespaceExport;
+
+/// What each module exports as a namespace, by module and exported name.
+type NamespaceExports = BTreeMap<String, BTreeMap<String, NamespaceExport>>;
+mod ambient;
+pub(crate) use ambient::namespace_is_type_only;
 mod project;
 
 fn interface_value(interface: &InterfaceDeclaration) -> Type {
-    interface_value_with_heritage(&interface.heritage, &interface.fields)
+    interface_value_with_heritage(&interface.heritage, interface.body_type())
 }
 
-fn interface_value_with_heritage(heritage: &[Type], fields: &[TypeField]) -> Type {
+fn interface_value_with_heritage(heritage: &[Type], body: Type) -> Type {
     if heritage.is_empty() {
-        return Type::Record(fields.to_vec());
+        return body;
     }
     let mut parts = heritage.to_vec();
-    if !fields.is_empty() {
-        parts.push(Type::Record(fields.to_vec()));
-    }
-    if parts.len() == 1 {
-        parts.pop().expect("one inherited interface type")
-    } else {
-        Type::Intersection(parts)
-    }
-}
-
-fn infer_call_substitutions(
-    signature: &FunctionSignature,
-    actuals: &[Type],
-) -> BTreeMap<String, Type> {
-    let mut substitutions = BTreeMap::new();
-    let type_parameters = signature
-        .type_parameters
-        .iter()
-        .map(|parameter| parameter.name.clone())
-        .collect::<BTreeSet<_>>();
-    for (index, actual) in actuals.iter().enumerate() {
-        let Some(parameter) = function_parameter_for_argument(signature, index) else {
-            break;
-        };
-        let annotation = if parameter.rest {
-            rest_parameter_element_annotation(parameter)
-        } else {
-            parameter.annotation.as_ref()
-        };
-        let Some(annotation) = annotation else {
-            continue;
-        };
-        infer_type_arguments(annotation, actual, &type_parameters, &mut substitutions);
-    }
-    for parameter in &signature.type_parameters {
-        let default = parameter
-            .default
-            .as_ref()
-            .map(|value| substitute_type(value, &substitutions))
-            .unwrap_or(Type::Unknown);
-        substitutions
-            .entry(parameter.name.clone())
-            .or_insert(default);
-    }
-    substitutions
+    parts.push(body);
+    Type::Intersection(parts)
 }
 
 fn function_call_substitutions(
     signature: &FunctionSignature,
     actuals: &[Type],
     explicit_type_arguments: Option<&[Type]>,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
 ) -> Option<BTreeMap<String, Type>> {
     match explicit_type_arguments {
         Some(arguments) => complete_type_arguments(&signature.type_parameters, arguments)
             .map(|arguments| type_parameter_substitutions(&signature.type_parameters, arguments)),
-        None => Some(infer_call_substitutions(signature, actuals)),
+        None => Some(infer_call_substitutions(
+            signature, actuals, aliases, budget,
+        )),
     }
 }
 
@@ -370,16 +392,25 @@ fn function_signature_matches(
     explicit_type_arguments: Option<&[Type]>,
     aliases: &BTreeMap<String, TypeDefinition>,
     max_type_expansions: usize,
+    checking: crate::CheckingOptions,
 ) -> Result<bool, ()> {
     if !function_signature_accepts_argument_count(signature, actuals.len()) {
         return Ok(false);
     }
-    let Some(substitutions) =
-        function_call_substitutions(signature, actuals, explicit_type_arguments)
-    else {
+    let mut budget = TypeExpansionBudget::new(max_type_expansions);
+    budget.checking = checking;
+    let Some(substitutions) = function_call_substitutions(
+        signature,
+        actuals,
+        explicit_type_arguments,
+        aliases,
+        &mut budget,
+    ) else {
         return Ok(false);
     };
-    let mut budget = TypeExpansionBudget::new(max_type_expansions);
+    if budget.exhausted {
+        return Err(());
+    }
     for parameter in &signature.type_parameters {
         let Some(constraint) = &parameter.constraint else {
             continue;
@@ -516,7 +547,7 @@ fn function_signature_required_arguments(signature: &FunctionSignature) -> usize
     signature
         .parameters
         .iter()
-        .filter(|parameter| !parameter.rest && !parameter.optional)
+        .filter(|parameter| parameter.name != "this" && !parameter.rest && !parameter.optional)
         .count()
 }
 
@@ -529,19 +560,29 @@ fn function_signature_accepts_argument_count(
             .parameters
             .last()
             .is_some_and(|parameter| parameter.rest)
-            || actual_count <= signature.parameters.len())
+            || actual_count
+                <= signature
+                    .parameters
+                    .iter()
+                    .filter(|p| p.name != "this")
+                    .count())
 }
 
 fn function_parameter_for_argument(
     signature: &FunctionSignature,
     argument_index: usize,
 ) -> Option<&Parameter> {
-    signature.parameters.get(argument_index).or_else(|| {
-        signature
-            .parameters
-            .last()
-            .filter(|parameter| parameter.rest)
-    })
+    signature
+        .parameters
+        .iter()
+        .filter(|p| p.name != "this")
+        .nth(argument_index)
+        .or_else(|| {
+            signature
+                .parameters
+                .last()
+                .filter(|parameter| parameter.rest)
+        })
 }
 
 fn type_parameter_constraint_substitutions(parameters: &[TypeParameter]) -> BTreeMap<String, Type> {
@@ -562,8 +603,13 @@ fn type_parameter_substitutions(
 ) -> BTreeMap<String, Type> {
     parameters
         .iter()
-        .map(|parameter| parameter.name.clone())
         .zip(arguments)
+        .flat_map(|(parameter, value)| {
+            [
+                (parameter.name.clone(), value.clone()),
+                (crate::parser::type_parameter_identity(parameter), value),
+            ]
+        })
         .collect()
 }
 
@@ -571,43 +617,6 @@ struct DirectCall<'a> {
     callee: &'a Token,
     arguments: &'a [Token],
     generic: bool,
-}
-
-struct MemberCall<'a> {
-    receiver: &'a [Token],
-    member: &'a Token,
-    arguments: &'a [Token],
-}
-
-fn member_call_parts(tokens: &[Token]) -> Option<MemberCall<'_>> {
-    let mut depth = 0usize;
-    let mut top_level_dot = None;
-    for (index, token) in tokens.iter().enumerate() {
-        if token.is("(") {
-            depth = depth.checked_add(1)?;
-        } else if token.is(")") {
-            depth = depth.checked_sub(1)?;
-        } else if token.is(".") && depth == 0 {
-            top_level_dot = Some(index);
-        }
-    }
-    if depth != 0 {
-        return None;
-    }
-    let dot = top_level_dot?;
-    let receiver = tokens.get(..dot)?;
-    let member = tokens.get(dot + 1)?;
-    let open = tokens.get(dot + 2)?;
-    let arguments = tokens.get(dot + 3..)?;
-    (!receiver.is_empty()
-        && matches!(member.kind, TokenKind::Identifier | TokenKind::Keyword)
-        && open.is("(")
-        && split_call_arguments(arguments).is_some())
-    .then_some(MemberCall {
-        receiver,
-        member,
-        arguments,
-    })
 }
 
 fn direct_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
@@ -636,19 +645,47 @@ fn direct_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
     })
 }
 
-fn constructor_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
+struct ConstructorCall<'a> {
+    callee: Token,
+    arguments: &'a [Token],
+    receiver: Option<&'a Token>,
+    generic: bool,
+}
+
+fn constructor_call_parts(tokens: &[Token]) -> Option<ConstructorCall<'_>> {
     let tokens = strip_outer_parentheses(tokens);
-    let [keyword, callee, opening, arguments @ ..] = tokens else {
+    let keyword = tokens.first()?;
+    let first = tokens.get(1)?;
+    if !keyword.is("new") || first.kind != TokenKind::Identifier {
         return None;
-    };
-    (keyword.is("new")
-        && callee.kind == TokenKind::Identifier
-        && opening.is("(")
-        && split_call_arguments(arguments).is_some())
-    .then_some(DirectCall {
+    }
+    let mut callee = first.clone();
+    let mut index = 2;
+    while tokens.get(index).is_some_and(|token| token.is(".")) {
+        let member = tokens.get(index + 1)?;
+        if member.kind != TokenKind::Identifier {
+            return None;
+        }
+        callee.text.push('.');
+        callee.text.push_str(&member.text);
+        callee.end = member.end;
+        index += 2;
+    }
+    let receiver = (index > 2).then_some(first);
+    let generic = tokens.get(index).is_some_and(|token| token.is("<"));
+    if generic {
+        index = explicit_generic_call_close(tokens, index - 1)? + 1;
+    }
+    if !tokens.get(index).is_some_and(|token| token.is("(")) {
+        return None;
+    }
+    let arguments = &tokens[index + 1..];
+    split_call_arguments(arguments)?;
+    Some(ConstructorCall {
         callee,
         arguments,
-        generic: false,
+        receiver,
+        generic,
     })
 }
 
@@ -708,112 +745,8 @@ fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
     Some(arguments)
 }
 
-fn infer_type_arguments(
-    template: &Type,
-    actual: &Type,
-    type_parameters: &BTreeSet<String>,
-    substitutions: &mut BTreeMap<String, Type>,
-) {
-    match (template, actual) {
-        (Type::Named { name, arguments }, actual)
-            if arguments.is_empty() && type_parameters.contains(name) =>
-        {
-            if let Some(previous) = substitutions.get(name) {
-                if previous != actual {
-                    substitutions.insert(name.clone(), Type::Unknown);
-                }
-            } else {
-                substitutions.insert(name.clone(), actual.clone());
-            }
-        }
-        (Type::Array(template), Type::Array(actual)) => {
-            infer_type_arguments(template, actual, type_parameters, substitutions);
-        }
-        (Type::Tuple(templates), Type::Tuple(actuals)) if templates.len() == actuals.len() => {
-            for (template, actual) in templates.iter().zip(actuals) {
-                infer_type_arguments(
-                    &template.annotation,
-                    &actual.annotation,
-                    type_parameters,
-                    substitutions,
-                );
-            }
-        }
-        (Type::Record(templates), Type::Record(actuals)) => {
-            for template in templates {
-                if let Some(actual) = actuals.iter().find(|actual| actual.name == template.name) {
-                    infer_type_arguments(
-                        &template.value,
-                        &actual.value,
-                        type_parameters,
-                        substitutions,
-                    );
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Infers an array literal against an explicit tuple annotation without
-/// changing ordinary array-literal inference. A tuple spread is expanded only
-/// when its source is itself known to be a tuple, preserving fixed arity.
-fn infer_contextual_tuple_literal(
-    tokens: &[Token],
-    scope: &BTreeMap<String, Type>,
-) -> Option<Type> {
-    if tokens.first().is_none_or(|token| !token.is("["))
-        || tokens.last().is_none_or(|token| !token.is("]"))
-    {
-        return None;
-    }
-    let mut values = Vec::new();
-    let mut start = 1usize;
-    let mut depth = 0usize;
-    for index in 1..tokens.len() {
-        match tokens[index].text.as_str() {
-            "[" | "(" | "{" => depth += 1,
-            "]" | ")" | "}" if depth > 0 => depth -= 1,
-            "," if depth == 0 => {
-                push_contextual_tuple_element(&tokens[start..index], scope, &mut values)?;
-                start = index + 1;
-            }
-            _ => {}
-        }
-    }
-    if start + 1 < tokens.len() {
-        push_contextual_tuple_element(&tokens[start..tokens.len() - 1], scope, &mut values)?;
-    }
-    Some(Type::Tuple(
-        values.into_iter().map(TupleTypeElement::required).collect(),
-    ))
-}
-
-fn push_contextual_tuple_element(
-    tokens: &[Token],
-    scope: &BTreeMap<String, Type>,
-    values: &mut Vec<Type>,
-) -> Option<()> {
-    if tokens.is_empty() {
-        return None;
-    }
-    if tokens.first().is_some_and(|token| token.is("...")) {
-        let Type::Tuple(spread) = infer_simple(&tokens[1..], scope) else {
-            return None;
-        };
-        if spread
-            .iter()
-            .any(|element| element.optional || element.rest)
-        {
-            return None;
-        }
-        values.extend(spread.into_iter().map(|element| element.annotation));
-    } else {
-        values.push(infer_simple(tokens, scope));
-    }
-    Some(())
-}
-
+/// The type of a single-token element (a literal or a variable) inside a
+/// tuple literal, widening a string or template literal to `string`.
 fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
     let Some(first) = tokens.first() else {
         return Type::Undefined;
@@ -1087,6 +1020,8 @@ fn infer_additive_expression(operator: &Token, left: Type, right: Type) -> Type 
 fn infer_numeric_binary_expression(left: Type, right: Type) -> Type {
     if left == Type::Number && right == Type::Number {
         Type::Number
+    } else if left == Type::BigInt && right == Type::BigInt {
+        Type::BigInt
     } else {
         Type::Unknown
     }
@@ -1095,7 +1030,7 @@ fn infer_numeric_binary_expression(left: Type, right: Type) -> Type {
 fn is_known_primitive_type(value: &Type) -> bool {
     matches!(
         value,
-        Type::Boolean | Type::Number | Type::String | Type::Null | Type::Undefined
+        Type::Boolean | Type::Number | Type::BigInt | Type::String | Type::Null | Type::Undefined
     )
 }
 

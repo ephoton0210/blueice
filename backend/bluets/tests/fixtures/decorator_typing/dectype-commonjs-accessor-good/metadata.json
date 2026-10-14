@@ -1,0 +1,20 @@
+{
+  "id": "dectype-commonjs-accessor-good",
+  "form": "accessor-good",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "CommonJS",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "rootDir": ".",
+    "outDir": "out"
+  }
+}

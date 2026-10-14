@@ -41,6 +41,108 @@ fn first_nested_point(
         .expect("the direct child has a first verified instruction")
 }
 
+#[cfg_attr(test, test)]
+fn foreign_loader_pause_requires_two_live_page_owned_programs_and_exact_frame() {
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    runtime.open_realm(8, origin()).unwrap();
+    let loader = install(
+        &mut runtime,
+        7,
+        "page:///loader.js",
+        &BlueJsProgramV1::Script(
+            parse("var loaderCalls = 0; var System = { register: function (execute) { loaderCalls++; return execute(); } };").unwrap(),
+        ),
+    );
+    let wrong_loader = install(
+        &mut runtime,
+        7,
+        "page:///wrong-loader.js",
+        &BlueJsProgramV1::Script(parse("1;").unwrap()),
+    );
+    let other_tab_loader = install(
+        &mut runtime,
+        8,
+        "page:///other-tab-loader.js",
+        &BlueJsProgramV1::Script(parse("1;").unwrap()),
+    );
+    let generated = install(
+        &mut runtime,
+        7,
+        "page:///generated-system.js",
+        &BlueJsProgramV1::Script(
+            parse("var calls = 0; System.register(function execute() { calls++; return 42; });")
+                .unwrap(),
+        ),
+    );
+    let point = first_nested_point(&runtime, 7, generated);
+    runtime.execute_program(7, loader).unwrap();
+    assert!(matches!(
+        runtime.execute_program_until_foreign_intermediate_debugger_pause(
+            7,
+            generated,
+            other_tab_loader,
+            point,
+        ),
+        Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { .. })
+    ));
+    assert_eq!(
+        runtime.execute_program_until_foreign_intermediate_debugger_pause(
+            7, generated, generated, point,
+        ),
+        Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+    );
+    let BlueJsPageDebuggerNestedExecutionState::Paused { frame, .. } = runtime
+        .execute_program_until_foreign_intermediate_debugger_pause(7, generated, loader, point)
+        .unwrap()
+    else {
+        panic!("the page-owned loader must call the generated callback");
+    };
+    assert!(runtime
+        .debugger_stack_snapshot(7, generated, Some(frame), 3, 256)
+        .is_err());
+    assert!(runtime
+        .debugger_foreign_intermediate_stack_snapshot(7, frame, wrong_loader, 3, 256)
+        .is_err());
+    let stack = runtime
+        .debugger_foreign_intermediate_stack_snapshot(7, frame, loader, 3, 256)
+        .unwrap();
+    assert_eq!(
+        stack
+            .frames
+            .iter()
+            .map(|frame| frame.program_generation)
+            .collect::<Vec<_>>(),
+        vec![
+            generated.generation().as_u64(),
+            loader.generation().as_u64(),
+            generated.generation().as_u64(),
+        ]
+    );
+    assert!(matches!(
+        runtime.step_debugger_nested_instruction(frame),
+        Ok(BlueJsPageDebuggerNestedExecutionState::Paused { .. })
+    ));
+    assert!(matches!(
+        runtime.resume_debugger_nested_execution(frame),
+        Ok(BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. })
+    ));
+    assert_eq!(
+        runtime.resume_debugger_execution(7),
+        Ok(BlueJsPageDebuggerExecutionState::Completed)
+    );
+    let probe = install(
+        &mut runtime,
+        7,
+        "page:///probe.js",
+        &BlueJsProgramV1::Script(parse("loaderCalls + calls;").unwrap()),
+    );
+    assert_eq!(runtime.execute_program(7, probe), Ok(Value::Number(2.0)));
+    assert!(runtime
+        .debugger_foreign_intermediate_stack_snapshot(7, frame, loader, 3, 256)
+        .is_err());
+}
+
 fn expected_throw_site(
     runtime: &BlueJsPageRuntime,
     handle: BlueJsProgramHandle,

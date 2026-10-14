@@ -1,0 +1,21 @@
+{
+  "id": "pathextra-commonjs-t1",
+  "form": "t1",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "CommonJS",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "types": []
+  }
+}

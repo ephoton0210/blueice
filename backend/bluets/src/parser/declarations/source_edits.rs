@@ -12,9 +12,56 @@ impl Parser {
         start: usize,
         end: usize,
     ) {
-        self.diagnose_unsupported_opaque_syntax(start, end);
+        self.collect_runtime_type_edits(start, end, false);
+    }
+
+    pub(in crate::parser::implementation) fn collect_statement_type_edits(
+        &mut self,
+        start: usize,
+        end: usize,
+    ) {
+        self.collect_runtime_type_edits(start, end, true);
+    }
+
+    fn collect_runtime_type_edits(&mut self, start: usize, end: usize, statement_range: bool) {
         let mut index = start;
         while index < end {
+            if let Some(next) = self.try_parse_class_expression(index, end) {
+                index = next;
+                continue;
+            }
+            if self.tokens[index].kind == TokenKind::Template {
+                let token = self.tokens[index].clone();
+                self.collect_template_type_edits(&token);
+            }
+            if matches!(self.tokens[index].text.as_str(), "const" | "let" | "var")
+                && self
+                    .tokens
+                    .get(index + 1)
+                    .is_some_and(|token| token.kind == TokenKind::Identifier)
+                && self
+                    .tokens
+                    .get(index + 2)
+                    .is_some_and(|token| token.is(":"))
+            {
+                let saved = self.index;
+                self.index = index + 3;
+                let annotation = self.parse_type_until(&["=", ";", ",", ")", "of", "in"]);
+                self.expression_variable_types
+                    .insert(self.tokens[index].start, annotation);
+                self.edits.push(TextEdit {
+                    start: self.tokens[index + 2].start,
+                    end: self.current().start,
+                    replacement: String::new(),
+                });
+                index = self.index;
+                self.index = saved;
+                continue;
+            }
+            if let Some(next) = self.try_parse_nested_function(start, index, end, statement_range) {
+                index = next;
+                continue;
+            }
             if self.tokens[index].kind == TokenKind::Identifier
                 && self
                     .tokens
@@ -40,7 +87,12 @@ impl Parser {
                     }
                 }
             }
-            if self.tokens[index].is("as") || self.tokens[index].is("satisfies") {
+            if (self.tokens[index].is("as") || self.tokens[index].is("satisfies"))
+                && !index.checked_sub(1).is_some_and(|previous| {
+                    matches!(self.tokens[previous].text.as_str(), "." | "?.")
+                })
+                && !self.tokens.get(index + 1).is_some_and(|next| next.is(":"))
+            {
                 index = self.erase_assertion(index, end);
                 continue;
             }
@@ -65,6 +117,86 @@ impl Parser {
             }
             index += 1;
         }
+        self.diagnose_unsupported_opaque_syntax(start, end);
+    }
+
+    pub(in crate::parser::implementation) fn collect_following_variable_types(
+        &mut self,
+        start: usize,
+        end: usize,
+    ) {
+        let mut depth = 0usize;
+        let mut index = start;
+        while index < end {
+            match self.tokens[index].text.as_str() {
+                "(" | "[" | "{" => depth += 1,
+                ")" | "]" | "}" => depth = depth.saturating_sub(1),
+                "," if depth == 0
+                    && self
+                        .tokens
+                        .get(index + 1)
+                        .is_some_and(|token| token.kind == TokenKind::Identifier)
+                    && self
+                        .tokens
+                        .get(index + 2)
+                        .is_some_and(|token| token.is(":")) =>
+                {
+                    let saved = self.index;
+                    self.index = index + 3;
+                    let value = self.parse_type_until(&["=", ",", ";"]);
+                    self.expression_variable_types
+                        .insert(self.tokens[index + 1].start, value);
+                    self.edits.push(TextEdit {
+                        start: self.tokens[index + 2].start,
+                        end: self.current().start,
+                        replacement: String::new(),
+                    });
+                    index = self.index;
+                    self.index = saved;
+                    continue;
+                }
+                _ => {}
+            }
+            index += 1;
+        }
+    }
+
+    /// Template substitutions retain their absolute positions and use the
+    /// same nested-function and type grammar as every other expression.
+    fn collect_template_type_edits(&mut self, token: &Token) {
+        let bytes = token.text.as_bytes();
+        let mut index = 1;
+        while index + 1 < bytes.len() {
+            if bytes[index] == b'\\' {
+                index += 2;
+                continue;
+            }
+            if bytes[index..].starts_with(b"${") {
+                let start = token.start + index + 2;
+                if let Ok((end, mut tokens)) =
+                    crate::syntax::lex_expression(&self.id, &self.source, start)
+                {
+                    tokens.push(Token {
+                        kind: TokenKind::Eof,
+                        text: String::new(),
+                        start: end,
+                        end,
+                    });
+                    let original = std::mem::replace(
+                        &mut self.tokens,
+                        split_generic_closers(merge_private_names(tokens)),
+                    );
+                    let saved = self.index;
+                    self.index = 0;
+                    self.collect_expression_type_edits(0, self.tokens.len() - 1);
+                    self.index = saved;
+                    self.tokens = original;
+                    index = end - token.start + 1;
+                    continue;
+                }
+            }
+            index += 1;
+        }
     }
 
     /// Opaque expression spans are otherwise preserved for JavaScript
@@ -78,6 +210,14 @@ impl Parser {
         end: usize,
     ) {
         for index in start..end.saturating_sub(1) {
+            if self
+                .class_expressions
+                .range(..=self.tokens[index].start)
+                .next_back()
+                .is_some_and(|(_, expression)| self.tokens[index].start < expression.class.span.end)
+            {
+                continue;
+            }
             let previous_is_abstract = self
                 .tokens
                 .get(index.saturating_sub(1))
@@ -88,7 +228,7 @@ impl Parser {
                 .is_some_and(|token| token.is("@"));
             let next = self.tokens.get(index + 1);
             let message = if self.tokens[index].is("@") {
-                Some("decorators and TSX/JSX are not in the initial BlueTS matrix")
+                Some("decorators are supported on top-level class declarations and their members only")
             } else if self.tokens[index].is("abstract")
                 && next.is_some_and(|token| token.is("class"))
             {
@@ -104,7 +244,7 @@ impl Parser {
             } else if self.tokens[index].is("enum")
                 && next.is_some_and(|token| token.kind == TokenKind::Identifier)
             {
-                Some("`enum` is not in the initial BlueTS matrix")
+                Some("an `enum` declared inside a body is not supported yet")
             } else if self.tokens[index].is("namespace")
                 && next.is_some_and(|token| token.kind == TokenKind::Identifier)
             {
@@ -115,8 +255,6 @@ impl Parser {
                 })
             {
                 Some("`module` is not in the initial BlueTS matrix")
-            } else if is_generic_arrow_function(&self.tokens, index, end) {
-                Some("generic arrow functions are not in the initial BlueTS matrix")
             } else {
                 None
             };
@@ -266,6 +404,17 @@ impl Parser {
             end,
             &[";", ",", ")", "]", "}", "&&", "||"],
         );
+        // Assertions are erased, but their named types still need lexical
+        // resolution. Parse through the same type grammar as annotations.
+        let saved_index = self.index;
+        self.index = type_start;
+        let annotation = if self.tokens[index].is("as") && self.consume("const") {
+            Type::ConstAssertion
+        } else {
+            self.parse_type_until(&[";", ",", ")", "]", "}", "&&", "||"])
+        };
+        self.type_assertions.insert(edit_start, annotation);
+        self.index = saved_index;
         self.edits.push(TextEdit {
             start: edit_start,
             end: self.tokens[end_index].start,

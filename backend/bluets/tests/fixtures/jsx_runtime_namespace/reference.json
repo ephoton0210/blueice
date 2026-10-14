@@ -1,0 +1,1717 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "runtype-commonjs-i0",
+      "form": "i0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "ccda3ea2250bd2f425f840876dc2d7cb038cf698e6eef75e3f317e563d6a505f",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst jsx_runtime_1 = require(\"typed-ui/jsx-runtime\");\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nconst element = (0, jsx_runtime_1.jsx)(\"item\", { value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-i1",
+      "form": "i1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "ad9e129ef3342aafbbe0c32d2160d293e77d806aca4e2afae3e8ab3177727989",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 226,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "node_modules/typed-ui/jsx-runtime.d.ts",
+              "start": 301,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value: number; children?: number | undefined; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-i2",
+      "form": "i2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "3975e2f37c76748174b739a8211a488368a4a0b73c0406d379ded9a02f9fe8ee",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2741,
+          "file": "main.tsx",
+          "start": 221,
+          "length": 4,
+          "message": "Property 'value' is missing in type '{}' but required in type '{ value: number; children?: number | undefined; }'.",
+          "related": [
+            {
+              "code": 2728,
+              "file": "node_modules/typed-ui/jsx-runtime.d.ts",
+              "start": 301,
+              "length": 5,
+              "message": "'value' is declared here."
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-i3",
+      "form": "i3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "736b70fc34836184e4326eedf4e79e1960e52385bf9ca0121af16b9169e95bc2",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "file": "main.tsx",
+          "start": 220,
+          "length": 21,
+          "message": "Property 'absent' does not exist on type 'JSX.IntrinsicElements'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-e0",
+      "form": "e0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "e6c194c93c027fffe093c5fbd488725d12990f8a38c4eab48c98ae5883947963",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "29a67a2ab6d9729e6baa8f0f4f1d64b1c94b838c534c4a1485951fa1342b3c47",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst jsx_runtime_1 = require(\"typed-ui/jsx-runtime\");\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction Numeric(props) { return props.value; }\nconst element = (0, jsx_runtime_1.jsx)(Numeric, { value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-e1",
+      "form": "e1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "3fb5e16d436b5bd86418005b2f5e75a2f5a406e3e8a3dbe13ad3bbd8e674ee88",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "29a67a2ab6d9729e6baa8f0f4f1d64b1c94b838c534c4a1485951fa1342b3c47",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2786,
+          "file": "main.tsx",
+          "start": 290,
+          "length": 7,
+          "message": "'Textual' cannot be used as a JSX component.\n  Its type '(props: { value: number; }) => string' is not a valid JSX element type.\n    Type '(props: { value: number; }) => string' is not assignable to type '(props: any) => number'.\n      Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-m0",
+      "form": "m0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "e6a1ed5bf832f9e16876d72e38453d65efce6eb57c033c09873eb6772e779b5b",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "6535827a64d5f228f56f1c4f108a76f8fa6ebeaa30f2776c9d4faefb6f3545ea",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst jsx_runtime_1 = require(\"typed-ui/jsx-runtime\");\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction Component(props) { return props; }\nconst element = (0, jsx_runtime_1.jsx)(Component, {});\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-m1",
+      "form": "m1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "ce7419ec2d7b64049ab1c31eab55c9ac84d686c6268d73d12fbfe12a601b5aea",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "6535827a64d5f228f56f1c4f108a76f8fa6ebeaa30f2776c9d4faefb6f3545ea",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 299,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "node_modules/typed-ui/jsx-runtime.d.ts",
+              "start": 480,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & LibraryManagedAttributes<(props: { value: number; }) => any, { value: number; }>'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-p0",
+      "form": "p0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "221b1f60cecb3dd5772954deb42d3dc3575b2a9f7f76840b659e1885b80ed977",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst jsx_runtime_1 = require(\"other-ui/jsx-runtime\");\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n/** @jsxImportSource other-ui */\nconst element = (0, jsx_runtime_1.jsx)(\"item\", { value: \"ok\" });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/other-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-p1",
+      "form": "p1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "098d0e24d4a56c619de087f7de99bc6089939ebca281a0949f71112e09ea7a7e",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\n/** @jsxRuntime classic */\n/** @jsx h */\nfunction h(tag, props) { return { tag: props.value }; }\nconst element = h(\"item\", { value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-d0",
+      "form": "d0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsxdev",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "f6c309d434e5f028842188b19cf205604bdfab73d43ee6ce1953257f740cdd09",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst jsx_dev_runtime_1 = require(\"typed-ui/jsx-dev-runtime\");\nconst _jsxFileName = \"<root>/main.tsx\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nconst element = (0, jsx_dev_runtime_1.jsxDEV)(\"item\", { value: \"ok\" }, void 0, false, { fileName: _jsxFileName, lineNumber: 5, columnNumber: 16 }, this);\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-d1",
+      "form": "d1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsxdev",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "ccda3ea2250bd2f425f840876dc2d7cb038cf698e6eef75e3f317e563d6a505f",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 226,
+          "length": 5,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "node_modules/typed-ui/jsx-dev-runtime.d.ts",
+              "start": 301,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value: string; children?: number | undefined; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-f0",
+      "form": "f0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "9abddbf32fdeae58351cb28432fd4be10c12ebab3f60fe03d01aa91cdad67294",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "3f933651e65f9518a6b86e44068817e941e6e6e1a81722b1318be168f6eb2c3a",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "3f933651e65f9518a6b86e44068817e941e6e6e1a81722b1318be168f6eb2c3a",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst jsx_runtime_1 = require(\"typed-ui/jsx-runtime\");\nconst element = (0, jsx_runtime_1.jsx)(\"item\", { value: 42 });\nexports.result = [element.tag];\n",
+        "out/main.d.ts": "declare global {\n    namespace JSX {\n        interface Element {\n            tag: number;\n        }\n        interface IntrinsicElements {\n            item: {\n                value: number;\n            };\n        }\n    }\n}\nexport declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-commonjs-r0",
+      "form": "r0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "c707c06d874d7ded0fce23d63eaadbecae3182e4b904f972cecae62d4ea838e3",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "other.tsx": "7ecef8a6363efdcf34e8b460d4af78ba7983fbb6c58e4de8a0437bf94ff971e4",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js",
+        "out/other.d.ts",
+        "out/other.js"
+      ],
+      "outputs": {
+        "out/other.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.other = void 0;\nconst jsx_runtime_1 = require(\"other-ui/jsx-runtime\");\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n/** @jsxImportSource other-ui */\nconst element = (0, jsx_runtime_1.jsx)(\"item\", { value: \"ok\" });\nexports.other = element.tag;\n",
+        "out/other.d.ts": "export declare const other: number;\n",
+        "out/main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst jsx_runtime_1 = require(\"typed-ui/jsx-runtime\");\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nconst other_js_1 = require(\"./other.js\");\nconst element = (0, jsx_runtime_1.jsx)(\"item\", { value: 42 });\nexports.result = [element.tag + other_js_1.other - 42];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/other-ui/jsx-runtime.d.ts",
+        "node_modules/typed-ui/jsx-runtime.d.ts",
+        "other.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-i0",
+      "form": "i0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "ccda3ea2250bd2f425f840876dc2d7cb038cf698e6eef75e3f317e563d6a505f",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "import { jsx as _jsx } from \"typed-ui/jsx-runtime\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nconst element = _jsx(\"item\", { value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-i1",
+      "form": "i1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "ad9e129ef3342aafbbe0c32d2160d293e77d806aca4e2afae3e8ab3177727989",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 226,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "node_modules/typed-ui/jsx-runtime.d.ts",
+              "start": 301,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value: number; children?: number | undefined; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-i2",
+      "form": "i2",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "3975e2f37c76748174b739a8211a488368a4a0b73c0406d379ded9a02f9fe8ee",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2741,
+          "file": "main.tsx",
+          "start": 221,
+          "length": 4,
+          "message": "Property 'value' is missing in type '{}' but required in type '{ value: number; children?: number | undefined; }'.",
+          "related": [
+            {
+              "code": 2728,
+              "file": "node_modules/typed-ui/jsx-runtime.d.ts",
+              "start": 301,
+              "length": 5,
+              "message": "'value' is declared here."
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-i3",
+      "form": "i3",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "736b70fc34836184e4326eedf4e79e1960e52385bf9ca0121af16b9169e95bc2",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2339,
+          "file": "main.tsx",
+          "start": 220,
+          "length": 21,
+          "message": "Property 'absent' does not exist on type 'JSX.IntrinsicElements'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-e0",
+      "form": "e0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "e6c194c93c027fffe093c5fbd488725d12990f8a38c4eab48c98ae5883947963",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "29a67a2ab6d9729e6baa8f0f4f1d64b1c94b838c534c4a1485951fa1342b3c47",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "import { jsx as _jsx } from \"typed-ui/jsx-runtime\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction Numeric(props) { return props.value; }\nconst element = _jsx(Numeric, { value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-e1",
+      "form": "e1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "3fb5e16d436b5bd86418005b2f5e75a2f5a406e3e8a3dbe13ad3bbd8e674ee88",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4a8dadeffdf2e285c14681fc7f891f734b5042bccca37e867e9e10a369bc2fd0",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "29a67a2ab6d9729e6baa8f0f4f1d64b1c94b838c534c4a1485951fa1342b3c47",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2786,
+          "file": "main.tsx",
+          "start": 290,
+          "length": 7,
+          "message": "'Textual' cannot be used as a JSX component.\n  Its type '(props: { value: number; }) => string' is not a valid JSX element type.\n    Type '(props: { value: number; }) => string' is not assignable to type '(props: any) => number'.\n      Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-m0",
+      "form": "m0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "e6a1ed5bf832f9e16876d72e38453d65efce6eb57c033c09873eb6772e779b5b",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "6535827a64d5f228f56f1c4f108a76f8fa6ebeaa30f2776c9d4faefb6f3545ea",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "import { jsx as _jsx } from \"typed-ui/jsx-runtime\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction Component(props) { return props; }\nconst element = _jsx(Component, {});\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-m1",
+      "form": "m1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "ce7419ec2d7b64049ab1c31eab55c9ac84d686c6268d73d12fbfe12a601b5aea",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "78c9e7765f21efc763c589b638317625fa12158aed9866384eac7927b5711834",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "6535827a64d5f228f56f1c4f108a76f8fa6ebeaa30f2776c9d4faefb6f3545ea",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 299,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "node_modules/typed-ui/jsx-runtime.d.ts",
+              "start": 480,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type 'IntrinsicAttributes & LibraryManagedAttributes<(props: { value: number; }) => any, { value: number; }>'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-p0",
+      "form": "p0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "221b1f60cecb3dd5772954deb42d3dc3575b2a9f7f76840b659e1885b80ed977",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "import { jsx as _jsx } from \"other-ui/jsx-runtime\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n/** @jsxImportSource other-ui */\nconst element = _jsx(\"item\", { value: \"ok\" });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/other-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-p1",
+      "form": "p1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "098d0e24d4a56c619de087f7de99bc6089939ebca281a0949f71112e09ea7a7e",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n/** @jsxRuntime classic */\n/** @jsx h */\nfunction h(tag, props) { return { tag: props.value }; }\nconst element = h(\"item\", { value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-d0",
+      "form": "d0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsxdev",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "f6c309d434e5f028842188b19cf205604bdfab73d43ee6ce1953257f740cdd09",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "import { jsxDEV as _jsxDEV } from \"typed-ui/jsx-dev-runtime\";\nconst _jsxFileName = \"<root>/main.tsx\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nconst element = _jsxDEV(\"item\", { value: \"ok\" }, void 0, false, { fileName: _jsxFileName, lineNumber: 5, columnNumber: 16 }, this);\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-d1",
+      "form": "d1",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsxdev",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "ccda3ea2250bd2f425f840876dc2d7cb038cf698e6eef75e3f317e563d6a505f",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.tsx",
+          "start": 226,
+          "length": 5,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "related": [
+            {
+              "code": 6500,
+              "file": "node_modules/typed-ui/jsx-dev-runtime.d.ts",
+              "start": 301,
+              "length": 5,
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value: string; children?: number | undefined; }'"
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-f0",
+      "form": "f0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "9abddbf32fdeae58351cb28432fd4be10c12ebab3f60fe03d01aa91cdad67294",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "3f933651e65f9518a6b86e44068817e941e6e6e1a81722b1318be168f6eb2c3a",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "3f933651e65f9518a6b86e44068817e941e6e6e1a81722b1318be168f6eb2c3a",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "import { jsx as _jsx } from \"typed-ui/jsx-runtime\";\nconst element = _jsx(\"item\", { value: 42 });\nexport const result = [element.tag];\n",
+        "out/main.d.ts": "declare global {\n    namespace JSX {\n        interface Element {\n            tag: number;\n        }\n        interface IntrinsicElements {\n            item: {\n                value: number;\n            };\n        }\n    }\n}\nexport declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/typed-ui/jsx-runtime.d.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "runtype-esnext-r0",
+      "form": "r0",
+      "entry": "main.tsx",
+      "rootFiles": [
+        "main.tsx"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "jsx": "react-jsx",
+        "jsxImportSource": "typed-ui",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.tsx": "c707c06d874d7ded0fce23d63eaadbecae3182e4b904f972cecae62d4ea838e3",
+        "node_modules/other-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/other-ui/jsx-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/other-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/other-ui/package.json": "56862ccabfffa80f4f01f6b2a86a9b99b0b354be71bbbb65b9752ad3a3067b71",
+        "node_modules/typed-ui/jsx-dev-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-dev-runtime.d.ts": "4095f672cdcd4c5bd857952b45f1cdec9eee1162b6afab6e4180cac0f15cb9d4",
+        "node_modules/typed-ui/jsx-dev-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/jsx-runtime.cjs": "1af75e277eac33a87ef720609ae31c10f2a15ddfa79c4758ca034eaf3d804343",
+        "node_modules/typed-ui/jsx-runtime.d.ts": "b0a61f5f7d8c20d083d0a836c96f09fce60cc553860e54d35bf028ba25a8daf0",
+        "node_modules/typed-ui/jsx-runtime.mjs": "2755475083804310f23c2165fb8c70e6feef60703429151eba02d623fe8601b3",
+        "node_modules/typed-ui/package.json": "7684511167ab49459a82f327f6c88c3208788b932eceac8467fb93a9461d8f1e",
+        "other.tsx": "7ecef8a6363efdcf34e8b460d4af78ba7983fbb6c58e4de8a0437bf94ff971e4",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js",
+        "out/other.d.ts",
+        "out/other.js"
+      ],
+      "outputs": {
+        "out/other.js": "import { jsx as _jsx } from \"other-ui/jsx-runtime\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n/** @jsxImportSource other-ui */\nconst element = _jsx(\"item\", { value: \"ok\" });\nexport const other = element.tag;\n",
+        "out/other.d.ts": "export declare const other: number;\n",
+        "out/main.js": "import { jsx as _jsx } from \"typed-ui/jsx-runtime\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport { other } from \"./other.js\";\nconst element = _jsx(\"item\", { value: 42 });\nexport const result = [element.tag + other - 42];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.tsx",
+        "node_modules/other-ui/jsx-runtime.d.ts",
+        "node_modules/typed-ui/jsx-runtime.d.ts",
+        "other.tsx"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    }
+  ]
+}

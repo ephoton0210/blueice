@@ -7,6 +7,39 @@
 use super::*;
 
 #[test]
+fn emitted_standard_decorator_javascript_has_a_bluejs_execution_target() {
+    let fixture = include_str!("../../../bluets/tests/fixtures/k11_source_maps/decorated.ts");
+    // The bare VM has no page-host console; keep the decorator body and
+    // replace only that host-owned sink for this execution-target probe.
+    let source = fixture.replace(
+        "console.log(new Example().method());",
+        "new Example().method();",
+    );
+    assert_ne!(source, fixture);
+    let compilation = blueice_bluets::compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            source_map: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    let output = compilation.output.unwrap();
+    let javascript = &output.artifacts[ENTRY].javascript;
+    let parsed = bluejs::parse(javascript).expect("emitted JavaScript must parse in BlueJS");
+    let bytecode = bluejs::BlueJsProgramV1::Script(parsed)
+        .compile()
+        .expect("emitted JavaScript must compile in BlueJS");
+    assert_eq!(
+        bluejs::Vm::default()
+            .execute(&bytecode)
+            .expect("emitted JavaScript must execute in BlueJS"),
+        bluejs::Value::Number(42.0)
+    );
+}
+
+#[test]
 fn lowers_typed_source_directly_to_bluejs_ast_and_bytecode() {
     let artifact = compile_direct_script(
         ENTRY,
@@ -317,6 +350,183 @@ fn module_function_source_breakpoint_selects_child_entry_over_declaration_root()
 }
 
 #[test]
+fn direct_admission_lowers_or_refuses_checker_accepted_classes_but_never_mislowers() {
+    // Classes the checker accepts and pinned TypeScript accepts (see BlueTS
+    // `class-checker-matrix.tsv`). Each direct route either lowers the class
+    // to a BlueJS class declaration or refuses the program for a shape the
+    // bridge cannot lower; it never reports a class as unsupported by the
+    // checker and never lowers one wrongly.
+    for source in [
+        include_str!("../../../bluets/tests/fixtures/typescript_oracle/class-super-call-valid/main.ts"),
+        include_str!("../../../bluets/tests/fixtures/typescript_oracle/class-super-member-valid/main.ts"),
+        include_str!("../../../bluets/tests/fixtures/typescript_oracle/class-override-overload-valid/main.ts"),
+    ] {
+        let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
+        match compile_direct_script(ENTRY, &loader, CompilerOptions::default()) {
+            Ok(artifact) => {
+                let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+                    panic!("expected a script program");
+                };
+                assert!(
+                    program
+                        .body
+                        .iter()
+                        .any(|statement| matches!(statement, bluejs::Stmt::ClassDecl(_))),
+                    "{source}"
+                );
+            }
+            Err(BridgeError::UnsupportedRuntimeTarget { .. }) => {}
+            Err(error) => panic!("{source}: {error:?}"),
+        }
+    }
+}
+
+#[test]
+fn direct_route_refuses_arrow_functions_instead_of_lowering_their_tokens() {
+    // The direct expression grammar has no arrow node, so a structured typed
+    // arrow must be refused, never lowered from tokens that still hold its
+    // annotations.
+    for source in [
+        "const f = (a: number): number => a; f(1);",
+        "const f = (a: number) => a; f(1);",
+        "const f = (a) => a; f(1);",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(result.is_err(), "{source}: {:?}", result.map(|_| ()));
+    }
+}
+
+#[test]
+fn direct_route_refuses_destructured_parameters_instead_of_lowering_a_name() {
+    // A destructured parameter has no name to lower; it must be refused, not
+    // lowered as a parameter called by its pattern text.
+    let source = "function f({ a }: { a: number }): number { return a; } f({ a: 1 });";
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    );
+    assert!(result.is_err(), "{:?}", result.map(|_| ()));
+}
+
+#[test]
+fn lowers_a_checked_class_to_a_bluejs_class_declaration() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "class A { constructor(n: number) {} m(a: number): number; m(a: string): string; \
+             m(a: any): any { return a; } static s(): number { return 1; } } \
+             class B extends A { constructor() { super(1); } }",
+        )]),
+        CompilerOptions {
+            ..CompilerOptions::default()
+        },
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+        panic!("expected a script program");
+    };
+    let [bluejs::Stmt::ClassDecl(a), bluejs::Stmt::ClassDecl(b)] = program.body.as_slice() else {
+        panic!("expected two class declarations: {:?}", program.body);
+    };
+    assert_eq!(a.name.as_deref(), Some("A"));
+    assert!(a.extends.is_none());
+    // Overload signatures have no runtime form: constructor, `m`, static `s`.
+    let names: Vec<(String, bool)> = a
+        .elements
+        .iter()
+        .map(|element| match element {
+            bluejs::ClassElement::Method {
+                key: bluejs::PropertyKey::Identifier(name),
+                is_static,
+                ..
+            } => (name.clone(), *is_static),
+            other => panic!("unexpected element {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        names,
+        vec![
+            ("constructor".to_string(), false),
+            ("m".to_string(), false),
+            ("s".to_string(), true)
+        ]
+    );
+    assert_eq!(b.name.as_deref(), Some("B"));
+    assert!(matches!(
+        b.extends.as_deref(),
+        Some(bluejs::Expr::Identifier(name)) if name == "A"
+    ));
+}
+
+#[test]
+fn an_exported_class_lowers_to_a_module_class_and_export() {
+    let artifact = compile_direct_module(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "export class A { m(): number { return 1; } } class B extends A {} export { B };",
+        )]),
+        CompilerOptions {
+            ..CompilerOptions::default()
+        },
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Module(module) = &artifact.program else {
+        panic!("expected a module program");
+    };
+    assert!(matches!(
+        module.body.as_slice(),
+        [bluejs::Stmt::ClassDecl(_), bluejs::Stmt::ClassDecl(_)]
+    ));
+    let exported: Vec<&str> = module
+        .exports
+        .iter()
+        .filter_map(|entry| match entry {
+            bluejs::ExportEntry::Local { export_name, .. } => Some(export_name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(exported, ["A", "B"]);
+}
+
+#[test]
+fn a_class_script_with_an_exported_class_needs_the_module_bridge() {
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, "export class A {}")]),
+        CompilerOptions {
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn class_bodies_with_shapes_the_bridge_cannot_lower_are_refused() {
+    for source in [
+        // A destructured parameter has no name to lower.
+        "class A { m({ a }: { a: number }): number { return a; } }",
+        // A nested function declaration has no direct lowering yet.
+        "class A { m(): number { function f(): number { return 1; } return f(); } }",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions {
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(result.is_err(), "{source}");
+    }
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,
@@ -342,7 +552,7 @@ fn lowers_checked_optional_dot_read_to_bluejs_optional_member_ast() {
         ENTRY,
         &MapLoader::from([ModuleSource::new(
             ENTRY,
-            "const receiver: { value: number } | null = null; const read: number | undefined = receiver?.value; read;",
+            "function choose(flag: boolean): { value: number } | null { return flag ? { value: 41 } : null; } const receiver: { value: number } | null = choose(false); const read: number | undefined = receiver?.value; read;",
         )]),
         CompilerOptions::default(),
     )
@@ -363,6 +573,23 @@ fn lowers_checked_optional_dot_read_to_bluejs_optional_member_ast() {
     assert_eq!(
         bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
         bluejs::Value::Undefined
+    );
+    let rejected = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const receiver: { value: number } | null = null; const read: number | undefined = receiver?.value; read;",
+        )]),
+        CompilerOptions::default(),
+    );
+    let Err(BridgeError::BlueTs(diagnostics)) = rejected else {
+        panic!("a known-null receiver must retain the TypeScript property refusal");
+    };
+    let primary = diagnostics[0].typescript.as_ref().unwrap();
+    assert_eq!(primary.code, 2339);
+    assert_eq!(
+        primary.message,
+        "Property 'value' does not exist on type 'never'."
     );
 }
 

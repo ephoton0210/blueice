@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "typoOption": true
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

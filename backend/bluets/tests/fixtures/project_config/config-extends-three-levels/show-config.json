@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "declaration": true,
+    "module": "esnext",
+    "moduleResolution": "classic",
+    "sourceMap": true,
+    "target": "es2022",
+    "useDefineForClassFields": true
+  },
+  "files": [
+    "src/main.ts"
+  ]
+}

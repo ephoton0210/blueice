@@ -10,6 +10,20 @@
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
 //! and an opt-in root-code-unit pause/resume seam.
+//! Version forty-eight adds an explicitly System-scoped generated-token
+//! resolve/arm pair requiring independent same-stream emitted and page-loader
+//! receipts. Ordinary generated lookup and raw System arming remain closed.
+//! Version forty-seven adds an exact three-frame System generated-location
+//! read under independent same-stream emitted and loader program receipts.
+//! The foreign loader frame never inherits a BlueTS source location.
+//! Version forty-five extends the separately granted generated-token family
+//! to exact nested code-unit identifier instructions and an active-frame-
+//! checked paused projection. It does not infer a nearby instruction or
+//! make a generated helper body into user source.
+//! Version forty-four adds independently default-denied exact generated-token
+//! breakpoint binding and paused-location projection. Each requires an opaque
+//! program identity returned earlier on the same debugger stream; neither
+//! grants source text, a map dump, or authority over a substituted artifact.
 //! Version forty-three adds a bounded, stream-owned reservation for the next
 //! document's debugger admission window. Version forty-two adds a separately granted, same-stream linked-entry
 //! bounded value read under a complete linked-scopes receipt.
@@ -93,7 +107,7 @@ use std::sync::{Arc, Mutex, Weak};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 43;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 49;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -101,6 +115,9 @@ pub const DEBUGGER_MAX_VALUE_DEPTH: usize = 4;
 pub const DEBUGGER_MAX_VALUE_CONTAINER_LENGTH: usize = 32;
 pub const DEBUGGER_MAX_VALUE_NODES: usize = 256;
 pub const DEBUGGER_MAX_VALUE_PAYLOAD_BYTES: usize = 4_096;
+pub const DEBUGGER_GENERATED_MAX_COORDINATE: u32 = 16 * 1024 * 1024;
+pub const DEBUGGER_GENERATED_MAX_SOURCES: u32 =
+    crate::page_host::PAGE_HOST_MAX_MODULES_PER_GRAPH as u32;
 
 mod shapes;
 pub use shapes::*;
@@ -266,6 +283,55 @@ pub enum DebuggerRequest {
     /// `RootSafePointBreakpointArmed` with the exact core-reminted safe point.
     ArmStaticMetadataSourceBreakpoint {
         target: DebuggerStaticMetadataSourceBreakpointTarget,
+    },
+    /// Resolves one exact generated-JavaScript token under an independently
+    /// granted, same-stream receipted opaque program. No nearest instruction
+    /// or generated helper body is silently retargeted.
+    ResolveGeneratedBreakpoint {
+        target: DebuggerGeneratedBreakpointTarget,
+    },
+    /// Atomically resolves the same exact token and arms a verified root or
+    /// nested safe point while the declaration is still pending.
+    ArmGeneratedBreakpoint {
+        target: DebuggerGeneratedBreakpointTarget,
+    },
+    /// Resolves only a mapped System execute-body token beneath one exact,
+    /// independently receipted earlier page-loader generation. Wrapper and
+    /// helper scaffolding remain unbound; this request cannot arm or execute.
+    ResolveGeneratedSystemBreakpoint {
+        target: DebuggerGeneratedSystemBreakpointTarget,
+    },
+    /// Atomically re-resolves and arms that exact nested System token. The
+    /// emitted and loader generations need the same-stream generated grant,
+    /// and raw or ordinary generated System arming stays fail-closed.
+    ArmGeneratedSystemBreakpoint {
+        target: DebuggerGeneratedSystemBreakpointTarget,
+    },
+    /// Projects one exact paused root or active nested-frame safe point through
+    /// the bound emitted artifact under a distinct default-denied grant and
+    /// program receipt.
+    GetGeneratedPausedLocation {
+        program: DebuggerProgram,
+    },
+    /// Projects the exact complete child-first linked pause through both
+    /// independently bound emitted maps. The generated-location grant and
+    /// same-stream program receipts are required for both frames; a stale or
+    /// partial stack refuses the whole read.
+    GetGeneratedLinkedStackLocations {
+        expected_stack: DebuggerLinkedStackSnapshot,
+    },
+    /// Projects only an exact paused System emitted/loader/emitted stack. Both
+    /// programs require independent same-stream receipts and the generated
+    /// paused-location grant; the foreign loader has no BlueTS source.
+    GetGeneratedSystemStackLocations {
+        frame: DebuggerFrame,
+        loader: DebuggerProgram,
+    },
+    /// Revalidates an exact generated pause under the default-denied
+    /// paused-location grant and same-stream program receipt(s), then schedules
+    /// one source-free instruction. This grants no source text or raw map.
+    StepGeneratedInstruction {
+        target: DebuggerGeneratedStepTarget,
     },
     /// Describes one contract declaration range only after separate exact
     /// contract and source inventory receipts on this debugger stream.
@@ -532,6 +598,12 @@ pub enum DebuggerReply {
     /// It repeats only the requested source/position and a core-reminted
     /// verified safe point, or an explicit unbound result.
     StaticMetadataSourceBreakpoint(DebuggerStaticMetadataSourceBreakpoint),
+    GeneratedBreakpoint(DebuggerGeneratedBreakpoint),
+    GeneratedSystemBreakpoint(DebuggerGeneratedSystemBreakpoint),
+    GeneratedSystemBreakpointArmed(DebuggerGeneratedSystemBreakpoint),
+    GeneratedPausedLocation(DebuggerGeneratedPausedLocation),
+    GeneratedLinkedStackLocations(DebuggerGeneratedLinkedStackLocations),
+    GeneratedSystemStackLocations(Box<DebuggerGeneratedSystemStackLocations>),
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataContractLocation`].
     /// It contains only receipted IDs and a bounded byte range.
     StaticMetadataContractLocation(DebuggerStaticMetadataContractLocation),
@@ -689,6 +761,14 @@ pub fn negotiate_with_values(
         | DebuggerRequest::DescribeExceptionLocation { .. }
         | DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { .. }
         | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
+        | DebuggerRequest::ResolveGeneratedBreakpoint { .. }
+        | DebuggerRequest::ArmGeneratedBreakpoint { .. }
+        | DebuggerRequest::ResolveGeneratedSystemBreakpoint { .. }
+        | DebuggerRequest::ArmGeneratedSystemBreakpoint { .. }
+        | DebuggerRequest::GetGeneratedPausedLocation { .. }
+        | DebuggerRequest::GetGeneratedLinkedStackLocations { .. }
+        | DebuggerRequest::GetGeneratedSystemStackLocations { .. }
+        | DebuggerRequest::StepGeneratedInstruction { .. }
         | DebuggerRequest::DescribeStaticMetadataContractLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolType { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolContract { .. }

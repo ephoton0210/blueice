@@ -1,0 +1,12 @@
+case	verdict	file	line_endings	target	module	experimental_decorators	emit_decorator_metadata	source_map	inline_sources	runner
+k11-basic-copy	accept	basic.ts	lf	ES2022	ES2022	false	false	external	both	node
+k11-erased-annotation	accept	erased.ts	lf	ES2022	ES2022	false	false	external	both	node
+k11-standard-method	accept	decorated.ts	lf	ES2022	ES2022	false	false	external	both	node
+k11-compacted-relocation	accept	decorated_parenthesized.ts	lf	ES2022	ES2022	false	false	external	both	node
+k11-erased-relocation	accept	decorated_erased_assertion.ts	lf	ES2022	ES2022	false	false	external	both	node
+k11-composed-decorators	accept	decorated_multiple.ts	lf	ES2022	ES2022	false	false	external	both	node
+k11-legacy-class-member	accept	legacy_decorated.ts	lf	ES2022	ES2022	true	false	external	both	node
+k11-legacy-parameter-metadata	accept	legacy_parameter_metadata.ts	lf	ES2022	ES2022	true	true	external	both	node
+k11-nondecorator-helper	accept	object_spread_helper.ts	lf	ES5	ES2022	false	false	external	both	node
+k11-system-wrapper	accept	system_wrapper.ts	lf	ES2022	System	false	false	external	both	system
+k11-crlf-astral	accept	crlf_astral.ts	crlf	ES2022	ES2022	false	false	external	both	node

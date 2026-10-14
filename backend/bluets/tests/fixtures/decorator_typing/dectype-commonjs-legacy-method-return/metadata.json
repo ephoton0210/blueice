@@ -1,0 +1,21 @@
+{
+  "id": "dectype-commonjs-legacy-method-return",
+  "form": "legacy-method-return",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "CommonJS",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "rootDir": ".",
+    "outDir": "out",
+    "experimentalDecorators": true
+  }
+}

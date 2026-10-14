@@ -13,11 +13,12 @@
 
 use blueice_bluejs as bluejs;
 use blueice_bluets::{
-    compile, lex, source_locations_for_spans, BlueTsDebugInfo, CompilerOptions,
-    DebugSourceLocation, Declaration, Diagnostic, FunctionBodyItem, FunctionDeclaration,
-    FunctionElseBranch, FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, Module,
-    ModuleLoader, Project, SourceId, SourceSpan, SymbolId, SymbolKind, Token, TokenKind, TypeId,
-    VariableDeclaration, VariableKind, LANGUAGE_VERSION,
+    compile, lex, source_locations_for_spans, BlueTsDebugInfo, ClassConstructor, ClassDeclaration,
+    CompilerOptions, DebugSourceLocation, Declaration, Diagnostic, FunctionBodyItem,
+    FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, FunctionTryStatement,
+    FunctionWhileStatement, Module, ModuleLoader, Parameter, Project, SourceId, SourceSpan,
+    SymbolId, SymbolKind, Token, TokenKind, TypeId, VariableDeclaration, VariableKind,
+    LANGUAGE_VERSION,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -577,9 +578,13 @@ pub fn compile_direct_script(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectScript, BridgeError> {
+    refuse_commonjs(entry, &options)?;
+    let define_class_fields = options.defines_class_fields();
+    let jsx_options = options.clone();
     let (module, debug_info) = checked_entry(entry, loader, options)?;
 
-    let (body, provenance) = lower_script(&module)?;
+    let _jsx = JsxScope::enter(JsxContext::of(&jsx_options, &module));
+    let (body, provenance) = lower_script(&module, define_class_fields)?;
     let program = bluejs::BlueJsProgramV1::Script(bluejs::Program { body });
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
     let sources = bridge_sources(&debug_info);
@@ -607,8 +612,12 @@ pub fn compile_direct_module(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectModule, BridgeError> {
+    refuse_commonjs(entry, &options)?;
+    let define_class_fields = options.defines_class_fields();
+    let jsx_options = options.clone();
     let (module, debug_info) = checked_entry(entry, loader, options)?;
-    let (module, provenance) = lower_module(None, &module)?;
+    let _jsx = JsxScope::enter(JsxContext::of(&jsx_options, &module));
+    let (module, provenance) = lower_module(None, &module, define_class_fields)?;
     let program = bluejs::BlueJsProgramV1::Module(module);
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
     let sources = bridge_sources(&debug_info);
@@ -636,6 +645,9 @@ pub fn compile_direct_module_graph(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectModuleGraph, BridgeError> {
+    refuse_commonjs(entry, &options)?;
+    let define_class_fields = options.defines_class_fields();
+    let jsx_options = options.clone();
     let compilation = compile(entry, loader, options);
     if compilation.has_errors() {
         return Err(BridgeError::BlueTs(compilation.diagnostics));
@@ -651,7 +663,9 @@ pub fn compile_direct_module_graph(
             .modules
             .get(&id)
             .expect("runtime-reachable module was selected from the project");
-        let (module, provenance) = lower_module(Some(&compilation.project), module)?;
+        let _jsx = JsxScope::enter(JsxContext::of(&jsx_options, module));
+        let (module, provenance) =
+            lower_module(Some(&compilation.project), module, define_class_fields)?;
         let program = bluejs::BlueJsProgramV1::Module(module);
         let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
         let sources = debug_info
@@ -709,6 +723,12 @@ fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>
                 "the requested module-graph entry was not retained in the checked source graph",
             )
         })?;
+        if module.id.ends_with(".json") {
+            return Err(unsupported(
+                SourceSpan::new(&module.id, 0, 0),
+                "JSON data cannot be a direct executable module-graph entry",
+            ));
+        }
         if module.id.ends_with(".d.ts") {
             return Err(unsupported(
                 SourceSpan::new(&module.id, 0, 0),
@@ -716,26 +736,80 @@ fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>
             ));
         }
         for declaration in &module.declarations {
-            let Declaration::Import(import) = declaration else {
-                continue;
+            let (specifier, span) = match declaration {
+                Declaration::Import(import) if !import.is_type_only() => {
+                    (&import.specifier, &import.specifier_span)
+                }
+                Declaration::ValueExport(export)
+                    if export.specifier.is_some() && !export.is_type_only() =>
+                {
+                    (
+                        export.specifier.as_ref().unwrap(),
+                        export.specifier_span.as_ref().unwrap(),
+                    )
+                }
+                _ => continue,
             };
-            if import.type_only {
-                continue;
-            }
             let target = project
-                .resolved_module(&module.id, &import.specifier)
+                .resolved_module(&module.id, specifier)
                 .ok_or_else(|| {
                     unsupported(
-                        import.specifier_span.clone(),
+                        span.clone(),
                         "BlueTS did not retain a canonical target for this runtime import",
                     )
                 })?;
+            if blueice_bluets::is_external_library_module(target) {
+                return Err(unsupported(
+                    span.clone(),
+                    "the direct bridge links no installed packages: a runtime import of a package \
+                     needs the host-provided module loader of the `bluetsc build` route",
+                ));
+            }
+            if target.ends_with(".json") {
+                return Err(unsupported(
+                    span.clone(),
+                    "the direct bridge has no JSON data module runtime profile",
+                ));
+            }
             if !target.ends_with(".d.ts") {
                 pending.push(target.to_string());
             }
         }
     }
     Ok(modules)
+}
+
+/// Direct execution builds BlueJS ECMAScript module/script ASTs; it has no
+/// `require`/`exports`/`module` loader, and a CommonJS text rewrite of ES syntax
+/// is exactly what the direct path exists to avoid. CommonJS projects therefore
+/// run as `bluetsc build --module commonjs` output in a realm that provides a
+/// CommonJS loader, which the host owns and authorizes; a page gets none from
+/// CommonJS syntax alone.
+fn refuse_commonjs(entry: &str, options: &CompilerOptions) -> Result<(), BridgeError> {
+    if matches!(
+        options.module_kind,
+        blueice_bluets::ModuleKind::Amd
+            | blueice_bluets::ModuleKind::Umd
+            | blueice_bluets::ModuleKind::System
+            | blueice_bluets::ModuleKind::Node16
+            | blueice_bluets::ModuleKind::NodeNext
+    ) {
+        return Err(unsupported(
+            SourceSpan::new(entry, 0, 0),
+            format!(
+                "the direct bridge executes ECMAScript modules only; a {} project requires emitted output and a host-provided {} loader",
+                options.module_kind.as_str(), options.module_kind.as_str()
+            ),
+        ));
+    }
+    if options.module_kind != blueice_bluets::ModuleKind::Esm {
+        return Err(unsupported(
+            SourceSpan::new(entry, 0, 0),
+            "the direct bridge executes ECMAScript modules only; a CommonJS project is run as \
+             `--module commonjs` emitted output in a realm with a host-provided CommonJS loader",
+        ));
+    }
+    Ok(())
 }
 
 fn checked_entry(
@@ -872,13 +946,14 @@ impl DirectModuleGraph {
 
 mod attachment;
 mod expression;
+mod jsx_direct;
 mod lowering;
 use attachment::{
     attach_direct_program, attach_existing_direct_program, build_safe_point_map, source_identity,
     DirectArtifactProgram,
 };
-#[cfg(test)]
 use expression::ExpressionLowerer;
+use jsx_direct::{JsxContext, JsxScope};
 use lowering::{lower_module, lower_script};
 
 #[cfg(test)]

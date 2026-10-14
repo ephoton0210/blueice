@@ -207,6 +207,10 @@ struct Args {
     debugger_static_metadata_symbol_contract: bool,
     /// Independent compiler-only paused lexical-slot relation grant.
     debugger_static_scope_relation: bool,
+    /// Independent owner grant for exact generated-token breakpoint binding.
+    debugger_generated_breakpoint: bool,
+    /// Independent owner grant for exact paused generated/original positions.
+    debugger_generated_paused_location: bool,
     /// Optional listener for queries over projects a trusted core owner
     /// registered during startup. Its protocol does not accept registration,
     /// source, path, resolver, compiler-option, build, or write requests.
@@ -243,6 +247,24 @@ struct Args {
     /// script profile. It accepts only a fixed profile identifier; it never
     /// accepts a URL, manifest, resolver, path, source, or fetch setting.
     out_of_process_bluejs_page_script_profile: Option<String>,
+    /// Trusted owner-only selection of the exact BlueTSC-emitted classic
+    /// artifact route. Default BlueTS execution remains direct.
+    out_of_process_bluejs_emitted_blue_ts_classic: bool,
+    /// Owner-only type ambient for a page-supplied emitted-classic console.
+    out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient: bool,
+    /// Owner-only ES5 target for emitted classic BlueTS.
+    out_of_process_bluejs_emitted_blue_ts_classic_es5: bool,
+    /// Owner-only System wrapper emit for classic BlueTS.
+    out_of_process_bluejs_emitted_blue_ts_classic_system: bool,
+    /// Owner-only legacy decorator profile without metadata.
+    out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators: bool,
+    /// Owner-only legacy decorator/metadata profile for emitted classic.
+    out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata: bool,
+    /// Separate trusted owner-only selection of the emitted ESM graph route.
+    /// Module scripts remain direct when this is absent.
+    out_of_process_bluejs_emitted_blue_ts_module: bool,
+    /// Type-only console for emitted ESM, selected solely at owner startup.
+    out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient: bool,
 }
 
 #[cfg(unix)]
@@ -437,7 +459,10 @@ fn main() -> ExitCode {
     // The owner choice is carried to this core generation's debugger
     // listener and intersected with each client's current-version Hello request.
     let debugger_bounded_values = args.debugger_bounded_values;
-    let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_inventory {
+    let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_inventory
+        || args.debugger_generated_breakpoint
+        || args.debugger_generated_paused_location
+    {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_selected(
             blueice_ipc::debugger::DebuggerMetadataCapabilitySelection {
                 summary: args.debugger_static_metadata_summary,
@@ -459,6 +484,8 @@ fn main() -> ExitCode {
                 symbol_type: args.debugger_static_metadata_symbol_type,
                 symbol_contract: args.debugger_static_metadata_symbol_contract,
                 static_scope_relation: args.debugger_static_scope_relation,
+                generated_breakpoint: args.debugger_generated_breakpoint,
+                generated_paused_location: args.debugger_generated_paused_location,
             },
         )
     } else {
@@ -472,6 +499,22 @@ fn main() -> ExitCode {
     let out_of_process_bluejs_token = args.out_of_process_bluejs_token.clone();
     let out_of_process_bluejs_page_script_profile =
         args.out_of_process_bluejs_page_script_profile.clone();
+    let out_of_process_bluejs_emitted_blue_ts_classic =
+        args.out_of_process_bluejs_emitted_blue_ts_classic;
+    let out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient =
+        args.out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient;
+    let out_of_process_bluejs_emitted_blue_ts_classic_es5 =
+        args.out_of_process_bluejs_emitted_blue_ts_classic_es5;
+    let out_of_process_bluejs_emitted_blue_ts_classic_system =
+        args.out_of_process_bluejs_emitted_blue_ts_classic_system;
+    let out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators =
+        args.out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators;
+    let out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata =
+        args.out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata;
+    let out_of_process_bluejs_emitted_blue_ts_module =
+        args.out_of_process_bluejs_emitted_blue_ts_module;
+    let out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient =
+        args.out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient;
 
     // The optional compiler catalog is populated before *any* listener is
     // bound. After `seal`, only its session owner can dispatch opaque query
@@ -913,6 +956,30 @@ fn main() -> ExitCode {
             // source, bytecode, values, or generic interruption operation.
             if debugger_socket.is_some() {
                 javascript_executor.enable_debugger_execution_control();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_classic {
+                javascript_executor.enable_emitted_blue_ts_classic();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient {
+                javascript_executor.enable_emitted_blue_ts_classic_page_console_ambient();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata {
+                javascript_executor.enable_emitted_blue_ts_legacy_metadata();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators {
+                javascript_executor.enable_emitted_blue_ts_legacy_decorators();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_classic_es5 {
+                javascript_executor.enable_emitted_blue_ts_es5();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_classic_system {
+                javascript_executor.enable_emitted_blue_ts_system();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_module {
+                javascript_executor.enable_emitted_blue_ts_module();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient {
+                javascript_executor.enable_emitted_blue_ts_module_page_console_ambient();
             }
             session::run_session_with_script_and_debugger_requests_and_out_of_process_javascript_executor(
                 &mut tabs,

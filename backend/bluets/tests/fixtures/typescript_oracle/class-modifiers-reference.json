@@ -1,0 +1,1347 @@
+{
+  "version": "5.9.3",
+  "cases": [
+    {
+      "entry": "modifiers-abstract-accessor-body/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1318,
+        "message": "An abstract accessor cannot have an implementation.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 36,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-accessor-pair/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-concrete-member/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-constructor-keyword/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1242,
+        "message": "'abstract' modifier can only appear on a class, method, or property declaration.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 23,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-empty/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-field-complete/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-field-initializer/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1267,
+        "message": "Property 'value' cannot have an initializer because it is marked abstract.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 32,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-field-missing/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2515,
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member value from class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 55,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-field-optional/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2515,
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member value from class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 56,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-field-protected/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-field-readonly/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-field-wrong-type/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'value' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 76,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-getter-complete/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-getter-field/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-getter-missing/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2515,
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member value from class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 61,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-instance-structural/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-method-body/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1245,
+        "message": "Method 'read' cannot have an implementation because it is marked abstract.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 32,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-method-chain-complete/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-method-chain-missing/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2515,
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Middle'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 94,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-method-complete/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-method-missing/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2515,
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 56,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-method-nonabstract/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1244,
+        "message": "Abstract methods can only appear within an abstract class.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 14,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-method-optional/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2515,
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 57,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-method-partial/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2515,
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member second from class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 84,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-method-private/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1243,
+        "message": "'private' modifier cannot be used with 'abstract' modifier.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 31,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-method-protected/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-method-static/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1243,
+        "message": "'static' modifier cannot be used with 'abstract' modifier.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 30,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-method-wrong-parameter/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '(value: string) => number' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 90,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-method-wrong-return/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 77,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-new/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2511,
+        "message": "Cannot create an instance of an abstract class.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 24,
+          "length": 10
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-new-alias/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2511,
+        "message": "Cannot create an instance of an abstract class.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 44,
+          "length": 11
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-new-signature/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-new-signature-call/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2511,
+        "message": "Cannot create an instance of an abstract class.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 77,
+          "length": 10
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-new-signature-concrete/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-new-to-concrete/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2322,
+        "message": "Type 'typeof Base' is not assignable to type 'Ctor'.\n  Cannot assign an abstract constructor type to a non-abstract constructor type.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 58,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-new-typeof/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2511,
+        "message": "Cannot create an instance of an abstract class.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 72,
+          "length": 10
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-private-constructor/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2675,
+        "message": "Cannot extend a class 'Base'. Class constructor is marked as private.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 70,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-protected-constructor/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-abstract-redeclare-concrete/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2515,
+        "message": "Non-abstract class 'Child' does not implement inherited abstract member read from class 'Middle'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 115,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-abstract-super-call/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2513,
+        "message": "Abstract method 'read' in class 'Base' cannot be accessed via super expression.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 107,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-declarations-abstract-surface/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-abstract-member/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-abstract-not-exempt/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2420,
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'read' is missing in type 'Item' but required in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 51,
+          "length": 4
+        },
+        "related": [
+          {
+            "code": 2728,
+            "message": "'read' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 19,
+              "length": 14
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modifiers-implements-alias/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-empty/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-field/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-generic-interface/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-generic-mismatch/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'value' in type 'Item' is not assignable to the same property in base type 'Shape<string>'.\n  Type 'number' is not assignable to type 'string'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 71,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-implements-inherited/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-method/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-missing-field/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2420,
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is missing in type 'Item' but required in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 4
+        },
+        "related": [
+          {
+            "code": 2728,
+            "message": "'value' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 19,
+              "length": 5
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modifiers-implements-missing-method/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2420,
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'read' is missing in type 'Item' but required in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 42,
+          "length": 4
+        },
+        "related": [
+          {
+            "code": 2728,
+            "message": "'read' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 19,
+              "length": 14
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modifiers-implements-multiple/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-multiple-missing/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2420,
+        "message": "Class 'Item' incorrectly implements interface 'Second'.\n  Property 'read' is missing in type 'Item' but required in type 'Second'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 77,
+          "length": 4
+        },
+        "related": [
+          {
+            "code": 2728,
+            "message": "'read' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 54,
+              "length": 14
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modifiers-implements-optional/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-primitive/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2864,
+        "message": "A class cannot implement a primitive type like 'number'. It can only implement other named object types.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 23,
+          "length": 6
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-implements-private/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2420,
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is private in type 'Item' but not in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-implements-protected/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2420,
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is protected in type 'Item' but public in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-implements-readonly/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-implements-static-only/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2420,
+        "message": "Class 'Item' incorrectly implements interface 'Shape'.\n  Property 'value' is missing in type 'Item' but required in type 'Shape'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 41,
+          "length": 4
+        },
+        "related": [
+          {
+            "code": 2728,
+            "message": "'value' is declared here.",
+            "module": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 19,
+              "length": 5
+            },
+            "related": []
+          }
+        ]
+      }
+    },
+    {
+      "entry": "modifiers-implements-union/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2422,
+        "message": "A class can only implement an object type or intersection of object types with statically known members.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 75,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-implements-unknown/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2304,
+        "message": "Cannot find name 'Missing'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 23,
+          "length": 7
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-implements-wrong-field/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'value' in type 'Item' is not assignable to the same property in base type 'Shape'.\n  Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 65,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-implements-wrong-method-return/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'read' in type 'Item' is not assignable to the same property in base type 'Shape'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 66,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-imported-abstract-base/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-imported-implements/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-noimplicit-abstract-implementation/main.ts",
+      "accepts": true,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-noimplicit-default-off/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-noimplicit-field-required/main.ts",
+      "accepts": false,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 4114,
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 62,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-noimplicit-getter-required/main.ts",
+      "accepts": false,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 4114,
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 81,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-noimplicit-method-present/main.ts",
+      "accepts": true,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-noimplicit-method-required/main.ts",
+      "accepts": false,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 4114,
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 72,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-noimplicit-new-member/main.ts",
+      "accepts": true,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-noimplicit-parameter-property/main.ts",
+      "accepts": false,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 4115,
+        "message": "This parameter property must have an 'override' modifier because it overrides a member in base class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 74,
+          "length": 20
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-noimplicit-parameter-property-present/main.ts",
+      "accepts": true,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-noimplicit-reabstract-required/main.ts",
+      "accepts": false,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 4114,
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 90,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-noimplicit-static-required/main.ts",
+      "accepts": false,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 4114,
+        "message": "This member must have an 'override' modifier because it overrides a member in the base class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 86,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-override-abstract/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-override-chain/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-override-constructor/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1089,
+        "message": "'override' modifier cannot appear on a constructor declaration.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 42,
+          "length": 8
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-override-field/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-override-getter/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-override-method/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-override-missing/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 4113,
+        "message": "This member cannot have an 'override' modifier because it is not declared in the base class 'Base'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 51,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-override-modifier-order/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 1029,
+        "message": "'protected' modifier must precede 'override' modifier.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 81,
+          "length": 9
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-override-no-base/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 4112,
+        "message": "This member cannot have an 'override' modifier because its containing class 'Child' does not extend another class.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 24,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-override-private-base/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2415,
+        "message": "Class 'Child' incorrectly extends base class 'Base'.\n  Property 'read' is private in type 'Base' but not in type 'Child'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 59,
+          "length": 5
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-override-reabstract/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-override-static/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": null
+    },
+    {
+      "entry": "modifiers-override-wrong-type/main.ts",
+      "accepts": false,
+      "flags": [],
+      "runtime": false,
+      "declaration": false,
+      "first": {
+        "code": 2416,
+        "message": "Property 'read' in type 'Child' is not assignable to the same property in base type 'Base'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+        "module": "main.ts",
+        "position": {
+          "line": 5,
+          "column": 81,
+          "length": 4
+        },
+        "related": []
+      }
+    },
+    {
+      "entry": "modifiers-runtime-abstract/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modifiers-runtime-accessors/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modifiers-runtime-constructor/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modifiers-runtime-implements/main.ts",
+      "accepts": true,
+      "flags": [],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    },
+    {
+      "entry": "modifiers-runtime-noimplicit/main.ts",
+      "accepts": true,
+      "flags": [
+        "--noImplicitOverride"
+      ],
+      "runtime": true,
+      "declaration": true,
+      "first": null
+    }
+  ]
+}

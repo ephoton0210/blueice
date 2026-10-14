@@ -2,34 +2,66 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+pub(super) mod classes;
+mod computed_fields;
+mod module_exports;
+mod namespaces;
+mod patterns;
+
+use classes::*;
+use namespaces::*;
+
 use super::expression::ExpressionLowerer;
 use super::*;
+use blueice_bluets::{
+    evaluate_enums, evaluate_enums_in, has_runtime_values, rewrite_declaration, BodyInput,
+    NamespaceExports,
+};
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn lower_script(
     module: &Module,
+    define_class_fields: bool,
 ) -> Result<(Vec<bluejs::Stmt>, Vec<LoweringProvenance>), BridgeError> {
     let mut body = Vec::new();
     let mut provenance = Vec::new();
-    for declaration in &module.declarations {
+    let mut evaluations = evaluate_enums(module).into_iter();
+    let tokens = lex_module(module)?;
+    let namespaces = NamespaceLowering {
+        module,
+        tokens: &tokens,
+        exports: NamespaceExports::of(module),
+        define_class_fields,
+    };
+    // The names a namespace may merge into, declared so far at run time.
+    let mut declared: BTreeSet<String> = BTreeSet::new();
+    for original in &module.declarations {
+        let declaration =
+            &rewrite_declaration(original, &BTreeMap::new()).map_err(from_diagnostic)?;
         match declaration {
-            Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
+            Declaration::Ambient(_)
+            | Declaration::TypeAlias(_)
+            | Declaration::Interface(_)
+            | Declaration::TypeExport(_)
+            | Declaration::UmdExport(_) => {}
             Declaration::Variable(variable) if !variable.declared && !variable.exported => {
                 body.push(lower_variable(module, variable)?);
                 provenance.push((variable.span.clone(), LoweringProvenanceKind::LoweredSyntax));
             }
             Declaration::Raw(raw) => {
                 body.push(bluejs::Stmt::Expr(
-                    ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
+                    ExpressionLowerer::for_module(module, &raw.tokens).parse()?,
                 ));
                 provenance.push((raw.span.clone(), LoweringProvenanceKind::Copied));
             }
-            Declaration::Import(import) if import.type_only => {}
+            Declaration::Import(import) if import.is_type_only() => {}
             Declaration::DefaultExport(export) => {
                 return Err(unsupported(
                     export.span.clone(),
                     "ESM default exports require the module bridge",
                 ));
             }
+            Declaration::ValueExport(export) if export.is_type_only() => {}
             Declaration::ValueExport(export) => {
                 return Err(unsupported(
                     export.span.clone(),
@@ -55,6 +87,7 @@ pub(super) fn lower_script(
                     && !function.overload =>
             {
                 body.push(lower_function(module, function)?);
+                declared.insert(function.name.clone());
                 provenance.push((function.span.clone(), LoweringProvenanceKind::LoweredSyntax));
             }
             Declaration::Function(function) => {
@@ -63,31 +96,90 @@ pub(super) fn lower_script(
                     "declared, overloaded, or exported functions require a non-script bridge mode",
                 ));
             }
+            Declaration::Class(class) if !class.exported => {
+                declared.insert(class.name.clone());
+                body.push(lower_class(module, class, define_class_fields)?);
+                provenance.push((class.span.clone(), LoweringProvenanceKind::LoweredSyntax));
+            }
             Declaration::Class(class) => {
                 return Err(unsupported(
                     class.span.clone(),
-                    "class members and runtime semantics are not installed yet",
+                    "an exported class requires the module bridge",
                 ));
+            }
+            Declaration::Namespace(namespace) if namespace.exported => {
+                return Err(unsupported(
+                    namespace.span.clone(),
+                    "an exported namespace requires the module bridge",
+                ));
+            }
+            Declaration::Namespace(namespace) => {
+                for statement in namespaces.namespace(
+                    namespace,
+                    &NamespaceScope::Module,
+                    &mut declared,
+                    "",
+                    &BTreeMap::new(),
+                )? {
+                    body.push(statement);
+                    provenance.push((
+                        namespace.span.clone(),
+                        LoweringProvenanceKind::LoweredSyntax,
+                    ));
+                }
+            }
+            Declaration::Enum(declaration) => {
+                if declaration.exported {
+                    return Err(unsupported(
+                        declaration.span.clone(),
+                        "an exported enum requires the module bridge",
+                    ));
+                }
+                if let Some(statement) = lower_enum(module, declaration, &mut evaluations)? {
+                    declared.insert(declaration.name.clone());
+                    body.push(statement);
+                    provenance.push((
+                        declaration.span.clone(),
+                        LoweringProvenanceKind::LoweredSyntax,
+                    ));
+                }
             }
         }
     }
+    computed_fields::root(module, &mut body, &mut provenance);
     Ok((body, finalize_provenance(module, provenance)?))
 }
 
 pub(super) fn lower_module(
     project: Option<&Project>,
     module: &Module,
+    define_class_fields: bool,
 ) -> Result<(bluejs::Module, Vec<LoweringProvenance>), BridgeError> {
     let mut body = Vec::new();
     let mut imports = Vec::new();
     let mut exports = Vec::new();
     let mut requests = Vec::new();
     let mut provenance = Vec::new();
-    for declaration in &module.declarations {
+    let mut evaluations = evaluate_enums(module).into_iter();
+    let tokens = lex_module(module)?;
+    let namespaces = NamespaceLowering {
+        module,
+        tokens: &tokens,
+        exports: NamespaceExports::of(module),
+        define_class_fields,
+    };
+    let mut declared: BTreeSet<String> = BTreeSet::new();
+    for original in &module.declarations {
+        let declaration =
+            &rewrite_declaration(original, &BTreeMap::new()).map_err(from_diagnostic)?;
         match declaration {
-            Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
+            Declaration::Ambient(_)
+            | Declaration::TypeAlias(_)
+            | Declaration::Interface(_)
+            | Declaration::TypeExport(_)
+            | Declaration::UmdExport(_) => {}
             Declaration::Variable(variable) if !variable.declared => {
-                body.push(lower_variable(module, variable)?);
+                body.push(module_exports::variable(module, variable)?);
                 provenance.push((variable.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if variable.exported {
                     exports.push(bluejs::ExportEntry::Local {
@@ -97,12 +189,21 @@ pub(super) fn lower_module(
                 }
             }
             Declaration::Function(function) if !function.declared && !function.overload => {
-                body.push(lower_function(module, function)?);
+                if function.default_export && function.anonymous {
+                    body.push(module_exports::anonymous_function(module, function)?);
+                } else {
+                    body.push(lower_function(module, function)?);
+                }
+                declared.insert(function.name.clone());
                 provenance.push((function.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if function.default_export {
                     exports.push(bluejs::ExportEntry::Local {
                         export_name: "default".to_string(),
-                        local_name: function.name.clone(),
+                        local_name: if function.anonymous {
+                            module_exports::DEFAULT_BINDING.to_string()
+                        } else {
+                            function.name.clone()
+                        },
                     });
                 } else if function.exported {
                     exports.push(bluejs::ExportEntry::Local {
@@ -113,26 +214,80 @@ pub(super) fn lower_module(
             }
             Declaration::Raw(raw) => {
                 body.push(bluejs::Stmt::Expr(
-                    ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
+                    ExpressionLowerer::for_module(module, &raw.tokens).parse()?,
                 ));
                 provenance.push((raw.span.clone(), LoweringProvenanceKind::Copied));
             }
-            Declaration::DefaultExport(export) => exports.push(bluejs::ExportEntry::Local {
-                export_name: "default".to_string(),
-                local_name: export.name.clone(),
-            }),
+            Declaration::DefaultExport(export) => {
+                let local_name = module_exports::DEFAULT_BINDING.to_string();
+                if !export.expression {
+                    body.push(bluejs::Stmt::VarDecl(
+                        bluejs::DeclKind::Const,
+                        vec![bluejs::VarDeclarator {
+                            pattern: bluejs::Pattern::Identifier(local_name.clone()),
+                            init: Some(bluejs::Expr::Identifier(export.name.clone())),
+                        }],
+                    ));
+                }
+                exports.push(bluejs::ExportEntry::Local {
+                    export_name: "default".to_string(),
+                    local_name,
+                });
+            }
+            Declaration::ValueExport(export) if export.is_type_only() => {}
             Declaration::ValueExport(export) => {
+                if let Some(specifier) = &export.specifier {
+                    let request = project
+                        .and_then(|project| project.resolved_module(&module.id, specifier))
+                        .ok_or_else(|| {
+                            unsupported(
+                                export.span.clone(),
+                                "re-exports require a retained module-graph edge",
+                            )
+                        })?
+                        .to_string();
+                    if !requests.contains(&request) {
+                        requests.push(request.clone());
+                    }
+                    if let Some(name) = &export.namespace {
+                        exports.push(bluejs::ExportEntry::Namespace {
+                            export_name: name.clone(),
+                            module_request: request,
+                            module_type: bluejs::ModuleType::JavaScript,
+                        });
+                    } else if export.star {
+                        exports.push(bluejs::ExportEntry::Star {
+                            module_request: request,
+                            module_type: bluejs::ModuleType::JavaScript,
+                        });
+                    } else {
+                        exports.extend(
+                            export
+                                .bindings
+                                .iter()
+                                .filter(|binding| !binding.type_only)
+                                .map(|binding| bluejs::ExportEntry::Indirect {
+                                    export_name: binding.exported.clone(),
+                                    module_request: request.clone(),
+                                    import_name: binding.local.clone(),
+                                    module_type: bluejs::ModuleType::JavaScript,
+                                }),
+                        );
+                    }
+                    continue;
+                }
                 exports.extend(
                     export
                         .bindings
                         .iter()
+                        .filter(|binding| !binding.type_only)
                         .map(|binding| bluejs::ExportEntry::Local {
                             export_name: binding.exported.clone(),
                             local_name: binding.local.clone(),
                         }),
                 );
             }
-            Declaration::Import(import) if import.type_only => {}
+            Declaration::Import(import) if import.is_type_only() => {}
             Declaration::Import(import) => {
                 let Some(project) = project else {
                     return Err(unsupported(
@@ -160,16 +315,22 @@ pub(super) fn lower_module(
                         module_type: bluejs::ModuleType::JavaScript,
                     });
                 } else {
-                    imports.extend(import.bindings.iter().map(|binding| bluejs::ImportEntry {
-                        module_request: request.clone(),
-                        import_name: if binding.imported == "*" {
-                            bluejs::ImportName::Namespace
-                        } else {
-                            bluejs::ImportName::Named(binding.imported.clone())
-                        },
-                        local_name: Some(binding.local.clone()),
-                        module_type: bluejs::ModuleType::JavaScript,
-                    }));
+                    imports.extend(
+                        import
+                            .bindings
+                            .iter()
+                            .filter(|binding| !binding.type_only)
+                            .map(|binding| bluejs::ImportEntry {
+                                module_request: request.clone(),
+                                import_name: if binding.imported == "*" {
+                                    bluejs::ImportName::Namespace
+                                } else {
+                                    bluejs::ImportName::Named(binding.imported.clone())
+                                },
+                                local_name: Some(binding.local.clone()),
+                                module_type: bluejs::ModuleType::JavaScript,
+                            }),
+                    );
                 }
             }
             Declaration::Variable(variable) => {
@@ -185,13 +346,80 @@ pub(super) fn lower_module(
                 ));
             }
             Declaration::Class(class) => {
-                return Err(unsupported(
-                    class.span.clone(),
-                    "class members and runtime semantics are not installed yet",
-                ));
+                declared.insert(class.name.clone());
+                if class.default_export && class.anonymous {
+                    body.push(module_exports::anonymous_class(
+                        module,
+                        class,
+                        define_class_fields,
+                    )?);
+                } else {
+                    body.push(lower_class(module, class, define_class_fields)?);
+                }
+                provenance.push((class.span.clone(), LoweringProvenanceKind::LoweredSyntax));
+                if class.exported {
+                    exports.push(bluejs::ExportEntry::Local {
+                        export_name: class.export_name().to_string(),
+                        local_name: if class.default_export && class.anonymous {
+                            module_exports::DEFAULT_BINDING.to_string()
+                        } else {
+                            class.name.clone()
+                        },
+                    });
+                }
+            }
+            Declaration::Namespace(namespace) => {
+                let statements = namespaces.namespace(
+                    namespace,
+                    &NamespaceScope::Module,
+                    &mut declared,
+                    "",
+                    &BTreeMap::new(),
+                )?;
+                if !statements.is_empty()
+                    && namespace.exported
+                    && !exports.iter().any(|entry| {
+                        matches!(entry, bluejs::ExportEntry::Local { export_name, .. }
+                            if *export_name == namespace.name)
+                    })
+                {
+                    exports.push(bluejs::ExportEntry::Local {
+                        export_name: namespace.name.clone(),
+                        local_name: namespace.name.clone(),
+                    });
+                }
+                for statement in statements {
+                    body.push(statement);
+                    provenance.push((
+                        namespace.span.clone(),
+                        LoweringProvenanceKind::LoweredSyntax,
+                    ));
+                }
+            }
+            Declaration::Enum(declaration) => {
+                if let Some(statement) = lower_enum(module, declaration, &mut evaluations)? {
+                    declared.insert(declaration.name.clone());
+                    body.push(statement);
+                    provenance.push((
+                        declaration.span.clone(),
+                        LoweringProvenanceKind::LoweredSyntax,
+                    ));
+                    if declaration.exported
+                        && !exports.iter().any(|entry| {
+                            matches!(entry, bluejs::ExportEntry::Local { export_name, .. }
+                                if *export_name == declaration.name)
+                        })
+                    {
+                        exports.push(bluejs::ExportEntry::Local {
+                            export_name: declaration.name.clone(),
+                            local_name: declaration.name.clone(),
+                        });
+                    }
+                }
             }
         }
     }
+    computed_fields::root(module, &mut body, &mut provenance);
     Ok((
         bluejs::Module {
             body,
@@ -240,9 +468,36 @@ fn lower_function(
     module: &Module,
     function: &FunctionDeclaration,
 ) -> Result<bluejs::Stmt, BridgeError> {
-    let mut params = Vec::with_capacity(function.parameters.len());
-    for (index, parameter) in function.parameters.iter().enumerate() {
-        if parameter.rest && index + 1 != function.parameters.len() {
+    Ok(bluejs::Stmt::FunctionDecl(lower_function_value(
+        module,
+        Some(function.name.clone()),
+        &function.parameters,
+        &function.body,
+        function.async_function,
+        function.generator,
+    )?))
+}
+
+fn lower_function_value(
+    module: &Module,
+    name: Option<String>,
+    parameters: &[Parameter],
+    body_items: &[FunctionBodyItem],
+    is_async: bool,
+    generator: bool,
+) -> Result<bluejs::Function, BridgeError> {
+    let mut params = Vec::with_capacity(parameters.len());
+    for (index, parameter) in parameters.iter().enumerate() {
+        if parameter.name == "this" {
+            continue;
+        }
+        if parameter.pattern.is_some() {
+            return Err(unsupported(
+                parameter.span.clone(),
+                "destructured parameters are not yet in the v1 direct bridge subset",
+            ));
+        }
+        if parameter.rest && index + 1 != parameters.len() {
             return Err(unsupported(
                 parameter.span.clone(),
                 "a rest parameter must be the final direct function parameter",
@@ -253,27 +508,27 @@ fn lower_function(
             default: parameter
                 .default
                 .as_deref()
-                .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
+                .map(|tokens| ExpressionLowerer::for_module(module, tokens).parse())
                 .transpose()?,
             rest: parameter.rest,
         });
     }
 
-    let body = lower_function_body(module, &function.body)?;
+    let body = lower_function_body(module, body_items)?;
 
-    Ok(bluejs::Stmt::FunctionDecl(bluejs::Function {
-        name: Some(function.name.clone()),
+    Ok(bluejs::Function {
+        name,
         params,
         body,
-        generator: false,
-        is_async: false,
+        generator,
+        is_async,
         // This function is synthesized from BlueTSC's own lowered AST, not
         // parsed from BlueJS-tokenized source text, so it has no
         // `[[SourceText]]`: `Function.prototype.toString` reports it as a
         // NativeFunction, matching how the compiler treats every other
         // synthesized function.
         source_text: Default::default(),
-    }))
+    })
 }
 
 fn lower_function_body(
@@ -283,17 +538,16 @@ fn lower_function_body(
     let mut body = Vec::with_capacity(items.len());
     for item in items {
         match item {
-            FunctionBodyItem::Function(function) => body.push(lower_function(module, function)?),
             FunctionBodyItem::Variable(variable) => body.push(lower_variable(module, variable)?),
             FunctionBodyItem::Expression { tokens, .. } => body.push(bluejs::Stmt::Expr(
-                ExpressionLowerer::new(&module.id, tokens).parse()?,
+                ExpressionLowerer::for_module(module, tokens).parse()?,
             )),
             FunctionBodyItem::Throw { tokens, .. } => body.push(bluejs::Stmt::Throw(
-                ExpressionLowerer::new(&module.id, tokens).parse()?,
+                ExpressionLowerer::for_module(module, tokens).parse()?,
             )),
             FunctionBodyItem::Return { tokens, .. } => {
                 let value = (!tokens.is_empty())
-                    .then(|| ExpressionLowerer::new(&module.id, tokens).parse())
+                    .then(|| ExpressionLowerer::for_module(module, tokens).parse())
                     .transpose()?;
                 body.push(bluejs::Stmt::Return(value));
             }
@@ -304,6 +558,12 @@ fn lower_function_body(
             FunctionBodyItem::Try(statement) => {
                 body.push(lower_function_try(module, statement)?);
             }
+            FunctionBodyItem::Function(function) => {
+                return Err(unsupported(
+                    function.span.clone(),
+                    "nested function declarations are not yet in the v1 direct bridge subset",
+                ));
+            }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
                     span.clone(),
@@ -312,6 +572,7 @@ fn lower_function_body(
             }
         }
     }
+    computed_fields::body(module, items, &mut body);
     Ok(body)
 }
 
@@ -319,7 +580,7 @@ fn lower_function_if(
     module: &Module,
     statement: &FunctionIfStatement,
 ) -> Result<bluejs::Stmt, BridgeError> {
-    let test = ExpressionLowerer::new(&module.id, &statement.test).parse()?;
+    let test = ExpressionLowerer::for_module(module, &statement.test).parse()?;
     let consequent = Box::new(bluejs::Stmt::Block(lower_function_body(
         module,
         &statement.consequent,
@@ -345,7 +606,7 @@ fn lower_function_while(
     statement: &FunctionWhileStatement,
 ) -> Result<bluejs::Stmt, BridgeError> {
     ensure_supported_while_body(&statement.body)?;
-    let test = ExpressionLowerer::new(&module.id, &statement.test).parse()?;
+    let test = ExpressionLowerer::for_module(module, &statement.test).parse()?;
     let body = bluejs::Stmt::Block(lower_function_body(module, &statement.body)?);
     Ok(bluejs::Stmt::While {
         test,
@@ -409,14 +670,19 @@ fn ensure_supported_try_body(items: &[FunctionBodyItem]) -> Result<(), BridgeErr
                 ));
             }
             FunctionBodyItem::If(statement) => ensure_supported_try_if(statement)?,
+            FunctionBodyItem::Function(function) => {
+                return Err(unsupported(
+                    function.span.clone(),
+                    "a nested function declaration is outside the direct try subset",
+                ));
+            }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
                     span.clone(),
                     "body syntax is outside the direct try subset",
                 ));
             }
-            FunctionBodyItem::Function(_)
-            | FunctionBodyItem::Expression { .. }
+            FunctionBodyItem::Expression { .. }
             | FunctionBodyItem::Throw { .. }
             | FunctionBodyItem::Return { .. } => {}
         }
@@ -457,14 +723,19 @@ fn ensure_supported_while_body(items: &[FunctionBodyItem]) -> Result<(), BridgeE
             FunctionBodyItem::If(statement) => {
                 ensure_supported_while_if(statement)?;
             }
+            FunctionBodyItem::Function(function) => {
+                return Err(unsupported(
+                    function.span.clone(),
+                    "a nested function declaration is outside the direct while subset",
+                ));
+            }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
                     span.clone(),
                     "loop body syntax is outside the direct while subset",
                 ));
             }
-            FunctionBodyItem::Function(_)
-            | FunctionBodyItem::Expression { .. }
+            FunctionBodyItem::Expression { .. }
             | FunctionBodyItem::Throw { .. }
             | FunctionBodyItem::Return { .. } => {}
         }
@@ -486,7 +757,7 @@ fn lower_variable(
     variable: &VariableDeclaration,
 ) -> Result<bluejs::Stmt, BridgeError> {
     let init = (!variable.initializer.is_empty())
-        .then(|| ExpressionLowerer::new(&module.id, &variable.initializer).parse())
+        .then(|| ExpressionLowerer::for_module(module, &variable.initializer).parse())
         .transpose()?;
     Ok(bluejs::Stmt::VarDecl(
         match variable.kind {
@@ -495,8 +766,19 @@ fn lower_variable(
             VariableKind::Var => bluejs::DeclKind::Var,
         },
         vec![bluejs::VarDeclarator {
-            pattern: bluejs::Pattern::Identifier(variable.name.clone()),
+            pattern: match &variable.pattern {
+                Some(pattern) => patterns::variable(module, pattern)?,
+                None => bluejs::Pattern::Identifier(variable.name.clone()),
+            },
             init,
         }],
     ))
+}
+
+fn lex_module(module: &Module) -> Result<Vec<Token>, BridgeError> {
+    blueice_bluets::lex(&module.id, &module.source).map_err(BridgeError::BlueTs)
+}
+
+fn from_diagnostic(diagnostic: blueice_bluets::Diagnostic) -> BridgeError {
+    unsupported(diagnostic.span, diagnostic.message)
 }

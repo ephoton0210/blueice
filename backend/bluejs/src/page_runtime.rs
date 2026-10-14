@@ -795,9 +795,65 @@ impl BlueJsPageRuntime {
         handle: BlueJsProgramHandle,
         safe_point: BlueJsSafePoint,
     ) -> Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError> {
+        self.execute_program_until_nested_debugger_pause_with_intermediate(
+            tab_id, handle, safe_point, None,
+        )
+    }
+
+    /// Starts a classic script whose selected child is called through one
+    /// separately installed, same-realm loader program. Both handles are
+    /// checked before executing the generated root. The ordinary classic
+    /// stack operation remains unavailable for this cross-program chain.
+    pub fn execute_program_until_foreign_intermediate_debugger_pause(
+        &mut self,
+        tab_id: u64,
+        handle: BlueJsProgramHandle,
+        loader: BlueJsProgramHandle,
+        safe_point: BlueJsSafePoint,
+    ) -> Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError> {
+        self.execute_program_until_nested_debugger_pause_with_intermediate(
+            tab_id,
+            handle,
+            safe_point,
+            Some(loader),
+        )
+    }
+
+    fn execute_program_until_nested_debugger_pause_with_intermediate(
+        &mut self,
+        tab_id: u64,
+        handle: BlueJsProgramHandle,
+        safe_point: BlueJsSafePoint,
+        foreign_loader: Option<BlueJsProgramHandle>,
+    ) -> Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError> {
         self.validate_safe_point(tab_id, handle, safe_point)?;
         if safe_point.code_unit.ordinal() == 0 {
             return Err(BlueJsPageRuntimeError::DebuggerNestedCodeUnitOnly);
+        }
+        if let Some(loader) = foreign_loader {
+            let realm = self
+                .realms
+                .get(&tab_id)
+                .expect("safe point validated the realm");
+            if !realm.programs.contains(&loader) {
+                return Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm {
+                    tab_id,
+                    handle: loader,
+                });
+            }
+            if loader == handle {
+                return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
+            }
+            let installed_loader = self
+                .registry
+                .get(loader)
+                .expect("owned loader is live in the registry");
+            if !matches!(
+                installed_loader.ast_nodes().first().map(|node| node.kind()),
+                Some(BlueJsAstNodeKind::Script)
+            ) {
+                return Err(BlueJsPageRuntimeError::DebuggerRootScriptOnly);
+            }
         }
         let compiled = self
             .registry
@@ -811,11 +867,22 @@ impl BlueJsPageRuntime {
         }
         let code = compiled.bytecode().clone();
         let realm = self.realms.get_mut(&tab_id).expect("validated live realm");
-        let state = realm.vm.execute_script_until_nested_debugger_pause(
-            &code,
-            safe_point.code_unit.ordinal(),
-            safe_point.bytecode_offset,
-        );
+        let state = if let Some(loader) = foreign_loader {
+            realm
+                .vm
+                .execute_script_until_foreign_intermediate_debugger_pause(
+                    &code,
+                    safe_point.code_unit.ordinal(),
+                    safe_point.bytecode_offset,
+                    loader.generation().as_u64(),
+                )
+        } else {
+            realm.vm.execute_script_until_nested_debugger_pause(
+                &code,
+                safe_point.code_unit.ordinal(),
+                safe_point.bytecode_offset,
+            )
+        };
         let state = state.map_err(BlueJsPageRuntimeError::Runtime)?;
         Ok(page_debugger_nested_execution_state(
             realm, tab_id, handle, state,
@@ -940,6 +1007,46 @@ impl BlueJsPageRuntime {
         Ok(snapshot)
     }
 
+    /// Reads the exact child, foreign loader closure and emitted root in
+    /// child-first order. A live same-realm loader handle must match the VM's
+    /// actual intermediate generation; no frame is relabeled.
+    pub fn debugger_foreign_intermediate_stack_snapshot(
+        &self,
+        tab_id: u64,
+        frame: BlueJsPageDebuggerFrame,
+        loader: BlueJsProgramHandle,
+        max_frames: u32,
+        max_scope_entries: u32,
+    ) -> Result<VmDebuggerStackSnapshot, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        if frame.tab_id != tab_id
+            || realm.debugger_nested_frame != Some(frame)
+            || !realm.programs.contains(&frame.program)
+            || !realm.programs.contains(&loader)
+            || frame.program == loader
+        {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
+        }
+        let snapshot = realm
+            .vm
+            .debugger_foreign_intermediate_stack_snapshot(
+                frame.invocation_serial,
+                loader.generation().as_u64(),
+                max_frames,
+                max_scope_entries,
+            )
+            .map_err(BlueJsPageRuntimeError::Runtime)?;
+        if snapshot.program_generation != frame.program.generation().as_u64()
+            || snapshot.frames[0].code_unit_ordinal != frame.code_unit_ordinal
+        {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
+        }
+        Ok(snapshot)
+    }
+
     /// Copies one active entry-root binding while its dependency child is
     /// paused. Both page-owned programs and the complete retained stack must
     /// still match the caller's snapshot before the native VM reads the slot.
@@ -964,8 +1071,9 @@ impl BlueJsPageRuntime {
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
-    /// Copies only the retained paused root, or the exact nested child and
-    /// its waiting root, in child-first order. The selected program must
+    /// Copies only the retained paused root, or the exact nested child,
+    /// optional intermediate classic caller and waiting root, in child-first
+    /// order. The selected program must
     /// still belong to this tab and match the VM's installed generation.
     pub fn debugger_stack_snapshot(
         &self,

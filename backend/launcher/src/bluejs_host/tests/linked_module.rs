@@ -5,6 +5,164 @@
 use super::*;
 
 #[test]
+fn emitted_linked_module_preparation_retains_both_exact_maps() {
+    let entry = "blueice://page/linked-entry.ts";
+    let dependency = "blueice://page/linked-dependency.ts";
+    let dependency_source =
+        "export function inner(): number { return 41 + (globalThis as any).offset; }";
+    let mut source_graph = graph(
+        entry,
+        vec![
+            PageHostSource::new(
+                entry,
+                "import { inner } from './linked-dependency.ts'; export const answer: number = inner() + 1;",
+            ),
+            PageHostSource::new(dependency, dependency_source),
+        ],
+    );
+    source_graph.resolutions.push(PageHostStaticResolution {
+        from_module: entry.to_string(),
+        specifier: "./linked-dependency.ts".to_string(),
+        canonical_target: dependency.to_string(),
+    });
+    let (generated_graph, programs, maps) =
+        prepare_bluets_emitted_module_graph(source_graph.clone(), PageDomProfile::Snapshot, false)
+            .unwrap();
+    assert_eq!(programs.len(), 2);
+    assert_eq!(maps.len(), 2);
+    assert_eq!(generated_graph.modules.len(), 2);
+    let bound = &maps[dependency];
+    let identifier_byte = bound.generated.source.find("globalThis").unwrap();
+    assert!(bound
+        .identifier_spans
+        .iter()
+        .any(|span| span.start_byte == identifier_byte && span.name == "globalThis"));
+    assert_eq!(
+        bound
+            .identifier_spans
+            .iter()
+            .filter(|span| span.name == "globalThis")
+            .count(),
+        1
+    );
+    assert!(bound
+        .map
+        .original_position_at(
+            &bound.generated.source,
+            0,
+            identifier_byte,
+            BoundEmittedMap::MAX_SEGMENTS,
+            BoundEmittedMap::MAX_RETAINED_BYTES,
+        )
+        .unwrap()
+        .is_some());
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(
+                1,
+                vec![PageHostScript {
+                    ordinal: 0,
+                    language: PageHostScriptLanguage::BlueTsEmitted,
+                    kind: PageHostScriptKind::Module,
+                    graph: source_graph,
+                }],
+            ),
+        }),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let document = &host.documents[&7];
+    let (dependency_program, bound) = document
+        .emitted_maps
+        .iter()
+        .find(|(_, map)| map.generated.canonical_module_id == dependency)
+        .unwrap();
+    let record = &document.debugger_programs[&dependency_program.program_handle];
+    let installed = host
+        .runtime
+        .program_registry()
+        .get(record.runtime_handle)
+        .unwrap();
+    let point = installed
+        .unique_identifier_safe_point(0, "globalThis")
+        .expect("nested identifier has BlueJS provenance");
+    assert_eq!(point.code_unit.ordinal(), 1);
+    assert_eq!(bound.identifier_spans.len(), 1);
+    let dependency_program = *dependency_program;
+    let entry_program = host.documents[&7]
+        .pending_debugger_executions
+        .front()
+        .unwrap()
+        .program
+        .unwrap();
+    let safe_point = PageHostDebuggerSafePoint {
+        program: dependency_program,
+        code_unit_ordinal: point.code_unit.ordinal(),
+        bytecode_offset: point.bytecode_offset,
+    };
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+            tab_id: 7,
+            document_generation: 1,
+            program: dependency_program,
+        }),
+        PageHostReply::Error { .. }
+    ));
+    assert_eq!(
+        host.handle_request(
+            PageHostRequest::ArmDebuggerLinkedNestedSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                entry_program,
+                safe_point,
+            }
+        ),
+        PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed {
+            tab_id: 7,
+            document_generation: 1,
+            entry_program,
+            safe_point,
+        }
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    let PageHostReply::DebuggerEmittedPausedRootLocation {
+        program,
+        safe_point: returned_point,
+        location: Some(location),
+        ..
+    } = host.handle_request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+        tab_id: 7,
+        document_generation: 1,
+        program: dependency_program,
+    })
+    else {
+        panic!("the linked dependency must project its exact paused token")
+    };
+    assert_eq!(program, dependency_program);
+    assert_eq!(returned_point, safe_point);
+    assert_eq!(location.generated_line, 0);
+    assert_eq!(location.generated_column_utf16, identifier_byte as u32);
+    assert_eq!(
+        location.original.unwrap().column_utf16,
+        dependency_source.find("globalThis").unwrap() as u32
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+            tab_id: 7,
+            document_generation: 1,
+            program: entry_program,
+        }),
+        PageHostReply::DebuggerEmittedPausedRootLocation { location: None, .. }
+    ));
+}
+
+#[test]
 fn linked_module_child_keeps_distinct_programs_and_resumes_its_entry() {
     let entry = "blueice://page/linked-entry.ts";
     let dependency = "blueice://page/linked-dependency.ts";
@@ -49,8 +207,8 @@ fn linked_module_child_keeps_distinct_programs_and_resumes_its_entry() {
     let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
         panic!("the linked module remains pending");
     };
-    let entry_handle = attachment.entry.handle;
-    let dependency_handle = attachment.modules[dependency].handle;
+    let entry_handle = attachment.entry_handle();
+    let dependency_handle = attachment.module_handle(dependency).unwrap();
     let dependency_program = host.documents[&7]
         .debugger_programs
         .iter()

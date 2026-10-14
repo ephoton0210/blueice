@@ -5,6 +5,265 @@
 use super::*;
 
 #[test]
+fn generated_paused_location_accepts_exact_nested_safe_points() {
+    let program = DebuggerProgram {
+        realm: realm(),
+        program_handle: 11,
+        program_generation: 12,
+    };
+    let location = DebuggerGeneratedPausedLocation {
+        program,
+        safe_point: DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 2,
+            bytecode_offset: 9,
+        },
+        location: Some(DebuggerGeneratedPausedSourceLocation {
+            generated_line: 5,
+            generated_column_utf16: 7,
+            original: Some(DebuggerGeneratedOriginalPosition {
+                source_index: 0,
+                line: 3,
+                column_utf16: 4,
+            }),
+        }),
+    };
+    assert!(location.is_well_formed());
+    assert_eq!(
+        serde_json::from_slice::<DebuggerGeneratedPausedLocation>(
+            &serde_json::to_vec(&location).unwrap()
+        )
+        .unwrap(),
+        location
+    );
+    assert!(!DebuggerGeneratedPausedLocation {
+        safe_point: DebuggerSafePoint {
+            program: DebuggerProgram {
+                program_generation: program.program_generation + 1,
+                ..program
+            },
+            ..location.safe_point
+        },
+        ..location
+    }
+    .is_well_formed());
+}
+
+#[test]
+fn generated_step_target_requires_exact_single_or_dual_program_identity() {
+    let program = DebuggerProgram {
+        realm: realm(),
+        program_handle: 11,
+        program_generation: 12,
+    };
+    let frame = DebuggerFrame {
+        program,
+        code_unit_ordinal: 2,
+        core_instance: [7; 16],
+        frame_handle: 19,
+    };
+    let loader = DebuggerProgram {
+        program_handle: 21,
+        program_generation: 22,
+        ..program
+    };
+    for target in [
+        DebuggerGeneratedStepTarget::Single {
+            program,
+            frame: None,
+        },
+        DebuggerGeneratedStepTarget::Single {
+            program,
+            frame: Some(frame),
+        },
+        DebuggerGeneratedStepTarget::System { frame, loader },
+    ] {
+        assert!(target.is_well_formed());
+        let request = DebuggerRequest::StepGeneratedInstruction { target };
+        assert_eq!(
+            serde_json::from_slice::<DebuggerRequest>(&serde_json::to_vec(&request).unwrap())
+                .unwrap(),
+            request
+        );
+    }
+    assert!(!DebuggerGeneratedStepTarget::Single {
+        program: loader,
+        frame: Some(frame),
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedStepTarget::System {
+        frame,
+        loader: program,
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedStepTarget::System {
+        frame,
+        loader: DebuggerProgram {
+            realm: DebuggerPageRealm {
+                realm_generation: program.realm.realm_generation + 1,
+                ..program.realm
+            },
+            ..loader
+        },
+    }
+    .is_well_formed());
+}
+
+#[test]
+fn system_generated_stack_requires_exact_emitted_loader_emitted_order() {
+    let emitted = DebuggerProgram {
+        realm: realm(),
+        program_handle: 11,
+        program_generation: 12,
+    };
+    let loader = DebuggerProgram {
+        program_handle: 21,
+        program_generation: 22,
+        ..emitted
+    };
+    let frame = DebuggerFrame {
+        program: emitted,
+        code_unit_ordinal: 2,
+        core_instance: [7; 16],
+        frame_handle: 1,
+    };
+    let points = [
+        DebuggerSafePoint {
+            program: emitted,
+            code_unit_ordinal: 2,
+            bytecode_offset: 9,
+        },
+        DebuggerSafePoint {
+            program: loader,
+            code_unit_ordinal: 1,
+            bytecode_offset: 5,
+        },
+        DebuggerSafePoint {
+            program: emitted,
+            code_unit_ordinal: 0,
+            bytecode_offset: 3,
+        },
+    ];
+    let result = DebuggerGeneratedSystemStackLocations {
+        frame,
+        loader,
+        safe_points: points,
+        locations: [
+            Some(DebuggerGeneratedPausedSourceLocation {
+                generated_line: 4,
+                generated_column_utf16: 8,
+                original: Some(DebuggerGeneratedOriginalPosition {
+                    source_index: 0,
+                    line: 2,
+                    column_utf16: 6,
+                }),
+            }),
+            None,
+            None,
+        ],
+    };
+    assert!(result.is_well_formed());
+    assert!(!DebuggerGeneratedSystemStackLocations {
+        safe_points: [points[1], points[0], points[2]],
+        ..result
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedSystemStackLocations {
+        locations: [None, result.locations[0], None],
+        ..result
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedSystemStackLocations {
+        loader: emitted,
+        ..result
+    }
+    .is_well_formed());
+    let request = DebuggerRequest::GetGeneratedSystemStackLocations { frame, loader };
+    assert_eq!(
+        serde_json::from_slice::<DebuggerRequest>(&serde_json::to_vec(&request).unwrap()).unwrap(),
+        request
+    );
+    let reply = DebuggerReply::GeneratedSystemStackLocations(Box::new(result));
+    assert_eq!(
+        serde_json::from_slice::<DebuggerReply>(&serde_json::to_vec(&reply).unwrap()).unwrap(),
+        reply
+    );
+}
+
+#[test]
+fn system_generated_breakpoint_requires_distinct_realm_bound_loader() {
+    let emitted = DebuggerProgram {
+        realm: realm(),
+        program_handle: 11,
+        program_generation: 12,
+    };
+    let loader = DebuggerProgram {
+        program_handle: 21,
+        program_generation: 22,
+        ..emitted
+    };
+    let target = DebuggerGeneratedSystemBreakpointTarget {
+        emitted: DebuggerGeneratedBreakpointTarget {
+            program: emitted,
+            generated_line: 3,
+            generated_column_utf16: 4,
+        },
+        loader,
+    };
+    assert!(target.is_well_formed());
+    assert!(!DebuggerGeneratedSystemBreakpointTarget {
+        loader: emitted,
+        ..target
+    }
+    .is_well_formed());
+    let point = DebuggerSafePoint {
+        program: emitted,
+        code_unit_ordinal: 1,
+        bytecode_offset: 9,
+    };
+    let binding = DebuggerGeneratedSystemBreakpoint {
+        target,
+        safe_point: Some(point),
+    };
+    assert!(binding.is_well_formed());
+    assert!(!DebuggerGeneratedSystemBreakpoint {
+        safe_point: Some(DebuggerSafePoint {
+            program: loader,
+            ..point
+        }),
+        ..binding
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedSystemBreakpoint {
+        safe_point: Some(DebuggerSafePoint {
+            code_unit_ordinal: 0,
+            ..point
+        }),
+        ..binding
+    }
+    .is_well_formed());
+    for request in [
+        DebuggerRequest::ResolveGeneratedSystemBreakpoint { target },
+        DebuggerRequest::ArmGeneratedSystemBreakpoint { target },
+    ] {
+        assert_eq!(
+            serde_json::from_slice::<DebuggerRequest>(&serde_json::to_vec(&request).unwrap())
+                .unwrap(),
+            request
+        );
+    }
+    for reply in [
+        DebuggerReply::GeneratedSystemBreakpoint(binding),
+        DebuggerReply::GeneratedSystemBreakpointArmed(binding),
+    ] {
+        assert_eq!(
+            serde_json::from_slice::<DebuggerReply>(&serde_json::to_vec(&reply).unwrap()).unwrap(),
+            reply
+        );
+    }
+}
+
+#[test]
 fn symbol_breakpoint_candidate_requires_executable_kind_and_contained_exact_span() {
     let program = DebuggerProgram {
         realm: realm(),
@@ -167,6 +426,41 @@ fn linked_stack_shapes_require_two_distinct_programs_and_source_attachments() {
         }),
     };
     assert!(stack.is_well_formed());
+    let generated = DebuggerGeneratedLinkedStackLocations {
+        stack,
+        locations: [
+            Some(DebuggerGeneratedPausedSourceLocation {
+                generated_line: 2,
+                generated_column_utf16: 4,
+                original: Some(DebuggerGeneratedOriginalPosition {
+                    source_index: 0,
+                    line: 1,
+                    column_utf16: 3,
+                }),
+            }),
+            None,
+        ],
+    };
+    assert!(generated.is_well_formed());
+    assert!(!DebuggerGeneratedLinkedStackLocations {
+        stack: DebuggerLinkedStackSnapshot {
+            frames: [stack.frames[1], stack.frames[0]],
+        },
+        ..generated
+    }
+    .is_well_formed());
+    let request = DebuggerRequest::GetGeneratedLinkedStackLocations {
+        expected_stack: stack,
+    };
+    assert_eq!(
+        serde_json::from_slice::<DebuggerRequest>(&serde_json::to_vec(&request).unwrap()).unwrap(),
+        request
+    );
+    let reply = DebuggerReply::GeneratedLinkedStackLocations(generated);
+    assert_eq!(
+        serde_json::from_slice::<DebuggerReply>(&serde_json::to_vec(&reply).unwrap()).unwrap(),
+        reply
+    );
     let arm = DebuggerLinkedArmTarget {
         entry: programs[1],
         dependency_safe_point: points[0],
@@ -444,8 +738,8 @@ fn public_static_scope_grant_and_wire_are_independent_of_values() {
             static_scope_relation: true,
             ..Default::default()
         });
-    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 43);
-    assert_eq!(DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION, 5);
+    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 49);
+    assert_eq!(DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION, 6);
     assert_eq!(
         manifest.capabilities,
         vec![

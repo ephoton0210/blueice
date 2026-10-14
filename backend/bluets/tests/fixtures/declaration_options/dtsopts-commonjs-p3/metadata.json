@@ -1,0 +1,14 @@
+{
+  "id": "dtsopts-commonjs-p3",
+  "form": "p3",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "outDir": "out",
+    "declarationMap": true
+  }
+}

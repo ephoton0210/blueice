@@ -32,11 +32,22 @@ impl ModuleChecker<'_> {
         receiver: &[Token],
         scope: &BTreeMap<String, Type>,
     ) -> Result<bool, ()> {
-        if self.infer_expression(receiver, scope) != Type::Unknown {
+        let inferred = self.infer_expression(receiver, scope);
+        if inferred != Type::Unknown && (self.explicit_checking || inferred != Type::StrictUnknown)
+        {
             return Ok(false);
         }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        for value in scope.values() {
+        for (name, value) in scope {
+            if self.library_values.contains(name)
+                && receiver.first().is_some_and(|token| {
+                    self.scopes
+                        .as_ref()
+                        .is_some_and(|scopes| scopes.unused_library_value(name, token.start))
+                })
+            {
+                continue;
+            }
             if deep_contains_readonly(value, &self.types, &mut budget, 0)? {
                 return Ok(true);
             }

@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "alwaysStrict": true,
+    "module": "esnext",
+    "moduleResolution": "classic",
+    "noImplicitThis": true,
+    "strict": true,
+    "strictBindCallApply": true,
+    "strictBuiltinIteratorReturn": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "useUnknownInCatchVariables": true
+  },
+  "files": [
+    "main.ts"
+  ]
+}

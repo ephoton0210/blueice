@@ -127,7 +127,7 @@ fn validate_profile(project: &Project, options: &CompilerOptions) -> Vec<Diagnos
         let mut selected_count = 0usize;
         for declaration in &module.declarations {
             match declaration {
-                Declaration::Import(import) if import.type_only => {}
+                Declaration::Import(import) if import.is_type_only() => {}
                 Declaration::TypeExport(_)
                 | Declaration::TypeAlias(_)
                 | Declaration::Interface(_) => {}
@@ -188,6 +188,7 @@ fn supported_function(function: &FunctionDeclaration) -> bool {
         || function.declared
         || function.overload
         || function.async_function
+        || function.generator
         || !function.type_parameters.is_empty()
         || function.parameters.is_empty()
         || function.parameters.len() > 16
@@ -197,7 +198,8 @@ fn supported_function(function: &FunctionDeclaration) -> bool {
     }
     let mut parameter_names = BTreeSet::new();
     for parameter in &function.parameters {
-        if parameter.rest
+        if parameter.name == "this"
+            || parameter.rest
             || parameter.optional
             || parameter.default.is_some()
             || parameter.annotation != Some(Type::String)
@@ -675,6 +677,34 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diagnostic| { diagnostic.message.contains("no owner-selected boundary") }));
+    }
+
+    #[test]
+    fn a_class_in_an_emitted_strict_module_is_refused() {
+        // The strict profile admits only the selected string functions; a class
+        // has no boundary, so the module is refused rather than emitted
+        // half-guarded.
+        let source =
+            "export function echo(value: string): string { return value; }\nclass Helper { m(): number { return 1; } }\n";
+        let loader = MapLoader::from([ModuleSource::new(MODULE, source)]);
+        let mut selected = boundary();
+        selected.span = SourceSpan::new(MODULE, 0, source.find('}').unwrap() + 1);
+        let refused = compile(
+            MODULE,
+            &loader,
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                strict_runtime_boundaries: vec![selected],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(refused.output.is_none());
+        assert!(refused.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::InvalidContract
+                && diagnostic
+                    .message
+                    .contains("unsupported runtime declaration or import")
+        }));
     }
 
     #[test]

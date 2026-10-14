@@ -1,0 +1,20 @@
+{
+  "id": "pkgextra-node16-suffix3",
+  "form": "suffix3",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "ESNext",
+  "options": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out"
+  }
+}

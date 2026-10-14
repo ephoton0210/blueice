@@ -114,6 +114,241 @@ fn bounded_values_owner_policy_requires_an_explicit_debugger_socket() {
 }
 
 #[test]
+fn generated_owner_policies_are_independent_and_require_a_debugger_socket() {
+    for flag in [
+        "--debugger-generated-breakpoint",
+        "--debugger-generated-paused-location",
+    ] {
+        assert_eq!(
+            args(&["--socket", "/tmp/core.sock", flag]),
+            Err(format!("{flag} requires --debugger-socket"))
+        );
+    }
+    let parsed = args(&[
+        "--socket",
+        "/tmp/core.sock",
+        "--debugger-socket",
+        "/tmp/debugger.sock",
+        "--debugger-generated-breakpoint",
+    ])
+    .unwrap();
+    assert!(parsed.debugger_generated_breakpoint);
+    assert!(!parsed.debugger_generated_paused_location);
+    assert!(!parsed.debugger_static_metadata_inventory);
+}
+
+#[test]
+fn emitted_bluets_classic_requires_a_private_child_and_is_owner_only() {
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-emitted-blue-ts-classic",
+        ]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic requires the private out-of-process BlueJS host".to_string())
+    );
+}
+
+#[test]
+fn classic_page_console_ambient_requires_private_child_and_refuses_system() {
+    let flag = "--out-of-process-bluejs-emitted-blue-ts-classic-page-console-ambient";
+    assert_eq!(
+        args(&["--socket", "/tmp/core.sock", flag]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic requires the private out-of-process BlueJS host".to_string())
+    );
+    let selected = args(&[
+        "--socket",
+        "/tmp/core.sock",
+        "--out-of-process-bluejs-socket",
+        "/tmp/child.sock",
+        "--out-of-process-bluejs-token",
+        "token",
+        flag,
+    ])
+    .unwrap();
+    assert!(selected.out_of_process_bluejs_emitted_blue_ts_classic);
+    assert!(selected.out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient);
+    assert!(!selected.out_of_process_bluejs_emitted_blue_ts_module);
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-socket",
+            "/tmp/child.sock",
+            "--out-of-process-bluejs-token",
+            "token",
+            flag,
+            "--out-of-process-bluejs-emitted-blue-ts-classic-system",
+        ]),
+        Err("System emission already owns its console ambient".to_string())
+    );
+}
+
+#[test]
+fn legacy_metadata_profile_requires_private_child_and_implies_emitted_classic() {
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata",
+        ]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata requires the private out-of-process BlueJS host".to_string())
+    );
+    let parsed = args(&[
+        "--socket",
+        "/tmp/core.sock",
+        "--out-of-process-bluejs-socket",
+        "/tmp/bluejs-host.sock",
+        "--out-of-process-bluejs-token",
+        "launcher-issued-capability",
+        "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata",
+    ])
+    .unwrap();
+    assert!(parsed.out_of_process_bluejs_emitted_blue_ts_classic);
+    assert!(parsed.out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata);
+    assert!(!parsed.out_of_process_bluejs_emitted_blue_ts_module);
+}
+
+#[test]
+fn legacy_decorators_without_metadata_require_private_child_and_reject_conflict() {
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators",
+        ]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators requires the private out-of-process BlueJS host".to_string())
+    );
+    let base = [
+        "--socket",
+        "/tmp/core.sock",
+        "--out-of-process-bluejs-socket",
+        "/tmp/bluejs-host.sock",
+        "--out-of-process-bluejs-token",
+        "launcher-issued-capability",
+        "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators",
+    ];
+    let parsed = args(&base).unwrap();
+    assert!(parsed.out_of_process_bluejs_emitted_blue_ts_classic);
+    assert!(parsed.out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators);
+    assert!(!parsed.out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata);
+    let mut conflict = base.to_vec();
+    conflict.push("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata");
+    assert_eq!(
+        args(&conflict),
+        Err("legacy decorator emission profiles are mutually exclusive".to_string())
+    );
+}
+
+#[test]
+fn es5_emission_requires_private_child_and_rejects_legacy_profile() {
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-es5",
+        ]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic-es5 requires the private out-of-process BlueJS host".to_string())
+    );
+    let base = [
+        "--socket",
+        "/tmp/core.sock",
+        "--out-of-process-bluejs-socket",
+        "/tmp/bluejs-host.sock",
+        "--out-of-process-bluejs-token",
+        "launcher-issued-capability",
+        "--out-of-process-bluejs-emitted-blue-ts-classic-es5",
+    ];
+    let parsed = args(&base).unwrap();
+    assert!(parsed.out_of_process_bluejs_emitted_blue_ts_classic);
+    assert!(parsed.out_of_process_bluejs_emitted_blue_ts_classic_es5);
+    assert!(!parsed.out_of_process_bluejs_emitted_blue_ts_module);
+    let mut conflict = base.to_vec();
+    conflict.push("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators");
+    assert_eq!(
+        args(&conflict),
+        Err("emitted classic compiler profiles are mutually exclusive".to_string())
+    );
+}
+
+#[test]
+fn system_wrapper_emission_requires_private_child_and_rejects_es5() {
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-emitted-blue-ts-classic-system",
+        ]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic-system requires the private out-of-process BlueJS host".to_string())
+    );
+    let base = [
+        "--socket",
+        "/tmp/core.sock",
+        "--out-of-process-bluejs-socket",
+        "/tmp/bluejs-host.sock",
+        "--out-of-process-bluejs-token",
+        "launcher-issued-capability",
+        "--out-of-process-bluejs-emitted-blue-ts-classic-system",
+    ];
+    let parsed = args(&base).unwrap();
+    assert!(parsed.out_of_process_bluejs_emitted_blue_ts_classic);
+    assert!(parsed.out_of_process_bluejs_emitted_blue_ts_classic_system);
+    assert!(!parsed.out_of_process_bluejs_emitted_blue_ts_module);
+    let mut conflict = base.to_vec();
+    conflict.push("--out-of-process-bluejs-emitted-blue-ts-classic-es5");
+    assert_eq!(
+        args(&conflict),
+        Err("emitted classic compiler profiles are mutually exclusive".to_string())
+    );
+}
+
+#[test]
+fn emitted_bluets_module_requires_a_private_child_and_is_independent() {
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-emitted-blue-ts-module",
+        ]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-module requires the private out-of-process BlueJS host".to_string())
+    );
+    let parsed = args(&[
+        "--socket",
+        "/tmp/core.sock",
+        "--out-of-process-bluejs-socket",
+        "/tmp/bluejs-host.sock",
+        "--out-of-process-bluejs-token",
+        "launcher-issued-capability",
+        "--out-of-process-bluejs-emitted-blue-ts-module",
+    ])
+    .unwrap();
+    assert!(parsed.out_of_process_bluejs_emitted_blue_ts_module);
+    assert!(!parsed.out_of_process_bluejs_emitted_blue_ts_classic);
+    assert!(!parsed.out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient);
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient",
+        ]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-module requires the private out-of-process BlueJS host".to_string())
+    );
+    let selected = args(&[
+        "--socket",
+        "/tmp/core.sock",
+        "--out-of-process-bluejs-socket",
+        "/tmp/bluejs-host.sock",
+        "--out-of-process-bluejs-token",
+        "launcher-issued-capability",
+        "--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient",
+    ])
+    .unwrap();
+    assert!(selected.out_of_process_bluejs_emitted_blue_ts_module);
+    assert!(selected.out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient);
+    assert!(!selected.out_of_process_bluejs_emitted_blue_ts_classic);
+}
+
+#[test]
 fn script_listener_requires_one_fixed_shape_owner_capability() {
     let base = [
         "--socket",
@@ -201,6 +436,8 @@ fn every_flag_is_parsed() {
             script_session_token: Some("a".repeat(64)),
             debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
             debugger_bounded_values: false,
+            debugger_generated_breakpoint: false,
+            debugger_generated_paused_location: false,
             debugger_static_metadata_inventory: false,
             debugger_static_metadata_summary: false,
             debugger_static_metadata_source_inventory: false,
@@ -231,6 +468,14 @@ fn every_flag_is_parsed() {
             out_of_process_bluejs_socket: None,
             out_of_process_bluejs_token: None,
             out_of_process_bluejs_page_script_profile: None,
+            out_of_process_bluejs_emitted_blue_ts_classic: false,
+            out_of_process_bluejs_emitted_blue_ts_classic_es5: false,
+            out_of_process_bluejs_emitted_blue_ts_classic_system: false,
+            out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators: false,
+            out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata: false,
+            out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient: false,
+            out_of_process_bluejs_emitted_blue_ts_module: false,
+            out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient: false,
             ..Args::default()
         }
     );

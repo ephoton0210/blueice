@@ -1142,6 +1142,13 @@ impl Parser {
                         "a reserved word cannot be used as an identifier reference",
                     ));
                 }
+                if self.capture_debug_identifiers {
+                    self.debug_identifier_spans.push((
+                        self.tokens[self.pos].start,
+                        self.positions[self.pos + 1],
+                        name.clone(),
+                    ));
+                }
                 self.advance();
                 Ok(Expr::Identifier(name))
             }
@@ -1303,6 +1310,13 @@ impl Parser {
                         return Err(
                             self.syntax_error("a reserved word cannot be a shorthand property")
                         );
+                    }
+                    if self.capture_debug_identifiers {
+                        self.debug_identifier_spans.push((
+                            element_start,
+                            self.positions[self.pos],
+                            name.clone(),
+                        ));
                     }
                     props.push(ObjectProp::KeyValue {
                         key: PropertyKey::Identifier(name.clone()),

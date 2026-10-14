@@ -14,6 +14,28 @@ pub struct PageHostDebuggerProgram {
     pub program_generation: u64,
 }
 
+/// Child-private original coordinate selected by one exact emitted-JavaScript
+/// map and program generation. It carries no source text, module identity,
+/// generated code, AST node, safe point or authority for a public debugger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerEmittedOriginalPosition {
+    pub source_index: u32,
+    pub line: u32,
+    pub column_utf16: u32,
+}
+
+/// A child-private projection of one paused root, nested, or linked-frame
+/// instruction. The generated coordinate exists only when that exact
+/// instruction has a parser-recorded statement or unique identifier token;
+/// `original` is absent for generated-only code. Neither field authorizes
+/// public source disclosure by itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerEmittedPausedRootLocation {
+    pub generated_line: u32,
+    pub generated_column_utf16: u32,
+    pub original: Option<PageHostDebuggerEmittedOriginalPosition>,
+}
+
 impl PageHostDebuggerProgram {
     /// Private debugger identities never use zero placeholders.
     pub fn is_well_formed(self) -> bool {
@@ -278,6 +300,54 @@ pub struct PageHostDebuggerStackFrame {
 pub struct PageHostDebuggerStackSnapshot {
     pub frames: Vec<PageHostDebuggerStackFrame>,
     pub stack_truncated: bool,
+}
+
+/// One genuine frame in a suspended System execute path. Unlike the classic
+/// stack, each frame carries its own installed program generation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerSystemStackFrame {
+    pub safe_point: PageHostDebuggerSafePoint,
+    pub scope_entries: Vec<PageHostDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+/// Complete child-first emitted/loader/emitted path. A shorter or relabeled
+/// classic stack cannot satisfy this private contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerSystemStackSnapshot {
+    pub frames: [PageHostDebuggerSystemStackFrame; 3],
+    pub stack_truncated: bool,
+    pub max_scope_entries: u32,
+}
+
+impl PageHostDebuggerSystemStackSnapshot {
+    pub fn is_well_formed(
+        &self,
+        frame: PageHostDebuggerFrame,
+        loader: PageHostDebuggerProgram,
+    ) -> bool {
+        frame.is_well_formed()
+            && loader.is_well_formed()
+            && loader != frame.program
+            && (1..=PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&self.max_scope_entries)
+            && !self.stack_truncated
+            && self.frames[0].safe_point.program == frame.program
+            && self.frames[0].safe_point.code_unit_ordinal == frame.code_unit_ordinal
+            && self.frames[1].safe_point.program == loader
+            && self.frames[1].safe_point.code_unit_ordinal != 0
+            && self.frames[2].safe_point.program == frame.program
+            && self.frames[2].safe_point.code_unit_ordinal == 0
+            && self.frames.iter().all(|entry| {
+                entry.safe_point.is_well_formed()
+                    && entry.scope_entries.len() <= self.max_scope_entries as usize
+                    && (!entry.scope_truncated
+                        || entry.scope_entries.len() == self.max_scope_entries as usize)
+                    && entry
+                        .scope_entries
+                        .windows(2)
+                        .all(|pair| pair[0].scope_depth <= pair[1].scope_depth)
+            })
+    }
 }
 
 /// Exact cross-program invocation retained by the private page host. The

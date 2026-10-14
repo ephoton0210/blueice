@@ -926,6 +926,242 @@ fn paused_nested_preview_reads_cell_backed_capture_without_running_child() {
 }
 
 #[cfg_attr(test, test)]
+fn paused_intermediate_preview_reads_only_its_retained_frame() {
+    let code = installed_script(
+        "function inner() { return 1; } function middle() { let marker = 73; return inner(); } middle();",
+    );
+    let mut vm = Vm::default();
+    assert_eq!(
+        vm.execute_script_until_nested_debugger_pause(&code, 1, 0)
+            .unwrap(),
+        VmDebuggerNestedExecutionState::Paused {
+            frame_serial: 1,
+            code_unit_ordinal: 1,
+            bytecode_offset: 0,
+        }
+    );
+    let stack = vm.debugger_stack_snapshot(Some(1), 3, 256).unwrap();
+    assert_eq!(stack.frames.len(), 3);
+    let intermediate = vm
+        .debugger_nested_intermediate_continuation
+        .as_ref()
+        .unwrap();
+    let frame = &stack.frames[1];
+    let marker = active_entry(frame, &intermediate.code, "marker");
+    assert_eq!(
+        vm.debugger_value_preview(
+            Some(1),
+            1,
+            frame.code_unit_ordinal,
+            frame.bytecode_offset,
+            marker,
+        ),
+        Ok(VmDebuggerValuePreview::NumberBits(73.0_f64.to_bits()))
+    );
+    assert!(vm
+        .debugger_value_preview(
+            Some(1),
+            0,
+            frame.code_unit_ordinal,
+            frame.bytecode_offset,
+            marker,
+        )
+        .is_err());
+}
+
+#[cfg_attr(test, test)]
+fn classic_stack_refuses_an_intermediate_from_another_program_generation() {
+    let code = installed_script(
+        "function inner() { return 1; } function middle() { return inner(); } middle();",
+    );
+    let mut vm = Vm::default();
+    assert!(matches!(
+        vm.execute_script_until_nested_debugger_pause(&code, 1, 0),
+        Ok(VmDebuggerNestedExecutionState::Paused { .. })
+    ));
+    let foreign_generation = code.debugger_program_generation.unwrap() + 1;
+    vm.debugger_nested_intermediate_continuation
+        .as_mut()
+        .expect("the direct middle call retains an intermediate frame")
+        .code
+        .debugger_program_generation = Some(foreign_generation);
+    assert!(matches!(
+        vm.debugger_stack_snapshot(Some(1), 3, 256),
+        Err(RuntimeError::Unsupported(
+            "nested debugger intermediate frame belongs to another program generation"
+        ))
+    ));
+    vm.debugger_nested_intermediate_continuation
+        .as_mut()
+        .unwrap()
+        .code
+        .debugger_program_generation = None;
+    assert!(matches!(
+        vm.debugger_stack_snapshot(Some(1), 3, 256),
+        Err(RuntimeError::Unsupported(
+            "debugger-paused intermediate has no installed program generation"
+        ))
+    ));
+}
+
+#[cfg_attr(test, test)]
+fn system_shaped_foreign_loader_pauses_and_retains_exact_generations() {
+    let mut registry = BlueJsProgramRegistry::default();
+    let loader_handle = registry
+        .install(
+            BlueJsSourceIdentity::new("page:///system-loader.js", "sha256:system-loader")
+                .unwrap(),
+            &BlueJsProgramV1::Script(
+                parse("var loaderCalls = 0; var System = { register: function (dependencies, declare) { loaderCalls++; var body = declare(function(name, value) { return value; }, { id: 'main' }); return body.execute(); } };").unwrap(),
+            ),
+        )
+        .unwrap();
+    let generated_handle = registry
+        .install(
+            BlueJsSourceIdentity::new("page:///generated-system.js", "sha256:generated-system")
+                .unwrap(),
+            &BlueJsProgramV1::Script(
+                parse("var calls = 0; var answer = 0; System.register([], function (exports) { return { setters: [], execute: function () { calls++; answer = 42; } }; }); answer = calls;")
+                    .unwrap(),
+            ),
+        )
+        .unwrap();
+    let loader = registry.get(loader_handle).unwrap().bytecode().clone();
+    let generated = registry.get(generated_handle).unwrap().bytecode().clone();
+    let loader_generation = loader.debugger_program_generation.unwrap();
+    let generated_generation = generated.debugger_program_generation.unwrap();
+    assert_ne!(loader_generation, generated_generation);
+    let mut vm = Vm::default();
+    vm.execute_script(&loader).unwrap();
+
+    let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+        .execute_script_until_foreign_intermediate_debugger_pause(
+            &generated,
+            2,
+            0,
+            loader_generation,
+        )
+        .unwrap()
+    else {
+        panic!("the registered execute callback must pause before running");
+    };
+    assert_eq!(
+        vm.lookup_global_name("calls").unwrap(),
+        Some(Value::Number(0.0))
+    );
+    assert_eq!(
+        vm.lookup_global_name("loaderCalls").unwrap(),
+        Some(Value::Number(1.0))
+    );
+    assert!(matches!(
+        vm.debugger_stack_snapshot(Some(frame_serial), 3, 256),
+        Err(RuntimeError::Unsupported(
+            "nested debugger intermediate frame belongs to another program generation"
+        ))
+    ));
+    let stack = vm
+        .debugger_foreign_intermediate_stack_snapshot(frame_serial, loader_generation, 3, 256)
+        .unwrap();
+    assert_eq!(stack.program_generation, generated_generation);
+    assert_eq!(
+        stack
+            .frames
+            .iter()
+            .map(|frame| frame.program_generation)
+            .collect::<Vec<_>>(),
+        vec![
+            generated_generation,
+            loader_generation,
+            generated_generation
+        ]
+    );
+    assert!(!stack.stack_truncated);
+    assert!(matches!(
+        vm.step_debugger_nested_instruction(frame_serial),
+        Ok(VmDebuggerNestedExecutionState::Paused { .. })
+    ));
+    assert!(matches!(
+        vm.resume_debugger_nested_execution(frame_serial),
+        Ok(VmDebuggerNestedExecutionState::FrameReturned { .. })
+    ));
+    assert_eq!(
+        vm.resume_debugger_execution(),
+        Ok(VmDebuggerExecutionState::Completed)
+    );
+    assert_eq!(
+        vm.lookup_global_name("calls").unwrap(),
+        Some(Value::Number(1.0))
+    );
+    assert_eq!(
+        vm.lookup_global_name("loaderCalls").unwrap(),
+        Some(Value::Number(1.0))
+    );
+    assert_eq!(
+        vm.lookup_global_name("answer").unwrap(),
+        Some(Value::Number(1.0))
+    );
+}
+
+#[cfg_attr(test, test)]
+fn system_shaped_foreign_loader_throw_rejoins_root_catch_without_replay() {
+    let mut registry = BlueJsProgramRegistry::default();
+    let loader_handle = registry
+        .install(
+            BlueJsSourceIdentity::new("page:///throw-loader.js", "sha256:throw-loader")
+                .unwrap(),
+            &BlueJsProgramV1::Script(
+                parse("var loaderCalls = 0; var System = { register: function (execute) { loaderCalls++; return execute(); } };").unwrap(),
+            ),
+        )
+        .unwrap();
+    let generated_handle = registry
+        .install(
+            BlueJsSourceIdentity::new("page:///throw-system.js", "sha256:throw-system").unwrap(),
+            &BlueJsProgramV1::Script(
+                parse("var calls = 0; var caught = 0; try { System.register(function execute() { calls++; throw 7; }); } catch (error) { caught = error; }")
+                    .unwrap(),
+            ),
+        )
+        .unwrap();
+    let loader = registry.get(loader_handle).unwrap().bytecode().clone();
+    let generated = registry.get(generated_handle).unwrap().bytecode().clone();
+    let mut vm = Vm::default();
+    vm.execute_script(&loader).unwrap();
+    let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+        .execute_script_until_foreign_intermediate_debugger_pause(
+            &generated,
+            1,
+            0,
+            loader.debugger_program_generation.unwrap(),
+        )
+        .unwrap()
+    else {
+        panic!("the throwing callback must pause before its first instruction");
+    };
+    assert!(matches!(
+        vm.resume_debugger_nested_execution(frame_serial),
+        Ok(VmDebuggerNestedExecutionState::FrameReturned { .. })
+    ));
+    assert_eq!(
+        vm.resume_debugger_execution(),
+        Ok(VmDebuggerExecutionState::Completed)
+    );
+    assert_eq!(
+        vm.lookup_global_name("loaderCalls").unwrap(),
+        Some(Value::Number(1.0))
+    );
+    assert_eq!(
+        vm.lookup_global_name("calls").unwrap(),
+        Some(Value::Number(1.0))
+    );
+    assert_eq!(
+        vm.lookup_global_name("caught").unwrap(),
+        Some(Value::Number(7.0))
+    );
+    assert_eq!(vm.debugger_uncaught_throw_site(), None);
+}
+
+#[cfg_attr(test, test)]
 fn paused_module_root_preview_reads_retained_module_binding() {
     let entry = "preview/main.mjs";
     let mut registry = BlueJsProgramRegistry::default();
@@ -1115,15 +1351,15 @@ fn pauses_a_direct_inner_call_without_consuming_its_parent_call_site() {
 }
 
 #[cfg_attr(test, test)]
-fn nested_pause_rejects_a_deeper_call_before_the_target_executes() {
+fn nested_pause_rejects_a_call_beyond_two_callers_before_the_target_executes() {
     let code = installed_script(
-        "var reached = 0; function inner() { reached = reached + 1; } function outer() { inner(); } outer();",
+        "var reached = 0; function inner() { reached = reached + 1; } function middle() { inner(); } function outer() { middle(); } outer();",
     );
     let mut vm = Vm::default();
     assert_eq!(
         vm.execute_script_until_nested_debugger_pause(&code, 1, 0),
         Err(RuntimeError::Unsupported(
-            "nested debugger pause requires a direct synchronous closure call"
+            "nested debugger pause requires a bounded direct synchronous caller chain"
         ))
     );
     assert_eq!(
@@ -1142,7 +1378,7 @@ fn nested_pause_rejects_constructor_entry_before_its_body() {
     assert_eq!(
         vm.execute_script_until_nested_debugger_pause(&code, 1, 0),
         Err(RuntimeError::Unsupported(
-            "nested debugger pause requires a direct synchronous closure call"
+            "nested debugger pause requires a bounded direct synchronous caller chain"
         ))
     );
     assert_eq!(
@@ -1663,12 +1899,13 @@ impl crate::Vm {
         paused_nested_preview_reads_cell_backed_capture_without_running_child();
         uninstalled_root_pause_refuses_inspection_and_still_resumes();
         nested_uncaptured_slot_preview_preserves_tdz_without_resuming();
+        paused_intermediate_preview_reads_only_its_retained_frame();
         paused_module_root_preview_reads_retained_module_binding();
         paused_preview_copies_plain_records_and_sparse_arrays_without_handles();
         paused_preview_refuses_accessors_proxies_cycles_and_non_plain_arrays();
         paused_preview_refuses_depth_length_node_and_aggregate_byte_excess();
         pauses_a_direct_inner_call_without_consuming_its_parent_call_site();
-        nested_pause_rejects_a_deeper_call_before_the_target_executes();
+        nested_pause_rejects_a_call_beyond_two_callers_before_the_target_executes();
         nested_pause_rejects_constructor_entry_before_its_body();
         nested_pause_does_not_capture_an_old_closure_with_the_same_ordinal();
         nested_instruction_steps_rejoin_the_original_call_once();

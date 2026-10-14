@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "alwaysStrict": true,
+    "module": "esnext",
+    "moduleResolution": "classic",
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strict": true,
+    "strictBindCallApply": true,
+    "strictBuiltinIteratorReturn": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "target": "es2020",
+    "useUnknownInCatchVariables": true
+  },
+  "files": [
+    "src/main.ts"
+  ]
+}

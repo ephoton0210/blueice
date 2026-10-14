@@ -1,0 +1,20 @@
+{
+  "id": "pkgextra-classic-classic0",
+  "form": "classic0",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "CommonJS",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "classic",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out"
+  }
+}

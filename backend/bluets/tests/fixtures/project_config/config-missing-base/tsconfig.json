@@ -1,0 +1,6 @@
+{
+  "extends": "./absent.json",
+  "files": [
+    "src/main.ts"
+  ]
+}

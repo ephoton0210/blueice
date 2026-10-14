@@ -32,6 +32,8 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     let mut script_session_token = None;
     let mut debugger_socket = None;
     let mut debugger_bounded_values = false;
+    let mut debugger_generated_breakpoint = false;
+    let mut debugger_generated_paused_location = false;
     let mut debugger_static_metadata_inventory = false;
     let mut debugger_static_metadata_summary = false;
     let mut debugger_static_metadata_source_inventory = false;
@@ -62,6 +64,14 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     let mut out_of_process_bluejs_socket = None;
     let mut out_of_process_bluejs_token = None;
     let mut out_of_process_bluejs_page_script_profile = None;
+    let mut out_of_process_bluejs_emitted_blue_ts_classic = false;
+    let mut out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient = false;
+    let mut out_of_process_bluejs_emitted_blue_ts_classic_es5 = false;
+    let mut out_of_process_bluejs_emitted_blue_ts_classic_system = false;
+    let mut out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators = false;
+    let mut out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata = false;
+    let mut out_of_process_bluejs_emitted_blue_ts_module = false;
+    let mut out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient = false;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -99,6 +109,8 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--script-session-token" => script_session_token = Some(value()?),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
             "--debugger-bounded-values" => debugger_bounded_values = true,
+            "--debugger-generated-breakpoint" => debugger_generated_breakpoint = true,
+            "--debugger-generated-paused-location" => debugger_generated_paused_location = true,
             "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
             "--debugger-static-metadata-source-inventory" => {
@@ -164,6 +176,36 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--out-of-process-bluejs-token" => out_of_process_bluejs_token = Some(value()?),
             "--out-of-process-bluejs-page-script-profile" => {
                 out_of_process_bluejs_page_script_profile = Some(value()?)
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-classic" => {
+                out_of_process_bluejs_emitted_blue_ts_classic = true
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-classic-page-console-ambient" => {
+                out_of_process_bluejs_emitted_blue_ts_classic = true;
+                out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient = true;
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-classic-es5" => {
+                out_of_process_bluejs_emitted_blue_ts_classic = true;
+                out_of_process_bluejs_emitted_blue_ts_classic_es5 = true;
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-classic-system" => {
+                out_of_process_bluejs_emitted_blue_ts_classic = true;
+                out_of_process_bluejs_emitted_blue_ts_classic_system = true;
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators" => {
+                out_of_process_bluejs_emitted_blue_ts_classic = true;
+                out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators = true;
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata" => {
+                out_of_process_bluejs_emitted_blue_ts_classic = true;
+                out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata = true;
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-module" => {
+                out_of_process_bluejs_emitted_blue_ts_module = true
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient" => {
+                out_of_process_bluejs_emitted_blue_ts_module = true;
+                out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient = true;
             }
             other => return Err(format!("unrecognized argument: {other}")),
         }
@@ -238,6 +280,59 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
                 .to_string(),
         );
     }
+    if out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators
+        && out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata
+    {
+        return Err("legacy decorator emission profiles are mutually exclusive".to_string());
+    }
+    if out_of_process_bluejs_emitted_blue_ts_classic_es5
+        && (out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators
+            || out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata)
+    {
+        return Err("emitted classic compiler profiles are mutually exclusive".to_string());
+    }
+    if out_of_process_bluejs_emitted_blue_ts_classic_system
+        && (out_of_process_bluejs_emitted_blue_ts_classic_es5
+            || out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators
+            || out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata)
+    {
+        return Err("emitted classic compiler profiles are mutually exclusive".to_string());
+    }
+    if out_of_process_bluejs_emitted_blue_ts_classic_system
+        && out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient
+    {
+        return Err("System emission already owns its console ambient".to_string());
+    }
+    if out_of_process_bluejs_emitted_blue_ts_classic_system
+        && out_of_process_bluejs_socket.is_none()
+    {
+        return Err("--out-of-process-bluejs-emitted-blue-ts-classic-system requires the private out-of-process BlueJS host".to_string());
+    }
+    if out_of_process_bluejs_emitted_blue_ts_classic_es5 && out_of_process_bluejs_socket.is_none() {
+        return Err("--out-of-process-bluejs-emitted-blue-ts-classic-es5 requires the private out-of-process BlueJS host".to_string());
+    }
+    if out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators
+        && out_of_process_bluejs_socket.is_none()
+    {
+        return Err("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators requires the private out-of-process BlueJS host".to_string());
+    }
+    if out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata
+        && out_of_process_bluejs_socket.is_none()
+    {
+        return Err("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata requires the private out-of-process BlueJS host".to_string());
+    }
+    if out_of_process_bluejs_emitted_blue_ts_classic && out_of_process_bluejs_socket.is_none() {
+        return Err(
+            "--out-of-process-bluejs-emitted-blue-ts-classic requires the private out-of-process BlueJS host"
+                .to_string(),
+        );
+    }
+    if out_of_process_bluejs_emitted_blue_ts_module && out_of_process_bluejs_socket.is_none() {
+        return Err(
+            "--out-of-process-bluejs-emitted-blue-ts-module requires the private out-of-process BlueJS host"
+                .to_string(),
+        );
+    }
     if let Some(profile) = out_of_process_bluejs_page_script_profile.as_deref() {
         if profile != script::http_resource_authorizer::CORE_HTTP_PAGE_SCRIPT_FIXTURE_PROFILE {
             return Err(
@@ -255,6 +350,12 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     }
     if debugger_bounded_values && debugger_socket.is_none() {
         return Err("--debugger-bounded-values requires --debugger-socket".to_string());
+    }
+    if debugger_generated_breakpoint && debugger_socket.is_none() {
+        return Err("--debugger-generated-breakpoint requires --debugger-socket".to_string());
+    }
+    if debugger_generated_paused_location && debugger_socket.is_none() {
+        return Err("--debugger-generated-paused-location requires --debugger-socket".to_string());
     }
     if debugger_static_metadata_inventory && debugger_socket.is_none() {
         return Err("--debugger-static-metadata-inventory requires --debugger-socket".to_string());
@@ -541,6 +642,8 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
         script_session_token,
         debugger_socket,
         debugger_bounded_values,
+        debugger_generated_breakpoint,
+        debugger_generated_paused_location,
         debugger_static_metadata_inventory,
         debugger_static_metadata_summary,
         debugger_static_metadata_source_inventory,
@@ -571,5 +674,13 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
         out_of_process_bluejs_socket,
         out_of_process_bluejs_token,
         out_of_process_bluejs_page_script_profile,
+        out_of_process_bluejs_emitted_blue_ts_classic,
+        out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient,
+        out_of_process_bluejs_emitted_blue_ts_classic_es5,
+        out_of_process_bluejs_emitted_blue_ts_classic_system,
+        out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators,
+        out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata,
+        out_of_process_bluejs_emitted_blue_ts_module,
+        out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient,
     })
 }

@@ -7,7 +7,105 @@ use crate::{
     SourceSpan, StrictRuntimeBoundary,
 };
 
-use super::source_line_column;
+use super::{
+    apply_edits_with_provenance, encode_mappings, relocations, source_line_column,
+    ProvenanceEmitter, ProvenanceSegment, SourceMap, TextEdit,
+};
+
+#[test]
+fn copied_token_provenance_stops_at_the_owner_segment_limit() {
+    let source = "export const answer = 42;";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(2));
+    emitter.copy(source, 0);
+    let emitted = emitter.finish();
+    assert_eq!(emitted.javascript, source);
+    assert!(emitted.provenance.len() <= 2);
+    assert!(emitted.overflowed);
+}
+
+#[test]
+fn incremental_source_positions_match_crlf_and_utf16_columns() {
+    let source = "a\r\n😀b\rx";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), None);
+    for offset in [0, 1, 2, 3, 7, 8, 9, 10] {
+        emitter.mark(offset);
+        let point = emitter.provenance.last().unwrap();
+        assert_eq!(
+            (point.source_line, point.source_column),
+            source_line_column(source, offset),
+            "offset {offset}"
+        );
+    }
+}
+
+#[test]
+fn rewritten_relocation_does_not_claim_copied_token_columns() {
+    let source = "original";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(8));
+    emitter.relocate("rewritten", 0, source.len(), &[], false);
+    let emitted = emitter.finish();
+    assert_eq!(emitted.javascript, "rewritten");
+    assert_eq!(
+        decode_mappings(&encode_mappings(&emitted.provenance)),
+        vec![(0, 0, 0, 0), (0, 9, 0, 8)]
+    );
+}
+
+#[test]
+fn nonempty_relocation_edit_keeps_conservative_range_anchors() {
+    let source = "(deco as any)";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32));
+    emitter.relocate("(deco)", 0, source.len(), &[], true);
+    let emitted = emitter.finish();
+    assert_eq!(emitted.javascript, "(deco)");
+    assert_eq!(
+        decode_mappings(&encode_mappings(&emitted.provenance)),
+        vec![(0, 0, 0, 0), (0, 6, 0, 13)]
+    );
+}
+
+#[test]
+fn erased_relocation_maps_surviving_tokens_to_their_original_columns() {
+    let source = "(deco as any)";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32));
+    emitter.relocate("(deco)", 0, source.len(), &[(5, 12)], false);
+    let emitted = emitter.finish();
+    let mappings = decode_mappings(&encode_mappings(&emitted.provenance));
+    assert_eq!(emitted.javascript, "(deco)");
+    assert!(mappings.contains(&(0, 1, 0, 1)), "{mappings:?}");
+    assert!(mappings.contains(&(0, 6, 0, 13)), "{mappings:?}");
+}
+
+#[test]
+fn relocation_spliced_through_a_token_uses_range_anchors_only() {
+    let source = "(deco as any)";
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32));
+    emitter.relocate("(dec)", 0, source.len(), &[(4, 12)], false);
+    let emitted = emitter.finish();
+    assert_eq!(emitted.javascript, "(dec)");
+    assert_eq!(
+        decode_mappings(&encode_mappings(&emitted.provenance)),
+        vec![(0, 0, 0, 0), (0, 5, 0, 13)]
+    );
+}
+
+#[test]
+fn verbatim_relocation_preserves_trivia_and_original_token_columns() {
+    let source = "value  /* keep */  + other";
+    let emitted = apply_edits_with_provenance(
+        source,
+        vec![TextEdit {
+            start: 0,
+            end: source.len(),
+            replacement: relocations::relocated_verbatim(0, source.len()),
+        }],
+        Some(64),
+    );
+    assert_eq!(emitted.javascript, source);
+    let mappings = decode_mappings(&encode_mappings(&emitted.provenance));
+    let other = source.find("other").unwrap();
+    assert!(mappings.contains(&(0, other, 0, other)), "{mappings:?}");
+}
 
 #[test]
 fn erases_types_and_rewrites_typescript_module_specifiers() {
@@ -76,7 +174,85 @@ fn emits_source_map_and_public_declaration() {
 }
 
 #[test]
-fn source_map_tracks_columns_across_erased_annotations() {
+fn source_map_serializes_named_segments_and_escaped_names() {
+    let mappings = encode_mappings(&[
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 0,
+            source_line: 0,
+            source_column: 0,
+            mapped: true,
+            name_index: Some(0),
+        },
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 6,
+            source_line: 0,
+            source_column: 7,
+            mapped: true,
+            name_index: Some(1),
+        },
+    ]);
+    let map = SourceMap {
+        file: "named.js".to_string(),
+        sources: vec!["named.ts".to_string()],
+        sources_content: vec!["const name = 1;".to_string()],
+        inline_sources: true,
+        source_root: String::new(),
+        names: vec!["name".to_string(), "quoted\"name".to_string()],
+        mappings,
+    };
+    let value: serde_json::Value = serde_json::from_str(&map.to_json()).unwrap();
+    assert_eq!(value["names"], serde_json::json!(["name", "quoted\"name"]));
+    let segments = map
+        .mappings
+        .split(',')
+        .map(decode_vlq_fields)
+        .collect::<Vec<_>>();
+    assert_eq!(segments[0], vec![0, 0, 0, 0, 0]);
+    assert_eq!(segments[1], vec![6, 0, 0, 7, 1]);
+}
+
+#[test]
+fn source_map_unmapped_segments_do_not_advance_source_or_name_deltas() {
+    let mappings = encode_mappings(&[
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 0,
+            source_line: 0,
+            source_column: 0,
+            mapped: true,
+            name_index: Some(0),
+        },
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 5,
+            source_line: 0,
+            source_column: 0,
+            mapped: false,
+            name_index: None,
+        },
+        ProvenanceSegment {
+            generated_line: 0,
+            generated_column: 10,
+            source_line: 1,
+            source_column: 2,
+            mapped: true,
+            name_index: Some(1),
+        },
+    ]);
+    let segments = mappings
+        .split(',')
+        .map(decode_vlq_fields)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        segments,
+        vec![vec![0, 0, 0, 0, 0], vec![5], vec![5, 0, 1, 2, 1]]
+    );
+}
+
+#[test]
+fn source_map_tracks_copied_value_across_erased_annotations() {
     let source = "export const label: string = 'value';";
     let loader = MapLoader::from([ModuleSource::new("memory:///columns.ts", source)]);
     let output = compile(
@@ -90,12 +266,12 @@ fn source_map_tracks_columns_across_erased_annotations() {
     .output
     .unwrap();
     let artifact = &output.artifacts["memory:///columns.ts"];
-    let generated_equals = artifact.javascript.find('=').unwrap();
-    let source_equals = source.find('=').unwrap();
-    let expected_generated_column = artifact.javascript[..generated_equals]
+    let generated_value = artifact.javascript.find("'value'").unwrap();
+    let source_value = source.find("'value'").unwrap();
+    let expected_generated_column = artifact.javascript[..generated_value]
         .encode_utf16()
         .count();
-    let expected_source_column = source[..source_equals].encode_utf16().count();
+    let expected_source_column = source[..source_value].encode_utf16().count();
     let mappings = decode_mappings(&artifact.source_map.as_ref().unwrap().mappings);
     assert!(mappings
         .iter()
@@ -169,7 +345,7 @@ fn strict_calls_keep_ingress_and_egress_source_map_positions() {
         CompilerOptions {
             source_map: true,
             limits: CompilerLimits {
-                max_source_map_segments: 10,
+                max_source_map_segments: 256,
                 ..CompilerLimits::default()
             },
             ..CompilerOptions::default()
@@ -382,7 +558,7 @@ fn retains_generic_constraints_and_defaults_in_declaration_output_only() {
     assert_eq!(
         artifact.declaration.as_deref(),
         Some(
-            "export interface Box<T extends string = string> {\n  value: T;\n}\n\
+            "export interface Box<T extends string = string> {\n    value: T;\n}\n\
                  export declare function echo<T extends string = string>(value?: T): string;\n"
         )
     );
@@ -411,7 +587,9 @@ fn retains_readonly_fields_in_declaration_output() {
         "{declaration}"
     );
     assert!(
-        declaration.contains("{ readonly currentTarget: string; mutable: string }"),
+        declaration.contains(
+            "export type Detail = {\n    readonly currentTarget: string;\n    mutable: string;\n};"
+        ),
         "{declaration}"
     );
     assert!(!artifact.javascript.contains("readonly"));
@@ -440,9 +618,9 @@ fn retains_interface_heritage_in_declaration_output_only() {
     assert_eq!(
             artifact.declaration.as_deref(),
             Some(
-                "export interface Envelope<T> {\n  payload: T;\n}\n\
-                 export interface Tagged {\n  tag: string;\n}\n\
-                 export interface Labeled<T extends string = string> extends Envelope<T>, Tagged {\n  label: T;\n}\n"
+                "export interface Envelope<T> {\n    payload: T;\n}\n\
+                 export interface Tagged {\n    tag: string;\n}\n\
+                 export interface Labeled<T extends string = string> extends Envelope<T>, Tagged {\n    label: T;\n}\n"
             )
         );
 }
@@ -469,8 +647,8 @@ fn erases_interface_methods_but_retains_their_exact_public_signature() {
     assert_eq!(
         artifact.declaration.as_deref(),
         Some(
-            "export interface Document {\n  getElementById(id: string): Element | null;\n}\n\
-                 export interface Element {\n  textContent: string;\n}\n"
+            "export interface Document {\n    getElementById(id: string): Element | null;\n}\n\
+                 export interface Element {\n    textContent: string;\n}\n"
         )
     );
 }
@@ -567,7 +745,7 @@ fn preserves_a_type_only_reexport_in_declarations_but_not_javascript() {
     assert!(artifact.javascript.trim().is_empty());
     assert_eq!(
         artifact.declaration.as_deref(),
-        Some("export type { User } from \"./model.ts\";\n")
+        Some("export type { User } from './model.ts';\n")
     );
 }
 
@@ -580,6 +758,10 @@ fn decode_mappings(value: &str) -> Vec<(usize, usize, usize, usize)> {
         let mut generated_column = 0i64;
         for segment in line.split(',').filter(|segment| !segment.is_empty()) {
             let values = decode_vlq_fields(segment);
+            if values.len() == 1 {
+                generated_column += values[0];
+                continue;
+            }
             assert_eq!(values.len(), 4);
             generated_column += values[0];
             source_index += values[1];

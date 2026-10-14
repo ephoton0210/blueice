@@ -1,0 +1,2537 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "dectype-commonjs-method-good",
+      "form": "method-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "6d1f6e35cb9489add843cc2668783da0170d32eb5c44c53947829feeebdbee11",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) { return (n) => n + 1; }\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _m_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _m_decorators = [d];\n            __esDecorate(this, null, _m_decorators, { kind: \"method\", name: \"m\", static: false, private: false, access: { has: obj => \"m\" in obj, get: obj => obj.m }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        m(n) { return n; }\n        constructor() {\n            __runInitializers(this, _instanceExtraInitializers);\n        }\n    };\n})();\nexports.result = [new C().m(41)];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-method-return",
+      "form": "method-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "fc1c4fda32b673eb2ab14e05474cc471dab26d304633ad95913e582035a3f14c",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 316,
+          "length": 1,
+          "message": "Decorator function return type '(n: number) => string' is not assignable to type 'void | ((n: number) => number)'.\n  Type '(n: number) => string' is not assignable to type '(n: number) => number'.\n    Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-method-parameter",
+      "form": "method-parameter",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "aa0fe3d265412c20c1579199bae447e68eed5c4a3b7a99c6e18354378a82b5cc",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 313,
+          "length": 1,
+          "message": "Decorator function return type '(n: string) => number' is not assignable to type 'void | ((n: number) => number)'.\n  Type '(n: string) => number' is not assignable to type '(n: number) => number'.\n    Types of parameters 'n' and 'n' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-getter-good",
+      "form": "getter-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "712e4b9e912b862fd639c452dd985bf626e05a7672ed58d55ebd1967a447a878",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) { return () => 42; }\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _get_value_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _get_value_decorators = [d];\n            __esDecorate(this, null, _get_value_decorators, { kind: \"getter\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        get value() { return 1; }\n        constructor() {\n            __runInitializers(this, _instanceExtraInitializers);\n        }\n    };\n})();\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-getter-return",
+      "form": "getter-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "0ff9da659c96a89e152708e9df2f23b54923877db17d69224dd03ed20a3349fa",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 298,
+          "length": 1,
+          "message": "Decorator function return type '() => string' is not assignable to type 'void | (() => number)'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-setter-good",
+      "form": "setter-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "d9608ce91f07b2bb53b985452b5d8446aa58af5bcba22da8a845e4300630c3db",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) { return (n) => { }; }\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _set_value_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _set_value_decorators = [d];\n            __esDecorate(this, null, _set_value_decorators, { kind: \"setter\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        set value(n) { }\n        answer = (__runInitializers(this, _instanceExtraInitializers), 42);\n    };\n})();\nexports.result = [new C().answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-setter-parameter",
+      "form": "setter-parameter",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "608d79c9367e9700a7c40a5efcfe4a2cec2b1e11dc3216774ee92957ced751f7",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 309,
+          "length": 1,
+          "message": "Decorator function return type '(n: string) => void' is not assignable to type 'void | ((value: number) => void)'.\n  Type '(n: string) => void' is not assignable to type '(value: number) => void'.\n    Types of parameters 'n' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-field-good",
+      "form": "field-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f51be66e84b43964d9f7dd1e57f48cc281e28e100afc03405d5700a6ea2fd6a4",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) { return (n) => n + 1; }\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(null, null, _value_decorators, { kind: \"field\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        value = __runInitializers(this, _value_initializers, 41);\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-field-return",
+      "form": "field-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "95373fc5b90fe62b35ca3c5c5fa9327813ba56e589b678164745ab98be1e0d56",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 316,
+          "length": 1,
+          "message": "Decorator function return type '(n: number) => string' is not assignable to type 'void | ((this: C, value: number) => number)'.\n  Type '(n: number) => string' is not assignable to type '(this: C, value: number) => number'.\n    Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-accessor-good",
+      "form": "accessor-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "a6719735c609c1383c94f6e458036f2808817ae0115ccaf265858a4e2239f0bd",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) { return { get() { return 42; } }; }\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(this, null, _value_decorators, { kind: \"accessor\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        #value_accessor_storage = __runInitializers(this, _value_initializers, 1);\n        get value() { return this.#value_accessor_storage; }\n        set value(value) { this.#value_accessor_storage = value; }\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-accessor-return",
+      "form": "accessor-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "5f9063b843f9eeb1ec71cfa9b6964b5cbcdc7bb19e7071717e7b95640a0ca5c9",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 323,
+          "length": 1,
+          "message": "Decorator function return type '{ get: () => string; }' is not assignable to type 'void | ClassAccessorDecoratorResult<C, number>'.\n  Type '{ get: () => string; }' is not assignable to type 'ClassAccessorDecoratorResult<C, number>'.\n    The types returned by 'get()' are incompatible between these types.\n      Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-class-good",
+      "form": "class-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f316ad618a7c566e78b55ff1fd16aaec3e6d4252d60cf81951da4f5ecd9648a0",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) { return value; }\nlet C = (() => {\n    let _classDecorators = [d];\n    let _classDescriptor;\n    let _classExtraInitializers = [];\n    let _classThis;\n    var C = class {\n        static { _classThis = this; }\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: \"class\", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);\n            C = _classThis = _classDescriptor.value;\n            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n            __runInitializers(_classThis, _classExtraInitializers);\n        }\n        value = 42;\n    };\n    return C = _classThis;\n})();\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-class-return",
+      "form": "class-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "4347ded1abeb6dc0f8095aabb983797f8cb443a13c96734b4e522e93345b5326",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 317,
+          "length": 1,
+          "message": "Decorator function return type 'typeof Other' is not assignable to type 'void | typeof C'.\n  Type 'typeof Other' is not assignable to type 'typeof C'.\n    Property 'value' is missing in type 'Other' but required in type 'C'.",
+          "related": [
+            {
+              "code": 2728,
+              "file": "main.ts",
+              "start": 329,
+              "length": 5,
+              "message": "'value' is declared here."
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-method",
+      "form": "context-method",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "283effbd70c47b352e342aa5099d692af1a9396f62a60b827858d0e38dd1b8fc",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const get = context.access.get;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _m_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _m_decorators = [d];\n            __esDecorate(this, null, _m_decorators, { kind: \"method\", name: \"m\", static: false, private: false, access: { has: obj => \"m\" in obj, get: obj => obj.m }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        m(n) { return n; }\n        constructor() {\n            __runInitializers(this, _instanceExtraInitializers);\n        }\n    };\n})();\nexports.result = [new C().m(42)];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-getter",
+      "form": "context-getter",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "78c2dd437da263c8dca047632739b6c3b11a161522f33351eeec8ee8010f2d24",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const get = context.access.get;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _get_value_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _get_value_decorators = [d];\n            __esDecorate(this, null, _get_value_decorators, { kind: \"getter\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        get value() { return 42; }\n        constructor() {\n            __runInitializers(this, _instanceExtraInitializers);\n        }\n    };\n})();\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-setter",
+      "form": "context-setter",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "c85b8f89b2bbfd815b674325e38416d14332dd947212697d3553ae8a3441e242",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const set = context.access.set;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _set_value_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _set_value_decorators = [d];\n            __esDecorate(this, null, _set_value_decorators, { kind: \"setter\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        set value(n) { }\n        answer = (__runInitializers(this, _instanceExtraInitializers), 42);\n    };\n})();\nexports.result = [new C().answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-field",
+      "form": "context-field",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "c9cc165cdb4fd74703690d9636b675628ffa6c2b973c1f9a376f7b9b57daa351",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const get = context.access.get;\n    const set = context.access.set;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(null, null, _value_decorators, { kind: \"field\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        value = __runInitializers(this, _value_initializers, 42);\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-accessor",
+      "form": "context-accessor",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "b7aef1da321ff3ba796e63993a8ad311146dab2e28df21d6aa342df96e9e3723",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const get = context.access.get;\n    const set = context.access.set;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(this, null, _value_decorators, { kind: \"accessor\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        #value_accessor_storage = __runInitializers(this, _value_initializers, 42);\n        get value() { return this.#value_accessor_storage; }\n        set value(value) { this.#value_accessor_storage = value; }\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-class",
+      "form": "context-class",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f71d16c96aefad8f00a754cc8d82d099b57b78b9f306eda6e23b42948aad1357",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _classDecorators = [d];\n    let _classDescriptor;\n    let _classExtraInitializers = [];\n    let _classThis;\n    var C = class {\n        static { _classThis = this; }\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: \"class\", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);\n            C = _classThis = _classDescriptor.value;\n            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n            __runInitializers(_classThis, _classExtraInitializers);\n        }\n        value = 42;\n    };\n    return C = _classThis;\n})();\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-union",
+      "form": "context-union",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "aae3207968dfd4fa12b356a9a4a68a629806cffa118456c9b6f0958287df60f1",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value, context) { const name = context.name; }\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(null, null, _value_decorators, { kind: \"field\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        value = __runInitializers(this, _value_initializers, 42);\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-wrong-kind",
+      "form": "context-wrong-kind",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "d944e1a354b98da9e946cd28788380ffd8d6122416aa514ae7515a34adb59050",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1241,
+          "file": "main.ts",
+          "start": 295,
+          "length": 1,
+          "message": "Unable to resolve signature of method decorator when called as an expression.\n  Argument of type 'ClassMethodDecoratorContext<C, () => number> & { name: \"m\"; private: false; static: false; }' is not assignable to parameter of type 'ClassFieldDecoratorContext<C, number>'.\n    Types of property 'kind' are incompatible.\n      Type '\"method\"' is not assignable to type '\"field\"'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-kind-value",
+      "form": "context-kind-value",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "ec0d57f8ede0fc39b3b55e0afd0a0f86b9c30033f999a9ff70bac0059d721a53",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 279,
+          "length": 4,
+          "message": "Type '\"method\"' is not assignable to type '\"field\"'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-readonly",
+      "form": "context-readonly",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "260d43e1022b33fe7c32cf4d8daa8eb2a90dc17dcea8b9529accba5d10c1267e",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2540,
+          "file": "main.ts",
+          "start": 281,
+          "length": 4,
+          "message": "Cannot assign to 'kind' because it is a read-only property.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-context-access-value",
+      "form": "context-access-value",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f71c0bcb895c6bf3b2e1375cb0f9fb9f7585a4c6535479187f2947313270f2ba",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 296,
+          "length": 3,
+          "message": "Type '(object: C) => () => number' is not assignable to type '(object: C) => string'.\n  Type '() => number' is not assignable to type 'string'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-legacy-class-good",
+      "form": "legacy-class-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "a0e22585be452daa439f92c76ad87c9a089c81d170403db051e81595478cd1ef",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {\n    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;\n    if (typeof Reflect === \"object\" && typeof Reflect.decorate === \"function\") r = Reflect.decorate(decorators, target, key, desc);\n    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;\n    return c > 3 && r && Object.defineProperty(target, key, r), r;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(value) { return value; }\nlet C = class C {\n    value = 42;\n};\nC = __decorate([\n    d\n], C);\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-legacy-class-return",
+      "form": "legacy-class-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "ca73ae11108e786338e832be8d26449169fd497e123df68ec814b264e50dce44",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 303,
+          "length": 1,
+          "message": "Decorator function return type 'typeof Other' is not assignable to type 'void | typeof C'.\n  Type 'typeof Other' is not assignable to type 'typeof C'.\n    Property 'value' is missing in type 'Other' but required in type 'C'.",
+          "related": [
+            {
+              "code": 2728,
+              "file": "main.ts",
+              "start": 315,
+              "length": 5,
+              "message": "'value' is declared here."
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-legacy-method-good",
+      "form": "legacy-method-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "18050b0d8e06d6e7220669ac2924d242f4adb2b96abdb3d75c47183bfdecb953",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {\n    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;\n    if (typeof Reflect === \"object\" && typeof Reflect.decorate === \"function\") r = Reflect.decorate(decorators, target, key, desc);\n    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;\n    return c > 3 && r && Object.defineProperty(target, key, r), r;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(target, key, descriptor) { return { value: (n) => n + 1 }; }\nclass C {\n    m(n) { return n; }\n}\n__decorate([\n    d\n], C.prototype, \"m\", null);\nexports.result = [new C().m(41)];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-legacy-method-return",
+      "form": "legacy-method-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "a63f0e91cd094a985a11b9a69776fcb3c5fced770010b5874e263f99c95507e1",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 369,
+          "length": 1,
+          "message": "Decorator function return type 'TypedPropertyDescriptor<(n: number) => string>' is not assignable to type 'void | TypedPropertyDescriptor<(n: number) => number>'.\n  Type 'TypedPropertyDescriptor<(n: number) => string>' is not assignable to type 'TypedPropertyDescriptor<(n: number) => number>'.\n    Types of property 'value' are incompatible.\n      Type '((n: number) => string) | undefined' is not assignable to type '((n: number) => number) | undefined'.\n        Type '(n: number) => string' is not assignable to type '(n: number) => number'.\n          Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-legacy-field-good",
+      "form": "legacy-field-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "6f5ca262ce0658a7a1a6cddfc8347d009430b18238a372d6eb2f858e01710c1b",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {\n    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;\n    if (typeof Reflect === \"object\" && typeof Reflect.decorate === \"function\") r = Reflect.decorate(decorators, target, key, desc);\n    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;\n    return c > 3 && r && Object.defineProperty(target, key, r), r;\n};\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nfunction d(target, key) { }\nclass C {\n    value = 42;\n}\n__decorate([\n    d\n], C.prototype, \"value\", void 0);\nexports.result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-commonjs-legacy-field-return",
+      "form": "legacy-field-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "CommonJS",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "9b14a2fb26408e72c6c514becacc266d0cd0a88328bfffd70345ef51c7f40cdd",
+        "package.json": "dbf8353f77358bc12169b7bb7301e1978d5b503e002ee927229a8993672818fc"
+      },
+      "diagnostics": [
+        {
+          "code": 1271,
+          "file": "main.ts",
+          "start": 274,
+          "length": 1,
+          "message": "Decorator function return type is 'number' but is expected to be 'void' or 'any'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-method-good",
+      "form": "method-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "6d1f6e35cb9489add843cc2668783da0170d32eb5c44c53947829feeebdbee11",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nfunction d(value, context) { return (n) => n + 1; }\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _m_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _m_decorators = [d];\n            __esDecorate(this, null, _m_decorators, { kind: \"method\", name: \"m\", static: false, private: false, access: { has: obj => \"m\" in obj, get: obj => obj.m }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        m(n) { return n; }\n        constructor() {\n            __runInitializers(this, _instanceExtraInitializers);\n        }\n    };\n})();\nexport const result = [new C().m(41)];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-method-return",
+      "form": "method-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "fc1c4fda32b673eb2ab14e05474cc471dab26d304633ad95913e582035a3f14c",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 316,
+          "length": 1,
+          "message": "Decorator function return type '(n: number) => string' is not assignable to type 'void | ((n: number) => number)'.\n  Type '(n: number) => string' is not assignable to type '(n: number) => number'.\n    Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-method-parameter",
+      "form": "method-parameter",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "aa0fe3d265412c20c1579199bae447e68eed5c4a3b7a99c6e18354378a82b5cc",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 313,
+          "length": 1,
+          "message": "Decorator function return type '(n: string) => number' is not assignable to type 'void | ((n: number) => number)'.\n  Type '(n: string) => number' is not assignable to type '(n: number) => number'.\n    Types of parameters 'n' and 'n' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-getter-good",
+      "form": "getter-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "712e4b9e912b862fd639c452dd985bf626e05a7672ed58d55ebd1967a447a878",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nfunction d(value, context) { return () => 42; }\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _get_value_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _get_value_decorators = [d];\n            __esDecorate(this, null, _get_value_decorators, { kind: \"getter\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        get value() { return 1; }\n        constructor() {\n            __runInitializers(this, _instanceExtraInitializers);\n        }\n    };\n})();\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-getter-return",
+      "form": "getter-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "0ff9da659c96a89e152708e9df2f23b54923877db17d69224dd03ed20a3349fa",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 298,
+          "length": 1,
+          "message": "Decorator function return type '() => string' is not assignable to type 'void | (() => number)'.\n  Type '() => string' is not assignable to type '() => number'.\n    Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-setter-good",
+      "form": "setter-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "d9608ce91f07b2bb53b985452b5d8446aa58af5bcba22da8a845e4300630c3db",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nfunction d(value, context) { return (n) => { }; }\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _set_value_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _set_value_decorators = [d];\n            __esDecorate(this, null, _set_value_decorators, { kind: \"setter\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        set value(n) { }\n        answer = (__runInitializers(this, _instanceExtraInitializers), 42);\n    };\n})();\nexport const result = [new C().answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-setter-parameter",
+      "form": "setter-parameter",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "608d79c9367e9700a7c40a5efcfe4a2cec2b1e11dc3216774ee92957ced751f7",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 309,
+          "length": 1,
+          "message": "Decorator function return type '(n: string) => void' is not assignable to type 'void | ((value: number) => void)'.\n  Type '(n: string) => void' is not assignable to type '(value: number) => void'.\n    Types of parameters 'n' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'string'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-field-good",
+      "form": "field-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f51be66e84b43964d9f7dd1e57f48cc281e28e100afc03405d5700a6ea2fd6a4",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nfunction d(value, context) { return (n) => n + 1; }\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(null, null, _value_decorators, { kind: \"field\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        value = __runInitializers(this, _value_initializers, 41);\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-field-return",
+      "form": "field-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "95373fc5b90fe62b35ca3c5c5fa9327813ba56e589b678164745ab98be1e0d56",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 316,
+          "length": 1,
+          "message": "Decorator function return type '(n: number) => string' is not assignable to type 'void | ((this: C, value: number) => number)'.\n  Type '(n: number) => string' is not assignable to type '(this: C, value: number) => number'.\n    Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-accessor-good",
+      "form": "accessor-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "a6719735c609c1383c94f6e458036f2808817ae0115ccaf265858a4e2239f0bd",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nfunction d(value, context) { return { get() { return 42; } }; }\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(this, null, _value_decorators, { kind: \"accessor\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        #value_accessor_storage = __runInitializers(this, _value_initializers, 1);\n        get value() { return this.#value_accessor_storage; }\n        set value(value) { this.#value_accessor_storage = value; }\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-accessor-return",
+      "form": "accessor-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "5f9063b843f9eeb1ec71cfa9b6964b5cbcdc7bb19e7071717e7b95640a0ca5c9",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 323,
+          "length": 1,
+          "message": "Decorator function return type '{ get: () => string; }' is not assignable to type 'void | ClassAccessorDecoratorResult<C, number>'.\n  Type '{ get: () => string; }' is not assignable to type 'ClassAccessorDecoratorResult<C, number>'.\n    The types returned by 'get()' are incompatible between these types.\n      Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-class-good",
+      "form": "class-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f316ad618a7c566e78b55ff1fd16aaec3e6d4252d60cf81951da4f5ecd9648a0",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nfunction d(value, context) { return value; }\nlet C = (() => {\n    let _classDecorators = [d];\n    let _classDescriptor;\n    let _classExtraInitializers = [];\n    let _classThis;\n    var C = class {\n        static { _classThis = this; }\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: \"class\", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);\n            C = _classThis = _classDescriptor.value;\n            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n            __runInitializers(_classThis, _classExtraInitializers);\n        }\n        value = 42;\n    };\n    return C = _classThis;\n})();\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-class-return",
+      "form": "class-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "4347ded1abeb6dc0f8095aabb983797f8cb443a13c96734b4e522e93345b5326",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 317,
+          "length": 1,
+          "message": "Decorator function return type 'typeof Other' is not assignable to type 'void | typeof C'.\n  Type 'typeof Other' is not assignable to type 'typeof C'.\n    Property 'value' is missing in type 'Other' but required in type 'C'.",
+          "related": [
+            {
+              "code": 2728,
+              "file": "main.ts",
+              "start": 329,
+              "length": 5,
+              "message": "'value' is declared here."
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-method",
+      "form": "context-method",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "283effbd70c47b352e342aa5099d692af1a9396f62a60b827858d0e38dd1b8fc",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const get = context.access.get;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _m_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _m_decorators = [d];\n            __esDecorate(this, null, _m_decorators, { kind: \"method\", name: \"m\", static: false, private: false, access: { has: obj => \"m\" in obj, get: obj => obj.m }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        m(n) { return n; }\n        constructor() {\n            __runInitializers(this, _instanceExtraInitializers);\n        }\n    };\n})();\nexport const result = [new C().m(42)];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-getter",
+      "form": "context-getter",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "78c2dd437da263c8dca047632739b6c3b11a161522f33351eeec8ee8010f2d24",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const get = context.access.get;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _get_value_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _get_value_decorators = [d];\n            __esDecorate(this, null, _get_value_decorators, { kind: \"getter\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        get value() { return 42; }\n        constructor() {\n            __runInitializers(this, _instanceExtraInitializers);\n        }\n    };\n})();\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-setter",
+      "form": "context-setter",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "c85b8f89b2bbfd815b674325e38416d14332dd947212697d3553ae8a3441e242",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const set = context.access.set;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _instanceExtraInitializers = [];\n    let _set_value_decorators;\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _set_value_decorators = [d];\n            __esDecorate(this, null, _set_value_decorators, { kind: \"setter\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, null, _instanceExtraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        set value(n) { }\n        answer = (__runInitializers(this, _instanceExtraInitializers), 42);\n    };\n})();\nexport const result = [new C().answer];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-field",
+      "form": "context-field",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "c9cc165cdb4fd74703690d9636b675628ffa6c2b973c1f9a376f7b9b57daa351",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const get = context.access.get;\n    const set = context.access.set;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(null, null, _value_decorators, { kind: \"field\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        value = __runInitializers(this, _value_initializers, 42);\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-accessor",
+      "form": "context-accessor",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "b7aef1da321ff3ba796e63993a8ad311146dab2e28df21d6aa342df96e9e3723",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const isStatic = context.static;\n    const isPrivate = context.private;\n    const has = context.access.has;\n    const get = context.access.get;\n    const set = context.access.set;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(this, null, _value_decorators, { kind: \"accessor\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        #value_accessor_storage = __runInitializers(this, _value_initializers, 42);\n        get value() { return this.#value_accessor_storage; }\n        set value(value) { this.#value_accessor_storage = value; }\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-class",
+      "form": "context-class",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f71d16c96aefad8f00a754cc8d82d099b57b78b9f306eda6e23b42948aad1357",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nfunction d(value, context) {\n    const kind = context.kind;\n    const name = context.name;\n    const metadata = context.metadata;\n    context.addInitializer(function () { });\n}\nlet C = (() => {\n    let _classDecorators = [d];\n    let _classDescriptor;\n    let _classExtraInitializers = [];\n    let _classThis;\n    var C = class {\n        static { _classThis = this; }\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: \"class\", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);\n            C = _classThis = _classDescriptor.value;\n            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n            __runInitializers(_classThis, _classExtraInitializers);\n        }\n        value = 42;\n    };\n    return C = _classThis;\n})();\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-union",
+      "form": "context-union",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "aae3207968dfd4fa12b356a9a4a68a629806cffa118456c9b6f0958287df60f1",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {\n    function accept(f) { if (f !== void 0 && typeof f !== \"function\") throw new TypeError(\"Function expected\"); return f; }\n    var kind = contextIn.kind, key = kind === \"getter\" ? \"get\" : kind === \"setter\" ? \"set\" : \"value\";\n    var target = !descriptorIn && ctor ? contextIn[\"static\"] ? ctor : ctor.prototype : null;\n    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});\n    var _, done = false;\n    for (var i = decorators.length - 1; i >= 0; i--) {\n        var context = {};\n        for (var p in contextIn) context[p] = p === \"access\" ? {} : contextIn[p];\n        for (var p in contextIn.access) context.access[p] = contextIn.access[p];\n        context.addInitializer = function (f) { if (done) throw new TypeError(\"Cannot add initializers after decoration has completed\"); extraInitializers.push(accept(f || null)); };\n        var result = (0, decorators[i])(kind === \"accessor\" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);\n        if (kind === \"accessor\") {\n            if (result === void 0) continue;\n            if (result === null || typeof result !== \"object\") throw new TypeError(\"Object expected\");\n            if (_ = accept(result.get)) descriptor.get = _;\n            if (_ = accept(result.set)) descriptor.set = _;\n            if (_ = accept(result.init)) initializers.unshift(_);\n        }\n        else if (_ = accept(result)) {\n            if (kind === \"field\") initializers.unshift(_);\n            else descriptor[key] = _;\n        }\n    }\n    if (target) Object.defineProperty(target, contextIn.name, descriptor);\n    done = true;\n};\nvar __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {\n    var useValue = arguments.length > 2;\n    for (var i = 0; i < initializers.length; i++) {\n        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);\n    }\n    return useValue ? value : void 0;\n};\nfunction d(value, context) { const name = context.name; }\nlet C = (() => {\n    let _value_decorators;\n    let _value_initializers = [];\n    let _value_extraInitializers = [];\n    return class C {\n        static {\n            const _metadata = typeof Symbol === \"function\" && Symbol.metadata ? Object.create(null) : void 0;\n            _value_decorators = [d];\n            __esDecorate(null, null, _value_decorators, { kind: \"field\", name: \"value\", static: false, private: false, access: { has: obj => \"value\" in obj, get: obj => obj.value, set: (obj, value) => { obj.value = value; } }, metadata: _metadata }, _value_initializers, _value_extraInitializers);\n            if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });\n        }\n        value = __runInitializers(this, _value_initializers, 42);\n        constructor() {\n            __runInitializers(this, _value_extraInitializers);\n        }\n    };\n})();\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-wrong-kind",
+      "form": "context-wrong-kind",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "d944e1a354b98da9e946cd28788380ffd8d6122416aa514ae7515a34adb59050",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1241,
+          "file": "main.ts",
+          "start": 295,
+          "length": 1,
+          "message": "Unable to resolve signature of method decorator when called as an expression.\n  Argument of type 'ClassMethodDecoratorContext<C, () => number> & { name: \"m\"; private: false; static: false; }' is not assignable to parameter of type 'ClassFieldDecoratorContext<C, number>'.\n    Types of property 'kind' are incompatible.\n      Type '\"method\"' is not assignable to type '\"field\"'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-kind-value",
+      "form": "context-kind-value",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "ec0d57f8ede0fc39b3b55e0afd0a0f86b9c30033f999a9ff70bac0059d721a53",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 279,
+          "length": 4,
+          "message": "Type '\"method\"' is not assignable to type '\"field\"'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-readonly",
+      "form": "context-readonly",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "260d43e1022b33fe7c32cf4d8daa8eb2a90dc17dcea8b9529accba5d10c1267e",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2540,
+          "file": "main.ts",
+          "start": 281,
+          "length": 4,
+          "message": "Cannot assign to 'kind' because it is a read-only property.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-context-access-value",
+      "form": "context-access-value",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "sources": {
+        "main.ts": "f71c0bcb895c6bf3b2e1375cb0f9fb9f7585a4c6535479187f2947313270f2ba",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 2322,
+          "file": "main.ts",
+          "start": 296,
+          "length": 3,
+          "message": "Type '(object: C) => () => number' is not assignable to type '(object: C) => string'.\n  Type '() => number' is not assignable to type 'string'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-legacy-class-good",
+      "form": "legacy-class-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "a0e22585be452daa439f92c76ad87c9a089c81d170403db051e81595478cd1ef",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {\n    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;\n    if (typeof Reflect === \"object\" && typeof Reflect.decorate === \"function\") r = Reflect.decorate(decorators, target, key, desc);\n    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;\n    return c > 3 && r && Object.defineProperty(target, key, r), r;\n};\nfunction d(value) { return value; }\nlet C = class C {\n    value = 42;\n};\nC = __decorate([\n    d\n], C);\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-legacy-class-return",
+      "form": "legacy-class-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "ca73ae11108e786338e832be8d26449169fd497e123df68ec814b264e50dce44",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 303,
+          "length": 1,
+          "message": "Decorator function return type 'typeof Other' is not assignable to type 'void | typeof C'.\n  Type 'typeof Other' is not assignable to type 'typeof C'.\n    Property 'value' is missing in type 'Other' but required in type 'C'.",
+          "related": [
+            {
+              "code": 2728,
+              "file": "main.ts",
+              "start": 315,
+              "length": 5,
+              "message": "'value' is declared here."
+            }
+          ]
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-legacy-method-good",
+      "form": "legacy-method-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "18050b0d8e06d6e7220669ac2924d242f4adb2b96abdb3d75c47183bfdecb953",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {\n    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;\n    if (typeof Reflect === \"object\" && typeof Reflect.decorate === \"function\") r = Reflect.decorate(decorators, target, key, desc);\n    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;\n    return c > 3 && r && Object.defineProperty(target, key, r), r;\n};\nfunction d(target, key, descriptor) { return { value: (n) => n + 1 }; }\nclass C {\n    m(n) { return n; }\n}\n__decorate([\n    d\n], C.prototype, \"m\", null);\nexport const result = [new C().m(41)];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-legacy-method-return",
+      "form": "legacy-method-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "a63f0e91cd094a985a11b9a69776fcb3c5fced770010b5874e263f99c95507e1",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1270,
+          "file": "main.ts",
+          "start": 369,
+          "length": 1,
+          "message": "Decorator function return type 'TypedPropertyDescriptor<(n: number) => string>' is not assignable to type 'void | TypedPropertyDescriptor<(n: number) => number>'.\n  Type 'TypedPropertyDescriptor<(n: number) => string>' is not assignable to type 'TypedPropertyDescriptor<(n: number) => number>'.\n    Types of property 'value' are incompatible.\n      Type '((n: number) => string) | undefined' is not assignable to type '((n: number) => number) | undefined'.\n        Type '(n: number) => string' is not assignable to type '(n: number) => number'.\n          Type 'string' is not assignable to type 'number'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-legacy-field-good",
+      "form": "legacy-field-good",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "6f5ca262ce0658a7a1a6cddfc8347d009430b18238a372d6eb2f858e01710c1b",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [],
+      "emitSkipped": false,
+      "files": [
+        "out/main.d.ts",
+        "out/main.js"
+      ],
+      "outputs": {
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {\n    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;\n    if (typeof Reflect === \"object\" && typeof Reflect.decorate === \"function\") r = Reflect.decorate(decorators, target, key, desc);\n    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;\n    return c > 3 && r && Object.defineProperty(target, key, r), r;\n};\nfunction d(target, key) { }\nclass C {\n    value = 42;\n}\n__decorate([\n    d\n], C.prototype, \"value\", void 0);\nexport const result = [new C().value];\n",
+        "out/main.d.ts": "export declare const result: number[];\n"
+      },
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": [
+        42
+      ],
+      "syntaxErrors": []
+    },
+    {
+      "id": "dectype-esnext-legacy-field-return",
+      "form": "legacy-field-return",
+      "entry": "main.ts",
+      "rootFiles": [
+        "main.ts"
+      ],
+      "runtimeModule": "ESNext",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "newLine": "lf",
+        "rootDir": ".",
+        "outDir": "out",
+        "experimentalDecorators": true
+      },
+      "sources": {
+        "main.ts": "9b14a2fb26408e72c6c514becacc266d0cd0a88328bfffd70345ef51c7f40cdd",
+        "package.json": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae"
+      },
+      "diagnostics": [
+        {
+          "code": 1271,
+          "file": "main.ts",
+          "start": 274,
+          "length": 1,
+          "message": "Decorator function return type is 'number' but is expected to be 'void' or 'any'.",
+          "related": []
+        }
+      ],
+      "emitSkipped": true,
+      "files": [],
+      "outputs": {},
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "observation": null,
+      "syntaxErrors": []
+    }
+  ]
+}

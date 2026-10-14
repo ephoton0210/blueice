@@ -1,0 +1,2 @@
+// workspace settings
+{ "compilerOptions": {"target":"ES2022", /* emitter */ "module":"ESNext"}, "include":["src"] }

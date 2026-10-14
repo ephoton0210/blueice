@@ -42,6 +42,7 @@
 use crate::ast::*;
 use crate::token::{Keyword, LexError, Punct, SpannedToken, Token, Tokenizer};
 
+mod editions;
 mod expressions;
 mod functions;
 mod module;
@@ -51,7 +52,8 @@ mod statements;
 #[cfg(test)]
 mod tests;
 
-pub use module::parse_module;
+pub use editions::SyntaxEdition;
+pub use module::{parse_module, parse_module_with_debug_spans, parse_module_with_edition};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
@@ -61,6 +63,24 @@ pub struct ParseError {
     /// True only when the parser recognized a specified syntax error. Other
     /// parse failures may still be unsupported valid grammar in this subset.
     pub known_syntax: bool,
+}
+
+/// One exact top-level statement range in the original host source. The
+/// half-open byte offsets exclude leading trivia and include the statement's
+/// final consumed token. This is parser provenance, not a bytecode safe point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedStatementSpan {
+    pub start_byte: usize,
+    pub end_byte: usize,
+}
+
+/// An identifier expression's exact source token, captured when the parser
+/// constructs the expression rather than guessed from a later text search.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedIdentifierSpan {
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub name: String,
 }
 
 impl From<LexError> for ParseError {
@@ -76,18 +96,82 @@ impl From<LexError> for ParseError {
 /// Parses one classic Script. `source` is ordinary host text: to run source
 /// that may hold an unpaired surrogate, see [`parse_encoded`].
 pub fn parse(source: &str) -> Result<Program, ParseError> {
-    parse_encoded(&crate::source_encoding::escape(source))
+    parse_with_edition(source, SyntaxEdition::EsNext)
+}
+
+/// Parses a Script and records one exact source range for each returned
+/// top-level AST statement, in the same order as `Program::body`. These
+/// ranges alone do not authorize debugger binding of nested expressions.
+pub fn parse_with_top_level_spans(
+    source: &str,
+) -> Result<(Program, Vec<ParsedStatementSpan>), ParseError> {
+    parse_with_debug_spans(source).map(|(program, statements, _)| (program, statements))
+}
+
+/// Parses a Script with exact top-level statement and identifier-expression
+/// token spans. Callers must still prove a unique compiler-recorded safe point
+/// before allowing a debugger action at any identifier token.
+pub fn parse_with_debug_spans(
+    source: &str,
+) -> Result<(Program, Vec<ParsedStatementSpan>, Vec<ParsedIdentifierSpan>), ParseError> {
+    let escaped = crate::source_encoding::escape(source);
+    let (program, spans, identifiers) =
+        parse_encoded_script(&escaped, SyntaxEdition::EsNext, true)?;
+    let source_bytes = crate::source_encoding::escaped_character_source_bytes(source);
+    let spans = spans
+        .into_iter()
+        .map(|(start, end)| ParsedStatementSpan {
+            start_byte: source_bytes[start],
+            end_byte: source_bytes[end],
+        })
+        .collect();
+    let identifiers = identifiers
+        .into_iter()
+        .map(|(start, end, name)| ParsedIdentifierSpan {
+            start_byte: source_bytes[start],
+            end_byte: source_bytes[end],
+            name,
+        })
+        .collect();
+    Ok((program, spans, identifiers))
+}
+
+/// Parses Script syntax restricted to the selected output edition. Built-in
+/// runtime APIs are independent of this grammar selection.
+pub fn parse_with_edition(source: &str, edition: SyntaxEdition) -> Result<Program, ParseError> {
+    parse_encoded_with_edition(&crate::source_encoding::escape(source), edition)
 }
 
 /// [`parse`] over *lexer text* (see [`crate::source_encoding`]), the form in
 /// which the source of `eval`, `Function` and `ShadowRealm.prototype.evaluate`
 /// reaches the parser, since a JavaScript string may hold unpaired surrogates.
 pub(crate) fn parse_encoded(source: &str) -> Result<Program, ParseError> {
+    parse_encoded_with_edition(source, SyntaxEdition::EsNext)
+}
+
+fn parse_encoded_with_edition(source: &str, edition: SyntaxEdition) -> Result<Program, ParseError> {
+    parse_encoded_script(source, edition, false).map(|(program, _, _)| program)
+}
+
+type EncodedScriptWithDebugSpans = (Program, Vec<(usize, usize)>, Vec<(usize, usize, String)>);
+
+fn parse_encoded_script(
+    source: &str,
+    edition: SyntaxEdition,
+    capture_spans: bool,
+) -> Result<EncodedScriptWithDebugSpans, ParseError> {
     let mut parser = Parser::new_script(source);
+    parser.capture_debug_identifiers = capture_spans;
+    parser.select_edition(edition)?;
     let mut body = Vec::new();
+    let mut spans = Vec::new();
     let mut prologue = DirectivePrologue::default();
     while !parser.at_eof() {
+        let start = parser.token_start();
         body.push(parser.parse_prologue_statement(&mut prologue)?);
+        if capture_spans {
+            spans.push((start, parser.positions[parser.pos]));
+        }
     }
     let program = Program { body };
     if contains_super_call_outside_class(&program)
@@ -97,7 +181,9 @@ pub(crate) fn parse_encoded(source: &str) -> Result<Program, ParseError> {
     }
     crate::compiler::validate_private_early_errors(&program)
         .map_err(|error| parser.syntax_error(error.to_string()))?;
-    Ok(program)
+    parser.validate_edition()?;
+    editions::validate_body(&program.body, edition)?;
+    Ok((program, spans, parser.debug_identifier_spans))
 }
 
 /// Parses direct-eval source (lexer text) before its caller applies context-sensitive
@@ -388,10 +474,14 @@ fn known_syntax(mut error: ParseError) -> ParseError {
 }
 
 struct Parser {
+    edition: SyntaxEdition,
+    edition_error: Option<ParseError>,
     tokens: Vec<SpannedToken>,
     positions: Vec<usize>,
     tokenizer: Tokenizer,
     pos: usize,
+    capture_debug_identifiers: bool,
+    debug_identifier_spans: Vec<(usize, usize, String)>,
     /// Set while parsing a `for`-loop head's init clause, so the
     /// relational-expression tier refuses to consume a bare `in` as a
     /// binary operator there -- see this module's doc comment.
@@ -452,10 +542,14 @@ impl Parser {
                 .collect()
         });
         Parser {
+            edition: SyntaxEdition::EsNext,
+            edition_error: None,
             tokens,
             positions,
             tokenizer,
             pos: 0,
+            capture_debug_identifiers: false,
+            debug_identifier_spans: Vec::new(),
             no_in: false,
             generator_depth: 0,
             async_depth: 0,
@@ -582,6 +676,7 @@ impl Parser {
     }
 
     fn advance(&mut self) -> Token {
+        self.check_edition_token();
         let t = self.tokens[self.pos].token.clone();
         if self.pos + 1 < self.tokens.len() {
             self.pos += 1;
@@ -868,6 +963,7 @@ impl Parser {
     /// placeholder what they mean around the template.
     fn parse_template_placeholder(&self, source: &str) -> Result<Expr, ParseError> {
         let mut parser = Parser::new(source);
+        parser.edition = self.edition;
         parser.generator_depth = self.generator_depth;
         parser.async_depth = self.async_depth;
         parser.module_await = self.module_await;
@@ -876,6 +972,12 @@ impl Parser {
         if !parser.at_eof() {
             return Err(parser.error("unexpected trailing tokens after expression"));
         }
+        parser.validate_edition()?;
+        editions::validate_expression(
+            &expr,
+            self.edition,
+            self.function_depth != 0 || self.async_depth != 0 || self.generator_depth != 0,
+        )?;
         Ok(expr)
     }
 

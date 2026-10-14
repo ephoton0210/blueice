@@ -5,6 +5,19 @@
 use super::*;
 
 impl CoreLaunchOptions {
+    /// Grants one generated-token breakpoint capability to a debugger stream
+    /// only when that stream also requests it during the current handshake.
+    pub fn with_debugger_generated_breakpoint(mut self) -> Self {
+        self.debugger_generated_breakpoint = true;
+        self
+    }
+
+    /// Grants paused generated/original projection independently of binding.
+    pub fn with_debugger_generated_paused_location(mut self) -> Self {
+        self.debugger_generated_paused_location = true;
+        self
+    }
+
     /// Runs an installed extension package through core's authenticated
     /// extension host (with the private permission-control pipe).
     pub fn with_extension_manifest(mut self, manifest: PathBuf) -> Self {
@@ -32,6 +45,85 @@ impl CoreLaunchOptions {
     /// value through this API.
     pub fn supervise_out_of_process_bluejs(mut self) -> Self {
         self.supervise_out_of_process_bluejs = true;
+        self
+    }
+
+    /// Selects BlueTSC-emitted classic scripts in this supervised host.
+    /// The default stays on the direct bridge; page and debugger traffic
+    /// cannot change this startup policy.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_classic(mut self) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_classic = true;
+        self
+    }
+
+    /// Selects emitted classic scripts with separate type-only page console
+    /// input; the page must still install the runtime console itself.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_page_console_ambient(
+        mut self,
+    ) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_classic = true;
+        self.emitted_blue_ts_classic_page_console_ambient = true;
+        self
+    }
+
+    /// Selects legacy decorator and metadata emission for emitted classic
+    /// scripts. This startup-only profile also enables emitted classic.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_legacy_metadata(
+        mut self,
+    ) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_classic = true;
+        self.emitted_blue_ts_classic_legacy_metadata = true;
+        self
+    }
+
+    /// Selects legacy decorators without metadata for emitted classic
+    /// scripts; this startup-only profile also enables emitted classic.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_legacy_decorators(
+        mut self,
+    ) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_classic = true;
+        self.emitted_blue_ts_classic_legacy_decorators = true;
+        self
+    }
+
+    /// Selects ES5 emission for emitted classic scripts. The emitted ESM
+    /// graph route continues to use its independent standard profile.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_es5(mut self) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_classic = true;
+        self.emitted_blue_ts_classic_es5 = true;
+        self
+    }
+
+    /// Selects System wrapper emission for emitted classic scripts. The
+    /// page, not the host, supplies any System.register loader it needs.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_system(mut self) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_classic = true;
+        self.emitted_blue_ts_classic_system = true;
+        self
+    }
+
+    /// Selects BlueTSC-emitted ESM graphs independently of classic scripts.
+    /// This is a launcher-owner startup choice, not a page/debugger grant.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_module(mut self) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_module = true;
+        self
+    }
+
+    /// Selects emitted ESM plus a separate type-only declaration for the
+    /// page's own console; neither source bytes nor runtime globals change.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_module_page_console_ambient(
+        mut self,
+    ) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_module = true;
+        self.emitted_blue_ts_module_page_console_ambient = true;
         self
     }
 

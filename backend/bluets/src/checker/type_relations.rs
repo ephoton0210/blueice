@@ -3,6 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+mod compatibility;
+mod more_types;
+mod parameters;
+mod variance;
+use crate::checker::type_operators::union;
+pub(super) use compatibility::constructor_relation_type;
+pub(super) use compatibility::record_fields_assignable;
+pub(super) use more_types::normalized as normalize_more_type;
+pub(super) use parameters::canonical_parameter_references;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TupleSpreadError {
@@ -83,6 +92,10 @@ pub(super) fn expand_concrete_tuple_spreads(
                     _ => Err(TupleSpreadError::Unsupported),
                 }
             }
+            Some(TypeDefinition {
+                kind: TypeDefinitionKind::Parameter,
+                ..
+            }) => Err(TupleSpreadError::Unresolved),
             Some(_) => Err(TupleSpreadError::Unsupported),
             None => Err(TupleSpreadError::Unresolved),
         };
@@ -110,42 +123,207 @@ pub(super) fn is_assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    // Every symbolic keyof result is a property key, even before its operand
+    // can be instantiated. Concrete, narrower comparisons still use expansion.
+    if matches!(actual, Type::KeyOf(_))
+        && is_assignable(
+            &Type::Union(vec![Type::String, Type::Number, Type::Symbol]),
+            expected,
+            aliases,
+            &mut visited.clone(),
+            budget,
+        )
+    {
+        return true;
+    }
+    if let Some(result) = variance::assignable(actual, expected, aliases, visited, budget) {
+        return result;
+    }
+    if matches!(actual, Type::GenericFunction { .. })
+        || matches!(expected, Type::GenericFunction { .. })
+    {
+        let normalize = |value: &Type| match value {
+            Type::GenericFunction {
+                type_parameters,
+                parameters,
+                result,
+                ..
+            } => {
+                let substitutions = type_parameters
+                    .iter()
+                    .enumerate()
+                    .map(|(index, p)| {
+                        (
+                            p.name.clone(),
+                            Type::Named {
+                                name: format!("<generic:{index}>"),
+                                arguments: Vec::new(),
+                            },
+                        )
+                    })
+                    .collect();
+                substitute_type(
+                    &Type::Function {
+                        parameters: parameters.clone(),
+                        result: result.clone(),
+                    },
+                    &substitutions,
+                )
+            }
+            value => value.clone(),
+        };
+        return is_assignable(
+            &normalize(actual),
+            &normalize(expected),
+            aliases,
+            visited,
+            budget,
+        );
+    }
     if let Type::Tuple(elements) = actual {
         if elements.iter().any(|element| {
             element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
         }) {
-            let Ok(expanded) =
-                expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget)
-            else {
-                return false;
-            };
-            return is_assignable(&Type::Tuple(expanded), expected, aliases, visited, budget);
+            match expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget) {
+                Ok(expanded) => {
+                    return is_assignable(
+                        &Type::Tuple(expanded),
+                        expected,
+                        aliases,
+                        visited,
+                        budget,
+                    )
+                }
+                // An unresolved spread name is a symbolic type parameter that
+                // annotation validation already accepted; keep it opaque so
+                // only an identical tail compares equal.
+                Err(TupleSpreadError::Unresolved) => {}
+                Err(_) => return false,
+            }
         }
     }
     if let Type::Tuple(elements) = expected {
         if elements.iter().any(|element| {
             element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
         }) {
-            let Ok(expanded) =
-                expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget)
-            else {
-                return false;
-            };
-            return is_assignable(actual, &Type::Tuple(expanded), aliases, visited, budget);
+            match expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget) {
+                Ok(expanded) => {
+                    return is_assignable(actual, &Type::Tuple(expanded), aliases, visited, budget)
+                }
+                Err(TupleSpreadError::Unresolved) => {}
+                Err(_) => return false,
+            }
         }
+    }
+    if let (Type::Literal(actual), Type::Literal(expected)) = (actual, expected) {
+        if actual.starts_with(['\'', '"'])
+            && expected.starts_with(['\'', '"'])
+            && !actual.contains('\\')
+            && !expected.contains('\\')
+        {
+            let token = |text: &String| Token {
+                kind: TokenKind::String,
+                text: text.clone(),
+                start: 0,
+                end: text.len(),
+            };
+            if let (Some(actual), Some(expected)) = (
+                crate::syntax::string_contents(&token(actual)),
+                crate::syntax::string_contents(&token(expected)),
+            ) {
+                return actual == expected;
+            }
+        }
+    }
+    if let Some(result) = compatibility::assignable(actual, expected, aliases, visited, budget) {
+        return result;
+    }
+    if let Some(result) = more_types::assignable(actual, expected, aliases, visited, budget) {
+        return result;
     }
     if matches!(actual, Type::Any | Type::Unknown) || matches!(expected, Type::Any | Type::Unknown)
     {
         return true;
     }
-    if actual == expected {
+    if actual == &Type::Never
+        || actual == expected
+        || (actual == &Type::Undefined && expected == &Type::Void)
+    {
         return true;
+    }
+    // Array syntax and the original Array/ReadonlyArray declarations describe
+    // the same elements. Owner replacements retain ordinary structural rules.
+    let library_arguments = |value: &Type, names: &[&str]| match value {
+        Type::Named { name, arguments }
+            if names.contains(&name.as_str())
+                && arguments.len() == 1
+                && aliases.get(name).is_some_and(|definition| {
+                    definition.kind == TypeDefinitionKind::LibraryInterface
+                }) =>
+        {
+            Some(arguments[0].clone())
+        }
+        _ => None,
+    };
+    if let Some(element) = library_arguments(expected, &["Array", "ReadonlyArray"]) {
+        match actual {
+            Type::Array(actual) => {
+                return is_assignable(actual, &element, aliases, visited, budget)
+            }
+            Type::Tuple(actual) => {
+                return actual.iter().all(|part| {
+                    is_assignable(
+                        &part.indexed_type(),
+                        &element,
+                        aliases,
+                        &mut visited.clone(),
+                        budget,
+                    )
+                })
+            }
+            _ => {}
+        }
+    }
+    if let (Some(element), Type::Array(expected)) =
+        (library_arguments(actual, &["Array"]), expected)
+    {
+        return is_assignable(&element, expected, aliases, visited, budget);
+    }
+    if let (Some(actual), Some(expected)) = (
+        library_arguments(actual, &["Iterable"]),
+        library_arguments(expected, &["Iterable"]),
+    ) {
+        if !budget.consume() {
+            return false;
+        }
+        return is_assignable(&actual, &expected, aliases, visited, budget);
+    }
+    if let Some(result) = enum_assignability(actual, expected, aliases) {
+        return result;
     }
     if let Some(expanded) = instantiate_named(actual, aliases, visited, budget, "actual") {
         return is_assignable(&expanded, expected, aliases, visited, budget);
     }
-    if let Some(expanded) = instantiate_named(expected, aliases, visited, budget, "expected") {
-        return is_assignable(actual, &expanded, aliases, visited, budget);
+    let mut expected_visited = visited.clone();
+    let expected_side = if matches!(expected, Type::Named { .. }) {
+        format!("expected for {}", type_identity(actual))
+    } else {
+        "expected".to_string()
+    };
+    if let Some(expanded) = instantiate_named(
+        expected,
+        aliases,
+        &mut expected_visited,
+        budget,
+        &expected_side,
+    ) {
+        return is_assignable(actual, &expanded, aliases, &mut expected_visited, budget);
+    }
+    if !budget.checking.strict_null_checks
+        && matches!(actual, Type::Null | Type::Undefined)
+        && !matches!(expected, Type::Never)
+    {
+        return true;
     }
     if let Type::Union(options) = actual {
         return options
@@ -183,9 +361,37 @@ pub(super) fn is_assignable(
             .iter()
             .any(|part| is_assignable(part, expected, aliases, &mut visited.clone(), budget));
     }
+    if let Type::TemplateLiteral(template) = expected {
+        return super::type_operators::template_matches(actual, template, aliases, budget);
+    }
     match (actual, expected) {
-        (Type::Literal(value), Type::String) => value.starts_with('\'') || value.starts_with('\"'),
-        (Type::Literal(value), Type::Number) => value.parse::<f64>().is_ok(),
+        (Type::Predicate(actual), Type::Predicate(expected)) => {
+            actual.asserts == expected.asserts
+                && match (actual.target.as_deref(), expected.target.as_deref()) {
+                    (Some(actual), Some(expected)) => {
+                        is_assignable(actual, expected, aliases, visited, budget)
+                    }
+                    (None, None) => true,
+                    (Some(_), None) => expected.asserts,
+                    _ => false,
+                }
+        }
+        (Type::Predicate(actual), _) => {
+            is_assignable(&actual.runtime_type(), expected, aliases, visited, budget)
+        }
+        (Type::Literal(value), Type::String) => {
+            value.starts_with('\'')
+                || value.starts_with('\"')
+                || enum_member_value(aliases, value).is_some_and(
+                    |member| matches!(member, Type::Literal(text) if text.starts_with('"')),
+                )
+        }
+        (Type::Literal(value), Type::Number) => {
+            value.parse::<f64>().is_ok()
+                || enum_member_value(aliases, value).is_some_and(
+                    |member| matches!(member, Type::Literal(text) if text.parse::<f64>().is_ok()),
+                )
+        }
         (Type::Literal(value), Type::Boolean) => matches!(value.as_str(), "true" | "false"),
         (Type::Array(actual), Type::Array(expected)) => {
             is_assignable(actual, expected, aliases, visited, budget)
@@ -223,21 +429,35 @@ pub(super) fn is_assignable(
                 parameters: expected_parameters,
                 result: expected_result,
             },
-        ) if actual_parameters.len() == expected_parameters.len() => {
-            expected_parameters
-                .iter()
-                .zip(actual_parameters)
-                .all(|(expected, actual)| {
-                    expected.optional == actual.optional
-                        && is_assignable(
-                            expected.annotation.as_ref().unwrap_or(&Type::Unknown),
-                            actual.annotation.as_ref().unwrap_or(&Type::Unknown),
-                            aliases,
-                            &mut visited.clone(),
-                            budget,
-                        )
-                })
-                && is_assignable(actual_result, expected_result, aliases, visited, budget)
+        ) => {
+            // A callback may ignore trailing arguments supplied by its caller.
+            // Every parameter it does consume must still be compatible.
+            parameters::compatible(actual_parameters, expected_parameters, aliases, visited, budget)
+                // A function type whose result is `void` accepts a function that
+                // returns anything: its result is simply ignored.
+                && match (actual_result.as_ref(), expected_result.as_ref()) {
+                    (_, Type::Void) => true,
+                    (_, Type::Predicate(predicate)) if predicate.asserts => true,
+                    (Type::Predicate(actual), Type::Predicate(expected)) => {
+                        let actual_index = actual_parameters
+                            .iter()
+                            .position(|parameter| parameter.name == actual.parameter);
+                        let expected_index = expected_parameters
+                            .iter()
+                            .position(|parameter| parameter.name == expected.parameter);
+                        actual_index == expected_index
+                            && (actual_index.is_some()
+                                || (actual.parameter == "this" && expected.parameter == "this"))
+                            && is_assignable(
+                                actual_result,
+                                expected_result,
+                                aliases,
+                                visited,
+                                budget,
+                            )
+                    }
+                    _ => is_assignable(actual_result, expected_result, aliases, visited, budget),
+                }
         }
         (Type::Tuple(actual), Type::Tuple(expected)) => {
             if actual.iter().any(|element| element.rest)
@@ -272,23 +492,74 @@ pub(super) fn is_assignable(
                     )
                 })
         }
-        (Type::Record(actual), Type::Record(expected)) => expected.iter().all(|expected_field| {
-            actual
-                .iter()
-                .find(|actual_field| actual_field.name == expected_field.name)
-                .map(|actual_field| {
-                    (actual_field.optional == expected_field.optional || expected_field.optional)
-                        && is_assignable(
-                            &actual_field.value,
-                            &expected_field.value,
-                            aliases,
-                            &mut visited.clone(),
-                            budget,
-                        )
-                })
-                .unwrap_or(expected_field.optional)
-        }),
+        (Type::Record(actual), Type::Record(expected)) => {
+            record_fields_assignable(actual, expected, aliases, visited, budget, true)
+        }
         _ => actual == expected,
+    }
+}
+
+/// The constant a member type `E.A` stands for, as a literal type.
+fn enum_member_value<'a>(
+    aliases: &'a BTreeMap<String, TypeDefinition>,
+    literal: &str,
+) -> Option<&'a Type> {
+    aliases
+        .get(literal)
+        .filter(|definition| definition.kind == TypeDefinitionKind::EnumMember)
+        .map(|definition| &definition.value)
+}
+
+/// What a number (or a number literal) may be assigned to an enum: a numeric
+/// enum accepts any `number`, and a number literal only when it is the value
+/// of one of its members. A string enum accepts no string literal; only its
+/// own members, which are handled by ordinary union assignability.
+///
+/// `None` leaves the question to the general rules.
+fn enum_assignability(
+    actual: &Type,
+    expected: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+) -> Option<bool> {
+    let Type::Named { name, .. } = expected else {
+        return None;
+    };
+    let definition = aliases.get(name)?;
+    if definition.kind == TypeDefinitionKind::Parameter {
+        return None;
+    }
+    if definition.kind != TypeDefinitionKind::Enum {
+        return None;
+    }
+    let members: Vec<&Type> = match &definition.value {
+        Type::Union(options) => options
+            .iter()
+            .filter_map(|option| match option {
+                Type::Literal(text) => enum_member_value(aliases, text),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let numeric =
+        |value: &&Type| matches!(value, Type::Literal(text) if text.parse::<f64>().is_ok());
+    let all_numeric = !members.is_empty() && members.iter().all(numeric);
+    // An enum with a computed member is typed as a plain number or string.
+    let open_number = matches!(definition.value, Type::Number);
+    match actual {
+        Type::Number if all_numeric || open_number => Some(true),
+        Type::Literal(text) if text.parse::<f64>().is_ok() => {
+            if open_number {
+                return Some(true);
+            }
+            let value = text.parse::<f64>().ok()?;
+            Some(members.iter().any(|member| {
+                matches!(member, Type::Literal(candidate) if candidate.parse::<f64>().ok() == Some(value))
+            }))
+        }
+        Type::Literal(text) if text.starts_with('"') || text.starts_with('\'') => Some(false),
+        Type::String => Some(false),
+        _ => None,
     }
 }
 
@@ -460,7 +731,7 @@ pub(super) fn accepts_strict_unknown(
     budget: &mut TypeExpansionBudget,
 ) -> bool {
     match expected {
-        Type::Any | Type::Unknown => true,
+        Type::Any | Type::Unknown | Type::StrictUnknown => true,
         Type::Union(options) => options
             .iter()
             .any(|option| accepts_strict_unknown(option, aliases, &mut visited.clone(), budget)),
@@ -480,10 +751,25 @@ pub(super) fn instantiate_named(
     budget: &mut TypeExpansionBudget,
     side: &str,
 ) -> Option<Type> {
+    if matches!(
+        value,
+        Type::Conditional(_)
+            | Type::Infer(_)
+            | Type::Mapped(_)
+            | Type::TemplateLiteral(_)
+            | Type::KeyOf(_)
+            | Type::IndexedAccess { .. }
+    ) {
+        return super::type_operators::resolve(value, aliases, visited, budget);
+    }
     let Type::Named { name, arguments } = value else {
         return None;
     };
     let definition = aliases.get(name)?;
+    if definition.kind == TypeDefinitionKind::EnumMember {
+        // A member used as a type is the enum literal type, not its value.
+        return Some(Type::Literal(name.clone()));
+    }
     let arguments = complete_type_arguments(&definition.parameters, arguments)?;
     let key = format!("{side}:{}", type_identity(value));
     if !visited.insert(key) {
@@ -497,7 +783,16 @@ pub(super) fn instantiate_named(
         .iter()
         .map(|parameter| parameter.name.clone())
         .zip(arguments)
+        .map(|(name, value)| {
+            let value = if definition.kind == TypeDefinitionKind::Class {
+                canonical_parameter_references(&value, aliases)
+            } else {
+                value
+            };
+            (name, value)
+        })
         .collect();
+    crate::performance::instantiated();
     Some(substitute_type(&definition.value, &substitutions))
 }
 
@@ -505,7 +800,7 @@ pub(super) fn instantiate_named(
 /// defaults. The parser/checker reports invalid argument counts and constraint
 /// violations separately; this helper is also used by structural expansion,
 /// where `None` simply means the named type cannot be expanded safely.
-pub(super) fn complete_type_arguments(
+pub(crate) fn complete_type_arguments(
     parameters: &[TypeParameter],
     supplied: &[Type],
 ) -> Option<Vec<Type>> {
@@ -522,19 +817,76 @@ pub(super) fn complete_type_arguments(
                 .map(|value| substitute_type(value, &substitutions))
         })?;
         substitutions.insert(parameter.name.clone(), value.clone());
+        substitutions.insert(
+            crate::parser::type_parameter_identity(parameter),
+            value.clone(),
+        );
         arguments.push(value);
     }
     Some(arguments)
 }
 
-pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
+pub(crate) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
+    if let Type::Conditional(conditional) = value {
+        if let Type::Named { name, arguments } = &conditional.check {
+            if arguments.is_empty() {
+                match substitutions.get(name) {
+                    Some(Type::Never) => return Type::Never,
+                    Some(Type::Union(options)) => {
+                        return Type::Union(
+                            options
+                                .iter()
+                                .map(|option| {
+                                    let mut substitutions = substitutions.clone();
+                                    substitutions.insert(name.clone(), option.clone());
+                                    substitute_type(value, &substitutions)
+                                })
+                                .collect(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    if let Some(value) = value.map_operator(|value, bound| {
+        let mut substitutions = substitutions.clone();
+        for name in bound {
+            substitutions.remove(name);
+        }
+        substitute_type(value, &substitutions)
+    }) {
+        return value;
+    }
+
     match value {
+        Type::KeyOf(value) => Type::KeyOf(Box::new(substitute_type(value, substitutions))),
+        Type::IndexedAccess {
+            object,
+            index,
+            index_span,
+        } => Type::IndexedAccess {
+            object: Box::new(substitute_type(object, substitutions)),
+            index: Box::new(substitute_type(index, substitutions)),
+            index_span: index_span.clone(),
+        },
+        Type::Predicate(predicate) => {
+            let mut predicate = predicate.clone();
+            predicate.target = predicate
+                .target
+                .as_ref()
+                .map(|target| Box::new(substitute_type(target, substitutions)));
+            Type::Predicate(predicate)
+        }
         Type::Named { name, arguments } if arguments.is_empty() => substitutions
             .get(name)
             .cloned()
             .unwrap_or_else(|| value.clone()),
         Type::Named { name, arguments } => Type::Named {
-            name: name.clone(),
+            name: match substitutions.get(name) {
+                Some(Type::Named { name, arguments }) if arguments.is_empty() => name.clone(),
+                _ => name.clone(),
+            },
             arguments: arguments
                 .iter()
                 .map(|argument| substitute_type(argument, substitutions))
@@ -552,10 +904,31 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
                 })
                 .collect(),
         ),
+        Type::CallableRecord { fields, signatures } => {
+            let Type::Record(fields) =
+                substitute_type(&Type::Record(fields.clone()), substitutions)
+            else {
+                unreachable!()
+            };
+            Type::CallableRecord {
+                fields,
+                signatures: signatures
+                    .iter()
+                    .map(|signature| {
+                        signature.map_types(|value| substitute_type(value, substitutions))
+                    })
+                    .collect(),
+            }
+        }
         Type::Record(fields) => Type::Record(
             fields
                 .iter()
                 .map(|field| TypeField {
+                    accessor_write_type: field
+                        .accessor_write_type
+                        .as_ref()
+                        .map(|value| Box::new(substitute_type(value, substitutions))),
+                    method: field.method,
                     name: field.name.clone(),
                     readonly: field.readonly,
                     optional: field.optional,
@@ -564,6 +937,45 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
                 })
                 .collect(),
         ),
+        Type::GenericFunction {
+            type_parameters,
+            parameters,
+            result,
+            span,
+        } => {
+            let mut substitutions = substitutions.clone();
+            for parameter in type_parameters {
+                substitutions.remove(&parameter.name);
+            }
+            let Type::Function { parameters, result } = substitute_type(
+                &Type::Function {
+                    parameters: parameters.clone(),
+                    result: result.clone(),
+                },
+                &substitutions,
+            ) else {
+                unreachable!()
+            };
+            Type::GenericFunction {
+                type_parameters: type_parameters
+                    .iter()
+                    .map(|parameter| TypeParameter {
+                        constraint: parameter
+                            .constraint
+                            .as_ref()
+                            .map(|value| substitute_type(value, &substitutions)),
+                        default: parameter
+                            .default
+                            .as_ref()
+                            .map(|value| substitute_type(value, &substitutions)),
+                        ..parameter.clone()
+                    })
+                    .collect(),
+                parameters,
+                result,
+                span: span.clone(),
+            }
+        }
         Type::Function { parameters, result } => Type::Function {
             parameters: parameters
                 .iter()
@@ -595,6 +1007,21 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
 
 pub(super) fn type_identity(value: &Type) -> String {
     match value {
+        Type::UniqueSymbol(origin) => format!(
+            "unique symbol {}:{}:{}",
+            origin.module, origin.start, origin.end
+        ),
+        Type::Conditional(_)
+        | Type::Infer(_)
+        | Type::Mapped(_)
+        | Type::TemplateLiteral(_)
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. } => value.operator_text(type_identity).expect("operator type"),
+        Type::KeyOf(value) => format!("keyof {}", type_identity(value)),
+        Type::IndexedAccess { object, index, .. } => {
+            format!("{}[{}]", type_identity(object), type_identity(index))
+        }
+        Type::Predicate(predicate) => predicate.text(type_identity),
         Type::Named { name, arguments } => format!(
             "{name}<{}>",
             arguments
@@ -603,7 +1030,7 @@ pub(super) fn type_identity(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        Type::Array(value) => format!("{}[]", type_identity(value)),
+        Type::Array(value) => value.array_element_text(type_identity),
         Type::Tuple(values) => format!(
             "[{}]",
             values
@@ -619,8 +1046,10 @@ pub(super) fn type_identity(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        Type::Record(_) => "record".to_string(),
-        Type::Function { .. } => "function".to_string(),
+        Type::Record(_)
+        | Type::CallableRecord { .. }
+        | Type::Function { .. }
+        | Type::GenericFunction { .. } => crate::diagnostic::type_text::render(value),
         Type::Union(values) => values
             .iter()
             .map(type_identity)
@@ -637,8 +1066,23 @@ pub(super) fn type_identity(value: &Type) -> String {
 
 pub(crate) fn type_label(value: &Type) -> String {
     match value {
+        Type::Conditional(_)
+        | Type::Infer(_)
+        | Type::Mapped(_)
+        | Type::TemplateLiteral(_)
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. } => value.operator_text(type_label).expect("operator type"),
+        Type::KeyOf(value) => format!("keyof {}", type_label(value)),
+        Type::IndexedAccess { object, index, .. } => {
+            format!("{}[{}]", type_label(object), type_label(index))
+        }
+        Type::Predicate(predicate) => predicate.text(type_label),
         Type::Any => "any".to_string(),
-        Type::Unknown => "unknown".to_string(),
+        Type::Unknown | Type::StrictUnknown => "unknown".to_string(),
+        Type::BigInt => "bigint".to_string(),
+        Type::Symbol => "symbol".to_string(),
+        Type::UniqueSymbol(_) => "unique symbol".to_string(),
+        Type::ConstAssertion => "const".to_string(),
         Type::Never => "never".to_string(),
         Type::Void => "void".to_string(),
         Type::Null => "null".to_string(),
@@ -647,8 +1091,8 @@ pub(crate) fn type_label(value: &Type) -> String {
         Type::Number => "number".to_string(),
         Type::String => "string".to_string(),
         Type::Literal(value) => value.clone(),
-        Type::Named { name, .. } => name.clone(),
-        Type::Array(value) => format!("{}[]", type_label(value)),
+        Type::Named { name, .. } => crate::parser::source_type_name(name).to_string(),
+        Type::Array(value) => value.array_element_text(type_label),
         Type::Tuple(values) => format!(
             "[{}]",
             values
@@ -664,8 +1108,8 @@ pub(crate) fn type_label(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        Type::Record(_) => "record".to_string(),
-        Type::Function { .. } => "function".to_string(),
+        Type::Record(_) | Type::CallableRecord { .. } => "record".to_string(),
+        Type::Function { .. } | Type::GenericFunction { .. } => "function".to_string(),
         Type::Union(values) => values
             .iter()
             .map(type_label)

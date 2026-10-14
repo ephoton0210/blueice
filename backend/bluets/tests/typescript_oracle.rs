@@ -41,6 +41,252 @@ struct ExpectedDiagnostic {
 
 const CASES: &[OracleCase] = &[
     OracleCase {
+        name: "destructured-parameter-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-runtime/main.ts"),
+        )],
+        expected_stdout: Some("25\nnone\nL\ns1\nk:2:2\n6\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "async-nested-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/async-nested-runtime/main.ts"),
+        )],
+        expected_stdout: Some("4:e3:6:5\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "toplevel-await-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/toplevel-await-runtime/main.ts"),
+        )],
+        expected_stdout: Some("start\n2 3 4 11\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "generator-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generator-runtime/main.ts"),
+        )],
+        expected_stdout: Some("0 1 -1 true\n5 1 99 inner\n30 2\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "async-function-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/async-function-runtime/main.ts"),
+        )],
+        expected_stdout: Some("r8\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "generic-nested-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generic-nested-runtime/main.ts"),
+        )],
+        expected_stdout: Some("1\n2\n7\n1\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "catch-annotation-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/catch-annotation-runtime/main.ts"),
+        )],
+        expected_stdout: Some("done\nok\ndone\ncaught\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "nested-function-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/nested-function-runtime/main.ts"),
+        )],
+        expected_stdout: Some("hi a!\n21\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "object-method-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/object-method-runtime/main.ts"),
+        )],
+        expected_stdout: Some("2\na!\n42\n7\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "function-expression-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-expression-runtime/main.ts"),
+        )],
+        expected_stdout: Some("8\nhi a!\n12\n4\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "arrow-typed-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/arrow-typed-runtime/main.ts"),
+        )],
+        expected_stdout: Some("8\nhi a!\nhi a?\n12\n3\nnone\na\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("shape square\nsquare\na shape square\n2\nmade x!\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-field-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-field-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("2 c 7 true n 5 11 10\ncount,label,id,tag,name,extra\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-field-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-field-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-visibility-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-visibility-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("12 adaV-vadaV- 8\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-visibility-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-visibility-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-param-property-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-param-property-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("12 none 43 4 5\nx,y,w,v,z x,y,w,v,z,q,hidden,r\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-param-property-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-param-property-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-accessor-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-accessor-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("27 86 C1 C2 21 _celsius\nconstructor,celsius,fahrenheit,kelvin\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-accessor-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-accessor-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-private-name-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-private-name-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("16 true false s true\nlabel {\"label\":\"c\"}\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-private-name-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-private-name-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-static-block-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-static-block-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some(
+            "a,block1,local11,b,hidden,block2,child21\n\
+             a,block1,local11,b,hidden,block2,child21,instance,instance\n",
+        ),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-static-block-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-static-block-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "enum-runtime-basic",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/enum-runtime-basic/main.ts"),
+        )],
+        expected_stdout: Some("0 5 6 Red Green Blue 5\na b 1 s 2 N M\n4 5 10 14 14 -1 -6 1 2 3\n0,5,6,Red,Green,Blue {\"A\":\"a\",\"B\":\"b\"} {\"4\":\"A\",\"5\":\"B\",\"10\":\"C\",\"14\":\"E\",\"A\":4,\"B\":5,\"C\":10,\"D\":14,\"E\":14,\"F\":-1,\"-1\":\"F\",\"G\":-6,\"-6\":\"G\"} 1,2,3,a-b,c d,plain\n6 7 a object 1,2,N,S,M\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "enum-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/enum-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some("0\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-property",
         modules: &[(
             "memory:///main.ts",
@@ -945,8 +1191,8 @@ fn pinned_bluetsc_oracle_matches_the_supported_fixture_matrix() {
     }
 }
 
-/// Class fixtures compare TypeScript syntax and overload rules.
-/// BlueTS must still reject every class before output until J.3.1.3–J.3.1.6.
+/// Class fixtures compare TypeScript syntax and overload rules against the
+/// pinned compiler without emitting.
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_class_method_boundary_matches_typescript_without_emit() {
@@ -964,8 +1210,8 @@ fn pinned_class_method_boundary_matches_typescript_without_emit() {
             &[],
         ),
         (
-            "deferred-private",
-            include_str!("fixtures/typescript_oracle/class-method-deferred-private/main.ts"),
+            "private",
+            include_str!("fixtures/typescript_oracle/class-method-private/main.ts"),
             &[],
         ),
         (
@@ -3383,6 +3629,1037 @@ fn pinned_symbolic_tuple_spread_function_annotations_match_typescript_without_em
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_symbolic_tuple_spread_comparison_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 3] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-spread-symbolic-compare-valid/main.ts"),
+            &[],
+        ),
+        (
+            "distinct-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-symbolic-compare-distinct-error/main.ts"
+            ),
+            &[(4, "TS2322")],
+        ),
+        (
+            "narrowing-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-symbolic-compare-narrowing-error/main.ts"
+            ),
+            &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_symbolic_tuple_spread_closure_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 4] = [
+        (
+            "nested-valid",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-symbolic-close-nested-valid/main.ts"
+            ),
+            &[],
+        ),
+        (
+            "unresolved-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-symbolic-close-unresolved-error/main.ts"
+            ),
+            &[(4, "TS2304")],
+        ),
+        (
+            "cyclic-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-symbolic-close-cyclic-error/main.ts"
+            ),
+            &[(4, "TS2456"), (4, "TS2315"), (5, "TS2315")],
+        ),
+        (
+            "nonarray-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-symbolic-close-nonarray-error/main.ts"
+            ),
+            &[(4, "TS2574")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_override_overload_sets_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 8] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-override-overload-valid/main.ts"),
+            &[],
+        ),
+        (
+            "single-wide-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-overload-single-wide-error/main.ts"
+            ),
+            &[(5, "TS2416")],
+        ),
+        (
+            "missing-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-overload-missing-error/main.ts"
+            ),
+            &[(5, "TS2416")],
+        ),
+        (
+            "return-error",
+            include_str!("fixtures/typescript_oracle/class-override-overload-return-error/main.ts"),
+            &[(5, "TS2416"), (5, "TS2416"), (5, "TS2416")],
+        ),
+        (
+            "static-error",
+            include_str!("fixtures/typescript_oracle/class-override-overload-static-error/main.ts"),
+            &[(5, "TS2417")],
+        ),
+        (
+            "edge-valid",
+            include_str!("fixtures/typescript_oracle/class-override-overload-edge-valid/main.ts"),
+            &[],
+        ),
+        (
+            "ancestor-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-overload-ancestor-error/main.ts"
+            ),
+            &[(6, "TS2416")],
+        ),
+        (
+            "required-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-overload-required-error/main.ts"
+            ),
+            &[(5, "TS2416"), (5, "TS2416"), (5, "TS2416")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_derived_constructor_super_calls_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-super-call-valid/main.ts"),
+            &[],
+        ),
+        (
+            "missing-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-missing-error/main.ts"),
+            &[(5, "TS2377")],
+        ),
+        (
+            "count-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-count-error/main.ts"),
+            &[(5, "TS2554")],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-type-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "this-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-this-error/main.ts"),
+            &[(5, "TS17009")],
+        ),
+        (
+            "overload-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-overload-error/main.ts"),
+            &[(5, "TS2769")],
+        ),
+        (
+            "base-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-base-error/main.ts"),
+            &[(4, "TS2335")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_super_member_reads_and_calls_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 10] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-super-member-valid/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-result-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "argtype-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-argtype-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "argcount-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-argcount-error/main.ts"),
+            &[(5, "TS2554")],
+        ),
+        (
+            "missing-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-missing-error/main.ts"),
+            &[(5, "TS2339")],
+        ),
+        (
+            "instance-side-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-super-member-instance-side-error/main.ts"
+            ),
+            &[(5, "TS2576")],
+        ),
+        (
+            "static-side-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-static-side-error/main.ts"),
+            &[(5, "TS2339")],
+        ),
+        (
+            "overload-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-overload-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "nobase-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-nobase-error/main.ts"),
+            &[(4, "TS2335")],
+        ),
+        (
+            "method-call-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-method-call-error/main.ts"),
+            &[(5, "TS2337")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_parenthesized_types_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 4] = [
+        (
+            "identity-error",
+            include_str!("fixtures/typescript_oracle/paren-type-identity-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/paren-type-valid/main.ts"),
+            &[],
+        ),
+        (
+            "class-override-valid",
+            include_str!("fixtures/typescript_oracle/paren-type-class-override-valid/main.ts"),
+            &[],
+        ),
+        (
+            "class-override-error",
+            include_str!("fixtures/typescript_oracle/paren-type-class-override-error/main.ts"),
+            &[(5, "TS2416")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_optional_tuple_spreads_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "super-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-super-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-valid/main.ts"),
+            &[],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-call-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "multi-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-multi-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "method-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-method-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "constructor-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-optional-constructor-error/main.ts"
+            ),
+            &[(5, "TS2345")],
+        ),
+        (
+            "literal-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-literal-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_tuple_literal_returns_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 9] = [
+        (
+            "nested-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-return-nested-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-return-valid/main.ts"),
+            &[],
+        ),
+        (
+            "class-valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-return-class-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-return-type-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "short-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-return-short-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "long-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-return-long-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "spread-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-return-spread-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "class-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-return-class-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "local-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-return-local-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_tuple_literal_arguments_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 8] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-valid/main.ts"),
+            &[],
+        ),
+        (
+            "class-valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-class-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "short-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-short-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "overload-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-argument-overload-error/main.ts"
+            ),
+            &[(7, "TS2769")],
+        ),
+        (
+            "method-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-method-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "constructor-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-argument-constructor-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "super-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-argument-super-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_tuple_literal_properties_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 9] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-type-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "short-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-short-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "long-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-long-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "nested-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-nested-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "argument-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-property-argument-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "array-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-array-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "return-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-return-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "missing-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-property-missing-error/main.ts"),
+            &[(4, "TS2741")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_tuple_literal_assignments_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-literal-assignment-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-assignment-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "short-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-assignment-short-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "record-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-assignment-record-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "member-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-assignment-member-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "element-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-literal-assignment-element-error/main.ts"
+            ),
+            &[(5, "TS2322")],
+        ),
+        (
+            "union-error",
+            include_str!("fixtures/typescript_oracle/tuple-literal-assignment-union-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_top_level_await_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/toplevel-await-valid/main.ts"),
+            &[],
+        ),
+        (
+            "script-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-script-error/main.ts"),
+            &[(5, "TS1375")],
+        ),
+        (
+            "function-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-function-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "arrow-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-arrow-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "namespace-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-namespace-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "field-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-field-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/toplevel-await-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_generator_functions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 8] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/generator-valid/main.ts"),
+            &[],
+        ),
+        (
+            "yield-type-error",
+            include_str!("fixtures/typescript_oracle/generator-yield-type-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "return-type-error",
+            include_str!("fixtures/typescript_oracle/generator-return-type-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "annotation-error",
+            include_str!("fixtures/typescript_oracle/generator-annotation-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "next-type-error",
+            include_str!("fixtures/typescript_oracle/generator-next-type-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "delegate-error",
+            include_str!("fixtures/typescript_oracle/generator-delegate-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "delegate-type-error",
+            include_str!("fixtures/typescript_oracle/generator-delegate-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "not-iterable-error",
+            include_str!("fixtures/typescript_oracle/generator-not-iterable-error/main.ts"),
+            &[(4, "TS2488")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_typed_arrow_functions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 10] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/arrow-typed-valid/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-result-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "block-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-block-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "missing-return-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-missing-return-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "parameter-use-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-parameter-use-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "closure-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-closure-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "default-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-default-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "nested-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-nested-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "tuple-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-tuple-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "assign-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-assign-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_function_expressions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 8] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/function-expression-valid/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/function-expression-result-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "missing-return-error",
+            include_str!(
+                "fixtures/typescript_oracle/function-expression-missing-return-error/main.ts"
+            ),
+            &[(4, "TS2366")],
+        ),
+        (
+            "parameter-use-error",
+            include_str!(
+                "fixtures/typescript_oracle/function-expression-parameter-use-error/main.ts"
+            ),
+            &[(4, "TS2322")],
+        ),
+        (
+            "closure-error",
+            include_str!("fixtures/typescript_oracle/function-expression-closure-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "default-error",
+            include_str!("fixtures/typescript_oracle/function-expression-default-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "assign-error",
+            include_str!("fixtures/typescript_oracle/function-expression-assign-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/function-expression-call-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_object_methods_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/object-method-valid/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/object-method-result-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "parameter-use-error",
+            include_str!("fixtures/typescript_oracle/object-method-parameter-use-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "missing-return-error",
+            include_str!("fixtures/typescript_oracle/object-method-missing-return-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "default-error",
+            include_str!("fixtures/typescript_oracle/object-method-default-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/object-method-call-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "getter-error",
+            include_str!("fixtures/typescript_oracle/object-method-getter-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_nested_function_declarations_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/nested-function-valid/main.ts"),
+            &[],
+        ),
+        (
+            "hoist",
+            include_str!("fixtures/typescript_oracle/nested-function-hoist/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/nested-function-result-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "parameter-use-error",
+            include_str!("fixtures/typescript_oracle/nested-function-parameter-use-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "closure-error",
+            include_str!("fixtures/typescript_oracle/nested-function-closure-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "missing-return-error",
+            include_str!("fixtures/typescript_oracle/nested-function-missing-return-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/nested-function-call-error/main.ts"),
+            &[(4, "TS2345")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_catch_annotations_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 5] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/catch-annotation-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/catch-annotation-type-error/main.ts"),
+            &[(4, "TS1196")],
+        ),
+        (
+            "unknown-use-error",
+            include_str!("fixtures/typescript_oracle/catch-annotation-unknown-use-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "fallthrough-error",
+            include_str!("fixtures/typescript_oracle/catch-annotation-fallthrough-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "try-fallthrough-error",
+            include_str!(
+                "fixtures/typescript_oracle/catch-annotation-try-fallthrough-error/main.ts"
+            ),
+            &[(4, "TS2366")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_generic_nested_functions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 5] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/generic-nested-valid/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/generic-nested-result-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "parameter-use-error",
+            include_str!("fixtures/typescript_oracle/generic-nested-parameter-use-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "unknown-parameter-error",
+            include_str!(
+                "fixtures/typescript_oracle/generic-nested-unknown-parameter-error/main.ts"
+            ),
+            &[(4, "TS2304"), (4, "TS2304")],
+        ),
+        (
+            "constraint-error",
+            include_str!("fixtures/typescript_oracle/generic-nested-constraint-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_async_functions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/async-function-valid/main.ts"),
+            &[],
+        ),
+        (
+            "return-error",
+            include_str!("fixtures/typescript_oracle/async-function-return-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "annotation-error",
+            include_str!("fixtures/typescript_oracle/async-function-annotation-error/main.ts"),
+            &[(4, "TS1064")],
+        ),
+        (
+            "await-type-error",
+            include_str!("fixtures/typescript_oracle/async-function-await-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "await-context-error",
+            include_str!("fixtures/typescript_oracle/async-function-await-context-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "missing-return-error",
+            include_str!("fixtures/typescript_oracle/async-function-missing-return-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "promise-mismatch-error",
+            include_str!(
+                "fixtures/typescript_oracle/async-function-promise-mismatch-error/main.ts"
+            ),
+            &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_async_nested_functions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/async-nested-valid/main.ts"),
+            &[],
+        ),
+        (
+            "return-error",
+            include_str!("fixtures/typescript_oracle/async-nested-return-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "annotation-error",
+            include_str!("fixtures/typescript_oracle/async-nested-annotation-error/main.ts"),
+            &[(4, "TS1064")],
+        ),
+        (
+            "await-type-error",
+            include_str!("fixtures/typescript_oracle/async-nested-await-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "sync-await-error",
+            include_str!("fixtures/typescript_oracle/async-nested-sync-await-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/async-nested-call-error/main.ts"),
+            &[(5, "TS2322"), (5, "TS2345")],
+        ),
+        (
+            "value-error",
+            include_str!("fixtures/typescript_oracle/async-nested-value-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_destructured_parameters_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 6] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-valid/main.ts"),
+            &[],
+        ),
+        (
+            "use-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-use-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "missing-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-missing-error/main.ts"),
+            &[(5, "TS2339")],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-call-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "tuple-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-tuple-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "named-error",
+            include_str!("fixtures/typescript_oracle/destructured-parameter-named-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);
@@ -3840,6 +5117,122 @@ fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
         "named-value-export" => {
             Some("declare const label: string;\nexport { label as greeting };\n")
         }
+        "class-emit-declaration" => Some(
+            "export declare class Shape {\n    constructor(name: string);\n    \
+             constructor(name: string, sides: number);\n    describe(prefix: string): string;\n    \
+             scale(factor: number): number;\n    scale(factor: string): string;\n    \
+             static create(name: string): string;\n}\n\
+             export declare class Square extends Shape {\n    constructor();\n    \
+             describe(prefix: string): string;\n}\n",
+        ),
+        "class-field-emit-declaration" => Some(
+            "export declare class Shape {\n    count: number;\n    static total: number;\n    \
+             label: string;\n    readonly id: number;\n    tag?: string;\n    name: string;\n    \
+             static readonly kind = \"shape\";\n    describe(): string;\n}\n",
+        ),
+        "class-visibility-emit-declaration" => Some(
+            "export declare class Vault {\n    private balance;\n    protected owner: string;\n    \
+             label: string;\n    private readonly id;\n    protected readonly kind = \"vault\";\n    \
+             private static count;\n    protected static prefix: string;\n    private bump;\n    \
+             protected who(): string;\n    open(): number;\n    private static reset;\n    \
+             protected static tag(): string;\n    private tail?;\n    \
+             protected constructor(seed: number);\n    static make(): Vault;\n}\n\
+             export declare class Sealed {\n    private constructor();\n    \
+             static create(): Sealed;\n}\n",
+        ),
+        "class-param-property-emit-declaration" => Some(
+            "export declare class Base {\n    x: number;\n    private y;\n    \
+             protected readonly w: number;\n    readonly v?: string | undefined;\n    \
+             flag: boolean;\n    z: number;\n    \
+             constructor(x: number, y: string, w?: number, v?: string | undefined, flag?: boolean);\n    \
+             m(): number;\n}\n\
+             export declare class Derived extends Base {\n    q: number;\n    \
+             protected r?: number | undefined;\n    constructor(q: number, r?: number | undefined);\n}\n\
+             export declare class Plain {\n    constructor(a: number, b?: string);\n}\n",
+        ),
+        "class-accessor-emit-declaration" => Some(
+            "export declare class A {\n    private _v;\n    get v(): number;\n    set v(x: number);\n    \
+             get ro(): string;\n    set wo(x: number);\n    static get count(): number;\n    \
+             static set count(x: number);\n    protected get p(): number;\n    private get hidden();\n    \
+             private set hidden(value);\n    set both(x: number);\n    get both(): number;\n}\n",
+        ),
+        "class-private-name-emit-declaration" => Some(
+            "export declare class A {\n    #private;\n    a: number;\n    b(): number;\n    c: number;\n}\n\
+             export declare class B extends A {\n    d: number;\n}\n\
+             export declare class C extends A {\n    #private;\n}\n\
+             export declare class D {\n    #private;\n    e: number;\n    private p;\n}\n\
+             export declare class E {\n    #private;\n    open: number;\n    constructor(open: number);\n}\n",
+        ),
+        "class-static-block-emit-declaration" => Some(
+            "export declare class A {\n    static count: number;\n    a: number;\n}\n",
+        ),
+        "enum-emit-declaration" => Some(concat!(
+            "export declare enum Num {\n",
+            "    A = 0,\n",
+            "    B = 5,\n",
+            "    C = 6,\n",
+            "    D = 8,\n",
+            "    Neg = -1,\n",
+            "    F = 1.5\n",
+            "}\n",
+            "export declare enum Str {\n",
+            "    A = \"a\",\n",
+            "    B = \"t\",\n",
+            "    \"q-r\" = \"x\"\n",
+            "}\n",
+            "export declare enum Mixed {\n",
+            "    A = 1,\n",
+            "    B = \"b\",\n",
+            "    C = 3\n",
+            "}\n",
+            "export declare enum Computed {\n",
+            "    A,\n",
+            "    B = 2\n",
+            "}\n",
+            "export declare const enum Konst {\n",
+            "    X = 1,\n",
+            "    Y = \"y\"\n",
+            "}\n",
+            "export declare const enum Auto {\n",
+            "    A = 0,\n",
+            "    B = 1,\n",
+            "    C = 10,\n",
+            "    D = 11\n",
+            "}\n",
+            "export declare enum Amb {\n",
+            "    A,\n",
+            "    B = 2,\n",
+            "    C\n",
+            "}\n",
+            "export declare const enum AmbConst {\n",
+            "    A = 0,\n",
+            "    B = 1\n",
+            "}\n",
+            "export declare enum Merged {\n",
+            "    A = 0\n",
+            "}\n",
+            "export declare enum Merged {\n",
+            "    B = 1\n",
+            "}\n",
+            "declare enum Local {\n",
+            "    A = 0,\n",
+            "    B = 1\n",
+            "}\n",
+            "export declare enum Empty {\n",
+            "}\n",
+            "export declare enum Big {\n",
+            "    A = 1099511627776,\n",
+            "    B = 1e+21,\n",
+            "    Inf = Infinity,\n",
+            "    NaN2 = NaN\n",
+            "}\n",
+            "export { Local };\n",
+            "export declare class Holder {\n",
+            "    kind: Num;\n",
+            "    static mode: Str;\n",
+            "    pick(k: Konst): Mixed;\n",
+            "}\n",
+        )),
         _ => None,
     }
 }

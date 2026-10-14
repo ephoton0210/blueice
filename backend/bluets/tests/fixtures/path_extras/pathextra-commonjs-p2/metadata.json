@@ -1,0 +1,25 @@
+{
+  "id": "pathextra-commonjs-p2",
+  "form": "p2",
+  "entry": "main.ts",
+  "rootFiles": [
+    "main.ts"
+  ],
+  "runtimeModule": "CommonJS",
+  "options": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "paths": {
+      "answer": [
+        "./types/answer.d.ts"
+      ]
+    }
+  }
+}

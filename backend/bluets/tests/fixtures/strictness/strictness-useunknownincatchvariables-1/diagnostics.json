@@ -1,0 +1,6 @@
+[
+  {
+    "code": 2322,
+    "message": "Type 'unknown' is not assignable to type 'number'."
+  }
+]

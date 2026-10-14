@@ -1,0 +1,125 @@
+{
+  "version": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "noEmit": true
+  },
+  "cases": [
+    {
+      "name": "catch-literal",
+      "accepts": true,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { if (error === 42) { yield error; } else { throw error; } } return 0; }",
+      "diagnostics": []
+    },
+    {
+      "name": "catch-typeof",
+      "accepts": true,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { if (typeof error === \"number\") { yield error; } } return 0; }",
+      "diagnostics": []
+    },
+    {
+      "name": "catch-early-throw",
+      "accepts": true,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { if (typeof error !== \"number\") { throw error; } yield error; } return 0; }",
+      "diagnostics": []
+    },
+    {
+      "name": "catch-unknown",
+      "accepts": false,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { yield error; } return 0; }",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 106,
+          "length": 5,
+          "message": "Type 'unknown' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "catch-string",
+      "accepts": false,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { if (typeof error === \"string\") { yield error; } } return 0; }",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 139,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "catch-else",
+      "accepts": false,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { if (error === 42) { yield error; } else { yield error; } } return 0; }",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 148,
+          "length": 5,
+          "message": "Type 'unknown' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "catch-after-join",
+      "accepts": false,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { if (error === 42) { yield error; } yield error; } return 0; }",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 141,
+          "length": 5,
+          "message": "Type 'unknown' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "catch-assignment",
+      "accepts": false,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { if (typeof error === \"number\") { error = \"wrong\"; yield error; } } return 0; }",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 156,
+          "length": 5,
+          "message": "Type 'unknown' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "catch-shadow",
+      "accepts": false,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { if (error === 42) { { const error = \"wrong\"; yield error; } } } return 0; }",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 151,
+          "length": 5,
+          "message": "Type 'string' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "try-local-guard",
+      "accepts": true,
+      "source": "export function* sequence(): Generator<number, number, unknown> { const value: unknown = 42; try { if (value === 42) { yield value; } } finally { yield 0; } return 0; }",
+      "diagnostics": []
+    },
+    {
+      "name": "finally-local-guard",
+      "accepts": true,
+      "source": "export function* sequence(): Generator<number, number, unknown> { const value: unknown = 42; try { yield 20; } finally { if (typeof value === \"number\") { yield value; } } return 0; }",
+      "diagnostics": []
+    },
+    {
+      "name": "nested-catch-shadow",
+      "accepts": true,
+      "source": "export function* sequence(): Generator<number, number, unknown> { try { yield 20; } catch (error) { if (error === 42) { try { yield error; } catch (error) { if (error === 20) { yield error; } } yield error; } } return 0; }",
+      "diagnostics": []
+    }
+  ]
+}

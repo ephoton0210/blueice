@@ -1,0 +1,75 @@
+{
+  "version": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "noEmit": true
+  },
+  "cases": [
+    {
+      "name": "array-call",
+      "accepts": true,
+      "source": "declare const callbacks: ((value:number)=>number)[]; export const result:number=callbacks[0](42);",
+      "diagnostics": []
+    },
+    {
+      "name": "tuple-call",
+      "accepts": true,
+      "source": "declare const callbacks: [(value:number)=>number]; export const result:number=callbacks[0](42);",
+      "diagnostics": []
+    },
+    {
+      "name": "wrong-result",
+      "accepts": false,
+      "source": "declare const callbacks: ((value:number)=>number)[]; export const result:string=callbacks[0](42);",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "start": 66,
+          "length": 6,
+          "message": "Type 'number' is not assignable to type 'string'."
+        }
+      ]
+    },
+    {
+      "name": "wrong-argument",
+      "accepts": false,
+      "source": "declare const callbacks: ((value:number)=>number)[]; callbacks[0](\"wrong\");",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "start": 66,
+          "length": 7,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "missing-argument",
+      "accepts": false,
+      "source": "declare const callbacks: ((value:number)=>number)[]; callbacks[0]();",
+      "diagnostics": [
+        {
+          "code": 2554,
+          "start": 53,
+          "length": 12,
+          "message": "Expected 1 arguments, but got 0."
+        }
+      ]
+    },
+    {
+      "name": "non-callable",
+      "accepts": false,
+      "source": "declare const values:number[]; export const result=values[0]();",
+      "diagnostics": [
+        {
+          "code": 2349,
+          "start": 51,
+          "length": 9,
+          "message": "This expression is not callable.   Type 'Number' has no call signatures."
+        }
+      ]
+    }
+  ]
+}

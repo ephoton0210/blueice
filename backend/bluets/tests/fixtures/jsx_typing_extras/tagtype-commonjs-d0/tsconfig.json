@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf",
+    "jsx": "react",
+    "jsxFactory": "h",
+    "rootDir": ".",
+    "outDir": "out"
+  },
+  "files": [
+    "main.tsx"
+  ]
+}

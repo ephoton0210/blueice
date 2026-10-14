@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "rootDir": ".",
+    "outDir": "out",
+    "baseUrl": ".",
+    "paths": {
+      "answer": [
+        "types/answer.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "main.ts"
+  ]
+}

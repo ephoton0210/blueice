@@ -485,6 +485,214 @@ pub struct DebuggerStaticMetadataSourceBreakpoint {
     pub safe_point: Option<DebuggerSafePoint>,
 }
 
+/// One bounded generated-JavaScript position under an opaque program that
+/// the same debugger stream previously inventoried. It is not source text or
+/// an arbitrary map-read endpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedBreakpointTarget {
+    pub program: DebuggerProgram,
+    pub generated_line: u32,
+    pub generated_column_utf16: u32,
+}
+
+impl DebuggerGeneratedBreakpointTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.program.is_well_formed()
+            && self.generated_line <= DEBUGGER_GENERATED_MAX_COORDINATE
+            && self.generated_column_utf16 <= DEBUGGER_GENERATED_MAX_COORDINATE
+    }
+}
+
+/// Exact generated-token binding. `None` means no compiler-proven executable
+/// instruction at that position; callers must not retarget it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedBreakpoint {
+    pub target: DebuggerGeneratedBreakpointTarget,
+    pub safe_point: Option<DebuggerSafePoint>,
+}
+
+impl DebuggerGeneratedBreakpoint {
+    pub fn is_well_formed(self) -> bool {
+        self.target.is_well_formed()
+            && self
+                .safe_point
+                .is_none_or(|point| point.is_well_formed() && point.program == self.target.program)
+    }
+}
+
+/// One exact generated System execute-body token under an independently
+/// inventoried, earlier installed page-loader program. The loader is not a
+/// source-map target and cannot be substituted with the emitted program.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedSystemBreakpointTarget {
+    pub emitted: DebuggerGeneratedBreakpointTarget,
+    pub loader: DebuggerProgram,
+}
+
+impl DebuggerGeneratedSystemBreakpointTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.emitted.is_well_formed()
+            && self.loader.is_well_formed()
+            && self.loader.realm == self.emitted.program.realm
+            && self.loader != self.emitted.program
+    }
+}
+
+/// Exact nested safe point for a System execute-body token, or an explicitly
+/// unbound wrapper/helper token. The bound point can never name the loader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedSystemBreakpoint {
+    pub target: DebuggerGeneratedSystemBreakpointTarget,
+    pub safe_point: Option<DebuggerSafePoint>,
+}
+
+impl DebuggerGeneratedSystemBreakpoint {
+    pub fn is_well_formed(self) -> bool {
+        self.target.is_well_formed()
+            && self.safe_point.is_none_or(|point| {
+                point.is_well_formed()
+                    && point.program == self.target.emitted.program
+                    && point.code_unit_ordinal != 0
+            })
+    }
+}
+
+/// One original UTF-16 coordinate in the exact emitted artifact's source
+/// table. It has no module identity or source text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedOriginalPosition {
+    pub source_index: u32,
+    pub line: u32,
+    pub column_utf16: u32,
+}
+
+impl DebuggerGeneratedOriginalPosition {
+    pub fn is_well_formed(self) -> bool {
+        self.source_index < DEBUGGER_GENERATED_MAX_SOURCES
+            && self.line <= DEBUGGER_GENERATED_MAX_COORDINATE
+            && self.column_utf16 <= DEBUGGER_GENERATED_MAX_COORDINATE
+    }
+}
+
+/// One exact paused root or nested token position; `original: None` keeps a
+/// generated helper distinct from user source, and `location: None` means the
+/// paused instruction has no exact parser/bytecode token binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedPausedSourceLocation {
+    pub generated_line: u32,
+    pub generated_column_utf16: u32,
+    pub original: Option<DebuggerGeneratedOriginalPosition>,
+}
+
+impl DebuggerGeneratedPausedSourceLocation {
+    pub fn is_well_formed(self) -> bool {
+        self.generated_line <= DEBUGGER_GENERATED_MAX_COORDINATE
+            && self.generated_column_utf16 <= DEBUGGER_GENERATED_MAX_COORDINATE
+            && self
+                .original
+                .is_none_or(DebuggerGeneratedOriginalPosition::is_well_formed)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedPausedLocation {
+    pub program: DebuggerProgram,
+    pub safe_point: DebuggerSafePoint,
+    pub location: Option<DebuggerGeneratedPausedSourceLocation>,
+}
+
+impl DebuggerGeneratedPausedLocation {
+    pub fn is_well_formed(self) -> bool {
+        self.program.is_well_formed()
+            && self.safe_point.is_well_formed()
+            && self.safe_point.program == self.program
+            && self
+                .location
+                .is_none_or(DebuggerGeneratedPausedSourceLocation::is_well_formed)
+    }
+}
+
+/// One source-free instruction step after the exact generated pause has been
+/// revalidated under the independently granted paused-location capability.
+/// A System step additionally names its separately inventoried page loader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DebuggerGeneratedStepTarget {
+    Single {
+        program: DebuggerProgram,
+        frame: Option<DebuggerFrame>,
+    },
+    System {
+        frame: DebuggerFrame,
+        loader: DebuggerProgram,
+    },
+}
+
+impl DebuggerGeneratedStepTarget {
+    pub fn is_well_formed(self) -> bool {
+        match self {
+            Self::Single { program, frame } => {
+                program.is_well_formed()
+                    && frame.is_none_or(|frame| frame.is_well_formed() && frame.program == program)
+            }
+            Self::System { frame, loader } => {
+                frame.is_well_formed()
+                    && loader.is_well_formed()
+                    && loader.realm == frame.program.realm
+                    && loader != frame.program
+            }
+        }
+    }
+}
+
+/// All-or-nothing generated locations for the exact child-first linked
+/// dependency/entry pause. Each position is independently map-bound to its
+/// own opaque program; a missing exact token remains `None` rather than
+/// borrowing the other module's source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedLinkedStackLocations {
+    pub stack: DebuggerLinkedStackSnapshot,
+    pub locations: [Option<DebuggerGeneratedPausedSourceLocation>; 2],
+}
+
+impl DebuggerGeneratedLinkedStackLocations {
+    pub fn is_well_formed(self) -> bool {
+        self.stack.is_well_formed()
+            && self.locations.iter().all(|location| {
+                location.is_none_or(DebuggerGeneratedPausedSourceLocation::is_well_formed)
+            })
+    }
+}
+
+/// Exact child-first System pause under two independently receipted opaque
+/// programs. The middle loader frame has no emitted BlueTS map and must never
+/// borrow a source coordinate from either emitted frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedSystemStackLocations {
+    pub frame: DebuggerFrame,
+    pub loader: DebuggerProgram,
+    pub safe_points: [DebuggerSafePoint; 3],
+    pub locations: [Option<DebuggerGeneratedPausedSourceLocation>; 3],
+}
+
+impl DebuggerGeneratedSystemStackLocations {
+    pub fn is_well_formed(self) -> bool {
+        let emitted = self.frame.program;
+        self.frame.matches_safe_point(self.safe_points[0])
+            && self.loader.is_well_formed()
+            && self.loader.realm == emitted.realm
+            && self.loader != emitted
+            && self.safe_points[1].program == self.loader
+            && self.safe_points[1].code_unit_ordinal != 0
+            && self.safe_points[2].program == emitted
+            && self.safe_points[2].code_unit_ordinal == 0
+            && self.safe_points.iter().all(|point| point.is_well_formed())
+            && self.locations[1].is_none()
+            && self.locations.iter().all(|location| {
+                location.is_none_or(DebuggerGeneratedPausedSourceLocation::is_well_formed)
+            })
+    }
+}
+
 impl DebuggerStaticMetadataSourceBreakpoint {
     pub fn is_well_formed(self) -> bool {
         self.target.is_well_formed()

@@ -112,9 +112,54 @@ fn retains_array_holes_in_variable_initializer_tokens() {
 }
 
 #[test]
-fn rejects_runtime_enums_explicitly() {
-    let diagnostics = parse_module("memory:///app.ts", "enum Colour { Red }").unwrap_err();
+fn parses_enum_declarations_with_their_members_and_modifiers() {
+    let module = parse_module(
+        "memory:///app.ts",
+        "export enum Colour { Red, Green = 2, \"a-b\" = Green + 1, }\n\
+         declare const enum Flag { On = 1 }",
+    )
+    .unwrap();
+    let [Declaration::Enum(colour), Declaration::Enum(flag)] = module.declarations.as_slice()
+    else {
+        panic!("expected two enums");
+    };
+    assert_eq!(colour.name, "Colour");
+    assert!(colour.exported && !colour.declared && !colour.is_const);
+    let names: Vec<&str> = colour
+        .members
+        .iter()
+        .map(|member| member.name.as_str())
+        .collect();
+    assert_eq!(names, ["Red", "Green", "a-b"]);
+    assert!(colour.members[0].initializer.is_none());
+    assert_eq!(
+        colour.members[2].initializer.as_ref().map(|tokens| tokens
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>()),
+        Some(vec!["Green", "+", "1"])
+    );
+    assert!(!flag.exported && flag.declared && flag.is_const);
+    // An enum declared inside a body is not supported yet.
+    let diagnostics =
+        parse_module("memory:///inner.ts", "function f() { enum Inner { A } }").unwrap_err();
     assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
+}
+
+#[test]
+fn enum_declaration_errors_are_parse_errors() {
+    for source in [
+        "enum { A }",
+        "enum E",
+        "enum E { A B }",
+        "enum E { 1 }",
+        "enum E { A = }",
+    ] {
+        assert!(
+            parse_module("memory:///bad.ts", source).is_err(),
+            "{source}"
+        );
+    }
 }
 
 #[test]
@@ -156,15 +201,8 @@ fn retains_named_class_headers_and_bodies_without_claiming_class_semantics() {
 }
 
 #[test]
-fn class_header_errors_and_unimplemented_forms_fail_closed() {
-    for source in [
-        "class Missing",
-        "class { }",
-        "class Box<T> {}",
-        "class C extends Base.Member {}",
-        "class C extends Base[0] {}",
-        "class C implements Shape {}",
-    ] {
+fn class_header_errors_and_unimplemented_forms_fail_closed_and_a_plain_class_compiles() {
+    for source in ["class Missing", "class { }", "class C extends Base[0] {}"] {
         assert!(
             parse_module("memory:///classes.ts", source).is_err(),
             "{source}"
@@ -178,11 +216,20 @@ fn class_header_errors_and_unimplemented_forms_fail_closed() {
         )]),
         crate::CompilerOptions::default(),
     );
-    assert!(compilation.has_errors());
-    assert!(compilation.output.is_none());
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    assert!(compilation.output.is_some());
+    let missing = crate::compile(
+        "memory:///classes.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new(
+            "memory:///classes.ts",
+            "class C implements Shape {}",
+        )]),
+        crate::CompilerOptions::default(),
+    );
+    assert!(missing.has_errors());
     assert_eq!(
-        compilation.diagnostics[0].code,
-        DiagnosticCode::UnsupportedSyntax
+        missing.diagnostics[0].typescript.as_ref().unwrap().code,
+        2304
     );
 }
 
@@ -217,12 +264,69 @@ fn partitions_constructor_method_and_opaque_class_members_at_source_spans() {
         panic!("expected a class");
     };
     assert_eq!(class.members.len(), 2);
-    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Field);
+    let field = class.members[0].field.as_ref().unwrap();
+    assert_eq!(field.name, "field");
+    assert!(!field.is_static && !field.readonly && !field.optional && !field.definite);
+    assert_eq!(field.declared_type(), Some(Type::Number));
     assert_eq!(class.members[1].kind, ClassMemberKind::Method);
+
+    // An accessor is structured, with its accessibility, placement and body.
+    let module = parse_module(
+        "memory:///accessor.ts",
+        "class Other { private static get field(): number { return 1; } set field(value: number) {} method() {} }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 3);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Accessor);
+    let getter = class.members[0].accessor.as_ref().unwrap();
+    assert!(getter.getter && getter.is_static);
+    assert_eq!(getter.visibility, crate::Visibility::Private);
+    assert_eq!(getter.name, "field");
+    assert_eq!(getter.return_type, Some(Type::Number));
+    assert_eq!(class.members[1].kind, ClassMemberKind::Accessor);
+    let setter = class.members[1].accessor.as_ref().unwrap();
+    assert!(!setter.getter && !setter.is_static);
+    assert_eq!(setter.parameters.len(), 1);
+    assert_eq!(class.members[2].kind, ClassMemberKind::Method);
+
+    // An ECMAScript private name is a member like any other, and private.
+    let module = parse_module(
+        "memory:///private-name.ts",
+        "class Other { #field = 1; static #make() {} get #g(): number { return 1; } }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 3);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Field);
+    let field = class.members[0].field.as_ref().unwrap();
+    assert_eq!(field.name, "#field");
+    assert_eq!(field.visibility, crate::Visibility::Private);
+    assert_eq!(class.members[1].kind, ClassMemberKind::Method);
+    assert_eq!(
+        class.members[1].method.as_ref().unwrap().visibility,
+        crate::Visibility::Private
+    );
+    assert_eq!(class.members[2].kind, ClassMemberKind::Accessor);
+
+    // A computed literal key keeps both its cooked name and runtime tokens.
+    let module = parse_module("memory:///computed.ts", "class Other { ['field'] = 1; }").unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 1);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Field);
+    assert_eq!(class.members[0].name.as_deref(), Some("field"));
+    assert_eq!(class.members[0].key[1].text, "'field'");
 }
 
 #[test]
-fn parses_constructor_parameters_and_body_without_accepting_class_execution() {
+fn parses_constructor_parameters_and_body_and_compiles_the_class() {
     let source = "class Counter { constructor(value: number) { const next: number = value; return; } read() {} }";
     let module = parse_module("memory:///counter.ts", source).unwrap();
     let Declaration::Class(class) = &module.declarations[0] else {
@@ -263,8 +367,8 @@ fn parses_constructor_parameters_and_body_without_accepting_class_execution() {
         &crate::MapLoader::from([crate::ModuleSource::new("memory:///counter.ts", source)]),
         crate::CompilerOptions::default(),
     );
-    assert!(compilation.has_errors());
-    assert!(compilation.output.is_none());
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    assert!(compilation.output.is_some());
 }
 
 #[test]
@@ -329,12 +433,12 @@ fn parses_simple_named_method_signatures_and_bodies_at_original_spans() {
         &crate::MapLoader::from([crate::ModuleSource::new("memory:///methods.ts", source)]),
         crate::CompilerOptions::default(),
     );
-    assert!(compilation.has_errors());
-    assert!(compilation.output.is_none());
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    assert!(compilation.output.is_some());
 }
 
 #[test]
-fn incomplete_methods_fail_and_unsupported_accessors_remain_opaque() {
+fn incomplete_methods_fail_and_computed_members_keep_their_structure() {
     for source in [
         "class Bad { read(value: ) {} }",
         "class Bad { read(value: number) }",
@@ -345,15 +449,12 @@ fn incomplete_methods_fail_and_unsupported_accessors_remain_opaque() {
             "{source}"
         );
     }
-    let module = parse_module(
-        "memory:///opaque.ts",
-        "class C { get value() { return 1; } }",
-    )
-    .unwrap();
+    let module = parse_module("memory:///opaque.ts", "class C { ['value'] = 1; }").unwrap();
     let Declaration::Class(class) = &module.declarations[0] else {
         panic!("expected a class");
     };
-    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Field);
+    assert_eq!(class.members[0].field.as_ref().unwrap().name, "value");
 }
 
 #[test]
@@ -435,14 +536,7 @@ fn opaque_class_member_interrupts_method_overload_group() {
 
 #[test]
 fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
-    for source in [
-        "class C { public read() {} }",
-        "class C { private read() {} }",
-        "class C { get value() { return 1; } }",
-        "class C { [key]() {} }",
-        "class C { #secret() {} }",
-        "class C { generic<T>() {} }",
-    ] {
+    for source in ["class C { async read() {} }", "class C { *generate() {} }"] {
         let module = parse_module("memory:///opaque.ts", source).unwrap();
         let Declaration::Class(class) = &module.declarations[0] else {
             panic!("expected a class");
@@ -450,24 +544,65 @@ fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
         assert_eq!(class.members.len(), 1, "{source}");
         assert_eq!(class.members[0].kind, ClassMemberKind::Opaque, "{source}");
     }
+    let diagnostics = parse_module(
+        "memory:///opaque.ts",
+        "class C { static private read() {} }",
+    )
+    .unwrap_err();
+    assert_eq!(diagnostics[0].typescript.as_ref().unwrap().code, 1029);
 }
 
 #[test]
-fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
-    let diagnostics =
-        parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap_err();
-    assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
-    assert!(diagnostics[0].message.contains("TSX/JSX"));
+fn tsx_modules_parse_and_a_jsx_element_is_one_operand() {
+    let module = parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap();
+    assert_eq!(module.declarations.len(), 1);
+    let module = parse_module(
+        "memory:///view.tsx",
+        "const view = <div id={(x: number) => x}>{1}</div>;",
+    )
+    .unwrap();
+    assert!(
+        !module.edits.is_empty(),
+        "the annotation inside the JSX expression is erased"
+    );
 }
 
 #[test]
-fn rejects_legacy_commonjs_module_assignment_forms_explicitly() {
-    for source in [
+fn parses_commonjs_module_assignment_forms() {
+    let module = parse_module(
+        "memory:///app.ts",
         "import Legacy = require('./legacy.ts');",
-        "export = Legacy;",
+    )
+    .unwrap();
+    let Declaration::Import(import) = &module.declarations[0] else {
+        panic!("expected an import");
+    };
+    assert!(import.equals_require);
+    assert_eq!(import.specifier, "./legacy.ts");
+    assert_eq!(import.bindings[0].local, "Legacy");
+
+    let module = parse_module("memory:///app.ts", "const Legacy = 1; export = Legacy;").unwrap();
+    let Declaration::ValueExport(export) = &module.declarations[1] else {
+        panic!("expected an export assignment");
+    };
+    assert!(export.export_assignment);
+    assert_eq!(export.bindings[0].local, "Legacy");
+}
+
+#[test]
+fn rejects_unsupported_import_equals_and_export_assignment_forms() {
+    for source in [
+        "import Alias = Some.Namespace;",
+        "import Alias = require(Foo);",
+        "export = a.b;",
+        "export = 1;",
     ] {
         let diagnostics = parse_module("memory:///app.ts", source).unwrap_err();
-        assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::UnsupportedSyntax,
+            "{source}"
+        );
     }
 }
 
@@ -618,4 +753,27 @@ fn records_and_erases_explicit_direct_call_type_arguments() {
     assert!(module.edits.iter().any(|edit| {
         &source[edit.start..edit.end] == "<string>" && edit.replacement.is_empty()
     }));
+}
+#[test]
+fn class_expressions_keep_their_lexical_name_and_do_not_declare_it_in_the_parent() {
+    for source in [
+        "const C = class { value = 3; };",
+        "const C = class Inner { clone(): Inner { return new Inner(); } };",
+        "const C = class<T> { constructor(public value: T) {} };",
+        "function make() { return class { value = 3; }; }",
+    ] {
+        let module = parse_module("memory:///expression.ts", source).unwrap();
+        let start = source.find("class").unwrap();
+        let expression = module.class_expression(start).unwrap();
+        assert_eq!(expression.class.span.start, start);
+        assert!(expression.class.name.starts_with("#class@"));
+        assert_eq!(
+            expression.name.as_deref(),
+            source.contains("Inner").then_some("Inner")
+        );
+        assert!(!module
+            .declarations
+            .iter()
+            .any(|declaration| matches!(declaration, Declaration::Class(_))));
+    }
 }

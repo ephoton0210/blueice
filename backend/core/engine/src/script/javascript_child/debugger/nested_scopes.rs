@@ -5,6 +5,185 @@
 use super::*;
 
 impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
+    pub(super) fn core_debugger_system_stack_snapshot(
+        &mut self,
+        frame: JavaScriptPageDebuggerFrame,
+        loader: JavaScriptPageDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerSystemStackSnapshot, JavaScriptPageDebuggerError> {
+        if !self.debugger_nested_frames_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        if !(1..=PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&max_scope_entries) {
+            return Err(JavaScriptPageDebuggerError::ResourceLimit);
+        }
+        let tab_id = frame.tab_id;
+        let generation = frame.document_generation;
+        let emitted = JavaScriptPageDebuggerProgram {
+            program_handle: frame.program_handle,
+            program_generation: frame.program_generation,
+        };
+        let child_emitted = self.child_program_for_core(
+            tab_id,
+            generation,
+            emitted.program_handle,
+            emitted.program_generation,
+        )?;
+        let child_loader = self.child_program_for_core(
+            tab_id,
+            generation,
+            loader.program_handle,
+            loader.program_generation,
+        )?;
+        if child_loader == child_emitted {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let paused = self.core_debugger_nested_execution_state(
+            tab_id,
+            generation,
+            emitted.program_handle,
+            emitted.program_generation,
+        )?;
+        let Some(JavaScriptPageDebuggerNestedExecutionState::Paused {
+            frame: active_frame,
+            bytecode_offset,
+        }) = paused
+        else {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        };
+        if active_frame != frame {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let child_frame = self
+            .debugger_nested_frames
+            .get(&tab_id)
+            .filter(|active| active.public == frame && active.child.program == child_emitted)
+            .map(|active| active.child)
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        let reply = self
+            .child
+            .debugger_system_stack_snapshot(child_frame, child_loader, max_scope_entries)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerSystemStackSnapshot {
+            frame: echoed_frame,
+            loader_program: echoed_loader,
+            snapshot,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if echoed_frame != child_frame
+            || echoed_loader != child_loader
+            || snapshot.max_scope_entries != max_scope_entries
+            || !snapshot.is_well_formed(child_frame, child_loader)
+            || snapshot.frames[0].safe_point.bytecode_offset != bytecode_offset
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        for entry in &snapshot.frames {
+            validate_child_safe_point_reply(self, tab_id, generation, entry.safe_point)?;
+        }
+        if self.core_debugger_nested_execution_state(
+            tab_id,
+            generation,
+            emitted.program_handle,
+            emitted.program_generation,
+        )? != Some(JavaScriptPageDebuggerNestedExecutionState::Paused {
+            frame,
+            bytecode_offset,
+        }) {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let [child, foreign, root] = snapshot.frames;
+        let remap = |entry: blueice_ipc::page_host::PageHostDebuggerSystemStackFrame,
+                     program: JavaScriptPageDebuggerProgram| {
+            JavaScriptPageDebuggerSystemStackFrame {
+                program,
+                safe_point: JavaScriptPageDebuggerSafePoint {
+                    code_unit_ordinal: entry.safe_point.code_unit_ordinal,
+                    bytecode_offset: entry.safe_point.bytecode_offset,
+                },
+                scope_entries: entry
+                    .scope_entries
+                    .into_iter()
+                    .map(|scope| JavaScriptPageDebuggerScopeEntry {
+                        slot_ordinal: scope.slot_ordinal,
+                        scope_depth: scope.scope_depth,
+                    })
+                    .collect(),
+                scope_truncated: entry.scope_truncated,
+            }
+        };
+        Ok(JavaScriptPageDebuggerSystemStackSnapshot {
+            frame,
+            frames: [
+                remap(child, emitted),
+                remap(foreign, loader),
+                remap(root, emitted),
+            ],
+            max_scope_entries,
+        })
+    }
+
+    pub(super) fn core_arm_debugger_system_nested_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        loader: JavaScriptPageDebuggerProgram,
+        emitted: JavaScriptPageDebuggerProgram,
+        safe_point: JavaScriptPageDebuggerSafePoint,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_nested_frames_available() || safe_point.code_unit_ordinal == 0 {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let child_loader = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            loader.program_handle,
+            loader.program_generation,
+        )?;
+        let child_emitted = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            emitted.program_handle,
+            emitted.program_generation,
+        )?;
+        if child_loader == child_emitted {
+            return Err(JavaScriptPageDebuggerError::InvalidSafePoint);
+        }
+        let child_point = PageHostDebuggerSafePoint {
+            program: child_emitted,
+            code_unit_ordinal: safe_point.code_unit_ordinal,
+            bytecode_offset: safe_point.bytecode_offset,
+        };
+        validate_child_safe_point_reply(self, tab_id, document_generation, child_point)?;
+        let reply = self
+            .child
+            .arm_debugger_system_nested_breakpoint(
+                tab_id.as_u64(),
+                document_generation,
+                child_loader,
+                child_point,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerSystemNestedBreakpointArmed {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                loader_program: reply_loader,
+                safe_point: reply_point,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && reply_loader == child_loader
+                && reply_point == child_point =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
+
     pub(super) fn core_arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         tab_id: TabId,

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "lib": [
+      "ES2020"
+    ],
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "LF",
+    "sourceRoot": 1
+  },
+  "files": [
+    "main.ts"
+  ]
+}
