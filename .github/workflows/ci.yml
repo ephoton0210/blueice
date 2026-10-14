@@ -82,6 +82,12 @@ jobs:
       - uses: actions/checkout@v4
       # Compile-time fixtures in BlueJS integration tests must come from the
       # same immutable Test262 revision on every operating system.
+      # A Windows runner defaults to core.autocrlf=true, which would rewrite
+      # Test262's LF-only fixtures (e.g. the Function toString
+      # line-terminator-normalisation-LF case) to CRLF and change their meaning.
+      - name: Keep Test262 line endings byte-exact
+        shell: bash
+        run: git config --global core.autocrlf false
       - name: Checkout pinned Test262 corpus
         uses: actions/checkout@v4
         with:
@@ -182,6 +188,12 @@ jobs:
       # `cargo llvm-cov --workspace` compiles BlueJS integration tests whose
       # fixtures are embedded with `include_str!`; use the same immutable
       # corpus as the cross-platform build-and-test job.
+      # A Windows runner defaults to core.autocrlf=true, which would rewrite
+      # Test262's LF-only fixtures (e.g. the Function toString
+      # line-terminator-normalisation-LF case) to CRLF and change their meaning.
+      - name: Keep Test262 line endings byte-exact
+        shell: bash
+        run: git config --global core.autocrlf false
       - name: Checkout pinned Test262 corpus
         uses: actions/checkout@v4
         with:

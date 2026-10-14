@@ -1153,8 +1153,7 @@ mod tests {
             "page-host child does not implement nested debugger resume",
         );
         assert_unsupported(
-            client
-                .arm_debugger_linked_nested_safe_point_breakpoint(1, 1, program(), safe_point()),
+            client.arm_debugger_linked_nested_safe_point_breakpoint(1, 1, program(), safe_point()),
             "page-host child does not implement linked debugger control",
         );
         assert_unsupported(

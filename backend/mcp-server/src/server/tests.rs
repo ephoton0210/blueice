@@ -1007,7 +1007,8 @@ fn collator_debug_report_compares_plain_text_inputs_in_both_directions() {
 }
 
 #[test]
-fn collator_debug_report_rejects_a_locale_count_over_the_debug_limit_and_an_oversized_utf16_input() {
+fn collator_debug_report_rejects_a_locale_count_over_the_debug_limit_and_an_oversized_utf16_input()
+{
     let mut too_many_locales = params();
     too_many_locales.locales = Some((0..=MAX_DEBUG_LOCALES).map(|_| "en".into()).collect());
     assert_eq!(

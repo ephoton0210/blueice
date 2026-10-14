@@ -276,8 +276,17 @@ fn fixed_core_profile_lazily_builds_and_reuses_one_authorizer_per_document_origi
 #[test]
 fn fixed_core_profile_denies_once_its_origin_limit_is_reached() {
     let authorizer = CoreHttpPageScriptFixtureAuthorizer::new();
-    for _ in 0..MAX_CORE_HTTP_PAGE_SCRIPT_FIXTURE_ORIGINS {
+    // The OS may hand the same ephemeral port out twice; a repeated port is
+    // the same origin and would never advance the origin count.
+    let mut used_ports = std::collections::HashSet::new();
+    let mut distinct_unused_port = || loop {
         let port = unused_local_port();
+        if used_ports.insert(port) {
+            return port;
+        }
+    };
+    for _ in 0..MAX_CORE_HTTP_PAGE_SCRIPT_FIXTURE_ORIGINS {
+        let port = distinct_unused_port();
         let request = OutOfProcessPageScriptSourceRequest {
             tab_id: crate::TabId::from_u64(1),
             document_generation: 1,
@@ -295,7 +304,7 @@ fn fixed_core_profile_denies_once_its_origin_limit_is_reached() {
         );
     }
 
-    let port = unused_local_port();
+    let port = distinct_unused_port();
     let over_limit = OutOfProcessPageScriptSourceRequest {
         tab_id: crate::TabId::from_u64(1),
         document_generation: 1,

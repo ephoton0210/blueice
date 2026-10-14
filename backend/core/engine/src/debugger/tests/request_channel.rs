@@ -19,13 +19,11 @@ fn run_receiver_until_one_dispatch(
     receiver: DebuggerRequestReceiver,
     tabs: TabManager,
 ) -> thread::JoinHandle<DebuggerRequestReceiver> {
-    thread::spawn(move || {
-        loop {
-            if receiver.dispatch_pending(&tabs, None) > 0 {
-                return receiver;
-            }
-            thread::yield_now();
+    thread::spawn(move || loop {
+        if receiver.dispatch_pending(&tabs, None) > 0 {
+            return receiver;
         }
+        thread::yield_now();
     })
 }
 
@@ -46,9 +44,7 @@ fn request_fails_closed_with_a_broken_pipe_once_the_session_thread_is_gone() {
     let (sender, receiver) = debugger_request_channel();
     drop(receiver);
 
-    let error = sender
-        .request(DebuggerRequest::ListPageRealms)
-        .unwrap_err();
+    let error = sender.request(DebuggerRequest::ListPageRealms).unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
 }
 

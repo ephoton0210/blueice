@@ -725,9 +725,9 @@ impl PageHostClient for MetadataProbeChild {
                 program,
                 metadata,
                 sources: (0..=DEBUGGER_STATIC_METADATA_MAX_SOURCES)
-                    .map(|source_id| page_host::PageHostDebuggerBlueTsMetadataSourceId {
-                        source_id,
-                    })
+                    .map(
+                        |source_id| page_host::PageHostDebuggerBlueTsMetadataSourceId { source_id },
+                    )
                     .collect(),
             },
             _ => unreachable!("fault not applicable to the sources probe"),
@@ -811,26 +811,32 @@ impl PageHostClient for MetadataProbeChild {
                     summary: Box::new(well_formed_summary()),
                 }
             }
-            MetadataProbeFault::EmptyDisplay => PageHostReply::DebuggerBlueTsMetadataLoweringSummary {
-                tab_id,
-                document_generation,
-                program,
-                metadata,
-                summary: Box::new(page_host::PageHostDebuggerBlueTsMetadataLoweringSummary {
-                    safe_point_map_abi: String::new(),
-                    ..well_formed_summary()
-                }),
-            },
-            MetadataProbeFault::ExceedsMax => PageHostReply::DebuggerBlueTsMetadataLoweringSummary {
-                tab_id,
-                document_generation,
-                program,
-                metadata,
-                summary: Box::new(page_host::PageHostDebuggerBlueTsMetadataLoweringSummary {
-                    bound_safe_point_count: blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_BOUND_SAFE_POINTS + 1,
-                    ..well_formed_summary()
-                }),
-            },
+            MetadataProbeFault::EmptyDisplay => {
+                PageHostReply::DebuggerBlueTsMetadataLoweringSummary {
+                    tab_id,
+                    document_generation,
+                    program,
+                    metadata,
+                    summary: Box::new(page_host::PageHostDebuggerBlueTsMetadataLoweringSummary {
+                        safe_point_map_abi: String::new(),
+                        ..well_formed_summary()
+                    }),
+                }
+            }
+            MetadataProbeFault::ExceedsMax => {
+                PageHostReply::DebuggerBlueTsMetadataLoweringSummary {
+                    tab_id,
+                    document_generation,
+                    program,
+                    metadata,
+                    summary: Box::new(page_host::PageHostDebuggerBlueTsMetadataLoweringSummary {
+                        bound_safe_point_count:
+                            blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_BOUND_SAFE_POINTS
+                                + 1,
+                        ..well_formed_summary()
+                    }),
+                }
+            }
             _ => unreachable!("fault not applicable to the lowering-summary probe"),
         })
     }
@@ -928,9 +934,9 @@ impl PageHostClient for MetadataProbeChild {
                 program,
                 metadata,
                 symbols: (0..=DEBUGGER_STATIC_METADATA_MAX_SYMBOLS)
-                    .map(|symbol_id| page_host::PageHostDebuggerBlueTsMetadataSymbolId {
-                        symbol_id,
-                    })
+                    .map(
+                        |symbol_id| page_host::PageHostDebuggerBlueTsMetadataSymbolId { symbol_id },
+                    )
                     .collect(),
             },
             _ => unreachable!("fault not applicable to the symbols probe"),
@@ -965,9 +971,11 @@ impl PageHostClient for MetadataProbeChild {
                 program,
                 metadata,
                 contracts: (0..=DEBUGGER_STATIC_METADATA_MAX_CONTRACTS)
-                    .map(|contract_id| page_host::PageHostDebuggerBlueTsMetadataContractId {
-                        contract_id,
-                    })
+                    .map(
+                        |contract_id| page_host::PageHostDebuggerBlueTsMetadataContractId {
+                            contract_id,
+                        },
+                    )
                     .collect(),
             },
             _ => unreachable!("fault not applicable to the contracts probe"),
@@ -1134,23 +1142,27 @@ impl PageHostClient for MetadataProbeChild {
         };
         Ok(match self.fault {
             MetadataProbeFault::WrongVariant => Self::wrong_variant_reply(),
-            MetadataProbeFault::MismatchedTuple => PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
-                tab_id: tab_id.wrapping_add(1),
-                document_generation,
-                program,
-                metadata,
-                location: well_formed_location(),
-            },
-            MetadataProbeFault::NotWellFormed => PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
-                tab_id,
-                document_generation,
-                program,
-                metadata,
-                location: page_host::PageHostDebuggerBlueTsMetadataSymbolLocation {
-                    symbol_id: symbol_id.wrapping_add(1),
-                    ..well_formed_location()
-                },
-            },
+            MetadataProbeFault::MismatchedTuple => {
+                PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
+                    tab_id: tab_id.wrapping_add(1),
+                    document_generation,
+                    program,
+                    metadata,
+                    location: well_formed_location(),
+                }
+            }
+            MetadataProbeFault::NotWellFormed => {
+                PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
+                    tab_id,
+                    document_generation,
+                    program,
+                    metadata,
+                    location: page_host::PageHostDebuggerBlueTsMetadataSymbolLocation {
+                        symbol_id: symbol_id.wrapping_add(1),
+                        ..well_formed_location()
+                    },
+                }
+            }
             _ => PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
                 tab_id,
                 document_generation,
@@ -1186,24 +1198,28 @@ impl PageHostClient for MetadataProbeChild {
         };
         Ok(match self.fault {
             MetadataProbeFault::WrongVariant => Self::wrong_variant_reply(),
-            MetadataProbeFault::MismatchedTuple => PageHostReply::DebuggerBlueTsMetadataContractLocation {
-                tab_id: tab_id.wrapping_add(1),
-                document_generation,
-                program,
-                metadata,
-                location: well_formed_location(),
-            },
-            MetadataProbeFault::NotWellFormed => PageHostReply::DebuggerBlueTsMetadataContractLocation {
-                tab_id,
-                document_generation,
-                program,
-                metadata,
-                location: page_host::PageHostDebuggerBlueTsMetadataContractLocation {
-                    start_byte: 8,
-                    end_byte: 2,
-                    ..well_formed_location()
-                },
-            },
+            MetadataProbeFault::MismatchedTuple => {
+                PageHostReply::DebuggerBlueTsMetadataContractLocation {
+                    tab_id: tab_id.wrapping_add(1),
+                    document_generation,
+                    program,
+                    metadata,
+                    location: well_formed_location(),
+                }
+            }
+            MetadataProbeFault::NotWellFormed => {
+                PageHostReply::DebuggerBlueTsMetadataContractLocation {
+                    tab_id,
+                    document_generation,
+                    program,
+                    metadata,
+                    location: page_host::PageHostDebuggerBlueTsMetadataContractLocation {
+                        start_byte: 8,
+                        end_byte: 2,
+                        ..well_formed_location()
+                    },
+                }
+            }
             MetadataProbeFault::MismatchedRelation => {
                 PageHostReply::DebuggerBlueTsMetadataContractLocation {
                     tab_id,
@@ -1238,16 +1254,19 @@ impl PageHostClient for MetadataProbeChild {
         if self.target != MetadataProbeTarget::SymbolType {
             return Self::not_under_test();
         }
-        let well_formed = || page_host::PageHostDebuggerBlueTsMetadataSymbolType { symbol_id, type_id };
+        let well_formed =
+            || page_host::PageHostDebuggerBlueTsMetadataSymbolType { symbol_id, type_id };
         Ok(match self.fault {
             MetadataProbeFault::WrongVariant => Self::wrong_variant_reply(),
-            MetadataProbeFault::MismatchedTuple => PageHostReply::DebuggerBlueTsMetadataSymbolType {
-                tab_id: tab_id.wrapping_add(1),
-                document_generation,
-                program,
-                metadata,
-                symbol_type: well_formed(),
-            },
+            MetadataProbeFault::MismatchedTuple => {
+                PageHostReply::DebuggerBlueTsMetadataSymbolType {
+                    tab_id: tab_id.wrapping_add(1),
+                    document_generation,
+                    program,
+                    metadata,
+                    symbol_type: well_formed(),
+                }
+            }
             MetadataProbeFault::NotWellFormed => PageHostReply::DebuggerBlueTsMetadataSymbolType {
                 tab_id,
                 document_generation,
@@ -1280,27 +1299,33 @@ impl PageHostClient for MetadataProbeChild {
         if self.target != MetadataProbeTarget::SymbolContract {
             return Self::not_under_test();
         }
-        let well_formed =
-            || page_host::PageHostDebuggerBlueTsMetadataSymbolContract { symbol_id, contract_id };
+        let well_formed = || page_host::PageHostDebuggerBlueTsMetadataSymbolContract {
+            symbol_id,
+            contract_id,
+        };
         Ok(match self.fault {
             MetadataProbeFault::WrongVariant => Self::wrong_variant_reply(),
-            MetadataProbeFault::MismatchedTuple => PageHostReply::DebuggerBlueTsMetadataSymbolContract {
-                tab_id: tab_id.wrapping_add(1),
-                document_generation,
-                program,
-                metadata,
-                symbol_contract: well_formed(),
-            },
-            MetadataProbeFault::NotWellFormed => PageHostReply::DebuggerBlueTsMetadataSymbolContract {
-                tab_id,
-                document_generation,
-                program,
-                metadata,
-                symbol_contract: page_host::PageHostDebuggerBlueTsMetadataSymbolContract {
-                    symbol_id: symbol_id.wrapping_add(1),
-                    contract_id,
-                },
-            },
+            MetadataProbeFault::MismatchedTuple => {
+                PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+                    tab_id: tab_id.wrapping_add(1),
+                    document_generation,
+                    program,
+                    metadata,
+                    symbol_contract: well_formed(),
+                }
+            }
+            MetadataProbeFault::NotWellFormed => {
+                PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+                    tab_id,
+                    document_generation,
+                    program,
+                    metadata,
+                    symbol_contract: page_host::PageHostDebuggerBlueTsMetadataSymbolContract {
+                        symbol_id: symbol_id.wrapping_add(1),
+                        contract_id,
+                    },
+                }
+            }
             _ => PageHostReply::DebuggerBlueTsMetadataSymbolContract {
                 tab_id,
                 document_generation,
@@ -1369,8 +1394,10 @@ fn probe_executor(
 
 #[test]
 fn core_rejects_an_inventory_reply_of_the_wrong_variant() {
-    let (mut executor, tab_id, target) =
-        probe_executor(MetadataProbeTarget::Inventory, MetadataProbeFault::WrongVariant);
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::Inventory,
+        MetadataProbeFault::WrongVariant,
+    );
     assert_eq!(
         executor.debugger_static_metadata(
             tab_id,
@@ -1418,8 +1445,10 @@ fn core_rejects_an_inventory_reply_with_a_zero_placeholder_handle() {
 
 #[test]
 fn core_rejects_an_inventory_reply_with_a_duplicate_handle() {
-    let (mut executor, tab_id, target) =
-        probe_executor(MetadataProbeTarget::Inventory, MetadataProbeFault::Duplicate);
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::Inventory,
+        MetadataProbeFault::Duplicate,
+    );
     assert_eq!(
         executor.debugger_static_metadata(
             tab_id,
@@ -1450,8 +1479,10 @@ fn core_rejects_an_inventory_reply_exceeding_the_per_program_cap() {
 
 #[test]
 fn core_rejects_a_summary_reply_of_the_wrong_variant() {
-    let (mut executor, tab_id, target) =
-        probe_executor(MetadataProbeTarget::Summary, MetadataProbeFault::WrongVariant);
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::Summary,
+        MetadataProbeFault::WrongVariant,
+    );
     assert_eq!(
         executor.debugger_static_metadata_summary(
             tab_id,
@@ -1486,8 +1517,10 @@ fn core_rejects_a_summary_reply_echoing_the_wrong_metadata_handle() {
 
 #[test]
 fn core_rejects_a_sources_reply_of_the_wrong_variant() {
-    let (mut executor, tab_id, target) =
-        probe_executor(MetadataProbeTarget::Sources, MetadataProbeFault::WrongVariant);
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::Sources,
+        MetadataProbeFault::WrongVariant,
+    );
     assert_eq!(
         executor.debugger_static_metadata_sources(
             tab_id,
@@ -2146,9 +2179,11 @@ fn core_rejects_every_static_metadata_operation_when_its_capability_is_unavailab
         metadata_generation: 1,
         source_id: 1,
     };
-    assert_no_live_realm!(
-        executor.debugger_static_metadata_source_provenance(tab_id, 1, source_provenance_target)
-    );
+    assert_no_live_realm!(executor.debugger_static_metadata_source_provenance(
+        tab_id,
+        1,
+        source_provenance_target
+    ));
     let type_target = JavaScriptPageDebuggerStaticMetadataTypeTarget {
         program_handle: 1,
         program_generation: 1,
@@ -2164,9 +2199,11 @@ fn core_rejects_every_static_metadata_operation_when_its_capability_is_unavailab
         metadata_generation: 1,
         contract_id: 1,
     };
-    assert_no_live_realm!(
-        executor.debugger_static_metadata_contract_display(tab_id, 1, contract_target)
-    );
+    assert_no_live_realm!(executor.debugger_static_metadata_contract_display(
+        tab_id,
+        1,
+        contract_target
+    ));
     assert_no_live_realm!(executor.debugger_static_metadata_contract_validation(
         tab_id,
         1,
@@ -2180,7 +2217,11 @@ fn core_rejects_every_static_metadata_operation_when_its_capability_is_unavailab
         metadata_generation: 1,
         symbol_id: 1,
     };
-    assert_no_live_realm!(executor.debugger_static_metadata_symbol_display(tab_id, 1, symbol_target));
+    assert_no_live_realm!(executor.debugger_static_metadata_symbol_display(
+        tab_id,
+        1,
+        symbol_target
+    ));
 
     let symbol_location_target = JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
         program_handle: 1,
@@ -2190,9 +2231,11 @@ fn core_rejects_every_static_metadata_operation_when_its_capability_is_unavailab
         symbol_id: 1,
         source_id: 1,
     };
-    assert_no_live_realm!(
-        executor.debugger_static_metadata_symbol_location(tab_id, 1, symbol_location_target)
-    );
+    assert_no_live_realm!(executor.debugger_static_metadata_symbol_location(
+        tab_id,
+        1,
+        symbol_location_target
+    ));
     let contract_location_target = JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
         program_handle: 1,
         program_generation: 1,
@@ -2201,9 +2244,11 @@ fn core_rejects_every_static_metadata_operation_when_its_capability_is_unavailab
         contract_id: 1,
         source_id: 1,
     };
-    assert_no_live_realm!(
-        executor.debugger_static_metadata_contract_location(tab_id, 1, contract_location_target)
-    );
+    assert_no_live_realm!(executor.debugger_static_metadata_contract_location(
+        tab_id,
+        1,
+        contract_location_target
+    ));
     let symbol_type_target = JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget {
         program_handle: 1,
         program_generation: 1,
@@ -2212,7 +2257,11 @@ fn core_rejects_every_static_metadata_operation_when_its_capability_is_unavailab
         symbol_id: 1,
         type_id: 1,
     };
-    assert_no_live_realm!(executor.debugger_static_metadata_symbol_type(tab_id, 1, symbol_type_target));
+    assert_no_live_realm!(executor.debugger_static_metadata_symbol_type(
+        tab_id,
+        1,
+        symbol_type_target
+    ));
     let symbol_contract_target = JavaScriptPageDebuggerStaticMetadataSymbolContractTarget {
         program_handle: 1,
         program_generation: 1,
@@ -2221,14 +2270,19 @@ fn core_rejects_every_static_metadata_operation_when_its_capability_is_unavailab
         symbol_id: 1,
         contract_id: 1,
     };
-    assert_no_live_realm!(executor
-        .debugger_static_metadata_symbol_contract(tab_id, 1, symbol_contract_target));
+    assert_no_live_realm!(executor.debugger_static_metadata_symbol_contract(
+        tab_id,
+        1,
+        symbol_contract_target
+    ));
 }
 
 #[test]
 fn core_resolves_a_live_bluets_symbol_location() {
-    let (mut executor, tab_id, target) =
-        probe_executor(MetadataProbeTarget::SymbolLocation, MetadataProbeFault::None);
+    let (mut executor, tab_id, target) = probe_executor(
+        MetadataProbeTarget::SymbolLocation,
+        MetadataProbeFault::None,
+    );
     let location_target = JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
         program_handle: target.program_handle,
         program_generation: target.program_generation,

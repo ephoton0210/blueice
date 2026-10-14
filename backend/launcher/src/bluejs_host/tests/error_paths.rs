@@ -84,7 +84,10 @@ fn private_child_classic_root_step_rejects_an_uncaught_throw() {
             reply => panic!("unexpected root step outcome: {reply:?}"),
         }
     }
-    assert!(rejected, "an uncaught root-level throw must reject the script");
+    assert!(
+        rejected,
+        "an uncaught root-level throw must reject the script"
+    );
     assert_eq!(
         host.documents[&7].debugger_execution_states[&program],
         ChildDebuggerExecutionStatus::Completed
@@ -636,10 +639,7 @@ fn private_child_bluets_module_root_step_rejects_an_uncaught_throw() {
         graph: graph(
             entry,
             vec![
-                PageHostSource::new(
-                    entry,
-                    "function fails(): number { throw 'boom'; } fails();",
-                ),
+                PageHostSource::new(entry, "function fails(): number { throw 'boom'; } fails();"),
                 PageHostSource::new(dependency, "export const unused: number = 0;"),
             ],
         ),

@@ -158,7 +158,9 @@ fn send_and_drain_reports_gatekeeper_blocked_as_an_error() {
 
     let mut conn = CoreConnection::new(client);
     let outcome = conn.navigate("https://bad.example", None).unwrap();
-    let error = outcome.error.expect("gatekeeper block must surface as an error");
+    let error = outcome
+        .error
+        .expect("gatekeeper block must surface as an error");
     assert!(error.contains("denied"));
     assert!(error.contains("policy"));
     assert!(error.contains("https://bad.example"));
@@ -955,7 +957,10 @@ fn list_tabs_still_caches_a_frame_ready_seen_along_the_way() {
                     generation: 11,
                 },
             );
-            reply(s, &ServerMessage::Tabs(vec![TabSummary { id: 1, url: None }]));
+            reply(
+                s,
+                &ServerMessage::Tabs(vec![TabSummary { id: 1, url: None }]),
+            );
         })],
     );
 

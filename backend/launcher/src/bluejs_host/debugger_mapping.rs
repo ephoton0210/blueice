@@ -485,7 +485,9 @@ mod tests {
                 VmDebuggerValuePreview::Null,
             )])),
             PageHostDebuggerValuePreview::Record(vec![(
-                blueice_bluejs::JsString::from("key").as_code_units().to_vec(),
+                blueice_bluejs::JsString::from("key")
+                    .as_code_units()
+                    .to_vec(),
                 PageHostDebuggerValuePreview::Null,
             )])
         );
@@ -514,10 +516,7 @@ mod tests {
             DebuggerStaticMetadataContractRootKind::String
         );
         assert_eq!(
-            debugger_contract_root_kind(&plan(
-                Contract::Literal("x".to_string()),
-                BTreeMap::new()
-            )),
+            debugger_contract_root_kind(&plan(Contract::Literal("x".to_string()), BTreeMap::new())),
             DebuggerStaticMetadataContractRootKind::Literal
         );
         assert_eq!(
@@ -536,10 +535,7 @@ mod tests {
             DebuggerStaticMetadataContractRootKind::Union
         );
         assert_eq!(
-            debugger_contract_root_kind(&plan(
-                Contract::Intersection(Vec::new()),
-                BTreeMap::new()
-            )),
+            debugger_contract_root_kind(&plan(Contract::Intersection(Vec::new()), BTreeMap::new())),
             DebuggerStaticMetadataContractRootKind::Intersection
         );
     }
