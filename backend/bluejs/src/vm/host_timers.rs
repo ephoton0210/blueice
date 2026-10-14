@@ -6,8 +6,8 @@
 //! `setInterval`, `clearTimeout`, `clearInterval` and `queueMicrotask`.
 //!
 //! The VM has no clock and no thread. The embedding host supplies the
-//! current monotonic time in milliseconds when it calls
-//! [`Vm::run_due_host_timers`], and every callback and its bound arguments
+//! current monotonic time in milliseconds through an injected clock or when
+//! it calls [`Vm::run_due_host_timers`], and every callback and its bound arguments
 //! stay in this VM's rooted table: a function object never crosses the
 //! primitive-only embedding ABI, exactly like a click listener.
 //!
@@ -24,8 +24,9 @@ pub const MAX_HOST_TIMERS_PER_REALM: usize = 1_024;
 /// Jobs one host microtask checkpoint may run before it reports a limit.
 const MAX_HOST_CHECKPOINT_JOBS: usize = 1_024;
 
-/// Largest delay in milliseconds, matching the 2^31-1 limit browsers apply.
-const MAX_HOST_TIMER_DELAY_MS: f64 = 2_147_483_647.0;
+/// A turn yields with pending timers intact, independent of the realm cap.
+const MAX_HOST_TIMER_TASKS_PER_TURN: usize = 64;
+const MAX_HOST_TIMER_ARGUMENTS: usize = 32;
 
 /// Which host timer function a native call is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +53,7 @@ pub(super) struct HostTimer {
     arguments: Vec<Value>,
     due_ms: u64,
     interval_ms: Option<u64>,
+    nesting: u32,
     /// One registration for the callback and one per object argument.
     roots: Vec<RootId>,
 }
@@ -69,6 +71,28 @@ fn is_page_exception(error: &RuntimeError) -> bool {
     )
 }
 
+/// Web IDL's signed `long` conversion without Clamp/EnforceRange, followed
+/// by HTML's non-negative timeout rule. Clearing uses the same conversion.
+fn timer_long(number: f64) -> i32 {
+    if !number.is_finite() || number == 0.0 {
+        return 0;
+    }
+    let modulo = number.trunc().rem_euclid(4_294_967_296.0);
+    if modulo >= 2_147_483_648.0 {
+        (modulo - 4_294_967_296.0) as i32
+    } else {
+        modulo as i32
+    }
+}
+
+fn nested_delay(delay: u64, nesting: u32) -> u64 {
+    if nesting > 5 {
+        delay.max(4)
+    } else {
+        delay
+    }
+}
+
 impl Vm {
     pub(crate) fn use_bounded_host_microtask_checkpoints(&mut self) {
         self.bounded_host_microtask_checkpoints = true;
@@ -81,8 +105,8 @@ impl Vm {
         const FUNCTIONS: [(&str, u32, HostTimerFunction); 5] = [
             ("setTimeout", 1, HostTimerFunction::SetTimeout),
             ("setInterval", 1, HostTimerFunction::SetInterval),
-            ("clearTimeout", 1, HostTimerFunction::Clear),
-            ("clearInterval", 1, HostTimerFunction::Clear),
+            ("clearTimeout", 0, HostTimerFunction::Clear),
+            ("clearInterval", 0, HostTimerFunction::Clear),
             ("queueMicrotask", 1, HostTimerFunction::QueueMicrotask),
         ];
         let global = self
@@ -123,24 +147,50 @@ impl Vm {
         Ok(())
     }
 
+    /// Installs host timers and samples the embedding host's clock whenever
+    /// a timer is scheduled or an interval is rearmed. No thread is created.
+    pub fn install_host_timer_functions_with_clock(
+        &mut self,
+        clock: impl Fn() -> u64 + 'static,
+    ) -> Result<(), RuntimeError> {
+        self.install_host_timer_functions()?;
+        self.host_timer_clock = Some(Box::new(clock));
+        Ok(())
+    }
+
+    fn sample_host_timer_clock(&mut self) -> u64 {
+        if let Some(clock) = &self.host_timer_clock {
+            self.host_timer_clock_ms = self.host_timer_clock_ms.max(clock());
+        }
+        self.host_timer_clock_ms
+    }
+
     /// The earliest due time among pending timers, in the host's millisecond
-    /// clock, or `None` when no timer is pending.
+    /// clock, or `None` when no timer is runnable (empty or debugger-paused).
     pub fn next_host_timer_due(&self) -> Option<u64> {
+        // A paused realm retains timers, but has no runnable wake-up until
+        // its debugger-owned continuation resumes.
+        if self.ensure_no_debugger_continuation().is_err() {
+            return None;
+        }
         self.host_timers.iter().map(|timer| timer.due_ms).min()
     }
 
-    /// Runs every timer due at `now_ms` as its own task, in (due time,
+    /// Runs at most 64 timers due at `now_ms` as their own tasks, in (due time,
     /// creation) order, with a microtask checkpoint after each.
     ///
     /// Only timers already due when the pass starts run in it: a timer
     /// scheduled by a callback waits for the next call, so a callback that
     /// always re-arms itself cannot hold the host inside one pass. A late
-    /// interval runs once and is rescheduled `interval` after `now_ms`
-    /// rather than replaying every missed period.
+    /// interval runs once and is rescheduled after its callback and checkpoint
+    /// rather than replaying every missed period. Debugger pauses retain the
+    /// queue and return an empty run until the continuation resumes.
     pub fn run_due_host_timers(&mut self, now_ms: u64) -> Result<BlueJsTimerRun, RuntimeError> {
-        self.ensure_no_debugger_continuation()?;
+        if self.ensure_no_debugger_continuation().is_err() {
+            return Ok(BlueJsTimerRun::default());
+        }
         self.host_timer_clock_ms = self.host_timer_clock_ms.max(now_ms);
-        let now = self.host_timer_clock_ms;
+        let now = self.sample_host_timer_clock();
         let mut due = self
             .host_timers
             .iter()
@@ -149,33 +199,33 @@ impl Vm {
             .collect::<Vec<_>>();
         due.sort_unstable();
         let mut run = BlueJsTimerRun::default();
-        for (_, id) in due {
+        for (_, id) in due.into_iter().take(MAX_HOST_TIMER_TASKS_PER_TURN) {
             // A callback earlier in this pass may have cleared this timer.
             let Some(index) = self.host_timers.iter().position(|timer| timer.id == id) else {
                 continue;
             };
-            let (callback, arguments) = {
-                let timer = &mut self.host_timers[index];
-                if let Some(interval) = timer.interval_ms {
-                    timer.due_ms = now.saturating_add(interval);
-                }
-                (timer.callback, timer.arguments.clone())
-            };
-            if self.host_timers[index].interval_ms.is_none() {
+            let timer = &self.host_timers[index];
+            let (callback, arguments, interval, nesting) = (
+                timer.callback,
+                timer.arguments.clone(),
+                timer.interval_ms,
+                timer.nesting,
+            );
+            let snapshot = self.root_timer_task(callback, &arguments)?;
+            if interval.is_none() {
                 let timer = self.host_timers.remove(index);
-                // The snapshot roots below keep the callback alive while the
-                // timer's own registrations are released.
-                let snapshot = self.root_timer_task(callback, &arguments);
                 self.release_timer_roots(timer.roots);
-                let snapshot = snapshot?;
-                let outcome = self.run_timer_task(callback, arguments, &mut run);
-                self.release_timer_roots(snapshot);
-                outcome?;
-            } else {
-                let snapshot = self.root_timer_task(callback, &arguments)?;
-                let outcome = self.run_timer_task(callback, arguments, &mut run);
-                self.release_timer_roots(snapshot);
-                outcome?;
+            }
+            let outcome = self.run_timer_task(callback, arguments, nesting, &mut run);
+            self.release_timer_roots(snapshot);
+            outcome?;
+            if let Some(interval) = interval {
+                let now = self.sample_host_timer_clock();
+                // A callback or its checkpoint can clear its own interval.
+                if let Some(timer) = self.host_timers.iter_mut().find(|timer| timer.id == id) {
+                    timer.due_ms = now.saturating_add(nested_delay(interval, nesting));
+                    timer.nesting = nesting.saturating_add(1);
+                }
             }
         }
         Ok(run)
@@ -214,11 +264,18 @@ impl Vm {
         &mut self,
         callback: ObjectId,
         arguments: Vec<Value>,
+        nesting: u32,
         run: &mut BlueJsTimerRun,
     ) -> Result<(), RuntimeError> {
         self.remaining_instructions = self.config.instruction_budget;
         run.tasks_run += 1;
-        match self.call_native(Value::Object(callback), Value::Undefined, arguments, false) {
+        let this = self.global("globalThis")?;
+        let previous_nesting = std::mem::replace(&mut self.host_timer_nesting, nesting);
+        let outcome = self.call_native(Value::Object(callback), this, arguments, false);
+        // Checkpoint jobs run after the timer task's running callback; they
+        // are not timer tasks for HTML's nesting calculation.
+        self.host_timer_nesting = previous_nesting;
+        match outcome {
             Ok(_) => {}
             Err(error) if is_page_exception(&error) => run.uncaught_errors += 1,
             Err(error) => return Err(error),
@@ -277,13 +334,13 @@ impl Vm {
             HostTimerFunction::SetInterval => self.host_timer_schedule(args, true),
             HostTimerFunction::Clear => {
                 let id = match args.first() {
-                    Some(value) => self.coerce_number(value)?,
-                    None => f64::NAN,
+                    Some(value) => timer_long(self.coerce_number(value)?),
+                    None => 0,
                 };
                 if let Some(index) = self
                     .host_timers
                     .iter()
-                    .position(|timer| f64::from(timer.id) == id)
+                    .position(|timer| i64::from(timer.id) == i64::from(id))
                 {
                     let timer = self.host_timers.remove(index);
                     self.release_timer_roots(timer.roots);
@@ -318,29 +375,32 @@ impl Vm {
             Some(value) => self.coerce_number(value)?,
             None => 0.0,
         };
-        let delay_ms = if delay.is_nan() || delay < 0.0 {
-            0
-        } else {
-            delay.min(MAX_HOST_TIMER_DELAY_MS).trunc() as u64
-        };
+        let delay_ms = timer_long(delay).max(0) as u64;
+        if args.len().saturating_sub(2) > MAX_HOST_TIMER_ARGUMENTS {
+            return Err(RuntimeError::RangeError(
+                "host timer argument limit exceeded".into(),
+            ));
+        }
         if self.host_timers.len() >= MAX_HOST_TIMERS_PER_REALM {
             return Err(RuntimeError::RangeError("host timer limit exceeded".into()));
         }
         let id = self.host_timer_next_id;
-        let Some(next) = id.checked_add(1) else {
+        let Some(next) = id.checked_add(1).filter(|next| *next <= i32::MAX as u32) else {
             return Err(RuntimeError::RangeError(
                 "host timer identifiers are exhausted".into(),
             ));
         };
         let arguments = args.iter().skip(2).cloned().collect::<Vec<_>>();
         let roots = self.root_timer_task(callback, &arguments)?;
+        let now = self.sample_host_timer_clock();
         self.host_timer_next_id = next;
         self.host_timers.push(HostTimer {
             id,
             callback,
             arguments,
-            due_ms: self.host_timer_clock_ms.saturating_add(delay_ms),
+            due_ms: now.saturating_add(nested_delay(delay_ms, self.host_timer_nesting)),
             interval_ms: repeat.then_some(delay_ms),
+            nesting: self.host_timer_nesting.saturating_add(1),
             roots,
         });
         Ok(Value::Number(f64::from(id)))

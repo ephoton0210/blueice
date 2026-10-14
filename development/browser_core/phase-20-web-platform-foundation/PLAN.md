@@ -6,6 +6,18 @@
 
 > **Sequencing note (2026-10-13):** the first vertical slice of `fetch`/XHR, the page event loop, the DOM read/write surface and cookies is scheduled by [Phase 27](../phase-27-browsable-web-mvp/PLAN.md). Items it lands are checked off here, in the owning phase.
 
+**2026-10-14 scheduling increment:** The integrated branch's latest
+owner-selected File DOM artifact, `core-script-dom-timers-v11`, adds typed
+callable timers and `queueMicrotask` to its existing 40-entry stream/DOM
+inventory. Child realms own and root the callbacks; Core drives bounded turns
+on its session tick and validates relative wake-up replies against the live
+document. Real JavaScript and BlueTS counter pages verify distinct unsolicited
+frames with matching Representation generations/text, plus timer cancellation
+and replacement lifetime behavior. See the
+[M1b record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+Animation frames, task-source ordering, general queue/byte caps and Promise
+collectibility remain open.
+
 ## Objective
 
 Make BlueIce capable of running ordinary interactive websites on one coherent web-platform model before adding specialised graphics, background execution or browser chrome. The compatibility baseline is the relevant [HTML Standard](https://html.spec.whatwg.org/multipage/), DOM, URL, Encoding, Fetch and related W3C/WHATWG specifications, delivered through explicit feature profiles and conformance tests rather than a claim that every API happens to work.

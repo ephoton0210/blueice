@@ -82,7 +82,7 @@ fn ordinary_file_realms_share_one_serialized_owner_connection() {
             generation,
             vec![classic(
                 0,
-                "document.getElementById('status').textContent='ready';",
+                "if (typeof setTimeout !== 'function' || typeof setInterval !== 'function' || typeof clearTimeout !== 'function' || typeof clearInterval !== 'function' || typeof queueMicrotask !== 'function' || typeof requestAnimationFrame !== 'undefined') throw 'timer inventory'; document.getElementById('status').textContent='ready';",
             )],
         );
         document.tab_id = tab;

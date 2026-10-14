@@ -4,8 +4,11 @@
 
 **Status**: In progress — branch `feature/browsable-web-mvp` is cut from
 `feature/phase-7-6-8-9-followup` with `feature/test262-remaining-failures`
-(PR #25) merged in (see "Integration record"). No milestone below is
-implemented yet; M1 is next.
+(PR #25) merged in (see "Integration record"). The integrated
+`feature/bluejs-browser-integration-gaps` branch completes M1a checkpoints,
+M0a compatibility and M1b session-driven timers with real frame/Representation
+acceptance. M1 remains in progress for animation frames, task-source ordering,
+queue/byte budgets and Promise collectibility.
 
 ## Objective
 
@@ -92,9 +95,14 @@ Each milestone is test-first, ends with a passing real-interface test
 host-owned microtask checkpoints between script declarations, including throws
 and completed debugger turns. Browser-task and native-event checkpoints
 continue after job exceptions; page top-level-await drains obey the limit.
-See [M1a results](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
-Session-driven timers, animation frames, wake-up propagation and the counter
-page's frame/Representation acceptance are still open, so M1 remains in progress.
+M1b adds owner-selected File DOM timers and `queueMicrotask`, generated v11
+typings, exact-document relative wake-up propagation, and session tick delivery.
+Real JavaScript and BlueTS counter pages each produce three distinct unsolicited
+frames with increasing generation and matching Representation generation/text;
+clear and navigation stop old timer work. See the
+[milestone results](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+Animation frames, task-source ordering, queue/byte accounting and Promise
+collectibility remain open, so M1 remains in progress.
 
 - **M0 — Integration.** Merge PR #25's BlueJS line; re-verify. (Done for the
   merge; verification is the open part — see below.)
@@ -102,8 +110,8 @@ page's frame/Representation acceptance are still open, so M1 remains in progress
   collectibility and the other engine gaps are tracked in
   [`phase-13-bluejs-engine/BROWSER_RUNTIME_GAPS.md`](../phase-13-bluejs-engine/BROWSER_RUNTIME_GAPS.md)
   and land on a dedicated BlueJS branch after PR #25 merges to `main`; a
-  tested first slice is parked on `wip/bluejs-web-timers`. The core-side
-  frame push below stays in this phase.)* `setTimeout`/`clearTimeout`/
+  timer mechanism and parked argument/nesting limits are reconciled by M1b.
+  The core-side frame push below stays in this phase.)* `setTimeout`/`clearTimeout`/
   `setInterval`/`clearInterval`/`queueMicrotask`/`requestAnimationFrame`,
   delivered by the session tick. Acceptance: a counter page updating via
   `setInterval` produces N distinct frames with strictly increasing

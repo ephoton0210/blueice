@@ -92,6 +92,62 @@ fn handshake(client: &mut UnixStream) {
     blueice_ipc::client_handshake(client).unwrap();
 }
 
+#[test]
+fn polling_timeout_failure_after_handshake_does_not_abort_the_session() {
+    struct TimeoutFailure {
+        stream: UnixStream,
+        calls: std::cell::Cell<usize>,
+    }
+    impl Read for TimeoutFailure {
+        fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+            self.stream.read(bytes)
+        }
+    }
+    impl Write for TimeoutFailure {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.stream.write(bytes)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            self.stream.flush()
+        }
+    }
+    impl ReadTimeout for TimeoutFailure {
+        fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+            let calls = self.calls.get() + 1;
+            self.calls.set(calls);
+            if calls == 1 {
+                self.stream.set_read_timeout(timeout)
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "peer disconnected during timeout update",
+                ))
+            }
+        }
+    }
+    let (mut client, server) = client_pair();
+    let peer = thread::spawn(move || {
+        handshake(&mut client);
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+    });
+    let mut stream = TimeoutFailure {
+        stream: server,
+        calls: std::cell::Cell::new(0),
+    };
+    let mut tabs = TabManager::new(320.0, 200.0);
+    let mut generation = 0;
+    run_session(
+        &mut tabs,
+        &mut stream,
+        &temp_frame_dir("timeout-failure"),
+        &mut generation,
+        &unique_gatekeeper_socket_path("timeout-failure"),
+    )
+    .unwrap();
+    assert!(stream.calls.get() >= 2);
+    peer.join().unwrap();
+}
+
 /// Every test below that predates multi-tab (Phase 16) sets up its
 /// fixture content on "the" page, the same single-tab shape it
 /// always had -- this is just `tabs.default_tab()` resolved to its

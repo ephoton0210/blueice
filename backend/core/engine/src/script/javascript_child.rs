@@ -228,6 +228,7 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// live realm. A page, frontend, debugger, and MCP client receive neither
     /// this record nor a handle that could request it.
     realm_stats: BTreeMap<TabId, PageHostRealmStats>,
+    timer_wakes: BTreeMap<TabId, Instant>,
     validation_usage: BTreeMap<TabId, PageHostValidationUsage>,
     /// Core-minted public debugger identities keyed by the child-private
     /// program IDs they represent. Child IDs are transport keys only and can
@@ -682,6 +683,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
             realm_stats: BTreeMap::new(),
+            timer_wakes: BTreeMap::new(),
             validation_usage: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             debugger_nested_frames: BTreeMap::new(),
@@ -793,6 +795,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
             realm_stats: BTreeMap::new(),
+            timer_wakes: BTreeMap::new(),
             validation_usage: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             debugger_nested_frames: BTreeMap::new(),
@@ -1478,6 +1481,9 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
         let mut pump = || {
             pump_script_requests_during_child_wait(script_requests, tabs, target, &mut remaining)
         };
+        // Sample before the wait: transport latency must not postpone a due
+        // task. Early wake-ups are safe; the child owns the actual clock.
+        let started = Instant::now();
         match self.child.flush_drag_tasks_with_script_pump(
             target.tab_id,
             target.document_generation,
@@ -1486,7 +1492,20 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
             PageHostReply::DragTasksFlushed {
                 tab_id,
                 document_generation,
+                next_wake_in_ms,
             } if tab_id == target.tab_id && document_generation == target.document_generation => {
+                match next_wake_in_ms {
+                    Some(delay) if delay <= i32::MAX as u64 => {
+                        self.timer_wakes.insert(
+                            TabId::from_u64(tab_id),
+                            started + Duration::from_millis(delay),
+                        );
+                    }
+                    Some(_) => return Err(io::Error::other("Page host timer delay invalid")),
+                    None => {
+                        self.timer_wakes.remove(&TabId::from_u64(tab_id));
+                    }
+                }
                 Ok(())
             }
             _ => Err(io::Error::other("Page host drag task response invalid")),
@@ -1508,6 +1527,10 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
             return Ok(());
         }
         self.flush_drag_tasks_serving_script(tabs, tab_id, script_requests)
+    }
+
+    fn next_task_wake(&self) -> Option<Instant> {
+        self.timer_wakes.values().copied().min()
     }
 
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport> {

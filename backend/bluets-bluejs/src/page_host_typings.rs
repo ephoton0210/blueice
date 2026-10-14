@@ -22,6 +22,7 @@ mod node_events;
 mod object_urls;
 mod streams;
 mod tee;
+mod timers;
 
 /// The profile identity shared by the core binding catalog and the isolated
 /// page-host child.  A page request contains no profile selector.
@@ -94,6 +95,9 @@ pub const PAGE_HOST_DOM_TEE_PROFILE_V9: &str = "core-script-dom-stream-tee-v9";
 pub const PAGE_HOST_DOM_ITERATION_PROFILE_V10: &str = "core-script-dom-stream-iteration-v10";
 pub const PAGE_HOST_DOM_ITERATION_DECLARATION_MODULE_ID_V10: &str =
     "blueice:///profiles/core-script-dom-stream-iteration-v10/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_TIMERS_PROFILE_V11: &str = "core-script-dom-timers-v11";
+pub const PAGE_HOST_DOM_TIMERS_DECLARATION_MODULE_ID_V11: &str =
+    "blueice:///profiles/core-script-dom-timers-v11/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_TEE_DECLARATION_MODULE_ID_V9: &str =
     "blueice:///profiles/core-script-dom-stream-tee-v9/lib.blueice.d.ts";
 
@@ -579,6 +583,13 @@ pub fn page_host_dom_iteration_runtime_bindings_v10() -> [PageHostRuntimeBinding
     })
 }
 
+pub fn page_host_dom_timers_runtime_bindings_v11() -> [PageHostRuntimeBindingV1; 45] {
+    timers::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -702,6 +713,10 @@ impl PageHostDocumentTypingsV1 {
 
     pub fn generate_dom_iteration() -> Self {
         Self::generate_from(PAGE_HOST_DOM_ITERATION_PROFILE_V10, &iteration::bindings())
+    }
+
+    pub fn generate_dom_timers() -> Self {
+        Self::generate_from(PAGE_HOST_DOM_TIMERS_PROFILE_V11, &timers::bindings())
     }
 
     fn generate_from(profile: &'static str, bindings: &[PageHostDocumentBindingV1]) -> Self {
@@ -910,6 +925,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_iteration(),
             PAGE_HOST_DOM_ITERATION_DECLARATION_MODULE_ID_V10,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_timers_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_timers(),
+            PAGE_HOST_DOM_TIMERS_DECLARATION_MODULE_ID_V11,
             installed_bindings,
         )
     }

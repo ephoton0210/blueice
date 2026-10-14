@@ -130,6 +130,8 @@ impl Vm {
             host_timers: Vec::new(),
             host_timer_next_id: 1,
             host_timer_clock_ms: 0,
+            host_timer_clock: None,
+            host_timer_nesting: 0,
             active_host_drag_event: None,
             global_bindings: HashMap::new(),
             symbol_registry: Rc::new(RefCell::new(HashMap::new())),

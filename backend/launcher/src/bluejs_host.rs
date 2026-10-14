@@ -36,7 +36,7 @@ use blueice_bluets_bluejs::page_host_typings::{
     page_host_dom_mutation_runtime_bindings_v1, page_host_dom_node_event_runtime_bindings_v8,
     page_host_dom_object_url_runtime_bindings_v5, page_host_dom_stream_runtime_bindings_v4,
     page_host_dom_tee_runtime_bindings_v9, page_host_dom_text_runtime_bindings_v1,
-    PageHostDocumentTypingsV1,
+    page_host_dom_timers_runtime_bindings_v11, PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
@@ -217,6 +217,7 @@ impl BlueJsHostRuntimeLimits {
 
 struct LiveDocument {
     generation: u64,
+    timer_epoch: Instant,
     origin: BlueJsPageOrigin,
     click_event_family: Option<HostObjectFamily>,
     pending_click_tasks: VecDeque<PendingClickTask>,
@@ -1284,6 +1285,7 @@ fn install_document_snapshot_bindings(
     snapshot: &PageHostDocumentSnapshot,
     script_dom_capability: Option<ScriptDomCapability>,
     file_dom_client: Option<Rc<RefCell<ScriptDomClient>>>,
+    timer_epoch: Instant,
 ) -> Result<Option<HostObjectFamily>, BlueJsPageRuntimeError> {
     let page_dom_profile = script_dom_capability
         .as_ref()
@@ -1293,14 +1295,14 @@ fn install_document_snapshot_bindings(
         PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text(),
         PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation(),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event(),
-        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_iteration(),
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_timers(),
     };
     let expected_bindings = match page_dom_profile {
         PageDomProfile::Snapshot => page_host_document_runtime_bindings_v1().to_vec(),
         PageDomProfile::Text => page_host_dom_text_runtime_bindings_v1().to_vec(),
         PageDomProfile::Mutation => page_host_dom_mutation_runtime_bindings_v1().to_vec(),
         PageDomProfile::Event => page_host_dom_event_runtime_bindings_v1().to_vec(),
-        PageDomProfile::File => page_host_dom_iteration_runtime_bindings_v10().to_vec(),
+        PageDomProfile::File => page_host_dom_timers_runtime_bindings_v11().to_vec(),
     };
     artifact
         .verify_runtime_bindings(&expected_bindings)
@@ -1689,6 +1691,11 @@ fn install_document_snapshot_bindings(
                         .extend_from_slice(&page_host_dom_tee_runtime_bindings_v9()[38..]);
                     installed_bindings
                         .extend_from_slice(&page_host_dom_iteration_runtime_bindings_v10()[39..]);
+                    bindings.install_host_timers_with_clock(move || {
+                        u64::try_from(timer_epoch.elapsed().as_millis()).unwrap_or(u64::MAX)
+                    })?;
+                    installed_bindings
+                        .extend_from_slice(&page_host_dom_timers_runtime_bindings_v11()[40..]);
                 }
             } else {
                 installed_bindings

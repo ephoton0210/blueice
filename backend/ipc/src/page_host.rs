@@ -12,6 +12,8 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 57 adds a relative next-timer delay to exact-document browser-turn
+//! replies. Callback identities and process-local clock epochs stay private.
 //! Version 48 adds a child-private System execute-body arm that binds an
 //! explicit earlier, same-document page-loader program. The public debugger
 //! cannot reach this operation until both program receipts and the complete
@@ -144,6 +146,7 @@ pub use drag_drop::{
 };
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V57 returns the next relative timer wake-up after a bounded browser turn.
 /// V56 carries document-bound drag image requests. V55 adds document-bound drag
 /// events and post-default drag string tasks. V54 adds document-bound native
 /// file-selection event dispatch. (These three were V49/V46/V45 on the
@@ -163,7 +166,7 @@ pub use drag_drop::{
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 56;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 57;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -966,6 +969,11 @@ pub enum PageHostReply {
     DragTasksFlushed {
         tab_id: u64,
         document_generation: u64,
+        /// Relative monotonic timer delay; no process-local clock value or
+        /// callback identity crosses the child boundary. Legacy serialized
+        /// replies may omit it; connected peers still require matching versions.
+        #[serde(default)]
+        next_wake_in_ms: Option<u64>,
     },
     FileSelectionDispatched {
         tab_id: u64,

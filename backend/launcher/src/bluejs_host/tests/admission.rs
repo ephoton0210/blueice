@@ -1979,7 +1979,8 @@ fn child_installs_only_fixed_core_snapshot_callbacks_for_javascript() {
                     concat!(
                         "if (blueiceDocumentText() !== 'private document snapshot') throw 'text';",
                         "if (blueiceDocumentOrigin() !== 'https://example.test') throw 'origin';",
-                        "if (typeof document !== 'undefined' || typeof fetch !== 'undefined' || typeof blueiceTestHasElementById !== 'undefined' || typeof blueiceTestGetElementById !== 'undefined') throw 'ambient';"
+                        "if (typeof document !== 'undefined' || typeof fetch !== 'undefined' || typeof blueiceTestHasElementById !== 'undefined' || typeof blueiceTestGetElementById !== 'undefined') throw 'ambient';",
+                        "if (typeof setTimeout !== 'undefined' || typeof setInterval !== 'undefined' || typeof clearTimeout !== 'undefined' || typeof clearInterval !== 'undefined' || typeof queueMicrotask !== 'undefined') throw 'timer ambient';"
                     ),
                 ),
                 classic(1, "blueiceDocumentText(1);"),

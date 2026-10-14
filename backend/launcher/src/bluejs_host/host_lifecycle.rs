@@ -681,6 +681,7 @@ impl BlueJsChildHost {
         // record cannot survive the navigation window in the child.
         self.debug_registry
             .prune_invalid(self.runtime.program_registry());
+        let timer_epoch = Instant::now();
         let click_event_family = match install_document_snapshot_bindings(
             &mut self.runtime,
             document.tab_id,
@@ -688,6 +689,7 @@ impl BlueJsChildHost {
             &document.snapshot,
             self.script_dom_capability.clone(),
             self.file_dom_client.clone(),
+            timer_epoch,
         ) {
             Ok(family) => family,
             Err(_) => {
@@ -705,6 +707,7 @@ impl BlueJsChildHost {
             document.tab_id,
             LiveDocument {
                 generation: document.document_generation,
+                timer_epoch,
                 origin: origin.clone(),
                 click_event_family,
                 pending_click_tasks: VecDeque::new(),

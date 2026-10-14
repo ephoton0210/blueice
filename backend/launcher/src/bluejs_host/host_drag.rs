@@ -146,12 +146,22 @@ impl BlueJsChildHost {
         }
         // Scheduling an existing realm's jobs does not install a capability.
         // All profiles retain their own globals and exact-document callbacks.
+        let timer_epoch = document.timer_epoch;
+        let now_ms = || u64::try_from(timer_epoch.elapsed().as_millis()).unwrap_or(u64::MAX);
         if self.runtime.flush_drag_tasks(tab_id).is_err() {
             return host_failure();
         }
+        if self.runtime.run_due_timers(tab_id, now_ms()).is_err() {
+            return host_failure();
+        }
+        let next_wake_in_ms = match self.runtime.next_timer_due(tab_id) {
+            Ok(due) => due.map(|due| due.saturating_sub(now_ms())),
+            Err(_) => return host_failure(),
+        };
         PageHostReply::DragTasksFlushed {
             tab_id,
             document_generation,
+            next_wake_in_ms,
         }
     }
 }

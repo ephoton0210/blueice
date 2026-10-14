@@ -68,6 +68,19 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
 
     let mut requests = requests;
     loop {
+        let timeout = page_script_runtime
+            .javascript_executor
+            .as_deref()
+            .and_then(|executor| executor.next_task_wake())
+            .map_or(POLL_INTERVAL, |deadline| {
+                deadline
+                    .saturating_duration_since(Instant::now())
+                    .min(POLL_INTERVAL)
+            })
+            .max(Duration::from_millis(1));
+        // As during setup, a peer disconnect may make setsockopt fail;
+        // the following read owns clean-disconnect handling.
+        let _ = stream.set_read_timeout(Some(timeout));
         print_jobs.expire(tabs);
         pending_downloads.retain(|tab, pending| pending.is_current(tabs, &pending_nav_seq, *tab));
         pending_resubmissions.retain(|tab, pending| {

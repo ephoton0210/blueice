@@ -7,6 +7,31 @@ use std::os::unix::net::UnixStream;
 
 mod debugger_shapes;
 
+#[test]
+fn browser_turn_wake_delay_is_optional_and_round_trips() {
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 57);
+    let old = r#"{"DragTasksFlushed":{"tab_id":7,"document_generation":3}}"#;
+    assert_eq!(
+        serde_json::from_str::<PageHostReply>(old).unwrap(),
+        PageHostReply::DragTasksFlushed {
+            tab_id: 7,
+            document_generation: 3,
+            next_wake_in_ms: None,
+        }
+    );
+    for delay in [None, Some(0), Some(i32::MAX as u64)] {
+        let reply = PageHostReply::DragTasksFlushed {
+            tab_id: 7,
+            document_generation: 3,
+            next_wake_in_ms: delay,
+        };
+        assert_eq!(
+            serde_json::from_slice::<PageHostReply>(&serde_json::to_vec(&reply).unwrap()).unwrap(),
+            reply
+        );
+    }
+}
+
 fn source() -> PageHostSource {
     PageHostSource::new("blueice://page/main.js", "globalThis.answer = 42;")
 }

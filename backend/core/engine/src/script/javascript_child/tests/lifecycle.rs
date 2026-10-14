@@ -8,6 +8,8 @@ struct FailedBrowserTaskChild {
     synchronized: usize,
     flushed: usize,
     closed: Vec<(u64, u64)>,
+    mismatch: bool,
+    delay: Option<u64>,
 }
 
 impl PageHostClient for FailedBrowserTaskChild {
@@ -41,10 +43,10 @@ impl PageHostClient for FailedBrowserTaskChild {
         _: &mut dyn FnMut() -> io::Result<()>,
     ) -> io::Result<PageHostReply> {
         self.flushed += 1;
-        // A plausible acknowledgement for another tab must revoke this realm.
         Ok(PageHostReply::DragTasksFlushed {
-            tab_id: tab_id + 1,
+            tab_id: tab_id + u64::from(self.mismatch),
             document_generation,
+            next_wake_in_ms: self.delay,
         })
     }
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {
@@ -67,6 +69,8 @@ fn child_browser_task_failure_keeps_core_alive_without_replaying_document_script
         synchronized: 0,
         flushed: 0,
         closed: vec![],
+        mismatch: true,
+        delay: Some(0),
     });
     executor
         .synchronize_and_execute_serving_script(&mut tabs, &receiver)
@@ -78,7 +82,79 @@ fn child_browser_task_failure_keeps_core_alive_without_replaying_document_script
     assert_eq!(executor.child.flushed, 1);
     assert_eq!(executor.child.closed, vec![(tab_id.as_u64(), 1)]);
     assert!(executor.realm_stats.is_empty());
+    assert!(executor.next_task_wake().is_none());
     assert!(!executor.debugger_has_live_realm(tab_id, 1));
+}
+
+#[test]
+fn child_timer_wakes_follow_exact_document_lifetimes_and_clear_replies() {
+    let (mut tabs, tab) = loaded_tabs("<p>timers</p>", "https://example.test/timers");
+    let other = tabs.open_tab();
+    tabs.get_mut(other)
+        .unwrap()
+        .load_html_str("<p>other</p>", Some("https://example.test/other".into()));
+    let (_sender, receiver) = crate::script::script_request_channel();
+    let mut executor = OutOfProcessJavaScriptPageExecutor::new(FailedBrowserTaskChild {
+        synchronized: 0,
+        flushed: 0,
+        closed: vec![],
+        mismatch: false,
+        delay: Some(5),
+    });
+    let before = Instant::now();
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    let wake = executor.next_task_wake().unwrap();
+    assert!(wake >= before + Duration::from_millis(5));
+    assert!(wake <= Instant::now() + Duration::from_millis(5));
+    assert_eq!(executor.timer_wakes.len(), 2);
+    executor.close_page(tab);
+    assert!(!executor.timer_wakes.contains_key(&tab));
+    assert!(executor.timer_wakes.contains_key(&other));
+    tabs.get_mut(other).unwrap().load_html_str(
+        "<p>replacement</p>",
+        Some("https://example.test/replacement".into()),
+    );
+    let identity = live_page_identity(tabs.get(other).unwrap()).unwrap();
+    executor
+        .prepare_document(other, tabs.get(other).unwrap(), &identity)
+        .unwrap();
+    assert!(executor.next_task_wake().is_none());
+    executor.child.delay = None;
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert!(executor.next_task_wake().is_none());
+    executor.child.delay = Some(0);
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert!(executor.next_task_wake().unwrap() <= Instant::now());
+    tabs.close_tab(other);
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert!(!executor.timer_wakes.contains_key(&other));
+}
+
+#[test]
+fn a_child_cannot_supply_an_unbounded_timer_wake() {
+    let (mut tabs, tab) = loaded_tabs("<p>timer</p>", "https://example.test/timer");
+    let (_sender, receiver) = crate::script::script_request_channel();
+    let mut executor = OutOfProcessJavaScriptPageExecutor::new(FailedBrowserTaskChild {
+        synchronized: 0,
+        flushed: 0,
+        closed: vec![],
+        mismatch: false,
+        delay: Some(u64::MAX),
+    });
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert!(executor.next_task_wake().is_none());
+    assert_eq!(executor.child.closed, [(tab.as_u64(), 1)]);
+    assert!(!executor.debugger_has_live_realm(tab, 1));
 }
 
 /// A hostile authenticated child still cannot acknowledge a different

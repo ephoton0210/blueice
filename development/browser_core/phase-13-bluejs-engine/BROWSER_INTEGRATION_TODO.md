@@ -37,8 +37,9 @@ implemented and verified on `feature/bluejs-browser-integration-gaps`.
 
 ## A. Event loop and scheduling (P0)
 
-The engine has Promise jobs (`run_promise_jobs`, `run_promise_jobs_bounded`)
-but no host event loop.
+The integrated branch has host-owned Promise checkpoints and session-driven
+timers in the owner-selected File DOM profile. General task-source ordering,
+animation frames and complete queue/byte accounting remain open.
 
 - [ ] Macrotask queue that drains microtasks after every task (per
       `research/js-bytecode-eventloop.md`)
@@ -49,32 +50,44 @@ but no host event loop.
       1,024 jobs; the existing native-event checkpoint keeps its 256-job cap.
       Page-module top-level-await and page-created ShadowRealm drains also
       obey the bound. See the
-      milestone record below; timer delivery and render scheduling remain open.
-- [ ] `setTimeout` / `clearTimeout` / `setInterval` / `clearInterval`
-      (today only a Test262-harness stub in `vm/test262/harness.rs`)
-- [ ] `queueMicrotask`
-- [ ] Render-pass entry point: run scheduled script before layout/paint,
-      checkpoint microtasks afterwards
+      milestone record below.
+- [x] **M1b: `setTimeout` / `clearTimeout` / `setInterval` / `clearInterval`.**
+      Installed only by the owner-selected File DOM profile, with matching
+      `core-script-dom-timers-v11` typings. Callable callbacks remain in the
+      realm; string evaluation is deliberately unsupported. Signed Web IDL
+      delay/ID conversion and the nested 4 ms floor are covered.
+- [x] **M1b: `queueMicrotask`.** Uses the realm job queue and the bounded,
+      exception-tolerant host checkpoint; absent from older page profiles.
+- [x] **M1b: timer render-pass entry.** Core's ordinary session tick runs the
+      child's due callbacks and checkpoints before publishing dirty layout/
+      paint. Real JavaScript and BlueTS counter pages prove three unsolicited,
+      distinct frames and matching Representation generations/text.
 - [ ] `requestAnimationFrame` / `cancelAnimationFrame`
 - [ ] `MessageChannel` / `postMessage`
 - [ ] Timers and queued tasks are dropped on navigation (old document
       generation), bounded per tab, and accounted to the initiating tab
-- [ ] Decide where timers live across the core / child-process boundary
+      — timer lifetime/count/argument bounds are covered by M1b; complete
+      queued-task and host-byte accounting is still required.
+- [x] **M1b: core / child timer ownership.** The child realm roots callbacks
+      and arguments; the host injects a document-local monotonic clock. Core
+      transports only exact document identities and relative wake-up delays.
 - [ ] Promise/task hooks that Phase 17's Fetch/XHR needs
 - [ ] Task-source ordering between timers, network completions and UI events
       (one bounded queue today, no source priority); decide before `fetch`
 - [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
       host-held bytes, so a runaway page degrades only itself
-- [ ] Host wake-up: the engine reports the next due time so the session tick
-      sleeps correctly (the launcher's `DragTasksFlushed` reply needs a
-      matching field)
+- [x] **M1b: timer wake-up.** `DragTasksFlushed.next_wake_in_ms` carries the
+      next runnable delay. Core validates its identity/range, clears it on
+      replacement/close, and shortens its ordinary polling timeout for an
+      earlier timer. Paused debugger realms retain timers without busy wakes.
 - [ ] Microtask checkpoint also runs after every DOM event dispatch, not only
       after browser-task turns (*verify*)
-- [ ] *Parallel work*: an uncommitted `backend/bluejs/tests/host_timers.rs`
-      (page-runtime timers with a host-supplied clock) exists in the
-      `feature/bluejs-browser-integration-gaps` worktree, and a tested
-      first slice sits on the local `wip/bluejs-web-timers` branch of the
-      `feature/browsable-web-mvp` worktree. Reconcile before either lands.
+- [x] **M1b: reconcile the parked timer slice.** Retained the public
+      page-runtime host-supplied clock mechanism, including explicit manual
+      time for deterministic tests. Adopted the parked slice's 32-argument
+      bound and nested-delay behavior, plus a 64-callback turn bound. The
+      separate `wip/bluejs-web-timers` implementation is not merged wholesale;
+      pending host-byte/queue budgets remain in the open item above.
 
 ## B. Promise, GC and error reporting (P0/P1)
 
@@ -176,10 +189,12 @@ Bound today: `document.getElementById`, `createElement`, `createTextNode`,
 
 ## F. Page script loading and integration (P0/P1)
 
-- [ ] Wire `blueice_ipc::script` into a real BlueJS host process end to end
-      (PLAN.md checklist item still open)
-- [ ] End-to-end smoke test: a real `<script>` fixture through the full
-      pipeline
+- [x] Wire `blueice_ipc::script` into a real BlueJS host process end to end.
+      M1b's owner-selected File DOM fixtures use the supervised child and
+      Core's pumped exact-document DOM requests; broader APIs remain scoped
+      by their own open items.
+- [x] End-to-end smoke test: real JavaScript and BlueTS `<script>` fixtures
+      through HTTP navigation, the isolated host, DOM mutation and rendering.
 - [ ] *Verify*: `<script src>`, `defer`/`async`, `type=module`, inline
       handlers (`onclick=`), execution order vs. parsing
 - [ ] `bluejs` shell (REPL + batch) and the full Node differential harness
@@ -189,10 +204,10 @@ Bound today: `document.getElementById`, `createElement`, `createTextNode`,
       flip: today scripts run only behind `--inline-bluejs` or the page-host
       options, so a normal launcher session never executes one. The core
       selects the supported profile; the page never does.
-- [ ] A script DOM change must publish a frame in the same render pass, with
-      the same `generation` on the `Representation`. *Fixed on
-      `feature/browsable-web-mvp` (`a54ddceea`)*: relayout without a frame
-      push left human and AI observers stale until an unrelated request.
+- [x] A script DOM change publishes a frame in the same render pass, with
+      the same `generation` on the `Representation`. M1b's timer counter
+      fixtures verify the integrated `a54ddceea` frame-push behavior through
+      the real Core/child path without a frontend request between ticks.
 
 ## G. Engine limitations (P2)
 
@@ -227,13 +242,11 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
       `document.getElementById`, `textContent`, and `click` listeners until
       sections C and D grow. Every binding added there needs its typings
       entry in the same change (the "absent API fails typed use" rule).
-- [ ] **`async` / `await` is checkable but not useful on a page.** The engine
-      runs Promise jobs and module top-level await, and the debugger can
-      pause across module-await continuations, but there is no timer,
-      `fetch` or task source (sections A, E), so a typed async function can
-      only await values that resolve from microtasks.
-- [ ] **No `console`, `setTimeout`, `fetch`** for typed code: the commonest
-      TypeScript snippets cannot be written against the supported profile.
+- [ ] **Typed asynchronous web APIs remain incomplete.** M1b gives the File
+      DOM profile typed timers and `queueMicrotask`; network waits still need
+      section E, and general page-module host-wait scheduling needs verification.
+- [ ] **No `console` or `fetch`** for typed page code. `setTimeout` and the
+      other M1b scheduling functions are now in the exact File DOM artifact.
 - [ ] **Uncaught errors and rejections** cannot be mapped back to BlueTS
       original positions until the host reports them (section B); today
       only debugger pauses use the safe-point map (*verify* for thrown
@@ -322,6 +335,59 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1b — Session-driven page timers and frame acceptance (2026-10-14)
+
+- Installed callable-only `setTimeout`, `setInterval`, their shared-ID clear
+  functions and `queueMicrotask` in the latest owner-selected File DOM profile.
+  The exact 45-entry `core-script-dom-timers-v11` artifact adds five globals
+  without changing v1–v10 declaration bytes/inventories. Typed valid calls,
+  incorrect callbacks/delays/IDs, old-profile absence and absent animation
+  frames are checked at the public bridge; child inventory tests pin runtime
+  presence and copied-snapshot absence. No page gains a profile selector.
+- Retained deterministic explicit host time and added an injected monotonic
+  clock sampled at scheduling and interval rearming. Callbacks and object
+  arguments remain collector-rooted in their realm. Reconciled 32 extra
+  arguments and the nested 4 ms floor; added a 64-callback turn limit retaining
+  unfinished timers. The realm's existing 1,024-timer cap remains in force.
+  Signed Web IDL long conversion handles delay/ID overflow and infinities;
+  strict callbacks receive the realm global, and function lengths match
+  required argument counts (the clear functions have an optional ID). Late
+  intervals run once and rearm after the callback/checkpoint, respecting
+  self-clear.
+- Drove due timers after bounded browser tasks on Core's ordinary session
+  tick, preserving checkpoint ownership and same-turn dirty frame publication.
+  A paused debugger realm retains timers and advertises no runnable wake-up
+  until it resumes. Resource failures remain contained by the existing
+  exact-realm revocation path, which keeps Core alive without script replay.
+- Advanced the private Core/child protocol to v57 for
+  `DragTasksFlushed.next_wake_in_ms`. Only relative delays cross the boundary.
+  Core validates tab/document identity and the signed-long delay range, samples
+  its deadline before transport waits, discards wakes on replacement/close,
+  and shortens its 25 ms service poll for earlier timers. Timer-free/paused
+  replies clear wakes. Socket timeout updates retain best-effort disconnect
+  handling; a deterministic EINVAL regression covers the new polling path.
+- Acceptance was red first: the real counter page was rejected at execution,
+  and five public VM cases failed for conversion, nesting, turn/argument bounds
+  and callback `this`. Both real JavaScript and BlueTS counter pages now
+  publish three different unsolicited RGBA frames with strictly increasing
+  generation and exactly matching Representation generation/text. Self-clear
+  stops later frames; navigation from a running interval leaves its successor
+  quiet. The existing real selected-file/FileReader/stream fixture also passes.
+- Verification on macOS: 1,191 BlueJS library tests, 37 `host_timers`, 164
+  bridge library tests, three timer/iteration typing tests, 812 Core library
+  tests, 215 IPC library tests and 305 launcher library tests passed (one
+  launcher case ignored), plus two real timer tests and one real FileReader
+  test. Rebuilt Core and launcher binaries before the final host run so both
+  ends use protocol v57. Historical debugger wire tests now enforce their
+  minimum revision rather than retaining an obsolete exact v53 assertion.
+  All-target Clippy for the five affected crates passed with `-D warnings`;
+  `cargo fmt --all -- --check` and `git diff --check` passed.
+- `requestAnimationFrame`, general task-source ordering, pending-job/task and
+  host-byte caps, Promise collectibility, error-event reporting and default-on
+  execution remain open. This completes the timer/frame vertical slice, not
+  M1 as a whole. The full workspace, coverage and unfiltered Test262 gates are
+  not claimed by this increment.
 
 ### M1a — Host microtask checkpoint ownership and bounds (2026-10-14)
 

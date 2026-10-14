@@ -1019,6 +1019,8 @@ pub struct Vm {
     host_timers: Vec<HostTimer>,
     host_timer_next_id: u32,
     host_timer_clock_ms: u64,
+    host_timer_clock: Option<Box<dyn Fn() -> u64>>,
+    host_timer_nesting: u32,
     active_host_drag_event: Option<ObjectId>,
     event_time_origin: std::time::Instant,
     global_bindings: HashMap<String, GlobalBinding>,

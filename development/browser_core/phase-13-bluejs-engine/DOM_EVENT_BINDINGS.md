@@ -35,9 +35,24 @@ The first event type is `click`. The initial callback receives an event with
 `type`, `target`, `currentTarget`, and `preventDefault()`. The latter prevents
 the click's default link navigation. The event cannot request a network
 operation. Other Phase 2 DOM properties, selectors, capture/bubble phases,
-`stopPropagation()`, `input`/`change`/`submit` events, timers, and general
+`stopPropagation()`, `input`/`change`/`submit` events, and general
 `lib.dom.d.ts` remain later implementation slices. A missing operation stays
 absent at both the TypeScript and JavaScript boundaries.
+
+**2026-10-14 timer increment:** The latest owner-selected File DOM profile
+uses `core-script-dom-timers-v11` (45 inventory entries), preserving all older
+artifacts. It adds `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`
+and `queueMicrotask`. Callbacks and arguments stay rooted in the exact child
+realm; navigation/close discard them. Each realm admits at most 1,024 timers
+and 32 extra arguments per timer, and each turn invokes at most 64 callbacks.
+The host supplies a monotonic clock; the VM supplies the next runnable due time.
+Core validates the child's relative delay and schedules callbacks before the
+same tick's dirty frame publication. See the
+[M1b acceptance record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+String timer handlers, animation frames and complete task/byte accounting
+remain outside this profile. Timing conversion and nesting follow the
+[HTML timer algorithm](https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers)
+and [Web IDL signed long conversion](https://webidl.spec.whatwg.org/#es-long).
 
 ## Ownership and identity
 

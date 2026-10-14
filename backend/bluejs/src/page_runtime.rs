@@ -259,6 +259,16 @@ impl BlueJsHostBindingRegistrar<'_> {
         self.vm.install_host_timer_functions()
     }
 
+    /// Installs the same functions with a host-owned monotonic millisecond
+    /// clock. Scheduling samples it after argument conversion and interval
+    /// callbacks, so long-running scripts do not schedule against an old tick.
+    pub fn install_host_timers_with_clock(
+        &mut self,
+        clock: impl Fn() -> u64 + 'static,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_timer_functions_with_clock(clock)
+    }
+
     /// Installs one opaque host object as a global in this realm.
     pub fn install_global_object(&mut self, name: &str) -> Result<HostObject, RuntimeError> {
         self.vm.install_host_object(name)
@@ -512,7 +522,7 @@ impl BlueJsPageRuntime {
     }
 
     /// The earliest pending timer due time (host milliseconds) in one tab
-    /// realm, or `None` when nothing is scheduled. Navigation discards every
+    /// realm, or `None` when empty or debugger-paused. Navigation discards every
     /// timer along with the realm's VM.
     pub fn next_timer_due(&self, tab_id: u64) -> Result<Option<u64>, BlueJsPageRuntimeError> {
         self.realms

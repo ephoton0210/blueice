@@ -170,6 +170,12 @@ pub enum BlueTsPageExecutionReport {
 /// executor may both implement it, but a session selects at most one owner for
 /// a page at a time.
 pub trait PageJavaScriptExecutor {
+    /// Earliest runnable page task, in Core's monotonic clock. A child
+    /// supplies a relative delay rather than sharing its clock epoch.
+    fn next_task_wake(&self) -> Option<std::time::Instant> {
+        None
+    }
+
     /// Synchronizes current tab/document state and records bounded source-free
     /// execution results.
     fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()>;

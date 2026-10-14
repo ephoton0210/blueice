@@ -74,6 +74,12 @@ impl Page {
 }
 
 #[test]
+fn timer_function_lengths_match_their_required_arguments() {
+    let mut page = Page::new();
+    assert_eq!(page.run("setTimeout.length === 1 && setInterval.length === 1 && clearTimeout.length === 0 && clearInterval.length === 0 && queueMicrotask.length === 1").unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn a_timer_runs_once_when_due_and_receives_its_extra_arguments() {
     let mut page = Page::new();
     page.run("setTimeout(function (a, b) { log.push('t' + a + b); }, 10, 1, 2);")
@@ -480,6 +486,154 @@ fn delays_are_coerced_like_the_html_standard() {
     assert_eq!(page.tick(2).tasks_run, 1);
     assert_eq!(page.tick(7).tasks_run, 1);
     assert_eq!(page.log(), "neg,nan,frac,str");
+}
+
+#[test]
+fn timer_delays_and_clear_ids_use_webidl_signed_long_conversion() {
+    let mut page = Page::new();
+    page.run(
+        "setTimeout(function () { log.push('overflow'); }, 2147483648);
+              setTimeout(function () { log.push('infinite'); }, Infinity);
+              setTimeout(function () { log.push('wrapped'); }, 4294967297);
+              var cleared = setTimeout(function () { log.push('cleared'); }, 0);
+              clearTimeout(cleared + 4294967296.9);",
+    )
+    .unwrap();
+    assert_eq!(page.tick(0).tasks_run, 2);
+    assert_eq!(page.log(), "overflow,infinite");
+    assert_eq!(page.tick(1).tasks_run, 1);
+    assert_eq!(page.log(), "overflow,infinite,wrapped");
+}
+
+#[test]
+fn nested_zero_delay_timers_and_intervals_get_a_four_millisecond_floor() {
+    for repeat in [false, true] {
+        let mut page = Page::new();
+        let rearm = if repeat { "" } else { "setTimeout(tick, 0);" };
+        page.run(&format!(
+            "function tick() {{ log.push('tick'); {rearm} }}
+            {}(tick, 0);",
+            if repeat { "setInterval" } else { "setTimeout" }
+        ))
+        .unwrap();
+        for _ in 0..6 {
+            assert_eq!(page.tick(0).tasks_run, 1);
+        }
+        assert_eq!(page.runtime.next_timer_due(TAB).unwrap(), Some(4));
+        assert_eq!(page.tick(3).tasks_run, 0);
+        assert_eq!(page.tick(4).tasks_run, 1);
+    }
+}
+
+#[test]
+fn a_timer_turn_yields_after_sixty_four_callbacks_and_retains_the_rest() {
+    let mut page = Page::new();
+    page.run(
+        "for (var i = 0; i < 65; i += 1) {
+        setTimeout(function () { log.push('task'); }, 0);
+    }",
+    )
+    .unwrap();
+    assert_eq!(page.tick(0).tasks_run, 64);
+    assert_eq!(page.runtime.next_timer_due(TAB).unwrap(), Some(0));
+    assert_eq!(page.tick(0).tasks_run, 1);
+    assert_eq!(page.runtime.next_timer_due(TAB).unwrap(), None);
+}
+
+#[test]
+fn timer_callbacks_receive_the_realm_global_even_in_strict_functions() {
+    let mut page = Page::new();
+    page.run("setTimeout(function () { 'use strict'; log.push(this === globalThis); }, 0);")
+        .unwrap();
+    page.tick(0);
+    assert_eq!(page.log(), "true");
+}
+
+#[test]
+fn timer_extra_arguments_are_bounded_before_roots_or_ids_are_retained() {
+    let mut page = Page::new();
+    let args = std::iter::repeat_n("{}", 33).collect::<Vec<_>>().join(",");
+    assert!(matches!(
+        page.run(&format!("setTimeout(function () {{}}, 0, {args});")),
+        Err(BlueJsPageRuntimeError::Runtime(RuntimeError::RangeError(_)))
+    ));
+    assert_eq!(page.runtime.next_timer_due(TAB).unwrap(), None);
+    let args = std::iter::repeat_n("1", 32).collect::<Vec<_>>().join(",");
+    assert_eq!(
+        page.run(&format!(
+            "setTimeout(function () {{ log.push(arguments.length); }}, 0, {args});"
+        ))
+        .unwrap(),
+        Value::Number(1.0)
+    );
+    page.tick(0);
+    assert_eq!(page.log(), "32");
+}
+
+#[test]
+fn an_injected_host_clock_is_sampled_at_scheduling_and_after_interval_callbacks() {
+    use std::{cell::Cell, rc::Rc};
+    let clock = Rc::new(Cell::new(500));
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime.open_realm(TAB, origin()).unwrap();
+    runtime
+        .configure_realm_bindings(TAB, |bindings| {
+            let source = clock.clone();
+            bindings.install_host_timers_with_clock(move || source.get())?;
+            let source = clock.clone();
+            bindings.install_global_function(
+                "advanceHostClock",
+                0,
+                move |_: &[blueice_bluejs::HostValue]| {
+                    source.set(700);
+                    Ok(blueice_bluejs::HostValue::Undefined)
+                },
+            )
+        })
+        .unwrap();
+    let mut page = Page {
+        runtime,
+        scripts: 0,
+    };
+    page.run(
+        "var log = []; setInterval(function () { log.push('tick'); advanceHostClock(); }, 10);",
+    )
+    .unwrap();
+    assert_eq!(page.runtime.next_timer_due(TAB).unwrap(), Some(510));
+    assert_eq!(page.tick(509).tasks_run, 0);
+    assert_eq!(page.tick(510).tasks_run, 1);
+    assert_eq!(page.runtime.next_timer_due(TAB).unwrap(), Some(710));
+    clock.set(400); // A regressing host sample cannot rewind the realm.
+    assert_eq!(page.tick(0).tasks_run, 0);
+    assert_eq!(page.runtime.next_timer_due(TAB).unwrap(), Some(710));
+}
+
+#[test]
+fn debugger_pauses_retain_timers_without_a_runnable_wake() {
+    let mut vm = Vm::default();
+    vm.install_host_timer_functions().unwrap();
+    vm.execute_script(
+        &blueice_bluejs::compile(
+            &parse("var count = 0; setTimeout(function () { count += 1; }, 0);").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let code = blueice_bluejs::compile(&parse("count += 10;").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script_until_debugger_pause(&code, 0).unwrap(),
+        blueice_bluejs::VmDebuggerExecutionState::Paused { .. }
+    ));
+    assert_eq!(vm.next_host_timer_due(), None);
+    assert_eq!(vm.run_due_host_timers(100).unwrap().tasks_run, 0);
+    vm.resume_debugger_execution().unwrap();
+    assert_eq!(vm.next_host_timer_due(), Some(0));
+    assert_eq!(vm.run_due_host_timers(100).unwrap().tasks_run, 1);
+    assert_eq!(
+        vm.execute_script(&blueice_bluejs::compile(&parse("count").unwrap()).unwrap())
+            .unwrap(),
+        Value::Number(11.0)
+    );
 }
 
 #[test]
