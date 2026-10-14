@@ -736,11 +736,16 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     preserve owner-stream admission holds. Prove a real-process pause,
     generated/original three-frame projection, nested step and normal resume
     without replaying the loader, wrapper or mapped call.
+  - [x] In the real-process System route, reject stale emitted and loader
+    generations at both resolution and arm without retaining a breakpoint.
+    At a valid three-frame pause, require the old single-program generated
+    location route to reject the foreign loader frame instead of relabeling it.
   - [ ] Prove thrown completion through the same public System pause without
-    replaying loader or wrapper effects; at that pause, show the classic
-    single-program stack still refuses to relabel the foreign frame. Reject
-    stale loader/emitted generations and a substituted cross-stream arm in
-    the real-process route.
+    replaying loader or wrapper effects. Prove a substituted cross-stream arm
+    cannot consume the owner stream's hold; the current core debugger listener
+    serves one connection to EOF before accepting the next, so concurrent
+    real-process streams need an explicit bounded multi-client design or an
+    equivalent core-level admission test.
   - [ ] Add independently default-denied, same-stream receipted public
     debugger operations for generated breakpoint resolution/arming and
     paused step/stack-location projection. Unmapped helper bodies and
@@ -1341,6 +1346,18 @@ With v48 binaries rebuilt, IPC, launcher and engine library suites pass
 143/143, 194/194 and 485/485; the real-process public debugger suite passes
 47/47, including the focused System report assertion. Three-crate all-target
 Clippy with warnings denied, workspace formatting and diff checks pass.
+
+The next real-process System regression refuses both stale loader and stale
+emitted generations at explicit resolution and arm, then verifies the realm
+breakpoint list stayed empty. At the valid mapped three-frame pause, the
+ordinary single-program generated-location operation returns
+`InvalidExecutionState` instead of relabeling the foreign loader as emitted.
+The focused launcher acceptance test passes 1/1; no production route changes.
+The concurrent foreign-stream arm case is not claimed: the current core
+`serve_debugger_listener` synchronously serves each connection until EOF
+before accepting another. A second public socket can connect but cannot
+complete `Hello` while the owner holds its stream. The remaining check needs
+bounded multi-client service or an equivalent core admission-stream test.
 
 ### K.12 Projects — M10 — gap G-M2
 

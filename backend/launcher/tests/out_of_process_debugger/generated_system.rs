@@ -270,6 +270,45 @@ fn public_system_requires_explicit_dual_program_breakpoint_and_stack_route() {
         emitted: target,
         loader,
     };
+    for stale in [
+        DebuggerGeneratedSystemBreakpointTarget {
+            loader: blueice_ipc::debugger::DebuggerProgram {
+                program_generation: loader.program_generation + 1,
+                ..loader
+            },
+            ..system_target
+        },
+        DebuggerGeneratedSystemBreakpointTarget {
+            emitted: DebuggerGeneratedBreakpointTarget {
+                program: blueice_ipc::debugger::DebuggerProgram {
+                    program_generation: program.program_generation + 1,
+                    ..program
+                },
+                ..target
+            },
+            ..system_target
+        },
+    ] {
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::ResolveGeneratedSystemBreakpoint { target: stale },
+            ),
+            DebuggerReply::Unsupported { .. }
+        ));
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::ArmGeneratedSystemBreakpoint { target: stale },
+            ),
+            DebuggerReply::Unsupported { .. }
+        ));
+    }
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ListBreakpoints { realm }),
+        DebuggerReply::Breakpoints(Vec::new()),
+        "stale System arm attempts must retain no breakpoint"
+    );
     let binding = debugger_request(
         &mut debugger,
         DebuggerRequest::ResolveGeneratedSystemBreakpoint {
@@ -345,6 +384,19 @@ fn public_system_requires_explicit_dual_program_breakpoint_and_stack_route() {
         (0, original.0, original.1)
     );
     assert_eq!(projection.locations[2], None);
+    assert!(
+        matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetGeneratedPausedLocation { program },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ),
+        "the single-program generated route must refuse the foreign loader frame"
+    );
     assert_eq!(
         debugger_request(
             &mut debugger,
