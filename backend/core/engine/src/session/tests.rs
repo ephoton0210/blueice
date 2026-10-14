@@ -1267,5 +1267,7 @@ mod dispatch_gaps;
 mod navigation;
 #[path = "tests/session_actions.rs"]
 mod session_actions;
+#[path = "tests/script_frames.rs"]
+mod script_frames;
 #[path = "tests/session_wrappers.rs"]
 mod session_wrappers;

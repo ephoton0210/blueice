@@ -1324,3 +1324,47 @@ fn refreshing_to_shorter_content_clamps_the_scroll_to_what_still_exists() {
     page.refresh_html("<p>just one line</p>");
     assert_eq!(page.scroll_y(), 0.0, "nothing left to scroll to");
 }
+
+#[test]
+fn script_dom_mutation_leaves_an_unpublished_frame_until_taken() {
+    let mut page = Page::new(300.0, 100.0);
+    page.load_html_str("<p id='t'>one</p><div id='box'></div>", None);
+    assert!(!page.take_unpublished_script_change());
+    let target = page.script_get_element_by_id("t").unwrap();
+    let handle = page.script_handle_for_node(target);
+    page.script_set_text_content(handle, "two".into()).unwrap();
+    assert!(page.take_unpublished_script_change());
+    assert!(
+        !page.take_unpublished_script_change(),
+        "a published change is reported once"
+    );
+
+    let parent = page.script_get_element_by_id("box").unwrap();
+    let parent = page.script_handle_for_node(parent);
+    let child = page.script_create_element("span".to_string()).unwrap();
+    let child = page.script_handle_for_node(child);
+    page.script_append_child(parent, child).unwrap();
+    assert!(page.take_unpublished_script_change());
+}
+
+#[test]
+fn a_refused_script_mutation_does_not_claim_a_new_frame() {
+    let mut page = Page::new(300.0, 100.0);
+    page.load_html_str("<p id='t'>one</p>", None);
+    assert!(page.script_set_text_content(999_999, "x".into()).is_err());
+    assert!(!page.take_unpublished_script_change());
+}
+
+#[test]
+fn publishing_a_frame_clears_the_unpublished_script_change() {
+    let mut page = Page::new(300.0, 100.0);
+    page.load_html_str("<p id='t'>one</p>", None);
+    let target = page.script_get_element_by_id("t").unwrap();
+    let handle = page.script_handle_for_node(target);
+    page.script_set_text_content(handle, "two".into()).unwrap();
+    page.advance_frame_generation();
+    assert!(
+        !page.take_unpublished_script_change(),
+        "the frame just published already shows the change"
+    );
+}

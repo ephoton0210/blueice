@@ -2213,5 +2213,17 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
         if !synchronized_after_completion {
             synchronize_page_script_runtime(&mut page_script_runtime, tabs, requests.script)?;
         }
+        // Page script changes the document between client requests (timers,
+        // and later network completions). Publish that render pass now, with
+        // the next frame generation, so the human frame and a following
+        // representation read the same state.
+        let changed: Vec<_> = tabs.ids().collect();
+        for tab in changed {
+            if let Some(page) = tabs.get_mut(tab) {
+                if page.take_unpublished_script_change() {
+                    send_frame(page, stream, frame_dir, generation, Some(tab.as_u64()), None)?;
+                }
+            }
+        }
     }
 }

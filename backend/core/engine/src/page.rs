@@ -66,6 +66,10 @@ pub struct Page {
     /// Only handles minted for this exact document can resolve to its nodes.
     script_nodes: HashMap<u64, NodeId>,
     script_node_handles: HashMap<NodeId, u64>,
+    /// Set when page script changed the document after the last published
+    /// frame, so the session can push the new render pass without waiting for
+    /// an unrelated request to carry it.
+    script_change_unpublished: bool,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     native_editor: Option<native_editing::EditorSession>,
@@ -145,6 +149,7 @@ impl Page {
             document_generation: 0,
             script_nodes: HashMap::new(),
             script_node_handles: HashMap::new(),
+            script_change_unpublished: false,
             hovered: None,
             focused: None,
             native_editor: None,
@@ -1047,7 +1052,14 @@ impl Page {
         // document. Recompute author/UA styles before layout and paint.
         self.recascade();
         self.relayout();
+        self.script_change_unpublished = true;
         Ok(())
+    }
+
+    /// Reports, once, that page script changed the document after the last
+    /// published frame. Publishing a frame clears the condition itself.
+    pub(crate) fn take_unpublished_script_change(&mut self) -> bool {
+        std::mem::take(&mut self.script_change_unpublished)
     }
 
     /// Returns the recursive text content for one live page-script node.
@@ -1091,6 +1103,7 @@ impl Page {
         }
         self.native_form_script_text_change(node);
         self.relayout();
+        self.script_change_unpublished = true;
         Ok(())
     }
 
@@ -1125,6 +1138,7 @@ impl Page {
     /// Advances this tab's render-pass generation. `session` calls this
     /// immediately before writing the corresponding frame.
     pub(crate) fn advance_frame_generation(&mut self) -> u64 {
+        self.script_change_unpublished = false;
         self.frame_generation = self
             .frame_generation
             .checked_add(1)

@@ -90,7 +90,12 @@ Each milestone is test-first, ends with a passing real-interface test
 
 - **M0 — Integration.** Merge PR #25's BlueJS line; re-verify. (Done for the
   merge; verification is the open part — see below.)
-- **M1 — Event loop and timers.** `setTimeout`/`clearTimeout`/
+- **M1 — Event loop and timers.** *(Engine side moved: timers, Promise
+  collectibility and the other engine gaps are tracked in
+  [`phase-13-bluejs-engine/BROWSER_RUNTIME_GAPS.md`](../phase-13-bluejs-engine/BROWSER_RUNTIME_GAPS.md)
+  and land on a dedicated BlueJS branch after PR #25 merges to `main`; a
+  tested first slice is parked on `wip/bluejs-web-timers`. The core-side
+  frame push below stays in this phase.)* `setTimeout`/`clearTimeout`/
   `setInterval`/`clearInterval`/`queueMicrotask`/`requestAnimationFrame`,
   delivered by the session tick. Acceptance: a counter page updating via
   `setInterval` produces N distinct frames with strictly increasing
@@ -130,14 +135,25 @@ Each milestone is test-first, ends with a passing real-interface test
 - Product-line features were preserved on top: the `web_*` natives (re-added
   to `heap/capabilities.rs`'s constructor set), `browser_tasks`, node/drag/
   file events and host-object families, and the product `README.md`.
-- **Deliberately dropped from the product line, pending proof it matters:**
-  the `AsyncIteratorClose` opcode with `AsyncIteratorCloseResult`, and the
-  `owned_edges` Promise-edge scoped-roots argument (now always empty).
-  Promises are therefore rooted conservatively as the Test262 line does.
-  Risk: product tests that assert *collectibility* of stream/tee Promise
-  state or awaited async-iteration cleanup may fail. The verification gate
-  below names them; if they fail, port the owned-edge tracing onto the
-  Test262 rooting model rather than reverting the merge.
+- **Deliberately dropped from the product line:** the `AsyncIteratorClose`
+  opcode with `AsyncIteratorCloseResult`, and the `owned_edges` Promise-edge
+  scoped-roots argument (now always empty). Promises are therefore rooted
+  conservatively as the Test262 line does: a Promise lives as long as its
+  document's VM.
+- **Known difference, tracked separately (2026-10-13):** the product line's
+  `promise_gc_lifecycle` tests assert that an unreachable settled Promise is
+  collectible; four of them fail on this model. A port of `owned_edges` onto
+  the Test262 rooting was tried and reverted: it fixed those four but made
+  ten lib allocation-failure tests and several integration targets fail
+  (`invalid Promise receiver`, `Heap(InvalidObject)`), because the Test262
+  async/generator paths assume every Promise is a root. The fix needs every
+  such path to register its in-flight Promise, and a full Test262 inventory
+  re-run, so it is its own branch (started from `main` after PR #25 merges),
+  not part of this phase. Consequence for this phase: a document that
+  creates Promises without bound grows until the managed-heap limit; the
+  failure is confined to that document. A long-running-poll memory-growth
+  test is the acceptance test for that branch and should be written before
+  M5.
 
 Verification gate before this branch is treated as integrated:
 `cargo test -p blueice-bluejs` (including the Test262-dependent integration
