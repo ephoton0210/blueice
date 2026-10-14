@@ -114,6 +114,7 @@ impl Vm {
             NativeFunction::HostClickListenerRemove(index) => {
                 self.host_click_listener_call(index, receiver, &args, construct, false)
             }
+            NativeFunction::HostTimer(function) => self.host_timer_call(function, &args, construct),
             NativeFunction::HostClickPreventDefault => {
                 self.host_click_prevent_default(receiver, &args, construct)
             }

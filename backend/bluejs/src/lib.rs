@@ -101,10 +101,11 @@ pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};
 pub use vm::{
-    HostFunction, HostFunctionError, HostObject, HostObjectFactory, HostObjectFamily,
-    HostObjectKey, HostObjectMethod, HostObjectPairMethod, HostValue, RuntimeError, Vm, VmConfig,
-    VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
-    VmDebuggerScopeEntry, VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite,
-    VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
+    BlueJsTimerRun, HostFunction, HostFunctionError, HostObject, HostObjectFactory,
+    HostObjectFamily, HostObjectKey, HostObjectMethod, HostObjectPairMethod, HostValue,
+    RuntimeError, Vm, VmConfig, VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget,
+    VmDebuggerNestedExecutionState, VmDebuggerScopeEntry, VmDebuggerStackFrame,
+    VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
+    MAX_HOST_TIMERS_PER_REALM, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
     VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
 };

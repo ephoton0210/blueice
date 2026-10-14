@@ -199,6 +199,9 @@ pub(crate) enum NativeFunction {
     HostClickListenerRemove(u32),
     /// Can cancel only the currently dispatching VM-owned click event.
     HostClickPreventDefault,
+    /// VM-owned timer and `queueMicrotask` globals; callbacks stay rooted
+    /// in the VM and never cross the embedding callback ABI.
+    HostTimer(crate::vm::HostTimerFunction),
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

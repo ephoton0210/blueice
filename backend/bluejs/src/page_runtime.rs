@@ -13,11 +13,11 @@
 
 use crate::{
     BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle, BlueJsProgramRegistry,
-    BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, Bytecode, HeapError, HeapStats,
-    HostFunction, HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
-    HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
-    VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState, VmDebuggerScopeEntry,
-    VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
+    BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, BlueJsTimerRun, Bytecode, HeapError,
+    HeapStats, HostFunction, HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey,
+    HostObjectMethod, HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig,
+    VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
+    VmDebuggerScopeEntry, VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -221,6 +221,14 @@ impl BlueJsHostBindingRegistrar<'_> {
         function: impl HostFunction,
     ) -> Result<(), RuntimeError> {
         self.vm.install_host_function(name, length, function)
+    }
+
+    /// Installs `setTimeout`, `setInterval`, `clearTimeout`,
+    /// `clearInterval` and `queueMicrotask`. Callbacks stay in the realm's
+    /// VM and run only when the host calls
+    /// [`BlueJsPageRuntime::run_due_timers`] with its own clock.
+    pub fn install_host_timers(&mut self) -> Result<(), RuntimeError> {
+        self.vm.install_host_timer_functions()
     }
 
     /// Installs one opaque host object as a global in this realm.
@@ -450,6 +458,34 @@ impl BlueJsPageRuntime {
             .map_err(BlueJsPageRuntimeError::HostBinding)
     }
 
+    /// The earliest pending timer due time (host milliseconds) in one tab
+    /// realm, or `None` when nothing is scheduled. Navigation discards every
+    /// timer along with the realm's VM.
+    pub fn next_timer_due(&self, tab_id: u64) -> Result<Option<u64>, BlueJsPageRuntimeError> {
+        self.realms
+            .get(&tab_id)
+            .map(|realm| realm.vm.next_host_timer_due())
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))
+    }
+
+    /// Runs the timers of one tab realm that are due at `now_ms`, one task
+    /// each with a microtask checkpoint after it. The host supplies a
+    /// monotonic millisecond clock; see [`Vm::run_due_host_timers`].
+    pub fn run_due_timers(
+        &mut self,
+        tab_id: u64,
+        now_ms: u64,
+    ) -> Result<BlueJsTimerRun, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        realm
+            .vm
+            .run_due_host_timers(now_ms)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Compiles and retains one caller-authorized structured program. The
     /// source identity is carried unchanged into the generation registry, and
     /// an origin mismatch or resource admission failure executes nothing.
@@ -603,17 +639,21 @@ impl BlueJsPageRuntime {
             .get_mut(&tab_id)
             .expect("realm ownership was checked before the registry lookup");
         // An installed program's root is a script or a module.
-        if root == BlueJsAstNodeKind::Module {
-            realm
-                .vm
-                .execute_module(&bytecode)
-                .map_err(BlueJsPageRuntimeError::Runtime)
+        let result = if root == BlueJsAstNodeKind::Module {
+            realm.vm.execute_module(&bytecode)
         } else {
-            realm
-                .vm
-                .execute_script(&bytecode)
-                .map_err(BlueJsPageRuntimeError::Runtime)
-        }
+            realm.vm.execute_script(&bytecode)
+        };
+        // HTML "clean up after running script": a microtask checkpoint
+        // follows the script whether or not it threw, so Promise reactions
+        // and `queueMicrotask` callbacks it queued run before the host
+        // regains control. A page exception inside such a job ends only
+        // that job; a resource failure is reported when the script itself
+        // succeeded.
+        let checkpoint = realm.vm.run_host_microtask_checkpoint();
+        let value = result.map_err(BlueJsPageRuntimeError::Runtime)?;
+        checkpoint.map_err(BlueJsPageRuntimeError::Runtime)?;
+        Ok(value)
     }
 
     /// Executes one exact classic page program until a verified instruction

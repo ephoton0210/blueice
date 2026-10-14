@@ -30,6 +30,7 @@ mod for_in;
 mod functions;
 mod host_objects;
 mod host_registration;
+mod host_timers;
 use host_registration::{host_function_index, host_registration_index};
 mod interpreter;
 mod intl;
@@ -73,6 +74,9 @@ use host_objects::{
 pub use host_objects::{
     HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod, HostObjectPairMethod,
 };
+use host_timers::HostTimer;
+pub(crate) use host_timers::HostTimerFunction;
+pub use host_timers::{BlueJsTimerRun, MAX_HOST_TIMERS_PER_REALM};
 use std::fmt;
 
 /// A private interpreter suspension boundary. `Offset` is also used by
@@ -574,6 +578,9 @@ enum PromiseJob {
     /// observed its target dead. It deliberately shares the normal job queue
     /// so cleanup cannot run in the middle of an ECMAScript execution.
     FinalizationCleanup { callback: Value, holdings: Value },
+    /// `queueMicrotask`: a host-queued callback run in the same job queue as
+    /// Promise reactions, called with no arguments.
+    HostMicrotask { callback: Value },
     /// PromiseResolveThenableJob. Keeping this as a real queue entry (rather
     /// than calling `then` inline) preserves the observable microtask turn
     /// between resolving a thenable and resuming an await/reaction.
@@ -986,6 +993,11 @@ pub struct Vm {
     host_object_families: Vec<HostObjectFamilyState>,
     host_click_listeners: Vec<HostClickListener>,
     active_host_click_event: Option<ActiveHostClickEvent>,
+    /// Pending `setTimeout`/`setInterval` entries and the host-supplied
+    /// millisecond clock they are scheduled against.
+    host_timers: Vec<HostTimer>,
+    host_timer_next_id: u32,
+    host_timer_clock_ms: u64,
     global_bindings: HashMap<String, GlobalBinding>,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an
     /// individual Realm. Test262 child realms share this handle; independent

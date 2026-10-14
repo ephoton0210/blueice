@@ -1601,6 +1601,11 @@ impl Vm {
                             }
                         }
                     }
+                    PromiseJob::HostMicrotask { callback } => {
+                        if let Value::Object(id) = callback {
+                            roots.push(*id);
+                        }
+                    }
                 }
             }
             if let Some(Err(Value::Object(id))) = &self.test262_done {

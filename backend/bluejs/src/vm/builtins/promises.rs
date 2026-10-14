@@ -1023,6 +1023,9 @@ impl Vm {
                 self.stack.push(callback.clone());
                 self.stack.push(holdings.clone());
             }
+            PromiseJob::HostMicrotask { callback } => {
+                self.stack.push(callback.clone());
+            }
             PromiseJob::Thenable {
                 target,
                 thenable,
@@ -1204,6 +1207,9 @@ impl Vm {
                     // runner but cannot resurrect or re-register the consumed
                     // cell.
                     self.call_native(callback, Value::Undefined, vec![holdings], false)?;
+                }
+                PromiseJob::HostMicrotask { callback } => {
+                    self.call_native(callback, Value::Undefined, Vec::new(), false)?;
                 }
             }
             Ok(())
