@@ -24,6 +24,7 @@ mod object_urls;
 mod streams;
 mod tee;
 mod timers;
+mod window_aliases;
 
 /// The profile identity shared by the core binding catalog and the isolated
 /// page-host child.  A page request contains no profile selector.
@@ -102,6 +103,9 @@ pub const PAGE_HOST_DOM_TIMERS_DECLARATION_MODULE_ID_V11: &str =
 pub const PAGE_HOST_DOM_ANIMATION_FRAME_PROFILE_V12: &str = "core-script-dom-animation-frame-v12";
 pub const PAGE_HOST_DOM_ANIMATION_FRAME_DECLARATION_MODULE_ID_V12: &str =
     "blueice:///profiles/core-script-dom-animation-frame-v12/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_WINDOW_PROFILE_V13: &str = "core-script-dom-window-v13";
+pub const PAGE_HOST_DOM_WINDOW_DECLARATION_MODULE_ID_V13: &str =
+    "blueice:///profiles/core-script-dom-window-v13/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_TEE_DECLARATION_MODULE_ID_V9: &str =
     "blueice:///profiles/core-script-dom-stream-tee-v9/lib.blueice.d.ts";
 
@@ -601,6 +605,13 @@ pub fn page_host_dom_animation_frame_runtime_bindings_v12() -> [PageHostRuntimeB
     })
 }
 
+pub fn page_host_dom_window_runtime_bindings_v13() -> [PageHostRuntimeBindingV1; 51] {
+    window_aliases::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -737,7 +748,21 @@ impl PageHostDocumentTypingsV1 {
         )
     }
 
+    pub fn generate_dom_window() -> Self {
+        let bindings = window_aliases::bindings();
+        let members = window_aliases::member_declaration(&bindings[..47]);
+        Self::generate_from_with_tail(PAGE_HOST_DOM_WINDOW_PROFILE_V13, &bindings, &members)
+    }
+
     fn generate_from(profile: &'static str, bindings: &[PageHostDocumentBindingV1]) -> Self {
+        Self::generate_from_with_tail(profile, bindings, "")
+    }
+
+    fn generate_from_with_tail(
+        profile: &'static str,
+        bindings: &[PageHostDocumentBindingV1],
+        tail: &str,
+    ) -> Self {
         let mut declaration_source = DECLARATION_HEADER.to_string();
         let mut runtime_bindings = Vec::with_capacity(bindings.len());
         for binding in bindings {
@@ -749,6 +774,7 @@ impl PageHostDocumentTypingsV1 {
                 runtime_binding_id: binding.runtime_binding_id,
             });
         }
+        declaration_source.push_str(tail);
         let declaration_hash = stable_hash("blueice-page-host-declaration", &declaration_source);
         Self {
             profile,
@@ -965,6 +991,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_animation_frame(),
             PAGE_HOST_DOM_ANIMATION_FRAME_DECLARATION_MODULE_ID_V12,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_window_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_window(),
+            PAGE_HOST_DOM_WINDOW_DECLARATION_MODULE_ID_V13,
             installed_bindings,
         )
     }

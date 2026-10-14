@@ -24,7 +24,8 @@ registry cleanup tasks, automatic GC notifications at host checkpoints and a
 shared 64-task browser/cleanup cap; the milestone record tracks final gates. See the
 [`browser-integration milestone record`](BROWSER_INTEGRATION_TODO.md#milestone-record)
 for current evidence and remaining task-ordering/resource work. The tables
-below retain the original analysis baseline except for the dated M1f/M1h/M1i/M1j/M1k rows.
+below retain the original analysis baseline except for the dated milestone
+updates, including M1l's verified global inventory and v13 File DOM aliases.
 
 BlueJS is measured against ECMA-262/402 (Test262 99.995%). That says the
 *language* is nearly complete; it says nothing about whether the engine is a
@@ -82,9 +83,15 @@ bounded pending count, argument forwarding, nested-timer clamping, a host
 ## C. Web-platform globals
 
 State is **absent** unless stated. "Host" means the page host owns it.
+M1l now verifies every section C name in the browser-integration TODO through
+real JavaScript and checked BlueTS Core/child pages. The active File DOM v13
+artifact adds top-level `window`/`self`/`top`/`parent` identity and generated
+host-member types; it does not implement nested contexts or WindowProxy.
+See [the global contract](WINDOW_GLOBALS.md).
 
 | Group | Names | Layer |
 |---|---|---|
+| Global aliases | `window`, `self`, `top`, `parent` present in the owner-selected File DOM v13 profile (M1l) | Host; top-level realm identity and document lifetime |
 | Diagnostics | `console`, `reportError` | Engine mechanism, host sink (output must be bounded and untrusted-framed) |
 | Encoding | `TextEncoder`, `TextDecoder`, `atob`, `btoa` | Engine |
 | Cloning/identity | `structuredClone`, `crypto.getRandomValues`/`randomUUID`, `performance.now`/`timeOrigin` | Engine (clock and entropy must be injectable for tests) |

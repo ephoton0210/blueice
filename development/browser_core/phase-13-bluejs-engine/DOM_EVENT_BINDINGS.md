@@ -54,7 +54,7 @@ remain outside this profile. Timing conversion and nesting follow the
 [HTML timer algorithm](https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers)
 and [Web IDL signed long conversion](https://webidl.spec.whatwg.org/#es-long).
 
-**2026-10-14 frame increment:** The latest File DOM artifact is now
+**2026-10-14 frame increment:** The File DOM frame artifact is
 `core-script-dom-animation-frame-v12` (47 entries), adding
 `requestAnimationFrame` and `cancelAnimationFrame` to the unchanged v11
 inventory. Frame callbacks have their own 64-entry rooted map and render
@@ -109,6 +109,14 @@ settle inside the document task scheduler. Native UI callbacks retain their
 cleanup ordering before another selected network task; request-service IPC and
 Core UI source integration remain open. See
 [the host async contract](HOST_ASYNC_OPERATIONS.md).
+**2026-10-15 global increment:** M1l advances the active File DOM artifact to
+`core-script-dom-window-v13` (51 entries). `window`, `self`, `top` and `parent`
+initially return the same top-level realm global. Window host-member types
+are generated from the existing declaration signatures; v12 and older
+artifacts retain their bytes. Real Core/child JavaScript and checked BlueTS
+fixtures pin every section C global and exercise aliased DOM/timer access.
+This adds no private wire fields, nested browsing contexts or persistent
+WindowProxy. See [the global contract](WINDOW_GLOBALS.md).
 See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).

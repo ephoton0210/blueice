@@ -188,26 +188,34 @@ ownership for queued/running jobs, module work and host waits.
 On `main`, none of these were found in production code (only `globalThis`
 exists). Several exist on the product line, marked below.
 
-- [ ] `window` / `self` / `top` / `parent` aliasing of the global
+- [x] **M1l: `window` / `self` / `top` / `parent`.** The owner-selected
+      `core-script-dom-window-v13` profile installs top-level realm aliases
+      with exact generated host-member types. Descriptors, replacement,
+      tab/navigation isolation and real JavaScript/BlueTS DOM/timer use are
+      covered; frames and a navigation-stable WindowProxy remain outside
+      this increment. See [the global contract](WINDOW_GLOBALS.md).
 - [ ] `console` (log/warn/error/...) routed to the devtools/MCP surface
 - [ ] `location`, `history`, `navigator`
-- [ ] `URL` **(product line)**; `URLSearchParams` absent on both
+- [x] `URL` **(product line, integrated)** — M1l pins the installed global.
+- [ ] `URLSearchParams`
 - [ ] `TextEncoder` / `TextDecoder`, `atob` / `btoa`
 - [ ] `structuredClone`, `performance.now`
-- [ ] `AbortController` / `AbortSignal` **(product line)**
+- [x] `AbortController` / `AbortSignal` **(product line, integrated)**
 - [ ] `localStorage` / `sessionStorage` (policy + persistence design first)
-- [ ] `EventTarget` / `Event` / `CustomEvent` as general objects
-      **(product line)**
-- [ ] `Blob` / `File` / `FileReader`, `ReadableStream`, `DOMException`
-      **(product line)**
+- [x] `EventTarget` / `Event` / `CustomEvent` as general objects
+      **(product line, integrated)**
+- [x] `Blob` / `File` / `FileReader`, `ReadableStream`, `DOMException`
+      **(product line, integrated)**
 - [ ] `WritableStream` / `TransformStream` / `CompressionStream` (absent on
       both; needed by `fetch` request and response bodies)
 - [ ] `crypto.getRandomValues` / `randomUUID`; entropy and clock injectable
       so tests are deterministic
 - [ ] `reportError` and the global error-event shape (with B)
-- [ ] A global-inventory test: execute `typeof X` for every name in this
-      section in a page-host VM and pin the exact set, so this list cannot
-      drift from the code again
+- [x] **M1l: global-inventory test.** Real Core/child JavaScript and checked
+      BlueTS pages execute `typeof globalThis.<name>` for every section C
+      name, pinning the installed set and remaining absences independently
+      of the declaration generator. Existing product APIs above are now
+      recorded as integrated; their behavior keeps its existing test suites.
 
 ## D. DOM bindings (P1)
 
@@ -311,6 +319,14 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
       later external completion task through the public runtime.
 - [ ] **No `console` or `fetch`** for typed page code. `setTimeout` and the
       other M1b scheduling functions are now in the exact File DOM artifact.
+- [ ] **Ambient value queries and missing intermediate members.** M1l
+      probes found that host-interface fields using `typeof setTimeout` do
+      not retain the ambient function signature, and checked
+      `window.console.log('missing')` can pass despite absent `console`.
+      Acceptance must reject that chained access and preserve ambient value
+      queries across declaration modules and local shadowing. The v13 Window
+      member generator uses existing declaration text; these compiler gaps
+      are not claimed fixed by installing aliases.
 - [ ] **Uncaught errors and rejections** cannot be mapped back to BlueTS
       original positions until the host reports them (section B); today
       only debugger pauses use the safe-point map (*verify* for thrown
@@ -399,6 +415,56 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1l — Top-level global aliases and verified page inventory (2026-10-15)
+
+- A new real Core/child counter fixture first reproduced rejected JavaScript
+  execution when the page accessed missing `window`/`self`/`top`/`parent`.
+  The owner-selected File DOM profile now installs four aliases of the
+  intrinsic realm global. `window`/`top` are unforgeable getter properties;
+  `self`/`parent` are replaceable accessors. All four validate receivers and
+  retain intrinsic identity if the page changes its `globalThis` property.
+- Public VM/page-runtime cases verify descriptors, strict/sloppy assignment,
+  replacement/deletion, non-constructible accessors, global versus lexical
+  bindings, collision preflight, non-extensibility, ShadowRealm absence,
+  independent tabs and fresh navigation realms. This is a top-level host
+  increment; nested contexts, cross-origin access and navigation-stable
+  WindowProxy remain open. See [the contract](WINDOW_GLOBALS.md).
+- Added exact `core-script-dom-window-v13` typings with 51 runtime inventory
+  entries, preserving all 47 inherited entries and the older artifacts.
+  Window host members are generated from the existing declaration AST and
+  signature text, retaining DOM/constructor/optional/rest/callback types.
+  Both child installation and checked BlueTS preparation select and verify
+  v13. Private protocol v59 has no new fields.
+- Real JavaScript and checked BlueTS Core/child pages independently observe
+  all 33 section C global names, plus 11 DOM/scheduling/messaging controls.
+  Both the inventory and aliased DOM/timer cases must then produce three
+  distinct counter frames and matching Representation generations. Existing
+  integrated product globals are now checked in section C; missing APIs
+  remain pinned as absent rather than inferred from source searches.
+- Typing probes also exposed unresolved ambient value queries and unchecked
+  missing intermediate members. Their concrete acceptance cases are now
+  open section H work. The Window declaration projection preserves current
+  host signatures without claiming these compiler gaps fixed or exposing a
+  full `lib.dom.d.ts`.
+- Final Rust acceptance: **3,097 tests passed** across 34 targets: 2,744 in
+  five related libraries, 341 public runtime/allocation/profile cases and
+  12 real Core/child fixtures. One existing launcher case remains ignored.
+  Five-crate all-target Clippy, production-binary builds, formatting and
+  whitespace checks passed. The accepted case audit is
+  `target/window-globals-rust-validation-20261015.json`.
+- Final full-inventory acceptance against rebuilt, frozen production
+  binaries: **102,921 / 102,926 pass** in **374.523 seconds**, one existing
+  stale-corpus mode, four existing exclusions and **zero failures/timeouts**.
+  Every mode's source/expectation/flags/disposition and actual error kind/phase
+  matches accepted M1k; all summary settings match except executable hashes
+  and elapsed time. Diagnostic text is not an acceptance key. Both frozen
+  executable hashes remain intact. The
+  [unmodified machine summary](test262-browser-window-globals-macos-summary.json)
+  is committed; raw results/comparison remain under
+  `target/test262-window-globals-full-20261015/`. No fresh workspace-wide or
+  coverage claim is made; console, error/rejection reporting, real network/UI
+  ingress and the remaining host surfaces stay open.
 
 ### M1k — Host Promise waits and queued service completions (2026-10-15)
 

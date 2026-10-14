@@ -39,6 +39,13 @@ mechanism while real network/UI ingress, external service buffers and reporting
 keep M1 in progress. See
 [the contract](../phase-13-bluejs-engine/HOST_ASYNC_OPERATIONS.md).
 
+M1l installs top-level `window`, `self`, `top` and `parent` in the active
+File DOM v13 profile. Generated host-member signatures and an independent
+real Core/child global-inventory test cover JavaScript and checked BlueTS.
+The typed profile remains a bounded installed surface; nested browsing
+contexts, WindowProxy and global console/error/rejection delivery remain
+open. See [the global contract](../phase-13-bluejs-engine/WINDOW_GLOBALS.md).
+
 ## Objective
 
 Let an ordinary script-driven page work end to end in the one `core`: HTML

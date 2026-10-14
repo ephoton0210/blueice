@@ -292,6 +292,12 @@ impl BlueJsHostBindingRegistrar<'_> {
         self.vm.install_host_animation_frame_functions()
     }
 
+    /// Installs global-object aliases for this top-level page document.
+    /// The owner must not use this profile for nested browsing contexts.
+    pub fn install_window_aliases(&mut self) -> Result<(), RuntimeError> {
+        self.vm.install_window_aliases()
+    }
+
     /// Installs the same functions with a host-owned monotonic millisecond
     /// clock. Scheduling samples it after argument conversion and interval
     /// callbacks, so long-running scripts do not schedule against an old tick.

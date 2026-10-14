@@ -198,6 +198,10 @@ impl Vm {
             NativeFunction::HostAnimationFrame(function) => {
                 self.host_animation_frame_call(function, &args, construct)
             }
+            NativeFunction::WindowAliasGet => self.window_alias_call(&receiver, None, construct),
+            NativeFunction::WindowAliasSet(name) => {
+                self.window_alias_call(&receiver, Some((name, first.clone())), construct)
+            }
             NativeFunction::HostNodeDispatch(index) => {
                 self.host_node_dispatch_call(index, &receiver, &args, construct)
             }

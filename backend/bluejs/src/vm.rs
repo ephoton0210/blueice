@@ -34,6 +34,7 @@ mod host_event_checkpoints;
 mod host_finalization;
 mod host_objects;
 mod host_promises;
+mod window_aliases;
 pub use host_promises::{
     HostAsyncFunction, HostAsyncObjectMethod, HostPromiseCompletion, HostPromiseToken,
     HostTaskSource,

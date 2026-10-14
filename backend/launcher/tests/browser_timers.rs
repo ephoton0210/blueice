@@ -276,6 +276,91 @@ fn fixture(body: String) -> (Fixture, String, PathBuf) {
 }
 
 #[test]
+fn javascript_and_bluets_pin_the_browser_integration_global_inventory() {
+    // Every global named in section C of BROWSER_INTEGRATION_TODO.md, plus
+    // the installed scheduling and DOM entries. These expectations are an
+    // independent public observation of the real owner-selected profile.
+    let inventory = [
+        ("window", "object"),
+        ("self", "object"),
+        ("top", "object"),
+        ("parent", "object"),
+        ("console", "undefined"),
+        ("location", "undefined"),
+        ("history", "undefined"),
+        ("navigator", "undefined"),
+        ("URL", "function"),
+        ("URLSearchParams", "undefined"),
+        ("TextEncoder", "undefined"),
+        ("TextDecoder", "undefined"),
+        ("atob", "undefined"),
+        ("btoa", "undefined"),
+        ("structuredClone", "undefined"),
+        ("performance", "undefined"),
+        ("AbortController", "function"),
+        ("AbortSignal", "function"),
+        ("localStorage", "undefined"),
+        ("sessionStorage", "undefined"),
+        ("EventTarget", "function"),
+        ("Event", "function"),
+        ("CustomEvent", "function"),
+        ("Blob", "function"),
+        ("File", "function"),
+        ("FileReader", "function"),
+        ("ReadableStream", "function"),
+        ("DOMException", "function"),
+        ("WritableStream", "undefined"),
+        ("TransformStream", "undefined"),
+        ("CompressionStream", "undefined"),
+        ("crypto", "undefined"),
+        ("reportError", "undefined"),
+        ("document", "object"),
+        ("setTimeout", "function"),
+        ("setInterval", "function"),
+        ("clearTimeout", "function"),
+        ("clearInterval", "function"),
+        ("queueMicrotask", "function"),
+        ("requestAnimationFrame", "function"),
+        ("cancelAnimationFrame", "function"),
+        ("Window", "undefined"),
+        ("postMessage", "undefined"),
+        ("MessageChannel", "undefined"),
+    ];
+    let mut source = String::from("function verifyInventory(): void {\n");
+    for (name, expected) in inventory {
+        source.push_str(&format!(
+            "if (typeof globalThis.{name} !== '{expected}') {{ throw 'inventory:{name}'; }}\n"
+        ));
+    }
+    source.push_str(
+        "}\nverifyInventory();\nlet count: number = 0;
+        function tick(): void {
+            count += 1; window.document.getElementById('counter')!.textContent = 'tick:' + count;
+            if (count < 3) { window.setTimeout(tick, 500); }
+        }
+        window.setTimeout(tick, 500);",
+    );
+    counter_frames(&source, true);
+}
+
+#[test]
+fn javascript_and_bluets_window_aliases_share_dom_and_scheduled_work() {
+    counter_frames("let count: number = 0; let timer: number = 0;
+        function verify(): void {
+            if (window !== globalThis || self !== window || top !== window || parent !== window) {
+                throw 'global aliases must share the page realm';
+            }
+        }
+        verify();
+        function publish(): void { parent.document.getElementById('counter')!.textContent = 'tick:' + count; }
+        function tick(): void {
+            count += 1; self.queueMicrotask(publish);
+            if (count === 3) { top.clearInterval(timer); }
+        }
+        timer = window.setInterval(tick, 500);", true);
+}
+
+#[test]
 fn javascript_and_bluets_ready_timers_offer_a_frame_between_tasks() {
     counter_frames("let count: number = 0;
         function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }

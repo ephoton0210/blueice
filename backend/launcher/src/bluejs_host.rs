@@ -37,7 +37,8 @@ use blueice_bluets_bluejs::page_host_typings::{
     page_host_dom_mutation_runtime_bindings_v1, page_host_dom_node_event_runtime_bindings_v8,
     page_host_dom_object_url_runtime_bindings_v5, page_host_dom_stream_runtime_bindings_v4,
     page_host_dom_tee_runtime_bindings_v9, page_host_dom_text_runtime_bindings_v1,
-    page_host_dom_timers_runtime_bindings_v11, PageHostDocumentTypingsV1,
+    page_host_dom_timers_runtime_bindings_v11, page_host_dom_window_runtime_bindings_v13,
+    PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
@@ -1296,14 +1297,14 @@ fn install_document_snapshot_bindings(
         PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text(),
         PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation(),
         PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event(),
-        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_animation_frame(),
+        PageDomProfile::File => PageHostDocumentTypingsV1::generate_dom_window(),
     };
     let expected_bindings = match page_dom_profile {
         PageDomProfile::Snapshot => page_host_document_runtime_bindings_v1().to_vec(),
         PageDomProfile::Text => page_host_dom_text_runtime_bindings_v1().to_vec(),
         PageDomProfile::Mutation => page_host_dom_mutation_runtime_bindings_v1().to_vec(),
         PageDomProfile::Event => page_host_dom_event_runtime_bindings_v1().to_vec(),
-        PageDomProfile::File => page_host_dom_animation_frame_runtime_bindings_v12().to_vec(),
+        PageDomProfile::File => page_host_dom_window_runtime_bindings_v13().to_vec(),
     };
     artifact
         .verify_runtime_bindings(&expected_bindings)
@@ -1701,6 +1702,9 @@ fn install_document_snapshot_bindings(
                     installed_bindings.extend_from_slice(
                         &page_host_dom_animation_frame_runtime_bindings_v12()[45..],
                     );
+                    bindings.install_window_aliases()?;
+                    installed_bindings
+                        .extend_from_slice(&page_host_dom_window_runtime_bindings_v13()[47..]);
                 }
             } else {
                 installed_bindings
