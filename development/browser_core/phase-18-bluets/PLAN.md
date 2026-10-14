@@ -10524,3 +10524,27 @@ source changed. This cross-platform repair is a prerequisite, not AC-K11.E
 completion: the final-source workspace,
 coverage, all-platform and aggregate CI gates must pass on the new committed
 hash before K.11.6 can be checked.
+
+### K.11.6 Windows embedded-System-helper byte preservation (2026-10-15)
+
+The second hosted run, [38635366030](https://github.com/ephoton0210/blueice/actions/runs/38635366030)
+on `de0d31ed7c6eddf2960a90abc29f803fe870b9f0`, confirms that the
+fixture LF pin fixed the decorator lookup, but the System wrapper lookup still
+fails on Windows: `public_lookup_keeps_non_decorator_helpers_and_system_scaffolding_unmapped`
+expects no original position for `System.register` and instead gets source 0,
+line 4, column 0. `backend/bluets/src/emitter/system.rs` embeds
+`system_helpers.v1.js` with `include_str!`. Unlike the frozen fixtures, that
+helper had no Git EOL attribute, so `core.autocrlf=true` changed its checked-out
+bytes from the Git blob's LF form to CRLF. Its generated-position offsets then
+shifted independently of the pinned source fixture.
+
+An isolated worktree at the same committed hash with `core.autocrlf=true`
+reproduced the exact assertion failure in the focused test. Pinning only
+`system_helpers.v1.js` to `text eol=lf` and restoring its worktree bytes to the
+Git blob made that identical test pass 1/1. This is a red/green check of the
+embedded asset, without changing the mapper or source-map policy. The pin is
+now applied to `.gitattributes`; K.11.6 remains open until the next committed
+hash passes its entire final-source gate. On the repaired tree, the public
+`source_map_lookup` target passes 4/4, the pinned TypeScript 5.9.3 decoded
+source-map oracle passes 23/23, and workspace rustfmt plus whitespace checks
+pass. These are focused repair checks, not the final-source gate.
