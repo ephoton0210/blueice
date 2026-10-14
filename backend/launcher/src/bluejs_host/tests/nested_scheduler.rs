@@ -290,6 +290,30 @@ fn private_system_scheduler_binds_the_earlier_loader_without_public_stack_leak()
     assert_eq!(private_stack.frames[0].safe_point, target);
     assert_eq!(private_stack.frames[1].safe_point.program, loader_program);
     assert_eq!(private_stack.frames[2].safe_point.program, emitted_program);
+    let PageHostReply::DebuggerSystemStackLocations {
+        frame: location_frame,
+        loader_program: location_loader,
+        snapshot: location_stack,
+        locations,
+    } = host.handle_request(PageHostRequest::GetDebuggerSystemStackLocations {
+        frame: public_frame,
+        loader_program,
+        max_scope_entries: 256,
+    })
+    else {
+        panic!("exact private System locations must be available");
+    };
+    assert_eq!(location_frame, public_frame);
+    assert_eq!(location_loader, loader_program);
+    assert_eq!(*location_stack, *private_stack);
+    assert_eq!(
+        locations[1], None,
+        "foreign loader must not inherit emitted source"
+    );
+    assert!(locations[0]
+        .and_then(|location| location.original)
+        .is_some());
+    assert!(locations[2].is_none_or(|location| location.original.is_none()));
     assert!(matches!(
         host.handle_request(PageHostRequest::GetDebuggerSystemStackSnapshot {
             frame: public_frame,

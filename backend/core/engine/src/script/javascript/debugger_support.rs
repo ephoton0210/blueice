@@ -415,6 +415,14 @@ pub struct JavaScriptPageDebuggerSystemStackSnapshot {
     pub max_scope_entries: u32,
 }
 
+/// Private, exact System pause projection. The foreign loader has no BlueTS
+/// emitted map and can never inherit either emitted frame's source location.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerSystemStackLocations {
+    pub stack: JavaScriptPageDebuggerSystemStackSnapshot,
+    pub locations: [Option<JavaScriptPageDebuggerEmittedPausedRootLocation>; 3],
+}
+
 /// One frame and exact safe point in a complete linked dependency/entry
 /// pause. The entry caller may have root ordinal zero; both identities remain
 /// core-reminted and contain no child program or invocation serial.

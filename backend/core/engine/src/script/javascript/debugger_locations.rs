@@ -669,6 +669,18 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
+    /// Projects only the exact three-frame System pause through a retained
+    /// emitted artifact. This private seam does not grant any public source
+    /// location; a later debugger stream must receipt both programs.
+    fn debugger_system_stack_locations(
+        &mut self,
+        _frame: JavaScriptPageDebuggerFrame,
+        _loader: JavaScriptPageDebuggerProgram,
+        _max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerSystemStackLocations, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
     /// `None` means this live program is not currently in a nested frame;
     /// ordinary root/pending/completed state remains separately queryable.
     fn debugger_nested_execution_state(
@@ -1282,6 +1294,10 @@ mod tests {
         );
         assert_eq!(
             debugger.debugger_system_stack_snapshot(frame(), program(), 1),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_system_stack_locations(frame(), program(), 1),
             Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
         );
         assert_eq!(

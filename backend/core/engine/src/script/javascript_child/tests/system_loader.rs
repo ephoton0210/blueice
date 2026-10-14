@@ -50,6 +50,18 @@ enum LookupReply {
     ForeignTarget,
 }
 
+#[derive(Clone, Copy)]
+enum LocationReply {
+    Exact,
+    WrongFrame,
+    WrongLoader,
+    WrongMiddle,
+    WrongStackPoint,
+    WrongOriginal,
+    WrongCoordinate,
+    MovedPause,
+}
+
 struct SystemLoaderChild {
     lifecycle: RecordingChild,
     arm_reply: ArmReply,
@@ -58,6 +70,8 @@ struct SystemLoaderChild {
     stack_calls: usize,
     lookup_reply: LookupReply,
     lookup_calls: usize,
+    location_reply: LocationReply,
+    location_calls: usize,
 }
 
 impl PageHostClient for SystemLoaderChild {
@@ -156,6 +170,78 @@ impl PageHostClient for SystemLoaderChild {
         })
     }
 
+    fn debugger_emitted_original_position(
+        &mut self,
+        tab_id: u64,
+        generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        assert_eq!(program, EMITTED);
+        Ok(PageHostReply::DebuggerEmittedOriginalPosition {
+            tab_id,
+            document_generation: generation,
+            program,
+            generated_line,
+            generated_column_utf16,
+            original: (generated_line == 5 && generated_column_utf16 == 8).then_some(
+                page_host::PageHostDebuggerEmittedOriginalPosition {
+                    source_index: 0,
+                    line: 2,
+                    column_utf16: 3,
+                },
+            ),
+        })
+    }
+
+    fn debugger_system_stack_locations(
+        &mut self,
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        self.location_calls += 1;
+        let PageHostReply::DebuggerSystemStackSnapshot { mut snapshot, .. } =
+            self.debugger_system_stack_snapshot(frame, loader_program, max_scope_entries)?
+        else {
+            panic!("mock stack must be available");
+        };
+        if matches!(self.location_reply, LocationReply::WrongStackPoint) {
+            snapshot.frames[0].safe_point.bytecode_offset += 1;
+        }
+        let location = page_host::PageHostDebuggerEmittedPausedRootLocation {
+            generated_line: 5,
+            generated_column_utf16: 8 + u32::from(matches!(
+                self.location_reply,
+                LocationReply::WrongCoordinate
+            )),
+            original: Some(page_host::PageHostDebuggerEmittedOriginalPosition {
+                source_index: 0,
+                line: 2 + u32::from(matches!(self.location_reply, LocationReply::WrongOriginal)),
+                column_utf16: 3,
+            }),
+        };
+        Ok(PageHostReply::DebuggerSystemStackLocations {
+            frame: PageHostDebuggerFrame {
+                invocation_serial: frame.invocation_serial
+                    + u64::from(matches!(self.location_reply, LocationReply::WrongFrame)),
+                ..frame
+            },
+            loader_program: if matches!(self.location_reply, LocationReply::WrongLoader) {
+                EMITTED
+            } else {
+                loader_program
+            },
+            snapshot,
+            locations: Box::new([
+                Some(location),
+                matches!(self.location_reply, LocationReply::WrongMiddle).then_some(location),
+                None,
+            ]),
+        })
+    }
+
     fn debugger_execution_state(
         &mut self,
         tab_id: u64,
@@ -178,7 +264,11 @@ impl PageHostClient for SystemLoaderChild {
                 safe_point: PageHostDebuggerSafePoint {
                     program,
                     code_unit_ordinal: TARGET.code_unit_ordinal,
-                    bytecode_offset: TARGET.bytecode_offset,
+                    bytecode_offset: TARGET.bytecode_offset
+                        + u32::from(
+                            matches!(self.location_reply, LocationReply::MovedPause)
+                                && self.location_calls > 0,
+                        ),
                 },
             },
         })
@@ -295,6 +385,8 @@ fn setup(
             stack_calls: 0,
             lookup_reply: LookupReply::Exact,
             lookup_calls: 0,
+            location_reply: LocationReply::Exact,
+            location_calls: 0,
         },
     );
     executor.synchronize_and_execute(&tabs).unwrap();
@@ -474,4 +566,51 @@ fn core_system_generated_lookup_rejects_stale_or_same_program_without_child_quer
         Err(JavaScriptPageDebuggerError::InvalidSafePoint)
     );
     assert_eq!(executor.child.lookup_calls, 0);
+}
+
+#[test]
+fn core_system_locations_compare_full_stack_and_each_map_projection() {
+    for reply in [
+        LocationReply::Exact,
+        LocationReply::WrongFrame,
+        LocationReply::WrongLoader,
+        LocationReply::WrongMiddle,
+        LocationReply::WrongStackPoint,
+        LocationReply::WrongOriginal,
+        LocationReply::WrongCoordinate,
+        LocationReply::MovedPause,
+    ] {
+        let (mut executor, tab_id, loader, emitted) = setup(ArmReply::Exact);
+        executor.child.location_reply = reply;
+        let Some(JavaScriptPageDebuggerNestedExecutionState::Paused { frame, .. }) = executor
+            .debugger_nested_execution_state(
+                tab_id,
+                1,
+                emitted.program_handle,
+                emitted.program_generation,
+            )
+            .unwrap()
+        else {
+            panic!("expected an exact System pause");
+        };
+        let result = executor.debugger_system_stack_locations(frame, loader, 1);
+        if matches!(reply, LocationReply::Exact) {
+            let locations = result.unwrap();
+            assert_eq!(locations.stack.frame, frame);
+            assert_eq!(locations.stack.frames[1].program, loader);
+            assert_eq!(locations.locations[1], None);
+            assert_eq!(locations.locations[2], None);
+            assert_eq!(
+                locations.locations[0].unwrap().original,
+                Some(JavaScriptPageDebuggerEmittedOriginalPosition {
+                    source_index: 0,
+                    line: 2,
+                    column_utf16: 3,
+                })
+            );
+        } else {
+            assert_eq!(result, Err(JavaScriptPageDebuggerError::NoLiveRealm));
+        }
+        assert_eq!(executor.child.location_calls, 1);
+    }
 }

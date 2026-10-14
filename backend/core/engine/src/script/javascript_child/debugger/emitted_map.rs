@@ -19,6 +19,119 @@ fn valid_original(position: page_host::PageHostDebuggerEmittedOriginalPosition) 
 }
 
 impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
+    pub(super) fn core_debugger_system_stack_locations(
+        &mut self,
+        frame: JavaScriptPageDebuggerFrame,
+        loader: JavaScriptPageDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerSystemStackLocations, JavaScriptPageDebuggerError> {
+        if !self.child.debugger_emitted_map_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let expected =
+            self.core_debugger_system_stack_snapshot(frame, loader, max_scope_entries)?;
+        let tab_id = frame.tab_id;
+        let generation = frame.document_generation;
+        let child_loader = self.child_program_for_core(
+            tab_id,
+            generation,
+            loader.program_handle,
+            loader.program_generation,
+        )?;
+        let child_frame = self
+            .debugger_nested_frames
+            .get(&tab_id)
+            .filter(|active| active.public == frame)
+            .map(|active| active.child)
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        let reply = self
+            .child
+            .debugger_system_stack_locations(child_frame, child_loader, max_scope_entries)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerSystemStackLocations {
+            frame: echoed_frame,
+            loader_program: echoed_loader,
+            snapshot,
+            locations,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        let same_stack =
+            snapshot
+                .frames
+                .iter()
+                .zip(&expected.frames)
+                .all(|(child, core)| {
+                    child.safe_point.code_unit_ordinal == core.safe_point.code_unit_ordinal
+                        && child.safe_point.bytecode_offset == core.safe_point.bytecode_offset
+                        && child.scope_truncated == core.scope_truncated
+                        && child.scope_entries.len() == core.scope_entries.len()
+                        && child.scope_entries.iter().zip(&core.scope_entries).all(
+                            |(child, core)| {
+                                child.slot_ordinal == core.slot_ordinal
+                                    && child.scope_depth == core.scope_depth
+                            },
+                        )
+                });
+        if echoed_frame != child_frame
+            || echoed_loader != child_loader
+            || snapshot.max_scope_entries != max_scope_entries
+            || !snapshot.is_well_formed(child_frame, child_loader)
+            || !same_stack
+            || locations[1].is_some()
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let emitted = JavaScriptPageDebuggerProgram {
+            program_handle: frame.program_handle,
+            program_generation: frame.program_generation,
+        };
+        let mut projected = [None; 3];
+        for index in [0, 2] {
+            if let Some(location) = locations[index] {
+                if location.generated_line > MAX_EMITTED_COORDINATE
+                    || location.generated_column_utf16 > MAX_EMITTED_COORDINATE
+                    || location
+                        .original
+                        .is_some_and(|original| !valid_original(original))
+                {
+                    return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+                }
+                let original = self.core_debugger_emitted_original_position(
+                    tab_id,
+                    generation,
+                    emitted.program_handle,
+                    emitted.program_generation,
+                    location.generated_line,
+                    location.generated_column_utf16,
+                )?;
+                let claimed = location.original.map(|original| {
+                    JavaScriptPageDebuggerEmittedOriginalPosition {
+                        source_index: original.source_index,
+                        line: original.line,
+                        column_utf16: original.column_utf16,
+                    }
+                });
+                if original != claimed {
+                    return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+                }
+                projected[index] = Some(JavaScriptPageDebuggerEmittedPausedRootLocation {
+                    generated_line: location.generated_line,
+                    generated_column_utf16: location.generated_column_utf16,
+                    original: claimed,
+                });
+            }
+        }
+        if self.core_debugger_system_stack_snapshot(frame, loader, max_scope_entries)? != expected {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        Ok(JavaScriptPageDebuggerSystemStackLocations {
+            stack: expected,
+            locations: projected,
+        })
+    }
+
     pub(super) fn core_debugger_system_emitted_safe_point(
         &mut self,
         tab_id: TabId,

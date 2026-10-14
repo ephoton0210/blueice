@@ -711,6 +711,18 @@ pub trait PageHostClient {
         ))
     }
 
+    fn debugger_system_stack_locations(
+        &mut self,
+        _frame: PageHostDebuggerFrame,
+        _loader_program: PageHostDebuggerProgram,
+        _max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement System debugger locations",
+        ))
+    }
+
     fn step_debugger_nested_instruction(
         &mut self,
         _frame: PageHostDebuggerFrame,
@@ -1251,6 +1263,10 @@ mod tests {
         assert_unsupported(
             client.debugger_system_stack_snapshot(frame(), program(), 1),
             "page-host child does not implement System debugger stack inspection",
+        );
+        assert_unsupported(
+            client.debugger_system_stack_locations(frame(), program(), 1),
+            "page-host child does not implement System debugger locations",
         );
         assert_unsupported(
             client.step_debugger_nested_instruction(frame()),

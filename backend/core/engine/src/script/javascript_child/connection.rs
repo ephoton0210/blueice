@@ -862,6 +862,19 @@ impl PageHostClient for PageHostConnection {
         })
     }
 
+    fn debugger_system_stack_locations(
+        &mut self,
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerSystemStackLocations {
+            frame,
+            loader_program,
+            max_scope_entries,
+        })
+    }
+
     fn step_debugger_nested_instruction(
         &mut self,
         frame: PageHostDebuggerFrame,

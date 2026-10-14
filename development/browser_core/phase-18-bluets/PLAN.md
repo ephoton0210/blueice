@@ -10360,3 +10360,18 @@ projection still gate the parent K.11.4 System item.
 The rebuilt v50 final-source verification passes IPC 141/141, launcher
 194/194, engine 481/481 and the real-process public debugger suite 47/47;
 three-crate all-target Clippy, workspace formatting and diff checks pass.
+
+Page-host protocol v51 adds an atomic private System three-frame
+generated/original projection. A shared pure mapper binds each verified
+emitted instruction to an exact parser/bytecode token; the existing classic
+and linked routes still use the same mapper. The foreign JavaScript loader
+never receives an emitted BlueTS source position. Core compares the entire
+child snapshot with separately reminted live frames, re-reads original map
+positions, and checks the pause again before returning its private result.
+This is not a public debugger response: both program receipts and a distinct
+authorized System route remain to be implemented before K.11.4 can close.
+The rebuilt v51 final-source verification passes IPC 141/141, launcher
+194/194, engine 483/483 and the real-process public debugger suite 47/47;
+three-crate all-target Clippy, workspace formatting and diff checks pass.
+The fixed location array is boxed to keep the shared private reply enum
+within Clippy's existing error-size contract.

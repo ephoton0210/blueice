@@ -70,8 +70,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
     JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerStaticScopeRelation,
     JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerSystemStackFrame,
-    JavaScriptPageDebuggerSystemStackSnapshot, JavaScriptPageDebuggerValuePreview,
-    JavaScriptPageDebuggerValueTarget,
+    JavaScriptPageDebuggerSystemStackLocations, JavaScriptPageDebuggerSystemStackSnapshot,
+    JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerValueTarget,
 };
 
 mod debugger_locations;

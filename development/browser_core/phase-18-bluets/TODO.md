@@ -716,6 +716,11 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     return unbound for wrapper scaffolding, echo both program generations and
     coordinates, reject substituted replies in core, and retain no breakpoint.
     Keep ordinary generated lookup and raw arming fail-closed for System.
+  - [x] Project the exact private System pause through its bound emitted map
+    as one complete three-frame response. Reuse the verified AST/bytecode
+    token projector for emitted child and root, keep the foreign loader
+    source-free, compare the complete stack and original coordinates in core,
+    and reject a moved pause or substituted child location.
   - [ ] Require independent same-stream loader and emitted receipts, then
     expose only the exact three-frame generated/original projection with
     step, resume and thrown-completion regressions.
@@ -1258,6 +1263,24 @@ After rebuilding the v50 binaries, the IPC, launcher and engine library
 suites pass 141/141, 194/194 and 481/481; the real-process public debugger
 suite remains 47/47. Three-crate all-target Clippy with warnings denied,
 workspace formatting and diff checks pass.
+
+Private page-host protocol v51 now returns a complete System pause stack and
+its emitted child/root generated/original token projections atomically. The
+loader middle frame has no BlueTS emitted artifact and is always unlocated.
+The frozen System fixture proves the mapped execute-body token has an
+original position while the wrapper root has none; ordinary classic stack
+inspection still refuses the foreign caller. Core remints both generations,
+compares every frame and scope entry to an independently read live stack,
+checks both projected original coordinates against the retained map, and
+rechecks the pause. Forged loader/frame/stack/original/middle-frame replies
+fail closed. This is a private projection subitem only: public same-stream
+receipts and authorized three-frame disclosure remain open under K.11.4.
+After rebuilding the v51 core/launcher/child binaries, the IPC, launcher and
+engine library suites pass 141/141, 194/194 and 483/483; the real-process
+public debugger suite remains 47/47. Three-crate all-target Clippy with
+warnings denied, workspace formatting and diff checks pass. The location
+array is boxed on the private reply so the protocol does not inflate every
+existing `PageHostReply` error path.
 
 ### K.12 Projects — M10 — gap G-M2
 

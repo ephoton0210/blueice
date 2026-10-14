@@ -479,101 +479,9 @@ impl BlueJsChildHost {
         {
             return reply;
         }
-        if installed
-            .ast_nodes()
-            .iter()
-            .filter(|node| node.is_top_level_statement())
-            .count()
-            != bound.top_level_spans.len()
-        {
-            return host_failure();
-        }
-        let mut exact_starts = BTreeSet::new();
-        for (index, (node, span)) in installed
-            .ast_nodes()
-            .iter()
-            .filter(|node| node.is_top_level_statement())
-            .zip(&bound.top_level_spans)
-            .enumerate()
-        {
-            if bound.non_evaluating_top_level_statements.contains(&index) {
-                continue;
-            }
-            let Ok(candidate) = installed.safe_point_for_ast_node(node.id()) else {
-                continue;
-            };
-            if candidate.code_unit.ordinal() == safe_point.code_unit_ordinal
-                && candidate.bytecode_offset == safe_point.bytecode_offset
-            {
-                exact_starts.insert(span.start_byte);
-            }
-        }
-        let paused_point = blueice_bluejs::BlueJsSafePoint {
-            code_unit: installed.code_units()[safe_point.code_unit_ordinal as usize].id(),
-            bytecode_offset: safe_point.bytecode_offset,
-        };
-        let identifier_start = installed
-            .unique_identifier_at_safe_point(paused_point)
-            .filter(|_| {
-                installed.code_units()[safe_point.code_unit_ordinal as usize].nesting_depth() <= 2
-            })
-            .and_then(|(statement_index, name)| {
-                (safe_point.code_unit_ordinal != 0
-                    || !bound
-                        .non_evaluating_top_level_statements
-                        .contains(&statement_index))
-                .then(|| bound.unique_identifier_source_start(statement_index, name))
-                .flatten()
-            });
-        // A compiler-recorded identifier evaluation names this exact
-        // instruction more precisely than a coincident statement boundary.
-        // Its source byte was independently certified as one literal parser
-        // token; neither the statement start nor nearby tokens are guessed.
-        // The separately certified ES5 outer/inner pair retains precedence
-        // when the same-named callee occurs twice in one statement.
-        let exact_start = bound
-            .exact_nested_spread_helper_source_start(installed, paused_point)
-            .or(identifier_start)
-            .or_else(|| {
-                (exact_starts.len() == 1)
-                    .then(|| exact_starts.iter().next().copied())
-                    .flatten()
-            });
-        let location = match exact_start {
-            Some(start) => {
-                let Some((generated_line, generated_column_utf16)) =
-                    generated_byte_position(&bound.generated.source, start)
-                else {
-                    return host_failure();
-                };
-                let original = match bound.map.original_position_at(
-                    &bound.generated.source,
-                    generated_line as usize,
-                    generated_column_utf16 as usize,
-                    BoundEmittedMap::MAX_SEGMENTS,
-                    BoundEmittedMap::MAX_RETAINED_BYTES,
-                ) {
-                    Ok(original) => original,
-                    Err(_) => return host_failure(),
-                };
-                let original = match original.map(|position| {
-                    Some(PageHostDebuggerEmittedOriginalPosition {
-                        source_index: u32::try_from(position.source_index).ok()?,
-                        line: u32::try_from(position.line).ok()?,
-                        column_utf16: u32::try_from(position.column_utf16).ok()?,
-                    })
-                }) {
-                    Some(Some(position)) => Some(position),
-                    Some(None) => return host_failure(),
-                    None => None,
-                };
-                Some(PageHostDebuggerEmittedPausedRootLocation {
-                    generated_line,
-                    generated_column_utf16,
-                    original,
-                })
-            }
-            None => None,
+        let location = match project_emitted_safe_point(bound, installed, safe_point) {
+            Ok(location) => location,
+            Err(reply) => return reply,
         };
         PageHostReply::DebuggerEmittedPausedRootLocation {
             tab_id,
@@ -583,6 +491,151 @@ impl BlueJsChildHost {
             location,
         }
     }
+
+    /// Atomically projects the emitted child and root of one exact System
+    /// pause. The middle page loader has no BlueTS emitted artifact; it must
+    /// never inherit either emitted frame's source position.
+    pub(super) fn debugger_system_stack_locations(
+        &self,
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> PageHostReply {
+        let snapshot =
+            match self.debugger_system_stack_snapshot(frame, loader_program, max_scope_entries) {
+                PageHostReply::DebuggerSystemStackSnapshot { snapshot, .. } => snapshot,
+                reply => return reply,
+            };
+        let (bound, installed) =
+            match self.exact_emitted_map(frame.tab_id, frame.document_generation, frame.program) {
+                Ok(map) if map.0.emission_profile == PageHostBlueTsEmissionProfile::System => map,
+                Ok(_) => return invalid_debugger_state(),
+                Err(reply) => return reply,
+            };
+        let project = |index: usize| {
+            project_emitted_safe_point(bound, installed, snapshot.frames[index].safe_point)
+        };
+        let child = match project(0) {
+            Ok(location) => location,
+            Err(reply) => return reply,
+        };
+        let root = match project(2) {
+            Ok(location) => location,
+            Err(reply) => return reply,
+        };
+        PageHostReply::DebuggerSystemStackLocations {
+            frame,
+            loader_program,
+            snapshot,
+            locations: Box::new([child, None, root]),
+        }
+    }
+}
+
+/// Projects one independently verified instruction through the exact
+/// generation-bound parser and source map; it makes no stack assumptions.
+fn project_emitted_safe_point(
+    bound: &BoundEmittedMap,
+    installed: &blueice_bluejs::BlueJsCompiledProgram,
+    safe_point: PageHostDebuggerSafePoint,
+) -> Result<Option<PageHostDebuggerEmittedPausedRootLocation>, PageHostReply> {
+    if installed
+        .ast_nodes()
+        .iter()
+        .filter(|node| node.is_top_level_statement())
+        .count()
+        != bound.top_level_spans.len()
+    {
+        return Err(host_failure());
+    }
+    let mut exact_starts = BTreeSet::new();
+    for (index, (node, span)) in installed
+        .ast_nodes()
+        .iter()
+        .filter(|node| node.is_top_level_statement())
+        .zip(&bound.top_level_spans)
+        .enumerate()
+    {
+        if bound.non_evaluating_top_level_statements.contains(&index) {
+            continue;
+        }
+        let Ok(candidate) = installed.safe_point_for_ast_node(node.id()) else {
+            continue;
+        };
+        if candidate.code_unit.ordinal() == safe_point.code_unit_ordinal
+            && candidate.bytecode_offset == safe_point.bytecode_offset
+        {
+            exact_starts.insert(span.start_byte);
+        }
+    }
+    let paused_point = blueice_bluejs::BlueJsSafePoint {
+        code_unit: installed.code_units()[safe_point.code_unit_ordinal as usize].id(),
+        bytecode_offset: safe_point.bytecode_offset,
+    };
+    let identifier_start = installed
+        .unique_identifier_at_safe_point(paused_point)
+        .filter(|_| {
+            installed.code_units()[safe_point.code_unit_ordinal as usize].nesting_depth() <= 2
+        })
+        .and_then(|(statement_index, name)| {
+            (safe_point.code_unit_ordinal != 0
+                || !bound
+                    .non_evaluating_top_level_statements
+                    .contains(&statement_index))
+            .then(|| bound.unique_identifier_source_start(statement_index, name))
+            .flatten()
+        });
+    // A compiler-recorded identifier evaluation names this exact
+    // instruction more precisely than a coincident statement boundary.
+    // Its source byte was independently certified as one literal parser
+    // token; neither the statement start nor nearby tokens are guessed.
+    // The separately certified ES5 outer/inner pair retains precedence
+    // when the same-named callee occurs twice in one statement.
+    let exact_start = bound
+        .exact_nested_spread_helper_source_start(installed, paused_point)
+        .or(identifier_start)
+        .or_else(|| {
+            (exact_starts.len() == 1)
+                .then(|| exact_starts.iter().next().copied())
+                .flatten()
+        });
+    let location = match exact_start {
+        Some(start) => {
+            let Some((generated_line, generated_column_utf16)) =
+                generated_byte_position(&bound.generated.source, start)
+            else {
+                return Err(host_failure());
+            };
+            let original = match bound.map.original_position_at(
+                &bound.generated.source,
+                generated_line as usize,
+                generated_column_utf16 as usize,
+                BoundEmittedMap::MAX_SEGMENTS,
+                BoundEmittedMap::MAX_RETAINED_BYTES,
+            ) {
+                Ok(original) => original,
+                Err(_) => return Err(host_failure()),
+            };
+            let original = match original.map(|position| {
+                Some(PageHostDebuggerEmittedOriginalPosition {
+                    source_index: u32::try_from(position.source_index).ok()?,
+                    line: u32::try_from(position.line).ok()?,
+                    column_utf16: u32::try_from(position.column_utf16).ok()?,
+                })
+            }) {
+                Some(Some(position)) => Some(position),
+                Some(None) => return Err(host_failure()),
+                None => None,
+            };
+            Some(PageHostDebuggerEmittedPausedRootLocation {
+                generated_line,
+                generated_column_utf16,
+                original,
+            })
+        }
+        None => None,
+    };
+    Ok(location)
 }
 
 /// Only exact UTF-16 character boundaries can name an AST token; the middle

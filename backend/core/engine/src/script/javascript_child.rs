@@ -62,9 +62,9 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
     JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerStaticScopeRelation,
     JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerSystemStackFrame,
-    JavaScriptPageDebuggerSystemStackSnapshot, JavaScriptPageDebuggerValuePreview,
-    JavaScriptPageDebuggerValueTarget, JavaScriptPageExecutionReport,
-    PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
+    JavaScriptPageDebuggerSystemStackLocations, JavaScriptPageDebuggerSystemStackSnapshot,
+    JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerValueTarget,
+    JavaScriptPageExecutionReport, PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
 pub use crate::script::page_source_authorizer::{

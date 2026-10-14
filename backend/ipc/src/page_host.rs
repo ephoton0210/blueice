@@ -137,6 +137,8 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V51 adds an all-or-nothing private System three-frame generated/original
+/// location projection, without granting public debugger access.
 /// V50 adds exact System generated-token lookup through a separately
 /// installed pending loader, without exposing public debugger authority.
 /// V49 adds a generation-labeled, exact three-frame private System stack.
@@ -150,7 +152,7 @@ use std::io::{self, Read, Write};
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 50;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 51;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -860,6 +862,13 @@ pub enum PageHostRequest {
         loader_program: PageHostDebuggerProgram,
         max_scope_entries: u32,
     },
+    /// Projects only exact emitted tokens on the live three-frame System
+    /// pause. The foreign loader has no BlueTS map and remains unlocated.
+    GetDebuggerSystemStackLocations {
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    },
     GetDebuggerLinkedStackSnapshot {
         frame: PageHostDebuggerLinkedFrame,
         max_scope_entries: u32,
@@ -1238,6 +1247,12 @@ pub enum PageHostReply {
         frame: PageHostDebuggerFrame,
         loader_program: PageHostDebuggerProgram,
         snapshot: Box<PageHostDebuggerSystemStackSnapshot>,
+    },
+    DebuggerSystemStackLocations {
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        snapshot: Box<PageHostDebuggerSystemStackSnapshot>,
+        locations: Box<[Option<PageHostDebuggerEmittedPausedRootLocation>; 3]>,
     },
     DebuggerLinkedStackSnapshot {
         frame: PageHostDebuggerLinkedFrame,
