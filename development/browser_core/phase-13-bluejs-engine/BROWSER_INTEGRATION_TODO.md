@@ -13,6 +13,23 @@ Related design docs: [`PLAN.md`](PLAN.md), [`DOM_EVENT_BINDINGS.md`](DOM_EVENT_B
 Priority: **P0** blocks everything else, **P1** needed for ordinary sites,
 **P2** compatibility/polish.
 
+**Baseline.** This list describes `main` (the Test262 line of PR #25). The
+product line (`feature/phase-7-6-8-9-followup`, carried by
+`feature/browsable-web-mvp`) already has host objects `main` lacks: `URL`,
+`AbortController`/`AbortSignal`, `Blob`/`File`/`FileReader`, `ReadableStream`,
+`EventTarget`/`CustomEvent`, `DOMException`, three owner-selected DOM profiles
+and a bounded browser-task queue. Items marked **(product line)** are done
+there and become done here when the two lines meet. Do not re-implement them.
+
+**Each item needs an acceptance condition** before it is scheduled, in the
+sense of the Phase 13 Definition of Done: a test that fails today through the
+real public interface, not a checked box. Section I lists the shared ones.
+
+**Layer.** *Engine* = mechanism in `backend/bluejs` (a native-function kind,
+a task queue, rooting). *Host* = policy owned by `backend/core` / launcher
+(origin, gatekeeper, cookies, which profile installs it). A global existing in
+the engine never makes it visible to a page: the owner-selected profile does.
+
 ## A. Event loop and scheduling (P0)
 
 The engine has Promise jobs (`run_promise_jobs`, `run_promise_jobs_bounded`)
@@ -31,11 +48,42 @@ but no host event loop.
       generation), bounded per tab, and accounted to the initiating tab
 - [ ] Decide where timers live across the core / child-process boundary
 - [ ] Promise/task hooks that Phase 17's Fetch/XHR needs
+- [ ] Task-source ordering between timers, network completions and UI events
+      (one bounded queue today, no source priority); decide before `fetch`
+- [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
+      host-held bytes, so a runaway page degrades only itself
+- [ ] Host wake-up: the engine reports the next due time so the session tick
+      sleeps correctly (the launcher's `DragTasksFlushed` reply needs a
+      matching field)
+- [ ] Microtask checkpoint also runs after every DOM event dispatch, not only
+      after browser-task turns (*verify*)
+- [ ] *Parallel work*: an uncommitted `backend/bluejs/tests/host_timers.rs`
+      (page-runtime timers with a host-supplied clock) exists in the
+      `feature/bluejs-browser-integration-gaps` worktree, and a tested
+      first slice sits on the local `wip/bluejs-web-timers` branch of the
+      `feature/browsable-web-mvp` worktree. Reconcile before either lands.
 
 ## B. Promise, GC and error reporting (P0/P1)
 
-Engine side is done: spec-shaped `PromiseCapability`, `WeakRef`,
+Spec shape is done: `PromiseCapability` records, `WeakRef`,
 `FinalizationRegistry` (cleanup runs as a queued job after collection).
+**Resource behavior is not.** On the Test262 line every Promise is a GC root
+for the life of the VM.
+
+- [ ] **Promise collectibility (P1).** An unreachable settled Promise, or a
+      Promise/result cycle, must be collectible so a long-lived page that
+      polls or streams has bounded memory. Product-line tests
+      `promise_gc_lifecycle` (4 assertions) already express this and fail on
+      the Test262 rooting. Prerequisite: every async-function, generator,
+      `Array.fromAsync` and host-wait path registers the Promise it is still
+      using. A port of the product line's `owned_edges` onto the Test262
+      rooting was tried and reverted: it made 10 lib allocation-failure tests
+      and several integration targets fail (`invalid Promise receiver`,
+      `Heap(InvalidObject)`). Acceptance: a long-running poll loop's managed
+      heap stays bounded, plus the full Test262 inventory unchanged.
+- [ ] **`AsyncIteratorClose`** opcode was dropped in the merge in favor of the
+      Test262 line's closing; re-check stream tee and `for await` early-exit
+      cleanup against the product-line tests that depended on it.
 
 - [ ] Host unhandled-rejection tracking (`HostPromiseRejectionTracker`) and
       the `unhandledrejection` / `rejectionhandled` events
@@ -48,17 +96,29 @@ Engine side is done: spec-shaped `PromiseCapability`, `WeakRef`,
 
 ## C. Web platform globals (P1)
 
-None of these were found in production code (only `globalThis` exists).
+On `main`, none of these were found in production code (only `globalThis`
+exists). Several exist on the product line, marked below.
 
 - [ ] `window` / `self` / `top` / `parent` aliasing of the global
 - [ ] `console` (log/warn/error/...) routed to the devtools/MCP surface
 - [ ] `location`, `history`, `navigator`
-- [ ] `URL`, `URLSearchParams`
+- [ ] `URL` **(product line)**; `URLSearchParams` absent on both
 - [ ] `TextEncoder` / `TextDecoder`, `atob` / `btoa`
 - [ ] `structuredClone`, `performance.now`
-- [ ] `AbortController` / `AbortSignal`
+- [ ] `AbortController` / `AbortSignal` **(product line)**
 - [ ] `localStorage` / `sessionStorage` (policy + persistence design first)
 - [ ] `EventTarget` / `Event` / `CustomEvent` as general objects
+      **(product line)**
+- [ ] `Blob` / `File` / `FileReader`, `ReadableStream`, `DOMException`
+      **(product line)**
+- [ ] `WritableStream` / `TransformStream` / `CompressionStream` (absent on
+      both; needed by `fetch` request and response bodies)
+- [ ] `crypto.getRandomValues` / `randomUUID`; entropy and clock injectable
+      so tests are deterministic
+- [ ] `reportError` and the global error-event shape (with B)
+- [ ] A global-inventory test: execute `typeof X` for every name in this
+      section in a page-host VM and pin the exact set, so this list cannot
+      drift from the code again
 
 ## D. DOM bindings (P1)
 
@@ -83,7 +143,21 @@ Bound today: `document.getElementById`, `createElement`, `createTextNode`,
 
 - [ ] `fetch`, `Request`, `Response`, `Headers` over `core`'s request service
 - [ ] `XMLHttpRequest` including event ordering
-- [ ] CORS, credentials/cookies, cache, cancellation
+- [ ] `FormData`; urlencoded and JSON request bodies
+- [ ] CORS (fail closed on unsupported policy), cache, cancellation via
+      `AbortSignal`
+- [ ] **Cookie jar** in the request service: `Secure`, `HttpOnly`,
+      `SameSite`, `Set-Cookie` round trip on form POST. Nothing exists today;
+      without it there is no login or session.
+- [ ] **Gatekeeper review for script-initiated requests**: the same two-stage,
+      fail-closed review as navigation; a script request is a typed request
+      to `blueice-net`, never a raw socket
+- [ ] **Private-network URL policy** (loopback, link-local, RFC 1918): an
+      open gap in the gatekeeper rule base, and a precondition for letting a
+      page issue requests at all
+- [ ] Response bodies are page-derived data: untrusted-framed on the MCP
+      surface, byte and time limits enforced, a request-lifecycle record
+      readable like a download's
 - [ ] Server-Sent Events; WebSocket (Phase 20)
 - [ ] Depends on section A
 
@@ -98,6 +172,14 @@ Bound today: `document.getElementById`, `createElement`, `createTextNode`,
 - [ ] `bluejs` shell (REPL + batch) and the full Node differential harness
 - [ ] `bluejs_run` / `bluejs_analyze` MCP tools (with Phase 12)
 - [ ] AI-facing capability summary and Phase 7 gatekeeper script hooks
+- [ ] **Default-on script execution** is a reviewed decision, not a flag
+      flip: today scripts run only behind `--inline-bluejs` or the page-host
+      options, so a normal launcher session never executes one. The core
+      selects the supported profile; the page never does.
+- [ ] A script DOM change must publish a frame in the same render pass, with
+      the same `generation` on the `Representation`. *Fixed on
+      `feature/browsable-web-mvp` (`a54ddceea`)*: relayout without a frame
+      push left human and AI observers stale until an unrelated request.
 
 ## G. Engine limitations (P2)
 
@@ -199,3 +281,20 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
 3. D (DOM surface) and C (globals) - needed to run ordinary page scripts
 4. E (fetch/XHR) - needs A
 5. F (end-to-end smoke test, shell) - validates the whole stack
+
+## I. Ownership and acceptance
+
+| Area | Layer | Acceptance (must fail today, through the real interface) |
+|---|---|---|
+| Timers, `queueMicrotask`, `requestAnimationFrame` | Engine mechanism, host clock | A counter page updating by `setInterval` yields N frames with strictly increasing `generation`, and each matching `Representation` agrees |
+| Promise collectibility | Engine | Bounded managed heap over a long poll loop; `promise_gc_lifecycle`; full Test262 inventory unchanged |
+| Platform globals | Engine, installed by profile | The global-inventory test in C |
+| DOM read/write, events | Host (page host profiles) | Fetch JSON, build a list with `innerHTML`, click and type to update it: frame pixels, `get_page_representation` and an MCP client all agree |
+| `fetch` / XHR / cookies | Host, over `blueice-net` + gatekeeper | A first-party fixture GET/POST with a `Set-Cookie` round trip; a request to a private address is refused with a visible diagnostic |
+| Default-on scripts | Host | The same fixture works from an ordinary launcher session with no extra flags |
+
+Mapping to the product phase: Phase 27 (`phase-27-browsable-web-mvp/PLAN.md`)
+M1 is sections A and B here, M2 is D, M3 is E, M4 is E's cookie jar and F's
+default-on decision, M5 is the acceptance fixture above. Section H is
+unaffected by that order except that every binding added in C or D must update
+the generated typings in the same change.
