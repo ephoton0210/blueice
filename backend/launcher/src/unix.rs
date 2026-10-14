@@ -78,6 +78,8 @@ pub struct CoreLaunchOptions {
     /// Selects BlueTSC-emitted classic scripts for the supervised core.
     /// The private page-host protocol still owns the exact map artifact.
     emitted_blue_ts_classic: bool,
+    /// Owner-only type ambient for a page-provided classic console.
+    emitted_blue_ts_classic_page_console_ambient: bool,
     /// Owner-only ES5 target for emitted classic BlueTS.
     emitted_blue_ts_classic_es5: bool,
     /// Owner-only System wrapper emission for classic BlueTS.

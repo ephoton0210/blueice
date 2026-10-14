@@ -157,6 +157,9 @@ impl SpawnedCore {
             if options.emitted_blue_ts_classic {
                 command.arg("--out-of-process-bluejs-emitted-blue-ts-classic");
             }
+            if options.emitted_blue_ts_classic_page_console_ambient {
+                command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-page-console-ambient");
+            }
             if options.emitted_blue_ts_classic_legacy_metadata {
                 command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata");
             }

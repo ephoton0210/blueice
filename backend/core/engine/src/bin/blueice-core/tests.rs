@@ -150,6 +150,41 @@ fn emitted_bluets_classic_requires_a_private_child_and_is_owner_only() {
 }
 
 #[test]
+fn classic_page_console_ambient_requires_private_child_and_refuses_system() {
+    let flag = "--out-of-process-bluejs-emitted-blue-ts-classic-page-console-ambient";
+    assert_eq!(
+        args(&["--socket", "/tmp/core.sock", flag]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-classic requires the private out-of-process BlueJS host".to_string())
+    );
+    let selected = args(&[
+        "--socket",
+        "/tmp/core.sock",
+        "--out-of-process-bluejs-socket",
+        "/tmp/child.sock",
+        "--out-of-process-bluejs-token",
+        "token",
+        flag,
+    ])
+    .unwrap();
+    assert!(selected.out_of_process_bluejs_emitted_blue_ts_classic);
+    assert!(selected.out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient);
+    assert!(!selected.out_of_process_bluejs_emitted_blue_ts_module);
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-socket",
+            "/tmp/child.sock",
+            "--out-of-process-bluejs-token",
+            "token",
+            flag,
+            "--out-of-process-bluejs-emitted-blue-ts-classic-system",
+        ]),
+        Err("System emission already owns its console ambient".to_string())
+    );
+}
+
+#[test]
 fn legacy_metadata_profile_requires_private_child_and_implies_emitted_classic() {
     assert_eq!(
         args(&[
@@ -438,6 +473,7 @@ fn every_flag_is_parsed() {
             out_of_process_bluejs_emitted_blue_ts_classic_system: false,
             out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators: false,
             out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata: false,
+            out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient: false,
             out_of_process_bluejs_emitted_blue_ts_module: false,
             out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient: false,
         }

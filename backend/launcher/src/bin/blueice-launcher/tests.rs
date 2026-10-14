@@ -64,6 +64,31 @@ fn emitted_bluets_classic_requires_supervised_child_opt_in() {
 }
 
 #[test]
+fn classic_page_console_ambient_is_owner_only_and_conflicts_with_system() {
+    let flag = "--out-of-process-bluejs-emitted-blue-ts-classic-page-console-ambient";
+    assert_eq!(
+        args(&[flag]),
+        Err(
+            "--out-of-process-bluejs-emitted-blue-ts-classic requires --out-of-process-bluejs"
+                .to_string()
+        )
+    );
+    let selected = args(&["--out-of-process-bluejs", flag]).unwrap();
+    assert!(selected.emitted_blue_ts_classic);
+    assert!(selected.emitted_blue_ts_classic_page_console_ambient);
+    assert!(!selected.emitted_blue_ts_module);
+    assert!(!selected.emitted_blue_ts_module_page_console_ambient);
+    assert_eq!(
+        args(&[
+            "--out-of-process-bluejs",
+            flag,
+            "--out-of-process-bluejs-emitted-blue-ts-classic-system",
+        ]),
+        Err("System emission already owns its console ambient".to_string())
+    );
+}
+
+#[test]
 fn legacy_metadata_profile_is_owner_only_and_implies_emitted_classic() {
     assert_eq!(
         args(&["--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata"]),
@@ -411,6 +436,7 @@ fn every_flag_is_parsed() {
             gatekeeper_socket: Some(PathBuf::from("/tmp/gatekeeper.sock")),
             out_of_process_bluejs: true,
             emitted_blue_ts_classic: false,
+            emitted_blue_ts_classic_page_console_ambient: false,
             emitted_blue_ts_classic_es5: false,
             emitted_blue_ts_classic_system: false,
             emitted_blue_ts_classic_legacy_decorators: false,

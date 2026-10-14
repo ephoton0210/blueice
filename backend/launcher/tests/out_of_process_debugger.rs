@@ -49,6 +49,8 @@ mod generated;
 mod generated_composed;
 #[path = "out_of_process_debugger/generated_es5.rs"]
 mod generated_es5;
+#[path = "out_of_process_debugger/generated_frozen_classic.rs"]
+mod generated_frozen_classic;
 #[path = "out_of_process_debugger/generated_frozen_standard.rs"]
 mod generated_frozen_standard;
 #[path = "out_of_process_debugger/generated_legacy.rs"]
@@ -143,6 +145,7 @@ fn clearing_gatekeeper() -> PathBuf {
 #[derive(Default)]
 struct StaticMetadataPolicy {
     emitted_blue_ts_classic: bool,
+    emitted_blue_ts_classic_page_console_ambient: bool,
     emitted_blue_ts_classic_es5: bool,
     emitted_blue_ts_classic_system: bool,
     emitted_blue_ts_classic_legacy_decorators: bool,
@@ -235,6 +238,9 @@ impl LauncherProcess {
         }
         if policy.emitted_blue_ts_classic {
             command.arg("--out-of-process-bluejs-emitted-blue-ts-classic");
+        }
+        if policy.emitted_blue_ts_classic_page_console_ambient {
+            command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-page-console-ambient");
         }
         if policy.emitted_blue_ts_classic_legacy_metadata {
             command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata");

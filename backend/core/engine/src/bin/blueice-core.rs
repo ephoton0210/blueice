@@ -179,6 +179,8 @@ struct Args {
     /// Trusted owner-only selection of the exact BlueTSC-emitted classic
     /// artifact route. Default BlueTS execution remains direct.
     out_of_process_bluejs_emitted_blue_ts_classic: bool,
+    /// Owner-only type ambient for a page-supplied emitted-classic console.
+    out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient: bool,
     /// Owner-only ES5 target for emitted classic BlueTS.
     out_of_process_bluejs_emitted_blue_ts_classic_es5: bool,
     /// Owner-only System wrapper emit for classic BlueTS.
@@ -761,6 +763,8 @@ fn main() -> ExitCode {
         args.out_of_process_bluejs_page_script_profile.clone();
     let out_of_process_bluejs_emitted_blue_ts_classic =
         args.out_of_process_bluejs_emitted_blue_ts_classic;
+    let out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient =
+        args.out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient;
     let out_of_process_bluejs_emitted_blue_ts_classic_es5 =
         args.out_of_process_bluejs_emitted_blue_ts_classic_es5;
     let out_of_process_bluejs_emitted_blue_ts_classic_system =
@@ -1065,6 +1069,9 @@ fn main() -> ExitCode {
             }
             if out_of_process_bluejs_emitted_blue_ts_classic {
                 javascript_executor.enable_emitted_blue_ts_classic();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient {
+                javascript_executor.enable_emitted_blue_ts_classic_page_console_ambient();
             }
             if out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata {
                 javascript_executor.enable_emitted_blue_ts_legacy_metadata();

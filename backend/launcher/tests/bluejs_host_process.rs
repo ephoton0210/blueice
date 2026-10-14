@@ -50,6 +50,7 @@ fn document(generation: u64, scripts: Vec<PageHostScript>) -> PageHostDocument {
         debugger_execution_control: false,
         emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
         emitted_module_page_console_ambient: false,
+        emitted_classic_page_console_ambient: false,
         scripts,
     }
 }

@@ -45,6 +45,13 @@ fn supervise_out_of_process_bluejs_builders_set_their_own_fields() {
     assert!(options.emitted_blue_ts_module);
     assert!(options.emitted_blue_ts_module_page_console_ambient);
     assert!(!options.emitted_blue_ts_classic);
+
+    let options = CoreLaunchOptions::default()
+        .supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_page_console_ambient();
+    assert!(options.supervise_out_of_process_bluejs);
+    assert!(options.emitted_blue_ts_classic);
+    assert!(options.emitted_blue_ts_classic_page_console_ambient);
+    assert!(!options.emitted_blue_ts_module);
 }
 
 #[test]

@@ -64,6 +64,8 @@ struct Args {
     out_of_process_bluejs: bool,
     /// Owner-only selection of exact BlueTSC-emitted classic scripts.
     emitted_blue_ts_classic: bool,
+    /// Owner-selected type-only ambient console for emitted classic scripts.
+    emitted_blue_ts_classic_page_console_ambient: bool,
     /// Owner-only ES5 target for emitted classic BlueTS.
     emitted_blue_ts_classic_es5: bool,
     /// Owner-only System wrapper emit for classic BlueTS.
@@ -184,6 +186,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut gatekeeper_socket = None;
     let mut out_of_process_bluejs = false;
     let mut emitted_blue_ts_classic = false;
+    let mut emitted_blue_ts_classic_page_console_ambient = false;
     let mut emitted_blue_ts_classic_es5 = false;
     let mut emitted_blue_ts_classic_system = false;
     let mut emitted_blue_ts_classic_legacy_decorators = false;
@@ -240,6 +243,10 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--out-of-process-bluejs" => out_of_process_bluejs = true,
             "--out-of-process-bluejs-emitted-blue-ts-classic" => emitted_blue_ts_classic = true,
+            "--out-of-process-bluejs-emitted-blue-ts-classic-page-console-ambient" => {
+                emitted_blue_ts_classic = true;
+                emitted_blue_ts_classic_page_console_ambient = true;
+            }
             "--out-of-process-bluejs-emitted-blue-ts-classic-es5" => {
                 emitted_blue_ts_classic = true;
                 emitted_blue_ts_classic_es5 = true;
@@ -604,6 +611,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     {
         return Err("emitted classic compiler profiles are mutually exclusive".to_string());
     }
+    if emitted_blue_ts_classic_system && emitted_blue_ts_classic_page_console_ambient {
+        return Err("System emission already owns its console ambient".to_string());
+    }
     if emitted_blue_ts_classic_system && !out_of_process_bluejs {
         return Err("--out-of-process-bluejs-emitted-blue-ts-classic-system requires --out-of-process-bluejs".to_string());
     }
@@ -640,6 +650,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         gatekeeper_socket,
         out_of_process_bluejs,
         emitted_blue_ts_classic,
+        emitted_blue_ts_classic_page_console_ambient,
         emitted_blue_ts_classic_es5,
         emitted_blue_ts_classic_system,
         emitted_blue_ts_classic_legacy_decorators,
@@ -701,6 +712,10 @@ fn main() -> ExitCode {
     }
     if args.emitted_blue_ts_classic {
         core_options = core_options.supervise_out_of_process_bluejs_with_emitted_blue_ts_classic();
+    }
+    if args.emitted_blue_ts_classic_page_console_ambient {
+        core_options = core_options
+            .supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_page_console_ambient();
     }
     if args.emitted_blue_ts_classic_legacy_metadata {
         core_options = core_options

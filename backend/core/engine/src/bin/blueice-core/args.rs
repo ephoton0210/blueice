@@ -55,6 +55,7 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     let mut out_of_process_bluejs_token = None;
     let mut out_of_process_bluejs_page_script_profile = None;
     let mut out_of_process_bluejs_emitted_blue_ts_classic = false;
+    let mut out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient = false;
     let mut out_of_process_bluejs_emitted_blue_ts_classic_es5 = false;
     let mut out_of_process_bluejs_emitted_blue_ts_classic_system = false;
     let mut out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators = false;
@@ -154,6 +155,10 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--out-of-process-bluejs-emitted-blue-ts-classic" => {
                 out_of_process_bluejs_emitted_blue_ts_classic = true
             }
+            "--out-of-process-bluejs-emitted-blue-ts-classic-page-console-ambient" => {
+                out_of_process_bluejs_emitted_blue_ts_classic = true;
+                out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient = true;
+            }
             "--out-of-process-bluejs-emitted-blue-ts-classic-es5" => {
                 out_of_process_bluejs_emitted_blue_ts_classic = true;
                 out_of_process_bluejs_emitted_blue_ts_classic_es5 = true;
@@ -243,6 +248,11 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             || out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata)
     {
         return Err("emitted classic compiler profiles are mutually exclusive".to_string());
+    }
+    if out_of_process_bluejs_emitted_blue_ts_classic_system
+        && out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient
+    {
+        return Err("System emission already owns its console ambient".to_string());
     }
     if out_of_process_bluejs_emitted_blue_ts_classic_system
         && out_of_process_bluejs_socket.is_none()
@@ -606,6 +616,7 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
         out_of_process_bluejs_token,
         out_of_process_bluejs_page_script_profile,
         out_of_process_bluejs_emitted_blue_ts_classic,
+        out_of_process_bluejs_emitted_blue_ts_classic_page_console_ambient,
         out_of_process_bluejs_emitted_blue_ts_classic_es5,
         out_of_process_bluejs_emitted_blue_ts_classic_system,
         out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators,

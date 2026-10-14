@@ -207,6 +207,8 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// Trusted startup-only choice to install BlueTSC-emitted classic code
     /// and its exact source map as one child artifact.
     emitted_blue_ts_classic: bool,
+    /// Owner-selected type-only page console for emitted classic scripts.
+    emitted_blue_ts_classic_page_console_ambient: bool,
     /// Independent owner-only choice for generated ESM graph artifacts.
     /// Neither page markup nor debugger requests can enable this route.
     emitted_blue_ts_module: bool,
@@ -671,6 +673,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             external_source_authorizer: None,
             native_debugger_execution_control: false,
             emitted_blue_ts_classic: false,
+            emitted_blue_ts_classic_page_console_ambient: false,
             emitted_blue_ts_module: false,
             emitted_blue_ts_module_page_console_ambient: false,
             emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
@@ -719,6 +722,13 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
     /// debugger request; the ordinary direct route remains the default.
     pub fn enable_emitted_blue_ts_classic(&mut self) {
         self.emitted_blue_ts_classic = true;
+    }
+
+    /// Enables emitted classic scripts with a type-only console declaration.
+    /// An ordinary page script must still install the runtime value.
+    pub fn enable_emitted_blue_ts_classic_page_console_ambient(&mut self) {
+        self.emitted_blue_ts_classic = true;
+        self.emitted_blue_ts_classic_page_console_ambient = true;
     }
 
     /// Selects child-compiled emitted ESM graphs independently of classic
@@ -774,6 +784,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             external_source_authorizer: Some(Box::new(authorizer)),
             native_debugger_execution_control: false,
             emitted_blue_ts_classic: false,
+            emitted_blue_ts_classic_page_console_ambient: false,
             emitted_blue_ts_module: false,
             emitted_blue_ts_module_page_console_ambient: false,
             emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,

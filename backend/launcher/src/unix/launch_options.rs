@@ -44,6 +44,17 @@ impl CoreLaunchOptions {
         self
     }
 
+    /// Selects emitted classic scripts with separate type-only page console
+    /// input; the page must still install the runtime console itself.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_page_console_ambient(
+        mut self,
+    ) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_classic = true;
+        self.emitted_blue_ts_classic_page_console_ambient = true;
+        self
+    }
+
     /// Selects legacy decorator and metadata emission for emitted classic
     /// scripts. This startup-only profile also enables emitted classic.
     pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_legacy_metadata(

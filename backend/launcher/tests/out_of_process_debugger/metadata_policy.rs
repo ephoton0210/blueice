@@ -35,6 +35,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             lowering_summary: true,
             static_scope_relation: false,
             emitted_blue_ts_classic: false,
+            emitted_blue_ts_classic_page_console_ambient: false,
             emitted_blue_ts_classic_es5: false,
             emitted_blue_ts_classic_system: false,
             emitted_blue_ts_classic_legacy_decorators: false,

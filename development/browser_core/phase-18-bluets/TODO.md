@@ -771,13 +771,29 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     six relocated method/class decorator tokens while leaving the synthetic
     helper definition unbound. Retain the actual two- or three-frame caller
     chain without replaying effects or inventing a source location after step.
+  - [x] Repeat the exact-source emitted-classic public debugger path for
+    `legacy_decorated.ts`, `legacy_parameter_metadata.ts` and
+    `object_spread_helper.ts`. Supply the page `console` type ambient only
+    through owner policy, outside the frozen source graph and runtime; compare
+    installed JavaScript, complete map, source hash and `sourcesContent` with
+    an independent compilation. Resolve, pause, step and project the legacy
+    member/class and parameter helper calls and the ES5 object-spread call;
+    keep helper definitions and synthetic metadata unmapped/unbound, preserve
+    the actual stack and do not inherit a source position after stepping.
   - [x] Add independently default-denied, same-stream receipted public
     debugger operations for generated breakpoint resolution/arming and
     paused step/stack-location projection. Unmapped helper bodies and
     wrapper scaffolding must stay unbound.
   - [ ] Pass out-of-process public debugger regressions for mapped,
     relocated and unmapped sites, including stale generation, wrong artifact,
-    denied capability, malformed map and helper-frame non-disclosure.
+    denied capability, malformed map and helper-frame non-disclosure. The
+    eleven frozen rows now have exact-source positive-path coverage. Before
+    checking this item, add a real launcher/core/child public-session fault
+    regression for a malformed retained map (or a test-only transport proxy
+    corrupting its lookup reply) and a substituted artifact/map. Assert that
+    resolution, arming and paused projection disclose no partial source and
+    retain no breakpoint. Existing child/core public-adapter unit tests are
+    necessary but do not themselves meet this out-of-process acceptance.
 - [x] **K.11.5 Verify executable and regression behavior.** For every accepted
   fixture, execute Native and BlueTSC output with the recorded Node version and
   compare exit status, stdout and stderr; retain stable map output across
@@ -1502,6 +1518,18 @@ without user-source attribution. BlueJS library tests pass 1,154/1,154,
 launcher library 198/198, engine library 489/489 and real-process public
 debugger 49/49. The remaining legacy/ES5 frozen rows, broader K.11.4
 matrix-site acceptance and K.11.6 final-source gate are still open.
+
+The three exact frozen emitted-classic rows now use an owner-only, type-only
+page `console` ambient without changing their source bytes or runtime loader.
+Child admission compares installed JavaScript, complete map, source hash and
+`sourcesContent` with independent BlueTSC output for legacy member/class,
+parameter metadata and ES5 object-spread fixtures. Real launcher/core/child
+debugger tests resolve the source-anchored helper calls, reject generated
+helper definitions and metadata-only sites, pause at exact original tokens,
+read the retained stack, step and verify the interior instruction is unlocated,
+then resume to checked execution. This completes exact-source positive-path
+coverage for all eleven frozen rows, not the remaining real-process malformed
+map/substituted-artifact negative gate; K.11.4 and K.11.6 stay open.
 
 ### K.12 Projects — M10 — gap G-M2
 

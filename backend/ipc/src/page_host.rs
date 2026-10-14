@@ -152,7 +152,7 @@ use std::io::{self, Read, Write};
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 52;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 53;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -360,6 +360,9 @@ pub struct PageHostDocument {
     /// point. Page content and frontend IPC cannot select this mode.
     pub debugger_execution_control: bool,
     pub emitted_bluets_profile: PageHostBlueTsEmissionProfile,
+    /// Owner-selected type-only console declaration for emitted classic scripts.
+    /// This does not install a runtime global or change the page's source bytes.
+    pub emitted_classic_page_console_ambient: bool,
     /// Owner-selected type-only console declaration for emitted ESM graphs.
     /// The page must install any runtime console itself as ordinary JavaScript.
     pub emitted_module_page_console_ambient: bool,

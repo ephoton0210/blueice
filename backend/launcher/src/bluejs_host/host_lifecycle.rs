@@ -592,6 +592,7 @@ impl BlueJsChildHost {
             .as_ref()
             .map_or(PageDomProfile::Snapshot, ScriptDomCapability::profile);
         let emitted_profile = document.emitted_bluets_profile;
+        let emitted_classic_page_console_ambient = document.emitted_classic_page_console_ambient;
         let emitted_module_page_console_ambient = document.emitted_module_page_console_ambient;
         let prepared: Vec<_> = document
             .scripts
@@ -601,6 +602,7 @@ impl BlueJsChildHost {
                     script,
                     page_dom_profile,
                     emitted_profile,
+                    emitted_classic_page_console_ambient,
                     emitted_module_page_console_ambient,
                 )
             })

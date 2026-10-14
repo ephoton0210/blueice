@@ -1488,6 +1488,171 @@ fn frozen_primitive_and_standard_decorator_modules_execute_with_page_console() {
 }
 
 #[test]
+fn frozen_legacy_and_es5_classic_sources_keep_exact_artifacts_with_owner_console() {
+    for (name, fixture, profile, target, decorators, metadata, loader, expected_calls) in [
+        (
+            "legacy-class-member",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../bluets/tests/fixtures/k11_source_maps/legacy_decorated.ts"
+            )),
+            PageHostBlueTsEmissionProfile::LegacyDecorators,
+            EcmaTarget::Es2022,
+            true,
+            false,
+            "var seen=0; var console={log:function(a){var expected=['method','class',42]; if(a!==expected[seen++])throw 'legacy result';}};",
+            3,
+        ),
+        (
+            "legacy-parameter-metadata",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../bluets/tests/fixtures/k11_source_maps/legacy_parameter_metadata.ts"
+            )),
+            PageHostBlueTsEmissionProfile::LegacyDecoratorsWithMetadata,
+            EcmaTarget::Es2022,
+            true,
+            true,
+            "var seen=0; var console={log:function(a,b){var expected=['parameter','method',42]; if(a!==expected[seen] || (seen===0 && b!==0))throw 'metadata result'; seen++;}};",
+            3,
+        ),
+        (
+            "es5-object-spread",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../bluets/tests/fixtures/k11_source_maps/object_spread_helper.ts"
+            )),
+            PageHostBlueTsEmissionProfile::Es5,
+            EcmaTarget::Es5,
+            false,
+            false,
+            "var seen=0; var console={log:function(value){if(value!==3)throw 'ES5 result';seen++;}};",
+            1,
+        ),
+    ] {
+        let script = blue_ts_emitted_classic(1, fixture);
+        let module_id = script.graph.entry.as_str();
+        let compilation = blueice_bluets::compile(
+            module_id,
+            &blueice_bluets::MapLoader::from([blueice_bluets::ModuleSource::new(
+                module_id, fixture,
+            )]),
+            blueice_bluets::CompilerOptions {
+                target,
+                experimental_decorators: decorators,
+                emit_decorator_metadata: metadata,
+                source_map: true,
+                inline_sources: true,
+                ..Default::default()
+            },
+        );
+        assert!(!compilation.has_errors(), "{name}: {:#?}", compilation.diagnostics);
+        let output = compilation.output.unwrap();
+        let artifact = &output.artifacts[module_id];
+
+        let mut selected = document(
+            1,
+            vec![
+                classic(0, loader),
+                script.clone(),
+                classic(2, &format!("if(seen!=={expected_calls})throw 'missing calls';")),
+            ],
+        );
+        selected.emitted_bluets_profile = profile;
+        selected.emitted_classic_page_console_ambient = true;
+        let mut host = BlueJsChildHost::default();
+        assert!(
+            matches!(
+                host.handle_request(PageHostRequest::SynchronizeDocument { document: selected }),
+                PageHostReply::Synchronized { reports, .. }
+                    if reports.len() == 3
+                        && reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+            ),
+            "{name} exact classic source and console calls must execute"
+        );
+
+        let mut pending = debugger_document(1, vec![classic(0, loader), script.clone()]);
+        pending.emitted_bluets_profile = profile;
+        pending.emitted_classic_page_console_ambient = true;
+        let mut debugger_host = BlueJsChildHost::default();
+        assert!(matches!(
+            debugger_host.handle_request(PageHostRequest::SynchronizeDocument { document: pending }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let live = &debugger_host.documents[&7];
+        assert_eq!(live.emitted_maps.len(), 1, "{name}");
+        let (program, bound) = live.emitted_maps.iter().next().unwrap();
+        assert_eq!(bound.emission_profile, profile, "{name}");
+        let runtime_handle = live.debugger_programs[&program.program_handle].runtime_handle;
+        let installed = debugger_host.runtime.program_registry().get(runtime_handle).unwrap();
+        assert_eq!(installed.source().source_hash(), bound.generated.source_hash, "{name}");
+        assert_eq!(bound.generated.source, artifact.javascript, "{name}");
+        assert_eq!(bound.map, artifact.source_map.clone().unwrap(), "{name}");
+        assert_eq!(bound.map.sources_content, vec![fixture.to_string()], "{name}");
+
+        let mut denied = document(1, vec![classic(0, loader), script.clone()]);
+        denied.emitted_bluets_profile = profile;
+        let mut denied_host = BlueJsChildHost::default();
+        assert!(
+            matches!(
+                denied_host.handle_request(PageHostRequest::SynchronizeDocument { document: denied }),
+                PageHostReply::Synchronized { reports, .. }
+                    if reports.len() == 2
+                        && matches!(reports[1].outcome, PageHostScriptOutcome::Rejected { .. })
+            ),
+            "{name} frozen global must remain default denied"
+        );
+
+        let mut missing_loader = document(1, vec![script]);
+        missing_loader.emitted_bluets_profile = profile;
+        missing_loader.emitted_classic_page_console_ambient = true;
+        let mut no_console_host = BlueJsChildHost::default();
+        assert!(
+            matches!(
+                no_console_host.handle_request(PageHostRequest::SynchronizeDocument {
+                    document: missing_loader,
+                }),
+                PageHostReply::Synchronized { reports, .. }
+                    if reports.len() == 1
+                        && matches!(reports[0].outcome, PageHostScriptOutcome::Rejected { .. })
+            ),
+            "{name} type-only ambient must not install a runtime console"
+        );
+    }
+}
+
+#[test]
+fn classic_page_console_ambient_rejects_system_and_module_only_profiles() {
+    let fixture = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../bluets/tests/fixtures/k11_source_maps/basic.ts"
+    ));
+    for (profile, ambient) in [
+        (PageHostBlueTsEmissionProfile::System, true),
+        (PageHostBlueTsEmissionProfile::ModulePageConsole, true),
+        (PageHostBlueTsEmissionProfile::ModulePageConsole, false),
+    ] {
+        let mut selected = document(1, vec![blue_ts_emitted_classic(0, fixture)]);
+        selected.emitted_bluets_profile = profile;
+        selected.emitted_classic_page_console_ambient = ambient;
+        let mut host = BlueJsChildHost::default();
+        let PageHostReply::Synchronized { reports, .. } =
+            host.handle_request(PageHostRequest::SynchronizeDocument { document: selected })
+        else {
+            panic!("conflicting classic profile must return one rejection")
+        };
+        assert_eq!(reports.len(), 1);
+        assert_eq!(
+            reports[0].outcome,
+            PageHostScriptOutcome::Rejected {
+                category: "BlueTS classic page console ambient conflicts with emission profile"
+                    .to_string(),
+            }
+        );
+    }
+}
+
+#[test]
 fn emitted_exported_module_entry_can_arm_while_page_loader_is_pending() {
     let module_id = "blueice://page/k11-exported-entry.ts";
     let source = format!(

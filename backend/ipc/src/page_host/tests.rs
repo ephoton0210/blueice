@@ -22,6 +22,7 @@ fn document() -> PageHostDocument {
         debugger_execution_control: true,
         emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
         emitted_module_page_console_ambient: false,
+        emitted_classic_page_console_ambient: false,
         scripts: vec![PageHostScript {
             ordinal: 0,
             language: PageHostScriptLanguage::JavaScript,
@@ -84,6 +85,7 @@ fn requests_and_replies_round_trip_over_a_real_socket() {
         PageHostRequest::SynchronizeDocument {
             document: PageHostDocument {
                 emitted_module_page_console_ambient: true,
+                emitted_classic_page_console_ambient: true,
                 ..document()
             },
         },
