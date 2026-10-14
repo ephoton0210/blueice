@@ -88,9 +88,15 @@ work and exposes its retained payload ledger.
       budget. Promise settlement, thenables, async functions/generators,
       module await and finalizer jobs use one admission path. Resource
       exhaustion is an uncatchable document failure; navigation replaces it.
-      The public page runtime exposes counts and bytes. The Core tab-cache
-      ledger still needs these bytes, and complete task-source/host-buffer
-      accounting remains in the unchecked item above.
+      The public page runtime exposes counts and bytes. M1e propagates these
+      bytes to Core; complete task-source/host-buffer accounting remains in
+      the unchecked item above.
+- [x] **M1e: Core scheduling-payload accounting.** Private v59 realm stats
+      and task/frame replies carry source-free owned scheduling bytes. Core
+      charges the initiating document's tab cache, refreshes after successful
+      task/render entries and removes the charge on replacement/close or
+      realm revocation. Excess scheduling bytes and invalid combined totals
+      fail the existing exact-document containment path without replay.
 - [x] **M1b: timer wake-up.** `DragTasksFlushed.next_wake_in_ms` carries the
       next runnable delay. Core validates its identity/range, clears it on
       replacement/close, and shortens its ordinary polling timeout for an
@@ -353,6 +359,43 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1e — Scheduling payload in Core's per-tab ledger (2026-10-14)
+
+- Added a read-only scheduling snapshot to public page realm stats. It
+  includes the document's ShadowRealms and agrees with the mutable admission
+  usage API without changing the account or exposing scheduled values.
+- Advanced the private page-host protocol to v59. `PageHostRealmStats`
+  requires `scheduling_payload_bytes`; task and frame acknowledgements carry
+  the updated aggregate after callbacks/checkpoints. Connected peers still
+  require the exact protocol version. The private byte envelope matches the
+  VM's 8 MiB cap and checks static + deferred + scheduling sums with checked
+  arithmetic; the established heap/bytecode ledgers retain their meanings.
+- Core's retained page-cache total now includes scheduling ownership for
+  the exact live tab/document. Valid task/frame replies refresh that field
+  before publishing scheduling wake state. An absent realm, excess byte count
+  or invalid combined total rejects the reply and uses existing realm-only
+  revocation, clears its accounting/wakes and preserves the admission identity
+  so the document scripts are not replayed. Replacement/close release the old
+  generation's charge without changing another tab's.
+- Red-first real-child evidence: a globally retained Promise with an 800 KB
+  string previously contributed zero bytes to Core's tab ledger. The two-tab
+  fixture now checks distinct 800/600 KB charges, replacement release and
+  independent close. A real VM File DOM fixture verifies pending timer bytes
+  in task acknowledgements and their release when a frame callback clears the
+  timer. Core fixtures cover independent task/frame refresh and oversized
+  acknowledgements; IPC tests cover mandatory stats fields, byte ceilings,
+  combined-total overflow and scalar round trips over actual sockets.
+- Final macOS verification: 2,696 affected library tests passed (one existing
+  launcher case ignored), plus 12 scheduling-limit, 37 timer and 14 frame
+  runtime tests. Rebuilt v59 Core/launcher binaries passed the five real
+  timer/frame/two-tab fixtures and the real FileReader fixture; the real-child
+  Core ledger regression also passed after its final assertion updates.
+  All-target Clippy for the five crates and the revised launcher fixture,
+  formatting and working/staged diff checks passed. Full workspace, coverage
+  and unfiltered Test262 gates are not claimed. Broader host-buffer accounting,
+  aggregate process policy, task-source ordering, Promise collectibility and
+  error-event reporting remain open.
 
 ### M1d — Document-owned scheduling admission (2026-10-14)
 

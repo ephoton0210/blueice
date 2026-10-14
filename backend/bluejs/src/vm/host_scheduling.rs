@@ -545,6 +545,12 @@ impl Vm {
             |scope| scope.account.borrow().usage,
         ))
     }
+    pub(crate) fn host_scheduling_snapshot(&self) -> HostSchedulingUsage {
+        let own = self.own_scheduling_usage();
+        self.host_scheduling.as_ref().map_or(own, |scope| {
+            scope.account.borrow().usage.sub(scope.own).add(own)
+        })
+    }
     /// All Promise/await/thenable/finalizer and host producers use this gate.
     /// Failure latches an uncatchable document abort before any later JS work;
     /// infallible internal settlement paths must never panic or report success.

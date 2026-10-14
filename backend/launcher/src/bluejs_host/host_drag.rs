@@ -158,10 +158,15 @@ impl BlueJsChildHost {
             Ok(due) => due.map(|due| due.saturating_sub(now_ms())),
             Err(_) => return host_failure(),
         };
+        let scheduling_payload_bytes = match self.runtime.host_scheduling_usage(tab_id) {
+            Ok(usage) => u64::try_from(usage.payload_bytes).unwrap_or(u64::MAX),
+            Err(_) => return host_failure(),
+        };
         PageHostReply::DragTasksFlushed {
             tab_id,
             document_generation,
             next_wake_in_ms,
+            scheduling_payload_bytes,
             animation_frame_pending: self
                 .runtime
                 .animation_frame_pending(tab_id)
@@ -197,11 +202,16 @@ impl BlueJsChildHost {
         ) else {
             return host_failure();
         };
+        let scheduling_payload_bytes = match self.runtime.host_scheduling_usage(tab_id) {
+            Ok(usage) => u64::try_from(usage.payload_bytes).unwrap_or(u64::MAX),
+            Err(_) => return host_failure(),
+        };
         PageHostReply::AnimationFrameRendered {
             tab_id,
             document_generation,
             next_wake_in_ms: due.map(|due| due.saturating_sub(now)),
             animation_frame_pending,
+            scheduling_payload_bytes,
         }
     }
 }

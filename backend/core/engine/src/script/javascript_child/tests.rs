@@ -398,6 +398,7 @@ impl PageHostClient for RecordingChild {
             heap_bytes: 128,
             static_metadata_bytes: 32,
             deferred_payload_bytes: 64,
+            scheduling_payload_bytes: 0,
         }))
     }
 

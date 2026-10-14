@@ -1534,6 +1534,8 @@ impl BlueJsChildHost {
                     heap_bytes: u64::try_from(stats.heap.managed_bytes).unwrap_or(u64::MAX),
                     static_metadata_bytes: u64::try_from(static_bytes).unwrap_or(u64::MAX),
                     deferred_payload_bytes: u64::try_from(deferred_bytes).unwrap_or(u64::MAX),
+                    scheduling_payload_bytes: u64::try_from(stats.scheduling.payload_bytes)
+                        .unwrap_or(u64::MAX),
                 };
                 if !reply.is_well_formed() {
                     return host_failure();

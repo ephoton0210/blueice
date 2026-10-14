@@ -10,11 +10,13 @@ implemented on `feature/browsable-web-mvp`.
 has merged the product and BlueTS lines and completed the host-owned bounded
 microtask checkpoint and session-driven timer increments. The owner-selected
 File DOM profile installs callable-only timers, `queueMicrotask` and animation
-frame APIs, with exact v12 typings and private v58 scheduling/render replies.
+frame APIs, with exact v12 typings and private v59 scheduling/render replies.
 The frame entry remains separate from ordinary tasks. Real JavaScript and BlueTS counter
 pages prove matching frame/Representation generations. M1d bounds page-owned
 jobs, waiting reactions/requests and retained scheduling payloads with an
-account shared by ShadowRealms; full host/Core accounting remains open. See the
+account shared by ShadowRealms. M1e charges that payload to the initiating
+Core tab and refreshes it after task/render entries; broader host-buffer and
+aggregate resource accounting remain open. See the
 [`browser-integration milestone record`](BROWSER_INTEGRATION_TODO.md#milestone-record)
 for current evidence and remaining task-ordering/resource work; the tables below are
 the original analysis baseline.

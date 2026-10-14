@@ -78,10 +78,12 @@ fn page_scheduling_counts_are_visible_and_checkpoint_releases_pending_jobs() {
     )
     .unwrap();
     let before = runtime.host_scheduling_usage(1).unwrap();
+    assert_eq!(runtime.realm_stats(1).unwrap().scheduling, before);
     assert_eq!(before.pending_microtasks, 128);
     assert!(before.payload_bytes > 0);
     runtime.run_microtask_checkpoint(1).unwrap();
     let after = runtime.host_scheduling_usage(1).unwrap();
+    assert_eq!(runtime.realm_stats(1).unwrap().scheduling, after);
     assert_eq!(after.pending_microtasks, 0);
     assert!(after.payload_bytes < before.payload_bytes);
 }
@@ -135,6 +137,10 @@ fn shadow_realm_work_is_charged_to_the_initiating_document() {
     execute(&mut runtime, "var child = new ShadowRealm(); child.evaluate('function noop() {} var promise = new Promise(noop); for (var i = 0; i < 600; i += 1) { promise.then(noop); } 0;');").unwrap();
     assert_eq!(
         runtime.host_scheduling_usage(1).unwrap().pending_reactions,
+        600
+    );
+    assert_eq!(
+        runtime.realm_stats(1).unwrap().scheduling.pending_reactions,
         600
     );
     assert!(matches!(execute(&mut runtime, "function noop() {} var promise = new Promise(noop); for (var i = 0; i < 600; i += 1) { promise.then(noop); }"), Err(BlueJsPageRuntimeError::Runtime(RuntimeError::SchedulingLimit))));

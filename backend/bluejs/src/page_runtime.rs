@@ -80,6 +80,8 @@ pub struct BlueJsPageRealmStats {
     pub program_count: usize,
     pub bytecode_bytes: usize,
     pub heap: HeapStats,
+    /// Owned document scheduling state, including ShadowRealms.
+    pub scheduling: crate::HostSchedulingUsage,
 }
 
 /// Source-free state returned by the bounded native-debugger root-frame
@@ -1626,6 +1628,7 @@ impl BlueJsPageRuntime {
             program_count: realm.programs.len(),
             bytecode_bytes: realm.bytecode_bytes,
             heap: realm.vm.heap().stats(),
+            scheduling: realm.vm.host_scheduling_snapshot(),
         })
     }
 

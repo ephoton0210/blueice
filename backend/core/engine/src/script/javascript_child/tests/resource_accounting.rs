@@ -5,6 +5,69 @@
 use super::*;
 
 #[test]
+fn real_child_scheduling_payload_is_charged_to_its_tab_and_released_on_navigation() {
+    use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
+    let (host, config) = SpawnedBlueJsHost::spawn_for_core().unwrap();
+    let (mut tabs, first) = loaded_tabs(
+        "<script>var retained = Promise.resolve('x'.repeat(400000));</script>",
+        "https://example.test/scheduling-first.html",
+    );
+    let second = tabs.open_tab();
+    tabs.get_mut(second).unwrap().load_html_str(
+        "<script>var retained = Promise.resolve('y'.repeat(300000));</script>",
+        Some("https://example.test/scheduling-second.html".into()),
+    );
+    let mut executor =
+        OutOfProcessJavaScriptPageExecutor::connect(config.socket_path(), config.session_token())
+            .unwrap();
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let first_bytes = executor
+        .retained_page_cache_payload_bytes(first, 1)
+        .unwrap();
+    let second_bytes = executor
+        .retained_page_cache_payload_bytes(second, 1)
+        .unwrap();
+    assert!(
+        executor
+            .realm_stats(first)
+            .unwrap()
+            .scheduling_payload_bytes
+            >= 800000
+    );
+    assert!(
+        executor
+            .realm_stats(second)
+            .unwrap()
+            .scheduling_payload_bytes
+            >= 600000
+    );
+    assert!(
+        first_bytes >= 800000,
+        "owned Promise string escaped the Core tab ledger: {first_bytes}"
+    );
+    assert!(second_bytes >= 600000 && second_bytes < first_bytes);
+    tabs.get_mut(first).unwrap().load_html_str(
+        "<p>replacement</p>",
+        Some("https://example.test/scheduling-replacement.html".into()),
+    );
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.retained_page_cache_payload_bytes(first, 1), None);
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first, 2),
+        Some(0)
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second, 1),
+        Some(second_bytes)
+    );
+    tabs.close_tab(second);
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.retained_page_cache_payload_bytes(second, 1), None);
+    drop(executor);
+    drop(host);
+}
+
+#[test]
 fn core_charges_snapshot_validation_to_the_initiating_tab_even_on_rejection() {
     let (mut tabs, first_tab) = loaded_tabs(
         "<main>hello</main><script>blueiceDocumentText();</script>",
@@ -119,6 +182,7 @@ fn core_accepts_only_well_formed_child_wide_usage_for_its_live_realm_count() {
         heap_bytes: 128,
         static_metadata_bytes: 0,
         deferred_payload_bytes: 0,
+        scheduling_payload_bytes: 0,
     }));
     assert_eq!(
         executor.child_stats().unwrap_err().kind(),
@@ -144,6 +208,7 @@ fn core_caches_child_realm_accounting_only_for_the_live_generation() {
             heap_bytes: 128,
             static_metadata_bytes: 32,
             deferred_payload_bytes: 64,
+            scheduling_payload_bytes: 0,
         })
     );
 
@@ -572,6 +637,7 @@ impl PageHostClient for InvalidStatsChild {
                 heap_bytes: 128,
                 static_metadata_bytes: 0,
                 deferred_payload_bytes: 0,
+                scheduling_payload_bytes: 0,
             },
             InvalidRealmStats::ExcessPrograms => page_host::PageHostRealmStats {
                 tab_id,
@@ -581,6 +647,7 @@ impl PageHostClient for InvalidStatsChild {
                 heap_bytes: 128,
                 static_metadata_bytes: 0,
                 deferred_payload_bytes: 0,
+                scheduling_payload_bytes: 0,
             },
             InvalidRealmStats::SaturatedBytecode => page_host::PageHostRealmStats {
                 tab_id,
@@ -590,6 +657,7 @@ impl PageHostClient for InvalidStatsChild {
                 heap_bytes: 128,
                 static_metadata_bytes: 0,
                 deferred_payload_bytes: 0,
+                scheduling_payload_bytes: 0,
             },
             InvalidRealmStats::SaturatedHeap => page_host::PageHostRealmStats {
                 tab_id,
@@ -599,6 +667,7 @@ impl PageHostClient for InvalidStatsChild {
                 heap_bytes: u64::MAX,
                 static_metadata_bytes: 0,
                 deferred_payload_bytes: 0,
+                scheduling_payload_bytes: 0,
             },
             InvalidRealmStats::SaturatedStaticMetadata => page_host::PageHostRealmStats {
                 tab_id,
@@ -608,6 +677,7 @@ impl PageHostClient for InvalidStatsChild {
                 heap_bytes: 128,
                 static_metadata_bytes: u64::MAX,
                 deferred_payload_bytes: 0,
+                scheduling_payload_bytes: 0,
             },
             InvalidRealmStats::SaturatedDeferredPayload => page_host::PageHostRealmStats {
                 tab_id,
@@ -617,6 +687,7 @@ impl PageHostClient for InvalidStatsChild {
                 heap_bytes: 128,
                 static_metadata_bytes: 0,
                 deferred_payload_bytes: u64::MAX,
+                scheduling_payload_bytes: 0,
             },
             InvalidRealmStats::ExcessCombinedRetainedPayload => page_host::PageHostRealmStats {
                 tab_id,
@@ -626,6 +697,7 @@ impl PageHostClient for InvalidStatsChild {
                 heap_bytes: 128,
                 static_metadata_bytes: page_host::PAGE_HOST_REALM_RETAINED_PAYLOAD_MAX_BYTES,
                 deferred_payload_bytes: 1,
+                scheduling_payload_bytes: 0,
             },
         };
         Ok(PageHostReply::RealmStats(stats))
@@ -725,6 +797,7 @@ impl PageHostClient for WrongSuccessorAckChild {
             heap_bytes: 128,
             static_metadata_bytes: 0,
             deferred_payload_bytes: 0,
+            scheduling_payload_bytes: 0,
         }))
     }
 

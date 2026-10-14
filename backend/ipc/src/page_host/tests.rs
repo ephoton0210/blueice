@@ -9,7 +9,7 @@ mod debugger_shapes;
 
 #[test]
 fn browser_turn_wake_delay_is_optional_and_round_trips() {
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 58);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 59);
     let old = r#"{"DragTasksFlushed":{"tab_id":7,"document_generation":3}}"#;
     assert_eq!(
         serde_json::from_str::<PageHostReply>(old).unwrap(),
@@ -18,6 +18,7 @@ fn browser_turn_wake_delay_is_optional_and_round_trips() {
             document_generation: 3,
             next_wake_in_ms: None,
             animation_frame_pending: false,
+            scheduling_payload_bytes: 0,
         }
     );
     for delay in [None, Some(0), Some(i32::MAX as u64)] {
@@ -26,6 +27,7 @@ fn browser_turn_wake_delay_is_optional_and_round_trips() {
             document_generation: 3,
             next_wake_in_ms: delay,
             animation_frame_pending: false,
+            scheduling_payload_bytes: 0,
         };
         assert_eq!(
             serde_json::from_slice::<PageHostReply>(&serde_json::to_vec(&reply).unwrap()).unwrap(),
@@ -49,6 +51,7 @@ fn animation_frame_wire_round_trips_exact_document_scheduling_without_clock_or_c
             document_generation: 3,
             next_wake_in_ms: Some(0),
             animation_frame_pending: pending,
+            scheduling_payload_bytes: 0,
         };
         write_page_host_reply(&mut writer, &reply).unwrap();
         assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
@@ -1043,8 +1046,31 @@ fn realm_stats_reject_invalid_identity_resources_and_retained_payload() {
         heap_bytes: 128,
         static_metadata_bytes: 32,
         deferred_payload_bytes: 64,
+        scheduling_payload_bytes: 0,
     };
     assert!(stats.is_well_formed());
+    assert!(PageHostRealmStats {
+        scheduling_payload_bytes: PAGE_HOST_SCHEDULING_PAYLOAD_MAX_BYTES,
+        ..stats.clone()
+    }
+    .is_well_formed());
+    assert!(!PageHostRealmStats {
+        scheduling_payload_bytes: PAGE_HOST_SCHEDULING_PAYLOAD_MAX_BYTES + 1,
+        ..stats.clone()
+    }
+    .is_well_formed());
+    assert!(!PageHostRealmStats {
+        scheduling_payload_bytes: u64::MAX,
+        ..stats.clone()
+    }
+    .is_well_formed());
+    assert!(!PageHostRealmStats {
+        static_metadata_bytes: PAGE_HOST_REALM_RETAINED_PAYLOAD_MAX_BYTES,
+        deferred_payload_bytes: 0,
+        scheduling_payload_bytes: 1,
+        ..stats.clone()
+    }
+    .is_well_formed());
     assert_eq!(
         serde_json::from_value::<PageHostRealmStats>(serde_json::to_value(&stats).unwrap())
             .unwrap(),
@@ -1097,6 +1123,37 @@ fn realm_stats_reject_invalid_identity_resources_and_retained_payload() {
         .unwrap()
         .remove("deferred_payload_bytes");
     assert!(serde_json::from_value::<PageHostRealmStats>(wire).is_err());
+    let mut wire = serde_json::to_value(&stats).unwrap();
+    wire.as_object_mut()
+        .unwrap()
+        .remove("scheduling_payload_bytes");
+    assert!(serde_json::from_value::<PageHostRealmStats>(wire).is_err());
+}
+
+#[test]
+fn task_and_frame_acknowledgements_round_trip_source_free_scheduling_bytes() {
+    for bytes in [0, PAGE_HOST_SCHEDULING_PAYLOAD_MAX_BYTES] {
+        for reply in [
+            PageHostReply::DragTasksFlushed {
+                tab_id: 7,
+                document_generation: 3,
+                next_wake_in_ms: None,
+                animation_frame_pending: false,
+                scheduling_payload_bytes: bytes,
+            },
+            PageHostReply::AnimationFrameRendered {
+                tab_id: 7,
+                document_generation: 3,
+                next_wake_in_ms: None,
+                animation_frame_pending: false,
+                scheduling_payload_bytes: bytes,
+            },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_page_host_reply(&mut writer, &reply).unwrap();
+            assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+        }
+    }
 }
 
 #[test]

@@ -23,6 +23,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 usize::try_from(stats.static_metadata_bytes)
                     .ok()?
                     .checked_add(usize::try_from(stats.deferred_payload_bytes).ok()?)?
+                    .checked_add(usize::try_from(stats.scheduling_payload_bytes).ok()?)?
             }
             Some(_) => return None,
             None => 0,

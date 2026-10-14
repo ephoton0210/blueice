@@ -58,12 +58,19 @@ and [Web IDL signed long conversion](https://webidl.spec.whatwg.org/#es-long).
 `core-script-dom-animation-frame-v12` (47 entries), adding
 `requestAnimationFrame` and `cancelAnimationFrame` to the unchanged v11
 inventory. Frame callbacks have their own 64-entry rooted map and render
-entry. Core uses a 16.667 ms software cadence and the private protocol v58
+entry. Core uses a 16.667 ms software cadence and the private protocol's
 runnable-frame flag; task polling preserves the deadline. The child snapshots
 handles and one document-clock timestamp, checkpoints each callback and the
 render exit, then Core publishes dirty pixels before another frontend read.
 New registrations wait for another frame, cancellation can affect the current
 snapshot, and replacement/close/paused debugger handling follows realm lifetime.
+
+**2026-10-14 resource increment:** M1d bounds document scheduling ownership,
+including ShadowRealms. M1e's private v59 realm stats and task/frame replies
+carry only aggregate scheduling bytes, which Core charges to the exact live
+tab/document and refreshes after each successful turn. Replacement, close and
+invalid-reply revocation release the charge. This changes no installed globals
+or declaration inventory; the v12 artifact and older profiles stay exact.
 See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).

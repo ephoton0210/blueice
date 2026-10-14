@@ -11,10 +11,23 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         started: Instant,
         next_timer: Option<u64>,
         frame_pending: bool,
+        scheduling_payload_bytes: u64,
     ) -> io::Result<()> {
         if next_timer.is_some_and(|delay| delay > i32::MAX as u64) {
             return Err(io::Error::other("Page host timer delay invalid"));
         }
+        let stats = self
+            .realm_stats
+            .get_mut(&tab)
+            .ok_or_else(|| io::Error::other("Page host scheduling realm absent"))?;
+        let updated = PageHostRealmStats {
+            scheduling_payload_bytes,
+            ..stats.clone()
+        };
+        if !updated.is_well_formed() {
+            return Err(io::Error::other("Page host scheduling accounting invalid"));
+        }
+        *stats = updated;
         if let Some(delay) = next_timer {
             self.timer_wakes
                 .insert(tab, started + Duration::from_millis(delay));
@@ -102,8 +115,15 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 document_generation,
                 next_wake_in_ms,
                 animation_frame_pending,
+                scheduling_payload_bytes,
             } if tab_id == target.tab_id && document_generation == target.document_generation => {
-                self.update_scheduling_reply(tab, started, next_wake_in_ms, animation_frame_pending)
+                self.update_scheduling_reply(
+                    tab,
+                    started,
+                    next_wake_in_ms,
+                    animation_frame_pending,
+                    scheduling_payload_bytes,
+                )
             }
             _ => Err(io::Error::other("Page host frame response invalid")),
         }

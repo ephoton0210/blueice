@@ -10,6 +10,7 @@ struct FailedBrowserTaskChild {
     closed: Vec<(u64, u64)>,
     mismatch: bool,
     delay: Option<u64>,
+    payload_bytes: u64,
 }
 
 struct AnimationFrameChild {
@@ -28,6 +29,7 @@ impl AnimationFrameChild {
                 closed: vec![],
                 mismatch: false,
                 delay: None,
+                payload_bytes: 0,
             },
             pending: true,
             rendered: 0,
@@ -82,6 +84,11 @@ impl PageHostClient for AnimationFrameChild {
             document_generation: generation + u64::from(self.invalid_reply == Some("generation")),
             next_wake_in_ms: (self.invalid_reply == Some("delay")).then_some(u64::MAX),
             animation_frame_pending: self.pending,
+            scheduling_payload_bytes: if self.invalid_reply == Some("scheduling") {
+                page_host::PAGE_HOST_SCHEDULING_PAYLOAD_MAX_BYTES + 1
+            } else {
+                self.base.payload_bytes
+            },
         })
     }
 }
@@ -127,7 +134,7 @@ fn core_frame_cadence_uses_a_separate_entry_and_task_polling_cannot_postpone_it(
 
 #[test]
 fn malformed_frame_replies_revoke_only_the_realm_without_replaying_scripts() {
-    for invalid in ["tab", "generation", "delay"] {
+    for invalid in ["tab", "generation", "delay", "scheduling"] {
         let (mut tabs, tab) = loaded_tabs(
             "<script>let once = 1;</script>",
             "https://example.test/frame",
@@ -152,6 +159,81 @@ fn malformed_frame_replies_revoke_only_the_realm_without_replaying_scripts() {
         assert_eq!(executor.child.base.synchronized, 1);
         assert_eq!(executor.child.rendered, 1);
     }
+}
+
+#[test]
+fn task_and_frame_replies_refresh_only_the_initiating_tabs_scheduling_charge() {
+    let (mut tabs, first) = loaded_tabs("<p>first</p>", "https://example.test/first");
+    let second = tabs.open_tab();
+    tabs.get_mut(second)
+        .unwrap()
+        .load_html_str("<p>second</p>", Some("https://example.test/second".into()));
+    let (_sender, receiver) = crate::script::script_request_channel();
+    let mut child = AnimationFrameChild::new();
+    child.base.payload_bytes = 4096;
+    let mut executor = OutOfProcessJavaScriptPageExecutor::new(child);
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first, 1),
+        Some(4096)
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second, 1),
+        Some(4096)
+    );
+    executor.child.base.payload_bytes = 8192;
+    executor
+        .flush_drag_tasks_serving_script(&mut tabs, first, Some(&receiver))
+        .unwrap();
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first, 1),
+        Some(8192)
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second, 1),
+        Some(4096)
+    );
+    executor.child.base.payload_bytes = 0;
+    executor.animation_frame_wakes.insert(first, Instant::now());
+    executor
+        .animation_frame_wakes
+        .insert(second, Instant::now() + Duration::from_secs(60));
+    executor
+        .run_render_opportunities_serving_script(&mut tabs, Some(&receiver))
+        .unwrap();
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first, 1),
+        Some(0)
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second, 1),
+        Some(4096)
+    );
+}
+
+#[test]
+fn an_oversized_task_payload_revokes_the_realm_without_replaying_scripts() {
+    let (mut tabs, tab) = loaded_tabs(
+        "<script>let once = 1;</script>",
+        "https://example.test/payload",
+    );
+    let (_sender, receiver) = crate::script::script_request_channel();
+    let mut child = AnimationFrameChild::new();
+    child.base.payload_bytes = page_host::PAGE_HOST_SCHEDULING_PAYLOAD_MAX_BYTES + 1;
+    let mut executor = OutOfProcessJavaScriptPageExecutor::new(child);
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert_eq!(executor.child.base.closed, [(tab.as_u64(), 1)]);
+    assert_eq!(executor.retained_page_cache_payload_bytes(tab, 1), Some(0));
+    assert!(executor.realm_stats(tab).is_none());
+    assert!(executor.next_task_wake().is_none());
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert_eq!(executor.child.base.synchronized, 1);
 }
 
 #[test]
@@ -203,6 +285,7 @@ impl PageHostClient for FailedBrowserTaskChild {
             heap_bytes: 0,
             static_metadata_bytes: 0,
             deferred_payload_bytes: 0,
+            scheduling_payload_bytes: 0,
         }))
     }
     fn flush_drag_tasks_with_script_pump(
@@ -217,6 +300,7 @@ impl PageHostClient for FailedBrowserTaskChild {
             document_generation,
             next_wake_in_ms: self.delay,
             animation_frame_pending: false,
+            scheduling_payload_bytes: self.payload_bytes,
         })
     }
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {
@@ -241,6 +325,7 @@ fn child_browser_task_failure_keeps_core_alive_without_replaying_document_script
         closed: vec![],
         mismatch: true,
         delay: Some(0),
+        payload_bytes: 0,
     });
     executor
         .synchronize_and_execute_serving_script(&mut tabs, &receiver)
@@ -270,6 +355,7 @@ fn child_timer_wakes_follow_exact_document_lifetimes_and_clear_replies() {
         closed: vec![],
         mismatch: false,
         delay: Some(5),
+        payload_bytes: 0,
     });
     let before = Instant::now();
     executor
@@ -318,6 +404,7 @@ fn a_child_cannot_supply_an_unbounded_timer_wake() {
         closed: vec![],
         mismatch: false,
         delay: Some(u64::MAX),
+        payload_bytes: 0,
     });
     executor
         .synchronize_and_execute_serving_script(&mut tabs, &receiver)
@@ -411,6 +498,7 @@ impl PageHostClient for MismatchedDebuggerChild {
             heap_bytes: 0,
             static_metadata_bytes: 0,
             deferred_payload_bytes: 0,
+            scheduling_payload_bytes: 0,
         }))
     }
 
@@ -503,6 +591,7 @@ impl PageHostClient for MalformedBreakpointChild {
             heap_bytes: 0,
             static_metadata_bytes: 0,
             deferred_payload_bytes: 0,
+            scheduling_payload_bytes: 0,
         }))
     }
 

@@ -169,7 +169,7 @@ pub use drag_drop::{
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 58;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 59;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -214,9 +214,12 @@ pub const PAGE_HOST_REALM_STATS_MAX_PROGRAMS: u32 = 2_048;
 /// cannot name more inputs than this exact child admission limit.
 pub const PAGE_HOST_MAX_MODULES_PER_GRAPH: usize = 8;
 
-/// Maximum combined child-retained static/deferred payload reported for one
+/// Maximum combined child-retained static/deferred/scheduling payload for one
 /// realm. A child that exceeds this private accounting envelope fails closed.
 pub const PAGE_HOST_REALM_RETAINED_PAYLOAD_MAX_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+/// Document-owned scheduling payload; must match the page VM admission cap.
+pub const PAGE_HOST_SCHEDULING_PAYLOAD_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 mod debugger_shapes;
 pub use debugger_shapes::*;
@@ -455,6 +458,9 @@ pub struct PageHostRealmStats {
     pub static_metadata_bytes: u64,
     /// Child-owned pending debugger queue and nested graph/AST/attachment data.
     pub deferred_payload_bytes: u64,
+    /// Owned scheduling slots, primitive buffers and suspended async state.
+    /// No callback, object handle or scheduled payload crosses this boundary.
+    pub scheduling_payload_bytes: u64,
 }
 
 impl PageHostRealmStats {
@@ -468,9 +474,11 @@ impl PageHostRealmStats {
             && self.program_count <= PAGE_HOST_REALM_STATS_MAX_PROGRAMS
             && self.bytecode_bytes != u64::MAX
             && self.heap_bytes != u64::MAX
+            && self.scheduling_payload_bytes <= PAGE_HOST_SCHEDULING_PAYLOAD_MAX_BYTES
             && self
                 .static_metadata_bytes
                 .checked_add(self.deferred_payload_bytes)
+                .and_then(|bytes| bytes.checked_add(self.scheduling_payload_bytes))
                 .is_some_and(|bytes| bytes <= PAGE_HOST_REALM_RETAINED_PAYLOAD_MAX_BYTES)
     }
 }
@@ -973,6 +981,8 @@ pub enum PageHostReply {
         document_generation: u64,
         next_wake_in_ms: Option<u64>,
         animation_frame_pending: bool,
+        #[serde(default)]
+        scheduling_payload_bytes: u64,
     },
     DragDispatched {
         tab_id: u64,
@@ -991,6 +1001,9 @@ pub enum PageHostReply {
         /// Runnable frame work; Core owns the cadence and render entry.
         #[serde(default)]
         animation_frame_pending: bool,
+        /// Updated document scheduling ownership after this task turn.
+        #[serde(default)]
+        scheduling_payload_bytes: u64,
     },
     FileSelectionDispatched {
         tab_id: u64,

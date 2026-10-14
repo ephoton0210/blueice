@@ -4,6 +4,102 @@
 
 use super::*;
 
+#[test]
+fn task_and_frame_replies_release_the_real_vm_timer_payload_charge() {
+    assert_eq!(
+        blueice_bluejs::MAX_HOST_SCHEDULING_BYTES as u64,
+        page_host::PAGE_HOST_SCHEDULING_PAYLOAD_MAX_BYTES
+    );
+    let socket_path = std::path::PathBuf::from("/tmp")
+        .join(format!("bi-sched-ledger-{}.sock", std::process::id()));
+    let listener = UnixListener::bind(&socket_path).unwrap();
+    let capability = "a".repeat(script::SCRIPT_SESSION_TOKEN_HEX_BYTES);
+    let server_capability = capability.clone();
+    let server = std::thread::spawn(move || {
+        let (mut peer, _) = listener.accept().unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        assert_eq!(
+            script::read_script_request(&mut peer).unwrap(),
+            ScriptRequest::Hello {
+                protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                session_token: server_capability
+            }
+        );
+        script::write_script_reply(
+            &mut peer,
+            &ScriptReply::HelloAck {
+                protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        let ScriptRequest::Call {
+            request_id,
+            request,
+        } = script::read_script_request(&mut peer).unwrap()
+        else {
+            panic!("profile admission needs the live owner document");
+        };
+        let target = request.document_target().unwrap();
+        assert_eq!(target.tab_id, 7);
+        assert_eq!(target.document_generation, 1);
+        assert!(matches!(*request, ScriptRequest::GetDocument { .. }));
+        script::write_script_reply(
+            &mut peer,
+            &ScriptReply::CallResult {
+                request_id,
+                target,
+                reply: Box::new(ScriptReply::NodeCreated { node: 1 }),
+            },
+        )
+        .unwrap();
+    });
+    let mut host = BlueJsChildHost::default();
+    host.configure_script_file_dom_capability(socket_path.clone(), capability)
+        .unwrap();
+    let PageHostReply::Synchronized { reports, .. } = host.handle_request(PageHostRequest::SynchronizeDocument {
+        document: document(1, vec![classic(0, "function noop() {} function clearOwned() { clearTimeout(owned); } var owned = setTimeout(noop, 2147483647, 'x'.repeat(400000)); requestAnimationFrame(clearOwned);")]),
+    }) else { panic!("fixed File DOM profile must admit the timer fixture"); };
+    assert!(matches!(
+        reports.as_slice(),
+        [PageHostScriptReport {
+            outcome: PageHostScriptOutcome::Executed,
+            ..
+        }]
+    ));
+    let PageHostReply::RealmStats(before) = host.handle_request(PageHostRequest::GetRealmStats {
+        tab_id: 7,
+        document_generation: 1,
+    }) else {
+        panic!("retained timer payload must be observable");
+    };
+    assert!(before.scheduling_payload_bytes >= 800000);
+    assert!(
+        matches!(host.handle_request(PageHostRequest::FlushDragTasks { tab_id: 7, document_generation: 1 }), PageHostReply::DragTasksFlushed { scheduling_payload_bytes, animation_frame_pending: true, .. } if scheduling_payload_bytes == before.scheduling_payload_bytes)
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::RunAnimationFrame {
+            tab_id: 7,
+            document_generation: 1
+        }),
+        PageHostReply::AnimationFrameRendered {
+            scheduling_payload_bytes: 0,
+            next_wake_in_ms: None,
+            animation_frame_pending: false,
+            ..
+        }
+    ));
+    let PageHostReply::RealmStats(after) = host.handle_request(PageHostRequest::GetRealmStats {
+        tab_id: 7,
+        document_generation: 1,
+    }) else {
+        panic!("completed frame must release its timer storage");
+    };
+    assert_eq!(after.scheduling_payload_bytes, 0);
+    drop(host);
+    server.join().unwrap();
+    std::fs::remove_file(socket_path).unwrap();
+}
+
 fn javascript_module(ordinal: u32, source: &str) -> PageHostScript {
     let id = format!("blueice://page/deferred-{ordinal}.js");
     PageHostScript {

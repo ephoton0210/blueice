@@ -1499,12 +1499,14 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
                 document_generation,
                 next_wake_in_ms,
                 animation_frame_pending,
+                scheduling_payload_bytes,
             } if tab_id == target.tab_id && document_generation == target.document_generation => {
                 self.update_scheduling_reply(
                     TabId::from_u64(tab_id),
                     started,
                     next_wake_in_ms,
                     animation_frame_pending,
+                    scheduling_payload_bytes,
                 )
             }
             _ => Err(io::Error::other("Page host drag task response invalid")),
