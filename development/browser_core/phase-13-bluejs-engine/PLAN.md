@@ -20,6 +20,13 @@ page timeout clock. Selection rotates across sources and preserves the one-task
 Core boundary. Real network/UI ingress remains open; see
 [the source policy](HOST_TASK_SOURCES.md).
 
+**M1k async host follow-up:** Owner-installed operations now return VM-owned
+Promises and complete through opaque capabilities queued on logical service
+sources. Branded async methods, wait roots, cancellation and admission stay
+inside the document boundary. No new page global or private wire field is
+installed; Fetch/XHR request-service integration remains open. See
+[the host async contract](HOST_ASYNC_OPERATIONS.md).
+
 ## Ubuntu verification scope (2026-09-19)
 
 The only available host for this update is Ubuntu 24.04.3 LTS under WSL2 (`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), not Ubuntu 24.04.4. It successfully built all workspace targets and ran focused ECMA-402/BlueJS regressions; the exact commands and outcomes are recorded in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md). The unfiltered Test262 inventory was also rerun: 96,203 / 102,926 modes pass (93.468%), including 86,304 / 91,820 ECMA-262 Core modes (93.993%) and 6,364 / 6,714 ECMA-402 modes (94.787%). Coverage figures elsewhere remain separately dated because no fresh coverage run occurred in this update.

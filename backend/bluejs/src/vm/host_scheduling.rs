@@ -473,13 +473,25 @@ impl Vm {
                 .len()
                 .saturating_add(self.host_finalization_tasks.len()),
             pending_microtasks: self.promise_jobs.len(),
-            pending_reactions: self.heap.pending_async_generator_requests(),
+            pending_reactions: self
+                .heap
+                .pending_async_generator_requests()
+                .saturating_add(self.host_promises.pending.len()),
             payload_bytes: self
                 .promise_jobs
                 .capacity()
                 .saturating_mul(std::mem::size_of::<PromiseJob>())
                 .saturating_add(self.active_scheduling_bytes),
         };
+        usage.payload_bytes = usage.payload_bytes.saturating_add(
+            self.host_promises
+                .pending
+                .capacity()
+                .saturating_mul(std::mem::size_of::<(
+                    HostPromiseToken,
+                    host_promises::PendingHostPromise,
+                )>()),
+        );
         for job in &self.promise_jobs {
             usage.payload_bytes = usage
                 .payload_bytes
@@ -526,11 +538,15 @@ impl Vm {
                 .saturating_mul(std::mem::size_of::<browser_tasks::BrowserTask>()),
         );
         for task in &self.browser_tasks {
-            if let browser_tasks::BrowserTask::DragString { text, .. } = task {
-                usage.payload_bytes = usage
-                    .payload_bytes
-                    .saturating_add(text.owned_heap_payload_bytes().unwrap_or(usize::MAX));
-            }
+            usage.payload_bytes = usage.payload_bytes.saturating_add(match task {
+                browser_tasks::BrowserTask::DragString { text, .. } => {
+                    text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+                }
+                browser_tasks::BrowserTask::HostPromise { completion, .. } => {
+                    completion.payload_bytes()
+                }
+                _ => 0,
+            });
         }
         usage.payload_bytes = usage.payload_bytes.saturating_add(
             self.host_finalization_tasks

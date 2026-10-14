@@ -32,6 +32,13 @@ selection rotates before returning to Core. Real network/UI ingress, broader
 host buffers and error/rejection reporting keep M1 in progress; see
 [the policy](../phase-13-bluejs-engine/HOST_TASK_SOURCES.md).
 
+M1k adds owner-installed Promise-returning service operations and branded async
+methods. Opaque completions join document task sources and existing admission;
+realm teardown cancels unfinished waits. This establishes the engine host-wait
+mechanism while real network/UI ingress, external service buffers and reporting
+keep M1 in progress. See
+[the contract](../phase-13-bluejs-engine/HOST_ASYNC_OPERATIONS.md).
+
 ## Objective
 
 Let an ordinary script-driven page work end to end in the one `core`: HTML

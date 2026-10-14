@@ -50,6 +50,12 @@ pub(super) enum BrowserTask {
         stage: u8,
         root: RootId,
     },
+    HostPromise {
+        token: HostPromiseToken,
+        completion: HostPromiseCompletion,
+        source: HostTaskSource,
+        serial: u64,
+    },
 }
 
 impl BrowserTask {
@@ -59,6 +65,14 @@ impl BrowserTask {
             Self::AbortTimeout { .. } => TaskSource::Timer,
             Self::DragString { .. } => TaskSource::DomManipulation,
             Self::FileRead { .. } => TaskSource::FileReading,
+            Self::HostPromise {
+                source: HostTaskSource::Networking,
+                ..
+            } => TaskSource::Networking,
+            Self::HostPromise {
+                source: HostTaskSource::UserInteraction,
+                ..
+            } => TaskSource::UserInteraction,
         }
     }
 
@@ -71,7 +85,8 @@ impl BrowserTask {
             } => (*due, *serial),
             Self::AbortTimeout { serial, .. }
             | Self::DragString { serial, .. }
-            | Self::FileRead { serial, .. } => (0, *serial),
+            | Self::FileRead { serial, .. }
+            | Self::HostPromise { serial, .. } => (0, *serial),
         }
     }
 
@@ -79,7 +94,8 @@ impl BrowserTask {
         match self {
             Self::AbortTimeout { serial, .. }
             | Self::DragString { serial, .. }
-            | Self::FileRead { serial, .. } => *serial = next,
+            | Self::FileRead { serial, .. }
+            | Self::HostPromise { serial, .. } => *serial = next,
         }
     }
 }
@@ -209,12 +225,21 @@ impl Vm {
             BrowserTask::DragString { text, .. } => {
                 text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
             }
+            BrowserTask::HostPromise { completion, .. } => completion.payload_bytes(),
             _ => 0,
         };
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
         self.synchronize_scheduling_usage()?;
         self.remaining_instructions = self.config.instruction_budget;
         let (result, root, next, report_page_exception) = match task {
+            BrowserTask::HostPromise {
+                token, completion, ..
+            } => (
+                self.run_host_promise_task(token, completion),
+                None,
+                None,
+                true,
+            ),
             BrowserTask::AbortTimeout {
                 signal,
                 deadline,

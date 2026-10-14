@@ -214,6 +214,31 @@ pub struct BlueJsHostBindingRegistrar<'vm> {
 }
 
 impl BlueJsHostBindingRegistrar<'_> {
+    /// Installs an owner-selected Promise-returning operation. Only primitive
+    /// arguments and an opaque completion token reach the external service.
+    pub fn install_async_global_function(
+        &mut self,
+        name: &str,
+        length: u32,
+        source: crate::HostTaskSource,
+        function: impl crate::HostAsyncFunction,
+    ) -> Result<(), RuntimeError> {
+        self.vm
+            .install_host_async_function(name, length, source, function)
+    }
+
+    /// Installs a Promise-returning method with exact wrapper receiver checks.
+    pub fn install_async_host_object_method(
+        &mut self,
+        family: HostObjectFamily,
+        name: &str,
+        length: u32,
+        source: crate::HostTaskSource,
+        method: impl crate::HostAsyncObjectMethod,
+    ) -> Result<(), RuntimeError> {
+        self.vm
+            .install_host_async_object_method(family, name, length, source, method)
+    }
     pub fn install_global_family_object(
         &mut self,
         name: &str,
@@ -571,6 +596,22 @@ impl BlueJsPageRuntime {
             .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
             .vm
             .run_host_task_turn(now_ms, max_tasks)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
+    /// Queues one exact-realm completion without running JavaScript. Returns
+    /// false for a stale, foreign, already queued or completed capability.
+    pub fn queue_host_promise_completion(
+        &mut self,
+        tab_id: u64,
+        token: crate::HostPromiseToken,
+        completion: crate::HostPromiseCompletion,
+    ) -> Result<bool, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .queue_host_promise_completion(token, completion)
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 

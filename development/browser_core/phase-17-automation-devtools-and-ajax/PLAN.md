@@ -6,6 +6,14 @@
 
 > **Sequencing note (2026-10-13):** the first vertical slice of `fetch`/XHR, the page event loop, the DOM read/write surface and cookies is scheduled by [Phase 27](../phase-27-browsable-web-mvp/PLAN.md). Items it lands are checked off here, in the owning phase.
 
+**2026-10-15 engine prerequisite (M1k):** The public page runtime now supports
+owner-installed asynchronous functions and branded methods, opaque Promise
+completion tokens, queued networking/UI service delivery, cancellation and
+bounded wait/payload ownership. This supplies the engine host-wait mechanism;
+request-service policy and private IPC, complete Fetch/XHR semantics and native
+Core UI source integration remain open. See
+[the host async contract](../phase-13-bluejs-engine/HOST_ASYNC_OPERATIONS.md).
+
 ## Objective
 
 Give BlueIce the capabilities users expect from Chrome DevTools, Playwright and Selenium, plus a Postman-like HTTP/SOAP workbench and a page JavaScript debugger, while preserving its central invariant: every human, AI and automation client observes and acts on the same `core`, `Page`, script realm and render pass. Add complete standards-profiled AJAX (`fetch` and `XMLHttpRequest`), PJAX-compatible history/document-update semantics, and a declared complete SOAP interoperability profile so pages and API operators can dynamically receive, validate and send data without full-document navigation.

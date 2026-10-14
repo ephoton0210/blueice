@@ -176,6 +176,9 @@ impl Vm {
             NativeFunction::Host(index) => {
                 self.host_function_call(index, receiver, &args, construct)
             }
+            NativeFunction::HostAsync(index) => {
+                self.host_async_function_call(index, receiver, &args, construct)
+            }
             NativeFunction::HostObjectFactory(index) => {
                 self.host_object_factory_call(index, receiver, &args, construct)
             }

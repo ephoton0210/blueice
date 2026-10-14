@@ -91,9 +91,17 @@ work and exposes its retained payload ledger.
 - [x] **M1b: core / child timer ownership.** The child realm roots callbacks
       and arguments; the host injects a document-local monotonic clock. Core
       transports only exact document identities and relative wake-up delays.
-- [ ] Promise/task hooks that Phase 17's Fetch/XHR needs
+- [x] Promise/task hooks that Phase 17's Fetch/XHR needs — M1k acceptance
+      below covers the engine mechanism; request-service policy and private
+      network IPC remain in E.
+- [x] **M1k: owner-installed asynchronous operations.** Real VM-owned
+      Promises, opaque completion capabilities, branded async methods and
+      queued networking/user-interaction completions share document admission,
+      checkpoints and cancellation. See [the host boundary](HOST_ASYNC_OPERATIONS.md).
 - [ ] Task-source ordering between timers, network completions and UI events
-      (one bounded queue today, no source priority); decide before `fetch`
+      — M1j/M1k define logical source selection and queued service completions;
+      Core's native UI source association and real request-service ingress
+      remain open before `fetch`.
 - [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
       host-held bytes, so a runaway page degrades only itself
 - [x] **M1d: document scheduling admission.** Page VMs and their ShadowRealms
@@ -299,7 +307,8 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
       entry in the same change (the "absent API fails typed use" rule).
 - [ ] **Typed asynchronous web APIs remain incomplete.** M1b gives the File
       DOM profile typed timers and `queueMicrotask`; network waits still need
-      section E, and general page-module host-wait scheduling needs verification.
+      section E. M1k verifies that page-module top-level await resumes from a
+      later external completion task through the public runtime.
 - [ ] **No `console` or `fetch`** for typed page code. `setTimeout` and the
       other M1b scheduling functions are now in the exact File DOM artifact.
 - [ ] **Uncaught errors and rejections** cannot be mapped back to BlueTS
@@ -390,6 +399,54 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1k — Host Promise waits and queued service completions (2026-10-15)
+
+- Public tests first failed because the page registrar/runtime had no
+  asynchronous host-call or completion capability. Existing callbacks could
+  return only synchronous primitive values.
+- Added owner-installed Promise-returning functions and branded wrapper
+  methods. The VM owns Promise creation, roots and normal rejection semantics;
+  host callbacks receive only primitive arguments, private wrapper keys and
+  opaque completion tokens. Cold standard-global collisions are refused
+  through the canonical lazy-global inventory.
+- Completions resolve/reject only in a selected document task. They support
+  primitives, VM-created TypeErrors and VM-minted wrapper results with further
+  async methods. Networking/user-interaction sources preserve completion
+  arrival order and rotate with existing work. Microtask-only entry cannot
+  settle a wait, and each selected completion finishes its checkpoint.
+- Pending waits and queued payloads use the existing reaction/request, task
+  and byte limits. Navigation/close discard the work, invalidate tokens and
+  notify service cancellation. Awaited frames remain live through collection;
+  delivered waits release their roots. Host-owned I/O buffers outside these
+  tables, Core's real network/UI ingress and full Fetch/XHR semantics remain
+  open. The private v59 schema and installed v12 globals/typings are unchanged.
+- Public acceptance also verifies 1,000 completed operations under a 1 MiB
+  managed heap and module top-level await resuming only after a later host
+  completion task. The latter closes H's scheduling-verification uncertainty
+  while leaving the typed networking APIs open.
+- Final review measured geometric spare capacity in `Result<Vec<_>>`
+  argument conversion (33 inputs allocated 64 slots). Argument copies now
+  allocate their admitted slot count explicitly. A 33-argument/partial-
+  conversion public case verifies values and refusal before service start.
+- Final Rust acceptance after that correction: **3,080 related tests passed**
+  in the 30-target batch: 2,744 across five affected libraries, 326 public
+  runtime/DOM/allocation cases and ten real Core/child fixtures. All 24 new
+  async-host cases pass; one existing launcher case remains ignored.
+  Five-crate all-target Clippy, formatting and whitespace checks passed.
+  Production binaries were rebuilt; the accepted case audit is
+  `target/host-async-tasks-rust-validation-20261015.json`.
+- Final full-inventory acceptance against the rebuilt, frozen binaries:
+  **102,921 / 102,926 pass** in **413.223 seconds**, one existing stale-corpus
+  mode, four existing exclusions and **zero failures/timeouts**. All source/
+  mode hashes, dispositions, expectations, feature flags, error kinds/phases
+  and runner settings match M1j; diagnostic text and elapsed time are not
+  acceptance keys. Both frozen executable hashes stayed intact. The
+  [unmodified machine summary](test262-browser-host-async-macos-summary.json)
+  is committed; raw results and the comparison remain under
+  `target/test262-host-async-tasks-accepted-full-20261015/`. No fresh
+  workspace-wide or coverage claim is made; broader M1 ingress, host-buffer
+  and reporting requirements remain open.
 
 ### M1j — Logical document task sources and shared timeout clocks (2026-10-15)
 

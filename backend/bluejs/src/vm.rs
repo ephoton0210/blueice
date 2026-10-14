@@ -33,6 +33,11 @@ mod host_animation_frames;
 mod host_event_checkpoints;
 mod host_finalization;
 mod host_objects;
+mod host_promises;
+pub use host_promises::{
+    HostAsyncFunction, HostAsyncObjectMethod, HostPromiseCompletion, HostPromiseToken,
+    HostTaskSource,
+};
 mod host_registration;
 mod host_scheduling;
 mod host_task_turns;
@@ -1020,6 +1025,7 @@ pub struct Vm {
     /// Host callbacks are private to this realm. Native function objects hold
     /// only an index into this vector, so GC sees no Rust references.
     host_functions: Vec<Box<dyn HostFunction>>,
+    host_promises: host_promises::HostPromiseState,
     /// Opaque host-object factories and their collector-rooted, realm-private
     /// identity tables. Neither a JavaScript value nor a raw host key enters
     /// a Rust callback through the primitive-only HostValue ABI.

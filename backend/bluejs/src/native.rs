@@ -348,6 +348,8 @@ pub(crate) enum NativeFunction {
     HostSelectionStopPropagation(bool),
     /// A realm-private embedding callback stored in [`crate::Vm`].
     Host(u32),
+    /// A realm-owned Promise-returning embedding operation.
+    HostAsync(u32),
     /// A realm-private callback whose opaque key is materialized as a rooted
     /// JavaScript object by the VM, never as a page-visible numeric value.
     HostObjectFactory(u32),

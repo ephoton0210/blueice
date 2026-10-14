@@ -103,6 +103,12 @@ timer and drag-callback sources. Callback timers and abort timeouts share
 deadline/registration order and the document clock. Cross-source selection
 rotates, while real networking/UI source ingress remains open; see
 [the task-source policy](HOST_TASK_SOURCES.md).
+M1k adds owner-installed Promise-returning operations and branded async methods.
+Service completions carry opaque tokens and primitive/private-key data, then
+settle inside the document task scheduler. Native UI callbacks retain their
+cleanup ordering before another selected network task; request-service IPC and
+Core UI source integration remain open. See
+[the host async contract](HOST_ASYNC_OPERATIONS.md).
 See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).

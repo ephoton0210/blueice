@@ -45,6 +45,13 @@ same-document realms. Networking and child-queued UI work must join this source
 model through real typed ingress; see
 [the policy](../phase-13-bluejs-engine/HOST_TASK_SOURCES.md).
 
+M1k supplies the engine Promise/task hooks for asynchronous host services:
+owner-installed operations and branded methods, opaque completion capabilities,
+queued source delivery, cancellation and bounded VM-owned waits/payloads.
+Actual request-service policy, IPC, Fetch/XHR semantics and Core UI source
+integration remain open; see
+[the contract](../phase-13-bluejs-engine/HOST_ASYNC_OPERATIONS.md).
+
 ## Objective
 
 Make BlueIce capable of running ordinary interactive websites on one coherent web-platform model before adding specialised graphics, background execution or browser chrome. The compatibility baseline is the relevant [HTML Standard](https://html.spec.whatwg.org/multipage/), DOM, URL, Encoding, Fetch and related W3C/WHATWG specifications, delivered through explicit feature profiles and conformance tests rather than a claim that every API happens to work.

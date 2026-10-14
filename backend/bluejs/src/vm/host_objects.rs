@@ -1060,6 +1060,15 @@ impl Vm {
         self.mint_host_wrapper(family_index, key).map(Value::Object)
     }
 
+    pub(super) fn mint_host_family_wrapper(
+        &mut self,
+        family: HostObjectFamily,
+        key: HostObjectKey,
+    ) -> Result<ObjectId, RuntimeError> {
+        self.host_family_prototype(family)?;
+        self.mint_host_wrapper(family.index as usize, key)
+    }
+
     fn mint_host_wrapper(
         &mut self,
         family_index: usize,

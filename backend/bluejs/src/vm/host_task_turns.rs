@@ -33,13 +33,17 @@ pub(super) enum TaskSource {
     FileReading,
     Timer,
     DomManipulation,
+    Networking,
+    UserInteraction,
 }
 
-const TASK_SOURCES: [TaskSource; 4] = [
+const TASK_SOURCES: [TaskSource; 6] = [
     TaskSource::JavaScriptEngine,
     TaskSource::FileReading,
     TaskSource::Timer,
     TaskSource::DomManipulation,
+    TaskSource::Networking,
+    TaskSource::UserInteraction,
 ];
 
 #[derive(Clone, Copy)]

@@ -14,6 +14,8 @@ source. An adopted foreign document never participates.
 | File reading | FileReader read stages | Document enqueue serial; every continuation receives a new serial |
 | Timer | setTimeout, setInterval, AbortSignal.timeout | Expired deadline, then document enqueue serial |
 | DOM manipulation | DataTransferItem.getAsString callbacks | Document enqueue serial |
+| Networking | M1k owner-installed asynchronous service completions | Completion enqueue serial |
+| User interaction | M1k owner-installed UI service completions | Completion enqueue serial; real Core input association remains open |
 
 The [DOM timeout algorithm](https://dom.spec.whatwg.org/#dom-abortsignal-timeout)
 assigns abort timeouts to the timer source. The
@@ -73,14 +75,16 @@ before another queued child task. Native dispatch remains one event task,
 with M1h's callback cleanup inside it. No nested task turn may be run from a
 native listener or a microtask checkpoint.
 
-Fetch/XHR completions must enter as document-owned networking tasks after
+M1k provides [opaque Promise waits and queued service completions](HOST_ASYNC_OPERATIONS.md).
+Real Fetch/XHR completions must enter as document-owned networking tasks after
 typed request-service validation. They must carry the exact document identity,
 use the initiating tab's scheduling account, preserve networking-source FIFO,
 and join the source rotation instead of invoking JavaScript during a request
 service callback. Promise settlement belongs to that task and its following
 checkpoint. UI input queued inside the child must similarly retain a distinct
 user-interaction source; a drag string callback is not a native input task.
-Neither unimplemented ingress has a synthetic queue or script-visible global.
+The completion mechanism installs no service global by itself. Full typed
+request-service IPC and Core's native UI source association remain open.
 
 The TODO's complete timer/network/UI ordering and host-wait-hook requirements
 remain open until those real ingress paths and their acceptance fixtures exist.
