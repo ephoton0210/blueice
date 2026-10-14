@@ -744,4 +744,54 @@ mod tests {
         assert_eq!(registry.validate_safe_point(handle, outer_point), Ok(()));
         assert_eq!(registry.validate_safe_point(handle, inner_point), Ok(()));
     }
+
+    #[test]
+    fn duplicate_identifier_tokens_do_not_guess_a_bytecode_safe_point() {
+        let module = "memory:///duplicate-identifiers.ts";
+        let source = "const value: number = 21; const doubled: number = value + value;";
+        let compilation = blueice_bluets::compile(
+            module,
+            &MapLoader::from([ModuleSource::new(module, source)]),
+            CompilerOptions {
+                source_map: true,
+                inline_sources: true,
+                ..Default::default()
+            },
+        );
+        assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+        let artifact = &compilation.output.unwrap().artifacts[module];
+        let generated = &artifact.javascript;
+        let (parsed, statements, identifiers) =
+            blueice_bluejs::parse_with_debug_spans(generated).unwrap();
+        let bound = BoundEmittedMap::new(
+            PageHostSource::new("memory:///duplicate-identifiers.js", generated),
+            artifact.source_map.as_ref().unwrap().clone(),
+            PageHostBlueTsEmissionProfile::Standard,
+            statements,
+            identifiers,
+        )
+        .unwrap();
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install(
+                BlueJsSourceIdentity::new(
+                    "memory:///duplicate-identifiers.js",
+                    "sha256:duplicate-identifiers",
+                )
+                .unwrap(),
+                &BlueJsProgramV1::Script(parsed),
+            )
+            .unwrap();
+        let installed = registry.get(handle).unwrap();
+        let first = generated.find("value + value").unwrap();
+        let second = first + "value + ".len();
+        assert_eq!(&generated[first..first + 5], "value");
+        assert_eq!(&generated[second..second + 5], "value");
+        assert_eq!(bound.exact_identifier_safe_point(installed, first), None);
+        assert_eq!(bound.exact_identifier_safe_point(installed, second), None);
+        assert_eq!(
+            bound.exact_identifier_safe_point(installed, first + 1),
+            None
+        );
+    }
 }

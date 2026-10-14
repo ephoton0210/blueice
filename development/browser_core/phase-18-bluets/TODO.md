@@ -683,7 +683,7 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
   - [x] Install the exact BlueTSC-emitted JavaScript and its validated map as
     one generation-bound page-host debugger artifact; retain the generated
     source hash and reject stale, substituted or externally asserted maps.
-  - [ ] Bind generated token positions to exact BlueJS AST/bytecode safe
+  - [x] Bind generated token positions to exact BlueJS AST/bytecode safe
     points. Do not use a nearest-token or nearest-instruction guess.
   - [x] Extend BlueJS debugger suspension from one directly called child to
     the real decorator path `root → IIFE → class static block`. Preserve both
@@ -1423,7 +1423,18 @@ graphs, not client-asserted maps. The exact frozen System case above also
 compares the installed JavaScript, map and hash with independent BlueTSC output.
 The 196/196 launcher library and 48/48 real-process debugger suites on this
 source cover those controls. This checks the artifact-admission subitem, not
-the remaining matrix-wide AST/bytecode binding or public-site acceptance.
+the remaining matrix-wide public-site acceptance.
+
+The K.11.4 AST/bytecode-binding subcheck uses only a parser-certified root
+statement start, a unique literal identifier in its owning statement, or the
+separately AST-certified ES5 two-callee shape. Each candidate resolves to an
+exact BlueJS safe point and is revalidated against the live program; reverse
+projection uses the same exact AST/bytecode relation. There is no nearest-token
+or nearest-instruction fallback. An added regression checks that duplicate
+`value` tokens within one statement and an interior token offset stay unbound.
+The focused regression and full launcher library suite pass 1/1 and 197/197.
+This closes the binding mechanism subcheck, while matrix-wide public debugger
+coverage and the final K.11.6 gate remain open.
 
 ### K.12 Projects — M10 — gap G-M2
 
