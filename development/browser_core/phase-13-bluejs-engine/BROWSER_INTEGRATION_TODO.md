@@ -113,6 +113,85 @@ Bound today: `document.getElementById`, `createElement`, `createTextNode`,
       main-thread stack untested
 - [ ] General reverse-buffer-mirror for cross-realm TypedArrays not built
 
+## H. BlueTS / BlueTSC dependencies on BlueJS
+
+BlueTSC itself is a Rust compiler and does not run on BlueJS; BlueJS only
+executes its output, through `backend/bluets-bluejs` (the sole crate that
+depends on both). So most remaining BlueTS work is compiler-side
+([`../phase-18-bluets/TODO.md`](../phase-18-bluets/TODO.md): the open leaves
+are class checking/emit, enums, namespaces, JSX, decorators, CommonJS and
+package resolution). The items below are the places where a BlueTS feature is
+blocked or constrained by a BlueJS or browser-host gap. They were compiled
+on 2026-10-14 from `INTEGRATION_CONTRACT.md`, the Phase 18 TODO and the
+bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
+
+### Blocked by the host layer gaps above
+
+- [ ] **Typed host API stays tiny.** `lib.blueice.d.ts` is generated from
+      implemented bindings only, so typed BlueTS code can reach exactly
+      `document.getElementById`, `textContent`, and `click` listeners until
+      sections C and D grow. Every binding added there needs its typings
+      entry in the same change (the "absent API fails typed use" rule).
+- [ ] **`async` / `await` is checkable but not useful on a page.** The engine
+      runs Promise jobs and module top-level await, and the debugger can
+      pause across module-await continuations, but there is no timer,
+      `fetch` or task source (sections A, E), so a typed async function can
+      only await values that resolve from microtasks.
+- [ ] **No `console`, `setTimeout`, `fetch`** for typed code: the commonest
+      TypeScript snippets cannot be written against the supported profile.
+- [ ] **Uncaught errors and rejections** cannot be mapped back to BlueTS
+      original positions until the host reports them (section B); today
+      only debugger pauses use the safe-point map (*verify* for thrown
+      exceptions and `Error.stack`).
+
+### BlueJS capabilities BlueTS should use or still needs
+
+- [ ] **Native decorators.** BlueJS implements Stage 3 decorators
+      (`Symbol.metadata`, `addInitializer`, auto-accessors), which matches
+      TypeScript 5.x standard decorators; J.5.3 should lower to them
+      directly rather than emitting a helper. Legacy
+      `experimentalDecorators` still need an emitted `__decorate` helper.
+- [ ] **Class lowering to BlueJS class AST (J.3.1.5).** The engine has full
+      ClassDefinitionEvaluation (private names, static blocks, derived
+      constructors), so no engine gap is expected; the direct bridge today
+      rejects class members with "class members and runtime semantics are not
+      installed yet" - that is bridge work.
+- [ ] **CommonJS and `import()`.** BlueJS has ESM, dynamic-import jobs,
+      `import defer` and `import.source()`, but no `require` / `module` /
+      `exports` host objects and no page-level `HostLoadImportedModule`
+      resolver wiring. J.4.1 must either emit a helper or the host must
+      provide them; `import.meta` properties are also host-defined
+      (*verify* what the page runtime installs).
+- [ ] **Runtime contract helper is string-only.** `runtime_helper_v1.mjs`
+      validates reviewed primitive-string contracts. Strict boundaries over
+      numbers, records and arrays (Phase 18 E) need a richer helper and a
+      defined structured value format across the child-to-core boundary.
+- [ ] **Source positions for runtime errors.** BlueTSC emits source maps and
+      static debug metadata; BlueJS exposes bytecode safe points but a
+      frame-position API for thrown errors is unconfirmed (*verify*).
+- [ ] **Debugger coverage.** Classic-root and nested-frame pause/step/resume
+      exist. Missing or unconfirmed for TypeScript sources: breakpoints
+      set by line, conditional breakpoints, pause-on-exception, stepping
+      across `await` inside ordinary async functions (Phase 17).
+- [ ] **ES library typings vs. engine.** BlueJS implements ES2026, Intl and
+      Temporal; TypeScript 5.9.3's bundled `lib.es*.d.ts` does not declare
+      Temporal. Add a conformance check that every global BlueTS declares
+      exists in BlueJS and, separately, decide how engine-only features
+      (Temporal, `import defer`, Immutable ArrayBuffer) are typed.
+- [ ] **Resource limits as TypeScript semantics.** Instruction fuel, managed
+      heap budget and native-stack guard raise `RangeError`/limit errors
+      that TypeScript code cannot model; document them in the BlueTS
+      runtime contract.
+
+### Suggested joint order
+
+1. Event loop, timers and `console` (A, C) - unlocks typed async code.
+2. Unhandled-rejection / uncaught-error reporting with source-map lookup
+   (B + BlueTS provenance).
+3. DOM growth (D) with typings generated in the same change.
+4. Class, enum, namespace lowering (J.3) and native decorators (J.5.3).
+5. CommonJS / `import()` host support (J.4) and the richer contract helper.
+
 ## Suggested order
 
 1. A (event loop + timers) - everything async depends on it
