@@ -4,3 +4,6 @@
 lib.blueice.d.ts text eol=lf
 lib.blueice.manifest.json text eol=lf
 backend/core/engine/tests/fixtures/host_typings/** text eol=lf
+# Oracle fixtures are quoted verbatim (span text, line offsets) by tests, so a
+# Windows autocrlf checkout must not turn their newlines into CRLF.
+backend/bluets/tests/fixtures/** text eol=lf
