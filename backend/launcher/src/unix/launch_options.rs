@@ -92,6 +92,17 @@ impl CoreLaunchOptions {
         self
     }
 
+    /// Selects emitted ESM plus a separate type-only declaration for the
+    /// page's own console; neither source bytes nor runtime globals change.
+    pub fn supervise_out_of_process_bluejs_with_emitted_blue_ts_module_page_console_ambient(
+        mut self,
+    ) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.emitted_blue_ts_module = true;
+        self.emitted_blue_ts_module_page_console_ambient = true;
+        self
+    }
+
     /// Starts an isolated page host with the embedding owner's fixed
     /// per-realm runtime limits. They bound realm/program/root-bytecode
     /// admission and VM managed heap, but are not a child-process RSS or

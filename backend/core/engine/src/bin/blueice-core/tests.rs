@@ -289,6 +289,28 @@ fn emitted_bluets_module_requires_a_private_child_and_is_independent() {
     .unwrap();
     assert!(parsed.out_of_process_bluejs_emitted_blue_ts_module);
     assert!(!parsed.out_of_process_bluejs_emitted_blue_ts_classic);
+    assert!(!parsed.out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient);
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient",
+        ]),
+        Err("--out-of-process-bluejs-emitted-blue-ts-module requires the private out-of-process BlueJS host".to_string())
+    );
+    let selected = args(&[
+        "--socket",
+        "/tmp/core.sock",
+        "--out-of-process-bluejs-socket",
+        "/tmp/bluejs-host.sock",
+        "--out-of-process-bluejs-token",
+        "launcher-issued-capability",
+        "--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient",
+    ])
+    .unwrap();
+    assert!(selected.out_of_process_bluejs_emitted_blue_ts_module);
+    assert!(selected.out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient);
+    assert!(!selected.out_of_process_bluejs_emitted_blue_ts_classic);
 }
 
 #[test]
@@ -417,6 +439,7 @@ fn every_flag_is_parsed() {
             out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators: false,
             out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata: false,
             out_of_process_bluejs_emitted_blue_ts_module: false,
+            out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient: false,
         }
     );
 }

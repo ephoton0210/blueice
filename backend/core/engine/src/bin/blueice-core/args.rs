@@ -60,6 +60,7 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     let mut out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators = false;
     let mut out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata = false;
     let mut out_of_process_bluejs_emitted_blue_ts_module = false;
+    let mut out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient = false;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -171,6 +172,10 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             }
             "--out-of-process-bluejs-emitted-blue-ts-module" => {
                 out_of_process_bluejs_emitted_blue_ts_module = true
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient" => {
+                out_of_process_bluejs_emitted_blue_ts_module = true;
+                out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient = true;
             }
             other => return Err(format!("unrecognized argument: {other}")),
         }
@@ -606,5 +611,6 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
         out_of_process_bluejs_emitted_blue_ts_classic_legacy_decorators,
         out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata,
         out_of_process_bluejs_emitted_blue_ts_module,
+        out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient,
     })
 }

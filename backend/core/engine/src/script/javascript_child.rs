@@ -210,6 +210,8 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// Independent owner-only choice for generated ESM graph artifacts.
     /// Neither page markup nor debugger requests can enable this route.
     emitted_blue_ts_module: bool,
+    /// Owner-selected type-only ambient console for emitted ESM graphs.
+    emitted_blue_ts_module_page_console_ambient: bool,
     /// Core-selected lowering profile for emitted BlueTS only. Direct BlueTS
     /// and plain JavaScript are unaffected.
     emitted_bluets_profile: PageHostBlueTsEmissionProfile,
@@ -670,6 +672,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             native_debugger_execution_control: false,
             emitted_blue_ts_classic: false,
             emitted_blue_ts_module: false,
+            emitted_blue_ts_module_page_console_ambient: false,
             emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
             hold_pending_debugger_execution_once: false,
             reserved_debugger_hold_once: BTreeSet::new(),
@@ -724,6 +727,13 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
         self.emitted_blue_ts_module = true;
     }
 
+    /// Enables emitted ESM with a type-only console declaration. An ordinary
+    /// page script must still provide the actual runtime console value.
+    pub fn enable_emitted_blue_ts_module_page_console_ambient(&mut self) {
+        self.emitted_blue_ts_module = true;
+        self.emitted_blue_ts_module_page_console_ambient = true;
+    }
+
     /// Selects legacy decorator plus metadata emit for emitted classic
     /// BlueTS scripts. Only the startup owner can call this method.
     pub fn enable_emitted_blue_ts_legacy_metadata(&mut self) {
@@ -765,6 +775,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             native_debugger_execution_control: false,
             emitted_blue_ts_classic: false,
             emitted_blue_ts_module: false,
+            emitted_blue_ts_module_page_console_ambient: false,
             emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
             hold_pending_debugger_execution_once: false,
             reserved_debugger_hold_once: BTreeSet::new(),

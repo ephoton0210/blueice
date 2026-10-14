@@ -6,7 +6,7 @@ use super::*;
 use blueice_ipc::debugger::{
     DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget,
     DebuggerGeneratedOriginalPosition, DebuggerGeneratedPausedLocation,
-    DebuggerGeneratedPausedSourceLocation,
+    DebuggerGeneratedPausedSourceLocation, DebuggerGeneratedStepTarget,
 };
 
 fn coordinate(source: &str, byte: usize) -> (u32, u32) {
@@ -48,7 +48,7 @@ fn run_primitive_row(
     entry_token: &str,
     paused_token: &str,
 ) {
-    let source = format!("{frozen}\ndeclare const console: {{ log(value: number): void }};\n");
+    let source = frozen.to_string();
     let module = "memory:///k11-primitive.ts";
     let compilation = blueice_bluets::compile(
         module,
@@ -69,45 +69,10 @@ fn run_primitive_row(
     );
     let output = compilation.output.unwrap();
     let artifact = &output.artifacts[module];
-    let frozen_compilation = blueice_bluets::compile(
-        module,
-        &blueice_bluets::MapLoader::from([blueice_bluets::ModuleSource::new(module, frozen)]),
-        blueice_bluets::CompilerOptions {
-            source_map: true,
-            inline_sources: true,
-            ..Default::default()
-        },
-    );
-    assert!(
-        !frozen_compilation.has_errors(),
-        "{name} unaltered oracle fixture: {:#?}",
-        frozen_compilation.diagnostics
-    );
-    let frozen_output = frozen_compilation.output.unwrap();
-    let frozen_artifact = &frozen_output.artifacts[module];
     assert_eq!(
-        artifact.javascript.trim_end_matches('\n'),
-        frozen_artifact.javascript.trim_end_matches('\n'),
-        "{name} trailing ambient declaration must not change executable JavaScript"
-    );
-    let adapted_map = artifact.source_map.as_ref().unwrap();
-    let frozen_map = frozen_artifact.source_map.as_ref().unwrap();
-    assert_eq!(adapted_map.file, frozen_map.file, "{name}");
-    assert_eq!(adapted_map.sources, frozen_map.sources, "{name}");
-    assert_eq!(adapted_map.names, frozen_map.names, "{name}");
-    assert!(
-        adapted_map.mappings.starts_with(&frozen_map.mappings),
-        "{name} every frozen mapping segment must survive the trailing declaration"
-    );
-    assert_eq!(
-        frozen_map.sources_content,
+        artifact.source_map.as_ref().unwrap().sources_content,
         vec![frozen.to_owned()],
-        "{name} exact fixture must remain the frozen source-map content"
-    );
-    assert_eq!(
-        adapted_map.sources_content,
-        vec![source.clone()],
-        "{name} public page-host map must identify its actual served source"
+        "{name} exact fixture must be the full source-map content"
     );
     let generated = &artifact.javascript;
     let generated_console = coordinate(generated, generated.rfind("console.log(").unwrap());
@@ -191,6 +156,7 @@ fn run_primitive_row(
         &gatekeeper_socket,
         StaticMetadataPolicy {
             emitted_blue_ts_module: true,
+            emitted_blue_ts_module_page_console_ambient: true,
             generated_breakpoint: true,
             generated_paused_location: true,
             ..Default::default()
@@ -312,7 +278,12 @@ fn run_primitive_row(
     assert!(matches!(
         debugger_request(
             &mut debugger,
-            DebuggerRequest::StepRootInstruction { program },
+            DebuggerRequest::StepGeneratedInstruction {
+                target: DebuggerGeneratedStepTarget::Single {
+                    program,
+                    frame: None,
+                },
+            },
         ),
         DebuggerReply::ExecutionStepRequested { .. }
     ));

@@ -146,7 +146,7 @@ fn emitted_bluets_module_executes_its_closed_emitted_graph_without_debugger_cont
         canonical_target: dependency.into(),
     });
     let (emitted_graph, programs, maps) =
-        prepare_bluets_emitted_module_graph(source_graph.clone(), PageDomProfile::Snapshot)
+        prepare_bluets_emitted_module_graph(source_graph.clone(), PageDomProfile::Snapshot, false)
             .expect("the child must preflight the entire emitted module graph");
     assert_eq!(programs.len(), 2);
     assert_eq!(maps.len(), 2);
@@ -442,7 +442,7 @@ fn emitted_bluets_module_debugger_rejects_a_substituted_map_before_install() {
         )],
     );
     let (generated_graph, programs, mut maps) =
-        prepare_bluets_emitted_module_graph(source_graph, PageDomProfile::Snapshot).unwrap();
+        prepare_bluets_emitted_module_graph(source_graph, PageDomProfile::Snapshot, false).unwrap();
     maps.get_mut(entry).unwrap().generated.source_hash.push('x');
     let mut host = BlueJsChildHost::default();
     assert!(matches!(
@@ -1298,6 +1298,38 @@ fn system_console_typing_does_not_install_a_runtime_loader() {
 }
 
 #[test]
+fn module_page_console_typing_is_owner_scoped_and_source_separate() {
+    let fixture = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../bluets/tests/fixtures/k11_source_maps/basic.ts"
+    ));
+    let module_id = "blueice://page/k11-primitive.ts";
+    let graph = graph(module_id, vec![PageHostSource::new(module_id, fixture)]);
+    let selected = emitted_bluets_compiler_options(
+        &graph,
+        PageDomProfile::Snapshot,
+        PageHostBlueTsEmissionProfile::ModulePageConsole,
+    )
+    .unwrap();
+    let standard = emitted_bluets_compiler_options(
+        &graph,
+        PageDomProfile::Snapshot,
+        PageHostBlueTsEmissionProfile::Standard,
+    )
+    .unwrap();
+    assert_eq!(selected.module_kind, standard.module_kind);
+    assert!(selected.ambient_declaration_modules.iter().any(|module| {
+        module.id.ends_with("module-page-console.d.ts")
+            && module.text == "declare const console: { log(...values: unknown[]): void };\n"
+    }));
+    assert!(standard
+        .ambient_declaration_modules
+        .iter()
+        .all(|module| !module.id.ends_with("module-page-console.d.ts")));
+    assert_eq!(graph.modules[0].source, fixture);
+}
+
+#[test]
 fn frozen_basic_erasure_and_astral_modules_execute_with_page_console() {
     for (name, fixture, expected) in [
         (
@@ -1325,26 +1357,39 @@ fn frozen_basic_erasure_and_astral_modules_execute_with_page_console() {
             2,
         ),
     ] {
-        let source = format!("{fixture}\ndeclare const console: {{ log(value: number): void }};\n");
         let loader = format!(
             "var console = {{ log: function(value) {{ if (value !== {expected}) throw '{name} result'; }} }};"
         );
         let module_id = "blueice://page/k11-primitive.ts";
+        let script = PageHostScript {
+            ordinal: 1,
+            language: PageHostScriptLanguage::BlueTsEmitted,
+            kind: PageHostScriptKind::Module,
+            graph: graph(module_id, vec![PageHostSource::new(module_id, fixture)]),
+        };
+        let frozen_compilation = blueice_bluets::compile(
+            module_id,
+            &blueice_bluets::MapLoader::from([blueice_bluets::ModuleSource::new(
+                module_id, fixture,
+            )]),
+            blueice_bluets::CompilerOptions {
+                source_map: true,
+                inline_sources: true,
+                ..Default::default()
+            },
+        );
+        assert!(
+            !frozen_compilation.has_errors(),
+            "{name}: {:#?}",
+            frozen_compilation.diagnostics
+        );
+        let frozen_output = frozen_compilation.output.unwrap();
+        let artifact = &frozen_output.artifacts[module_id];
+        let mut selected = document(1, vec![classic(0, &loader), script.clone()]);
+        selected.emitted_module_page_console_ambient = true;
         let mut host = BlueJsChildHost::default();
-        let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
-            document: document(
-                1,
-                vec![
-                    classic(0, &loader),
-                    PageHostScript {
-                        ordinal: 1,
-                        language: PageHostScriptLanguage::BlueTsEmitted,
-                        kind: PageHostScriptKind::Module,
-                        graph: graph(module_id, vec![PageHostSource::new(module_id, source)]),
-                    },
-                ],
-            ),
-        });
+        let reply =
+            host.handle_request(PageHostRequest::SynchronizeDocument { document: selected });
         assert!(
             matches!(
                 reply,
@@ -1353,6 +1398,52 @@ fn frozen_basic_erasure_and_astral_modules_execute_with_page_console() {
                         && reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
             ),
             "{name} emitted module did not execute"
+        );
+        let mut pending = debugger_document(1, vec![classic(0, &loader), script.clone()]);
+        pending.emitted_module_page_console_ambient = true;
+        let mut debugger_host = BlueJsChildHost::default();
+        assert!(matches!(
+            debugger_host.handle_request(PageHostRequest::SynchronizeDocument { document: pending }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let live = &debugger_host.documents[&7];
+        assert_eq!(live.emitted_maps.len(), 1, "{name}");
+        let (program, bound) = live.emitted_maps.iter().next().unwrap();
+        assert_eq!(
+            bound.emission_profile,
+            PageHostBlueTsEmissionProfile::ModulePageConsole
+        );
+        let runtime_handle = live.debugger_programs[&program.program_handle].runtime_handle;
+        let installed = debugger_host
+            .runtime
+            .program_registry()
+            .get(runtime_handle)
+            .unwrap();
+        assert_eq!(
+            installed.source().source_hash(),
+            bound.generated.source_hash,
+            "{name}"
+        );
+        assert_eq!(bound.generated.source, artifact.javascript, "{name}");
+        assert_eq!(bound.map, artifact.source_map.clone().unwrap(), "{name}");
+        assert_eq!(
+            bound.map.sources_content,
+            vec![fixture.to_string()],
+            "{name}"
+        );
+        let mut missing_loader = document(1, vec![script]);
+        missing_loader.emitted_module_page_console_ambient = true;
+        let mut no_console_host = BlueJsChildHost::default();
+        assert!(
+            matches!(
+                no_console_host.handle_request(PageHostRequest::SynchronizeDocument {
+                    document: missing_loader,
+                }),
+                PageHostReply::Synchronized { reports, .. }
+                    if reports.len() == 1
+                        && matches!(reports[0].outcome, PageHostScriptOutcome::Rejected { .. })
+            ),
+            "{name} ambient typing must not install a runtime console"
         );
     }
 }

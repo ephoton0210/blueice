@@ -26,7 +26,7 @@ fn emitted_linked_module_preparation_retains_both_exact_maps() {
         canonical_target: dependency.to_string(),
     });
     let (generated_graph, programs, maps) =
-        prepare_bluets_emitted_module_graph(source_graph.clone(), PageDomProfile::Snapshot)
+        prepare_bluets_emitted_module_graph(source_graph.clone(), PageDomProfile::Snapshot, false)
             .unwrap();
     assert_eq!(programs.len(), 2);
     assert_eq!(maps.len(), 2);

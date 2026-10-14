@@ -4,6 +4,36 @@
 
 use super::*;
 
+#[test]
+fn owner_page_console_ambient_selects_only_emitted_module_documents() {
+    let (tabs, _) = loaded_tabs(
+        "<script type=\"application/x-blueice-typescript-module\">export const answer: number = 42;</script>",
+        "https://example.test/module-console.html",
+    );
+    let mut standard = OutOfProcessJavaScriptPageExecutor::new(RecordingChild::default());
+    standard.enable_emitted_blue_ts_module();
+    standard.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(standard.child.documents.len(), 1);
+    assert!(!standard.child.documents[0].emitted_module_page_console_ambient);
+
+    let mut selected = OutOfProcessJavaScriptPageExecutor::new(RecordingChild::default());
+    selected.enable_emitted_blue_ts_module_page_console_ambient();
+    selected.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(selected.child.documents.len(), 1);
+    let document = &selected.child.documents[0];
+    assert!(document.emitted_module_page_console_ambient);
+    assert_eq!(document.scripts.len(), 1);
+    assert_eq!(
+        document.scripts[0].language,
+        page_host::PageHostScriptLanguage::BlueTsEmitted
+    );
+    assert_eq!(
+        document.scripts[0].kind,
+        page_host::PageHostScriptKind::Module
+    );
+    assert!(!selected.emitted_blue_ts_classic);
+}
+
 const CHILD_PROGRAM: PageHostDebuggerProgram = PageHostDebuggerProgram {
     program_handle: 11,
     program_generation: 13,

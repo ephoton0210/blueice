@@ -172,6 +172,9 @@ impl SpawnedCore {
             if options.emitted_blue_ts_module {
                 command.arg("--out-of-process-bluejs-emitted-blue-ts-module");
             }
+            if options.emitted_blue_ts_module_page_console_ambient {
+                command.arg("--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient");
+            }
         }
         if options.core_http_page_script_fixture {
             command

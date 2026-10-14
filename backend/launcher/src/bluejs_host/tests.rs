@@ -50,6 +50,7 @@ fn document_with_snapshot(
         },
         debugger_execution_control: false,
         emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
+        emitted_module_page_console_ambient: false,
         scripts,
     }
 }

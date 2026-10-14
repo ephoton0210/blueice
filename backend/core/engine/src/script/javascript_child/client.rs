@@ -923,6 +923,7 @@ mod tests {
             },
             debugger_execution_control: false,
             emitted_bluets_profile: page_host::PageHostBlueTsEmissionProfile::Standard,
+            emitted_module_page_console_ambient: false,
             scripts: Vec::new(),
         }
     }

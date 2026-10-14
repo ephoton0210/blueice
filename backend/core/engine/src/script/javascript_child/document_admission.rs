@@ -9,6 +9,7 @@ pub(super) struct DocumentExecutionPolicy {
     pub debugger_execution_control: bool,
     pub emitted_blue_ts_classic: bool,
     pub emitted_blue_ts_module: bool,
+    pub emitted_blue_ts_module_page_console_ambient: bool,
     pub emitted_bluets_profile: PageHostBlueTsEmissionProfile,
 }
 
@@ -104,6 +105,7 @@ pub(super) fn authorized_document(
             snapshot,
             debugger_execution_control: policy.debugger_execution_control,
             emitted_bluets_profile: policy.emitted_bluets_profile,
+            emitted_module_page_console_ambient: policy.emitted_blue_ts_module_page_console_ambient,
             scripts,
         },
         reports,
@@ -427,6 +429,8 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 debugger_execution_control: self.native_debugger_execution_control,
                 emitted_blue_ts_classic: self.emitted_blue_ts_classic,
                 emitted_blue_ts_module: self.emitted_blue_ts_module,
+                emitted_blue_ts_module_page_console_ambient: self
+                    .emitted_blue_ts_module_page_console_ambient,
                 emitted_bluets_profile: self.emitted_bluets_profile,
             },
         );

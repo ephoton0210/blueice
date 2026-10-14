@@ -190,6 +190,8 @@ struct Args {
     /// Separate trusted owner-only selection of the emitted ESM graph route.
     /// Module scripts remain direct when this is absent.
     out_of_process_bluejs_emitted_blue_ts_module: bool,
+    /// Type-only console for emitted ESM, selected solely at owner startup.
+    out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient: bool,
 }
 
 #[cfg(unix)]
@@ -769,6 +771,8 @@ fn main() -> ExitCode {
         args.out_of_process_bluejs_emitted_blue_ts_classic_legacy_metadata;
     let out_of_process_bluejs_emitted_blue_ts_module =
         args.out_of_process_bluejs_emitted_blue_ts_module;
+    let out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient =
+        args.out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient;
 
     // The optional compiler catalog is populated before *any* listener is
     // bound. After `seal`, only its session owner can dispatch opaque query
@@ -1076,6 +1080,9 @@ fn main() -> ExitCode {
             }
             if out_of_process_bluejs_emitted_blue_ts_module {
                 javascript_executor.enable_emitted_blue_ts_module();
+            }
+            if out_of_process_bluejs_emitted_blue_ts_module_page_console_ambient {
+                javascript_executor.enable_emitted_blue_ts_module_page_console_ambient();
             }
             session::run_session_with_script_and_debugger_requests_and_out_of_process_javascript_executor(
                 &mut tabs,

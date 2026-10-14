@@ -174,6 +174,22 @@ fn emitted_bluets_module_requires_supervised_child_opt_in() {
     .unwrap();
     assert!(parsed.emitted_blue_ts_module);
     assert!(!parsed.emitted_blue_ts_classic);
+    assert!(!parsed.emitted_blue_ts_module_page_console_ambient);
+    assert_eq!(
+        args(&["--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient"]),
+        Err(
+            "--out-of-process-bluejs-emitted-blue-ts-module requires --out-of-process-bluejs"
+                .to_string()
+        )
+    );
+    let selected = args(&[
+        "--out-of-process-bluejs",
+        "--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient",
+    ])
+    .unwrap();
+    assert!(selected.emitted_blue_ts_module);
+    assert!(selected.emitted_blue_ts_module_page_console_ambient);
+    assert!(!selected.emitted_blue_ts_classic);
 }
 
 #[test]
@@ -400,6 +416,7 @@ fn every_flag_is_parsed() {
             emitted_blue_ts_classic_legacy_decorators: false,
             emitted_blue_ts_classic_legacy_metadata: false,
             emitted_blue_ts_module: false,
+            emitted_blue_ts_module_page_console_ambient: false,
             compiler_mcp_socket: Some(PathBuf::from("/tmp/compiler-mcp.sock")),
             compiler_catalog_file: None,
             page_http_policy_file: None,

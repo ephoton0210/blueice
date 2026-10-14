@@ -65,6 +65,7 @@ pub(super) fn prepare_script(
     script: PageHostScript,
     page_dom_profile: PageDomProfile,
     emitted_profile: PageHostBlueTsEmissionProfile,
+    emitted_module_page_console_ambient: bool,
 ) -> PreparedScript {
     let ordinal = script.ordinal;
     let language = script.language;
@@ -111,14 +112,19 @@ pub(super) fn prepare_script(
             )
         }
         (PageHostScriptLanguage::BlueTsEmitted, PageHostScriptKind::Module) => {
-            prepare_bluets_emitted_module_graph(script.graph, page_dom_profile).map(
-                |(graph, programs, emitted_maps)| PreparedScript::BlueTsEmittedModule {
+            prepare_bluets_emitted_module_graph(
+                script.graph,
+                page_dom_profile,
+                emitted_module_page_console_ambient,
+            )
+            .map(|(graph, programs, emitted_maps)| {
+                PreparedScript::BlueTsEmittedModule {
                     ordinal,
                     graph,
                     programs,
                     emitted_maps,
-                },
-            )
+                }
+            })
         }
         (PageHostScriptLanguage::BlueTs, PageHostScriptKind::Module) => {
             prepare_bluets_module_graph(script.graph, page_dom_profile).map(|graph| {
@@ -158,6 +164,9 @@ type PreparedEmittedModule = (
 const SYSTEM_LOADER_CONSOLE_AMBIENT_ID: &str = "blueice://ambient/system-loader-console.d.ts";
 const SYSTEM_LOADER_CONSOLE_AMBIENT_SOURCE: &str =
     "declare const console: { log(value: number): void };\n";
+const MODULE_PAGE_CONSOLE_AMBIENT_ID: &str = "blueice://ambient/module-page-console.d.ts";
+const MODULE_PAGE_CONSOLE_AMBIENT_SOURCE: &str =
+    "declare const console: { log(...values: unknown[]): void };\n";
 
 pub(super) fn emitted_bluets_compiler_options(
     graph: &PageHostModuleGraph,
@@ -170,6 +179,14 @@ pub(super) fn emitted_bluets_compiler_options(
     options.inline_sources = true;
     match emitted_profile {
         PageHostBlueTsEmissionProfile::Standard => {}
+        PageHostBlueTsEmissionProfile::ModulePageConsole => {
+            options
+                .ambient_declaration_modules
+                .push(blueice_bluets::ModuleSource::new(
+                    MODULE_PAGE_CONSOLE_AMBIENT_ID,
+                    MODULE_PAGE_CONSOLE_AMBIENT_SOURCE,
+                ));
+        }
         PageHostBlueTsEmissionProfile::Es5 => options.target = EcmaTarget::Es5,
         PageHostBlueTsEmissionProfile::System => {
             options.module_kind = ModuleKind::System;
@@ -250,15 +267,17 @@ pub(super) fn prepare_bluets_emitted_classic(
 pub(super) fn prepare_bluets_emitted_module_graph(
     graph: PageHostModuleGraph,
     page_dom_profile: PageDomProfile,
+    page_console_ambient: bool,
 ) -> Result<PreparedEmittedModule, PreparedScriptFailure> {
     let modules = validate_graph(&graph).map_err(PreparedScriptFailure::plain)?;
     validate_resolutions(&graph, &modules).map_err(PreparedScriptFailure::plain)?;
     let loader = bluets_loader(&graph, modules).map_err(PreparedScriptFailure::plain)?;
-    let options = emitted_bluets_compiler_options(
-        &graph,
-        page_dom_profile,
-        PageHostBlueTsEmissionProfile::Standard,
-    )?;
+    let emission_profile = if page_console_ambient {
+        PageHostBlueTsEmissionProfile::ModulePageConsole
+    } else {
+        PageHostBlueTsEmissionProfile::Standard
+    };
+    let options = emitted_bluets_compiler_options(&graph, page_dom_profile, emission_profile)?;
     let compilation = compile(&graph.entry, &loader, options);
     if compilation.has_errors() {
         let error = BridgeError::BlueTs(compilation.diagnostics);
@@ -319,7 +338,7 @@ pub(super) fn prepare_bluets_emitted_module_graph(
         let bound = BoundEmittedMap::new_with_non_evaluating(
             generated.clone(),
             source_map,
-            PageHostBlueTsEmissionProfile::Standard,
+            emission_profile,
             top_level_spans,
             identifier_spans,
             non_evaluating,

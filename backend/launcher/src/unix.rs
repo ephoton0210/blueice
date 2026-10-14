@@ -88,6 +88,8 @@ pub struct CoreLaunchOptions {
     emitted_blue_ts_classic_legacy_metadata: bool,
     /// Independent owner-selected emitted ESM graph route.
     emitted_blue_ts_module: bool,
+    /// Separate owner-only type input for a page-supplied ESM console.
+    emitted_blue_ts_module_page_console_ambient: bool,
     /// Immutable launcher-owner resource envelope forwarded only through
     /// trusted child bootstrap. The public launcher CLI, core, page, and
     /// page-host IPC cannot inspect or change it.

@@ -146,6 +146,7 @@ struct StaticMetadataPolicy {
     emitted_blue_ts_classic_legacy_decorators: bool,
     emitted_blue_ts_classic_legacy_metadata: bool,
     emitted_blue_ts_module: bool,
+    emitted_blue_ts_module_page_console_ambient: bool,
     generated_breakpoint: bool,
     generated_paused_location: bool,
     bounded_values: bool,
@@ -247,6 +248,9 @@ impl LauncherProcess {
         }
         if policy.emitted_blue_ts_module {
             command.arg("--out-of-process-bluejs-emitted-blue-ts-module");
+        }
+        if policy.emitted_blue_ts_module_page_console_ambient {
+            command.arg("--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient");
         }
         if policy.generated_breakpoint {
             command.arg("--debugger-generated-breakpoint");

@@ -40,6 +40,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             emitted_blue_ts_classic_legacy_decorators: false,
             emitted_blue_ts_classic_legacy_metadata: false,
             emitted_blue_ts_module: false,
+            emitted_blue_ts_module_page_console_ambient: false,
             generated_breakpoint: false,
             generated_paused_location: false,
         },

@@ -74,6 +74,8 @@ struct Args {
     emitted_blue_ts_classic_legacy_metadata: bool,
     /// Independent owner-only selection of emitted BlueTS ESM graphs.
     emitted_blue_ts_module: bool,
+    /// Owner-selected type-only ambient console for emitted ESM graphs.
+    emitted_blue_ts_module_page_console_ambient: bool,
     /// Explicit opt-in compiler MCP attachment endpoint. Without an owner
     /// catalog file, the launcher passes its fixed core-owned fixture.
     compiler_mcp_socket: Option<PathBuf>,
@@ -187,6 +189,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut emitted_blue_ts_classic_legacy_decorators = false;
     let mut emitted_blue_ts_classic_legacy_metadata = false;
     let mut emitted_blue_ts_module = false;
+    let mut emitted_blue_ts_module_page_console_ambient = false;
     let mut compiler_mcp_socket = None;
     let mut compiler_catalog_file = None;
     let mut page_http_policy_file = None;
@@ -254,6 +257,10 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 emitted_blue_ts_classic_legacy_metadata = true;
             }
             "--out-of-process-bluejs-emitted-blue-ts-module" => emitted_blue_ts_module = true,
+            "--out-of-process-bluejs-emitted-blue-ts-module-page-console-ambient" => {
+                emitted_blue_ts_module = true;
+                emitted_blue_ts_module_page_console_ambient = true;
+            }
             "--compiler-mcp-socket" => compiler_mcp_socket = Some(PathBuf::from(value()?)),
             "--compiler-catalog-file" => compiler_catalog_file = Some(PathBuf::from(value()?)),
             "--page-http-policy-file" => page_http_policy_file = Some(PathBuf::from(value()?)),
@@ -638,6 +645,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         emitted_blue_ts_classic_legacy_decorators,
         emitted_blue_ts_classic_legacy_metadata,
         emitted_blue_ts_module,
+        emitted_blue_ts_module_page_console_ambient,
         compiler_mcp_socket,
         compiler_catalog_file,
         page_http_policy_file,
@@ -712,6 +720,10 @@ fn main() -> ExitCode {
     }
     if args.emitted_blue_ts_module {
         core_options = core_options.supervise_out_of_process_bluejs_with_emitted_blue_ts_module();
+    }
+    if args.emitted_blue_ts_module_page_console_ambient {
+        core_options = core_options
+            .supervise_out_of_process_bluejs_with_emitted_blue_ts_module_page_console_ambient();
     }
     if let Some(compiler_mcp_socket) = args.compiler_mcp_socket.clone() {
         core_options = if let Some(path) = args.compiler_catalog_file.as_deref() {

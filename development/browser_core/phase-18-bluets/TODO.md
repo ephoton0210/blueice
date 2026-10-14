@@ -757,6 +757,12 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     BlueTSC-emitted artifact/map. Supply any ambient `console` declaration
     separately rather than appending text to that source, and verify its
     generation-bound installation before checking this parent System row.
+  - [x] Repeat the emitted-ESM public debugger pause, generated step and
+    original-location projection for the unmodified frozen `basic.ts`,
+    `erased.ts` and `crlf_astral.ts` sources. Select the page `console` type
+    ambient through an owner-only policy, keep it out of the source graph and
+    runtime, and compare the installed JavaScript, complete map, source hash
+    and `sourcesContent` with independent BlueTSC output for each row.
   - [x] Add independently default-denied, same-stream receipted public
     debugger operations for generated breakpoint resolution/arming and
     paused step/stack-location projection. Unmapped helper bodies and
@@ -1453,6 +1459,23 @@ launcher library 197/197 and out-of-process debugger 48/48 pass on rebuilt
 v49 binaries. Three-crate all-target Clippy with denied warnings and workspace
 formatting pass. The public-operation subcheck is complete, but K.11.4 still
 needs its matrix-wide real-process acceptance and K.11.6 remains open.
+
+Private page-host protocol v52 now carries a separate owner-selected,
+type-only `console` ambient for emitted ESM, leaving the default module
+profile and page runtime unchanged. The three unmodified frozen `basic.ts`,
+`erased.ts` and `crlf_astral.ts` sources execute with an earlier ordinary
+page-script console loader. Child admission compares each installed emitted
+JavaScript, complete map, source hash and exact `sourcesContent` with an
+independent BlueTSC compilation; a missing runtime loader still rejects the
+script. The real launcher/core/child debugger routes each frozen source
+through its mapped pause, one generated instruction step, one-frame stack
+and original UTF-16 projection under explicit owner policy. IPC library
+tests pass 144/144, engine library 489/489, launcher library 198/198,
+core and launcher CLI tests 30/30 and 29/29, and public out-of-process
+debugger tests 48/48. The three-crate all-target warnings-denied Clippy,
+workspace format and diff checks pass. This closes only the exact frozen
+emitted-ESM three-row subcheck; K.11.4 still requires the remaining matrix
+sites, and K.11.6 remains open.
 
 ### K.12 Projects — M10 — gap G-M2
 
