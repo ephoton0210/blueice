@@ -455,21 +455,35 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
     let directory = std::env::temp_dir().join(format!("bluejs-regex-fault-{}", std::process::id()));
     std::fs::create_dir_all(&directory).unwrap();
     let script = fault_worker(&directory);
-    let ready = Command::new(&script)
-        .env("BLUEJS_FAULT_MODE", "after_ready_exit")
+    // The fault modes below fail closed even without an interpreter, so only
+    // prove the fixture itself speaks the protocol where Python exists.
+    let interpreter = if cfg!(windows) {
+        "python.exe"
+    } else {
+        "python3"
+    };
+    let python_available = Command::new(interpreter)
+        .arg("--version")
         .stdin(Stdio::null())
         .output()
-        .unwrap();
-    assert!(
-        ready.status.success(),
-        "{}",
-        String::from_utf8_lossy(&ready.stderr)
-    );
-    let payload = b"bluejs-regexp-worker/1";
-    assert_eq!(
-        ready.stdout,
-        [(payload.len() as u32).to_le_bytes().as_slice(), payload].concat()
-    );
+        .is_ok_and(|output| output.status.success());
+    if python_available {
+        let ready = Command::new(&script)
+            .env("BLUEJS_FAULT_MODE", "after_ready_exit")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(
+            ready.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ready.stderr)
+        );
+        let payload = b"bluejs-regexp-worker/1";
+        assert_eq!(
+            ready.stdout,
+            [(payload.len() as u32).to_le_bytes().as_slice(), payload].concat()
+        );
+    }
     for mode in [
         "early_exit",
         "bad_ready",
