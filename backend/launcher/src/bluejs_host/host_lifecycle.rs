@@ -292,6 +292,37 @@ impl BlueJsChildHost {
                 source_id,
                 source_byte,
             ),
+            PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
+                tab_id,
+                document_generation,
+                program,
+                generated_line,
+                generated_column_utf16,
+            } => self.debugger_emitted_original_position(
+                tab_id,
+                document_generation,
+                program,
+                generated_line,
+                generated_column_utf16,
+            ),
+            PageHostRequest::ResolveDebuggerEmittedSafePoint {
+                tab_id,
+                document_generation,
+                program,
+                generated_line,
+                generated_column_utf16,
+            } => self.debugger_emitted_safe_point(
+                tab_id,
+                document_generation,
+                program,
+                generated_line,
+                generated_column_utf16,
+            ),
+            PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+                tab_id,
+                document_generation,
+                program,
+            } => self.debugger_emitted_paused_root_location(tab_id, document_generation, program),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
                 tab_id,
                 document_generation,
@@ -524,10 +555,11 @@ impl BlueJsChildHost {
             .script_dom_capability
             .as_ref()
             .map_or(PageDomProfile::Snapshot, ScriptDomCapability::profile);
+        let emitted_profile = document.emitted_bluets_profile;
         let prepared: Vec<_> = document
             .scripts
             .into_iter()
-            .map(|script| prepare_script(script, page_dom_profile))
+            .map(|script| prepare_script(script, page_dom_profile, emitted_profile))
             .collect();
 
         let lifecycle = if self.documents.contains_key(&document.tab_id) {
@@ -571,6 +603,7 @@ impl BlueJsChildHost {
                 pending_click_tasks: VecDeque::new(),
                 debugger_execution_control: document.debugger_execution_control,
                 debugger_programs: BTreeMap::new(),
+                emitted_maps: BTreeMap::new(),
                 debugger_breakpoints: BTreeSet::new(),
                 pending_debugger_executions: VecDeque::new(),
                 debugger_execution_states: BTreeMap::new(),
@@ -582,6 +615,7 @@ impl BlueJsChildHost {
                 document.tab_id,
                 document.document_generation,
                 &origin,
+                document.emitted_bluets_profile,
                 prepared,
             );
         }
@@ -639,6 +673,63 @@ impl BlueJsChildHost {
                     (
                         ordinal,
                         PageHostScriptLanguage::JavaScript,
+                        PageHostScriptKind::Module,
+                        outcome,
+                        None,
+                    )
+                }
+                PreparedScript::BlueTsEmittedClassic {
+                    ordinal,
+                    source,
+                    program,
+                    source_map,
+                    top_level_spans,
+                    identifier_spans,
+                } => {
+                    let outcome = match BoundEmittedMap::new(
+                        source.clone(),
+                        source_map,
+                        document.emitted_bluets_profile,
+                        top_level_spans,
+                        identifier_spans,
+                    ) {
+                        Ok(_) => execute_classic(
+                            &mut self.runtime,
+                            document.tab_id,
+                            &origin,
+                            source,
+                            program,
+                        ),
+                        Err(category) => rejected(category),
+                    };
+                    (
+                        ordinal,
+                        PageHostScriptLanguage::BlueTsEmitted,
+                        PageHostScriptKind::Classic,
+                        outcome,
+                        None,
+                    )
+                }
+                PreparedScript::BlueTsEmittedModule {
+                    ordinal,
+                    graph,
+                    programs,
+                    emitted_maps,
+                } => {
+                    let outcome = if emitted_maps.keys().eq(programs.keys()) {
+                        execute_module_graph(
+                            &mut self.runtime,
+                            document.tab_id,
+                            &origin,
+                            graph,
+                            programs,
+                        )
+                    } else {
+                        rejected("BlueTS emitted module graph has incomplete maps")
+                    };
+                    (
+                        ordinal,
+                        PageHostScriptLanguage::BlueTsEmitted,
                         PageHostScriptKind::Module,
                         outcome,
                         None,
@@ -801,6 +892,7 @@ impl BlueJsChildHost {
         tab_id: u64,
         document_generation: u64,
         origin: &BlueJsPageOrigin,
+        emitted_profile: PageHostBlueTsEmissionProfile,
         prepared: Vec<PreparedScript>,
     ) -> PageHostReply {
         let mut reports = Vec::new();
@@ -882,6 +974,115 @@ impl BlueJsChildHost {
                             },
                         });
                 }
+                PreparedScript::BlueTsEmittedClassic {
+                    ordinal,
+                    source,
+                    program,
+                    source_map,
+                    top_level_spans,
+                    identifier_spans,
+                } => {
+                    let bound = match BoundEmittedMap::new(
+                        source.clone(),
+                        source_map,
+                        emitted_profile,
+                        top_level_spans,
+                        identifier_spans,
+                    ) {
+                        Ok(bound) => bound,
+                        Err(category) => {
+                            reports.push(script_report(
+                                tab_id,
+                                document_generation,
+                                ordinal,
+                                PageHostScriptLanguage::BlueTsEmitted,
+                                PageHostScriptKind::Classic,
+                                rejected(category),
+                            ));
+                            continue;
+                        }
+                    };
+                    let Some(document) = self.documents.get(&tab_id) else {
+                        return self.fail_debugger_execution_document(tab_id);
+                    };
+                    let retained_bytes = document
+                        .emitted_maps
+                        .values()
+                        .try_fold(bound.retained_bytes().unwrap(), |total, retained| {
+                            total.checked_add(retained.retained_bytes()?)
+                        });
+                    if retained_bytes
+                        .is_none_or(|bytes| bytes > BoundEmittedMap::MAX_RETAINED_BYTES)
+                    {
+                        reports.push(script_report(
+                            tab_id,
+                            document_generation,
+                            ordinal,
+                            PageHostScriptLanguage::BlueTsEmitted,
+                            PageHostScriptKind::Classic,
+                            rejected("BlueTS emitted maps exceed document retention budget"),
+                        ));
+                        continue;
+                    }
+                    let source_identity = match source_identity(&source) {
+                        Ok(identity) => identity,
+                        Err(category) => {
+                            reports.push(script_report(
+                                tab_id,
+                                document_generation,
+                                ordinal,
+                                PageHostScriptLanguage::BlueTsEmitted,
+                                PageHostScriptKind::Classic,
+                                rejected(category),
+                            ));
+                            continue;
+                        }
+                    };
+                    let handle = match self.runtime.install_program(
+                        tab_id,
+                        origin,
+                        source_identity,
+                        &program,
+                    ) {
+                        Ok(handle) => handle,
+                        Err(error) => {
+                            reports.push(script_report(
+                                tab_id,
+                                document_generation,
+                                ordinal,
+                                PageHostScriptLanguage::BlueTsEmitted,
+                                PageHostScriptKind::Classic,
+                                rejected(page_runtime_category(error)),
+                            ));
+                            continue;
+                        }
+                    };
+                    let program = match self.register_debugger_program(tab_id, handle) {
+                        Ok(program) => program,
+                        Err(()) => return self.fail_debugger_execution_document(tab_id),
+                    };
+                    let Some(document) = self.documents.get_mut(&tab_id) else {
+                        return self.fail_debugger_execution_document(tab_id);
+                    };
+                    document.emitted_maps.insert(program, bound);
+                    document
+                        .debugger_execution_states
+                        .insert(program, ChildDebuggerExecutionStatus::Pending);
+                    document
+                        .pending_debugger_executions
+                        .push_back(PendingDebuggerExecution {
+                            ordinal,
+                            language: PageHostScriptLanguage::BlueTsEmitted,
+                            kind: PageHostScriptKind::Classic,
+                            program: Some(program),
+                            nested_safe_point: None,
+                            linked_safe_point: None,
+                            execution: DeferredChildExecution::JavaScriptClassic {
+                                handle,
+                                root_safe_point: None,
+                            },
+                        });
+                }
                 PreparedScript::JavaScriptModule {
                     ordinal,
                     graph,
@@ -899,6 +1100,94 @@ impl BlueJsChildHost {
                             execution: DeferredChildExecution::JavaScriptModule { graph, programs },
                         },
                     );
+                }
+                PreparedScript::BlueTsEmittedModule {
+                    ordinal,
+                    graph,
+                    programs,
+                    mut emitted_maps,
+                } => {
+                    let Some(document) = self.documents.get(&tab_id) else {
+                        return self.fail_debugger_execution_document(tab_id);
+                    };
+                    let retained_bytes = document
+                        .emitted_maps
+                        .values()
+                        .chain(emitted_maps.values())
+                        .try_fold(0usize, |total, bound| {
+                            total.checked_add(bound.retained_bytes()?)
+                        });
+                    if retained_bytes
+                        .is_none_or(|bytes| bytes > BoundEmittedMap::MAX_RETAINED_BYTES)
+                    {
+                        reports.push(script_report(
+                            tab_id,
+                            document_generation,
+                            ordinal,
+                            PageHostScriptLanguage::BlueTsEmitted,
+                            PageHostScriptKind::Module,
+                            rejected("BlueTS emitted maps exceed document retention budget"),
+                        ));
+                        continue;
+                    }
+                    let attachment = match attach_emitted_module_graph(
+                        &mut self.runtime,
+                        tab_id,
+                        origin,
+                        &graph,
+                        &programs,
+                        &emitted_maps,
+                    ) {
+                        Ok(attachment) => attachment,
+                        Err(category) => {
+                            reports.push(script_report(
+                                tab_id,
+                                document_generation,
+                                ordinal,
+                                PageHostScriptLanguage::BlueTsEmitted,
+                                PageHostScriptKind::Module,
+                                rejected(category),
+                            ));
+                            continue;
+                        }
+                    };
+                    let mut identities = BTreeMap::new();
+                    for (module_id, handle) in &attachment.modules {
+                        let program = match self.register_debugger_program(tab_id, *handle) {
+                            Ok(program) => program,
+                            Err(()) => return self.fail_debugger_execution_document(tab_id),
+                        };
+                        identities.insert(module_id.clone(), program);
+                    }
+                    let Some(entry_program) = identities.get(&graph.entry).copied() else {
+                        return self.fail_debugger_execution_document(tab_id);
+                    };
+                    let Some(document) = self.documents.get_mut(&tab_id) else {
+                        return self.fail_debugger_execution_document(tab_id);
+                    };
+                    for (module_id, program) in identities {
+                        let bound = emitted_maps
+                            .remove(&module_id)
+                            .expect("every emitted module map was checked before attachment");
+                        document.emitted_maps.insert(program, bound);
+                    }
+                    document
+                        .debugger_execution_states
+                        .insert(entry_program, ChildDebuggerExecutionStatus::Pending);
+                    document
+                        .pending_debugger_executions
+                        .push_back(PendingDebuggerExecution {
+                            ordinal,
+                            language: PageHostScriptLanguage::BlueTsEmitted,
+                            kind: PageHostScriptKind::Module,
+                            program: Some(entry_program),
+                            nested_safe_point: None,
+                            linked_safe_point: None,
+                            execution: DeferredChildExecution::BlueTsModule {
+                                attachment: DeferredModuleAttachment::Emitted(attachment),
+                                root_safe_point: None,
+                            },
+                        });
                 }
                 PreparedScript::BlueTsClassic { ordinal, script } => {
                     let attachment = match script.attach_debug_in_page_realm(
@@ -987,7 +1276,7 @@ impl BlueJsChildHost {
                             nested_safe_point: None,
                             linked_safe_point: None,
                             execution: DeferredChildExecution::BlueTsModule {
-                                attachment,
+                                attachment: DeferredModuleAttachment::Direct(attachment),
                                 root_safe_point: None,
                             },
                         });
@@ -1079,7 +1368,8 @@ impl BlueJsChildHost {
         }
     }
 
-    /// Counts static BlueTS metadata only for the exact live child document.
+    /// Counts static BlueTS metadata and emitted maps only for the exact live
+    /// child document.
     /// This stays inside the child until the private accounting protocol has
     /// a bounded numeric field for it.
     pub fn retained_static_payload_bytes(
@@ -1087,14 +1377,24 @@ impl BlueJsChildHost {
         tab_id: u64,
         document_generation: u64,
     ) -> Result<usize, PageHostReply> {
-        self.exact_document(tab_id, document_generation)?;
+        let document = self.exact_document(tab_id, document_generation)?;
+        let emitted_bytes = document
+            .emitted_maps
+            .values()
+            .try_fold(0usize, |total, bound| {
+                total.checked_add(bound.retained_bytes()?)
+            });
         let handles = self
             .runtime
             .program_handles(tab_id)
             .map_err(|_| host_failure())?;
-        self.debug_registry
+        let direct_bytes = self
+            .debug_registry
             .retained_payload_bytes_for_live_handles(self.runtime.program_registry(), handles)
-            .map_err(|_| host_failure())
+            .map_err(|_| host_failure())?;
+        direct_bytes
+            .checked_add(emitted_bytes.ok_or_else(host_failure)?)
+            .ok_or_else(host_failure)
     }
 
     /// Counts source graphs in pending JavaScript modules for one exact child

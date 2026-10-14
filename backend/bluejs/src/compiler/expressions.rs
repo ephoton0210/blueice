@@ -97,7 +97,23 @@ impl Compiler {
     }
 
     pub(super) fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
-        self.expression_plain(expr)
+        let start = self.offset();
+        self.expression_plain(expr)?;
+        if let (Some(statement_index), Expr::Identifier(name)) =
+            (self.current_root_statement_index, expr)
+        {
+            if self.offset() > start {
+                self.metadata_index(self.bytecode.identifier_offsets.len())?;
+                self.bytecode
+                    .identifier_offsets
+                    .push(crate::bytecode::IdentifierOffset {
+                        statement_index,
+                        name: name.clone(),
+                        bytecode_offset: start,
+                    });
+            }
+        }
+        Ok(())
     }
 
     fn compile_optional_chain(&mut self, expr: &Expr) -> Result<(), CompileError> {

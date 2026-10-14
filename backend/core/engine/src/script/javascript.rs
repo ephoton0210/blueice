@@ -35,7 +35,8 @@ use debugger_support::{
     PendingDebuggerExecution,
 };
 pub use debugger_support::{
-    JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
+    JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerEmittedOriginalPosition,
+    JavaScriptPageDebuggerEmittedPausedRootLocation, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExceptionLocation, JavaScriptPageDebuggerExceptionLocationTarget,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
     JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerLinkedScopeSnapshot,

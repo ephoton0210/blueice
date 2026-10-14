@@ -26,12 +26,27 @@ pub(super) enum PreparedScript {
         ordinal: u32,
         script: Box<DirectScript>,
     },
+    BlueTsEmittedClassic {
+        ordinal: u32,
+        source: PageHostSource,
+        program: BlueJsProgramV1,
+        source_map: SourceMap,
+        top_level_spans: Vec<ParsedStatementSpan>,
+        identifier_spans: Vec<blueice_bluejs::ParsedIdentifierSpan>,
+    },
+    BlueTsEmittedModule {
+        ordinal: u32,
+        graph: PageHostModuleGraph,
+        programs: BTreeMap<String, BlueJsProgramV1>,
+        emitted_maps: BTreeMap<String, BoundEmittedMap>,
+    },
     BlueTsModule {
         ordinal: u32,
         graph: Box<DirectModuleGraph>,
     },
 }
 
+#[derive(Debug)]
 pub(super) struct PreparedScriptFailure {
     category: &'static str,
     source_position: Option<PageHostScriptSourcePosition>,
@@ -49,6 +64,7 @@ impl PreparedScriptFailure {
 pub(super) fn prepare_script(
     script: PageHostScript,
     page_dom_profile: PageDomProfile,
+    emitted_profile: PageHostBlueTsEmissionProfile,
 ) -> PreparedScript {
     let ordinal = script.ordinal;
     let language = script.language;
@@ -80,6 +96,30 @@ pub(super) fn prepare_script(
                 }
             })
         }
+        (PageHostScriptLanguage::BlueTsEmitted, PageHostScriptKind::Classic) => {
+            prepare_bluets_emitted_classic(script.graph, page_dom_profile, emitted_profile).map(
+                |(source, program, source_map, top_level_spans, identifier_spans)| {
+                    PreparedScript::BlueTsEmittedClassic {
+                        ordinal,
+                        source,
+                        program,
+                        source_map,
+                        top_level_spans,
+                        identifier_spans,
+                    }
+                },
+            )
+        }
+        (PageHostScriptLanguage::BlueTsEmitted, PageHostScriptKind::Module) => {
+            prepare_bluets_emitted_module_graph(script.graph, page_dom_profile).map(
+                |(graph, programs, emitted_maps)| PreparedScript::BlueTsEmittedModule {
+                    ordinal,
+                    graph,
+                    programs,
+                    emitted_maps,
+                },
+            )
+        }
         (PageHostScriptLanguage::BlueTs, PageHostScriptKind::Module) => {
             prepare_bluets_module_graph(script.graph, page_dom_profile).map(|graph| {
                 PreparedScript::BlueTsModule {
@@ -96,6 +136,265 @@ pub(super) fn prepare_script(
         category: failure.category,
         source_position: failure.source_position,
     })
+}
+
+type PreparedEmittedClassic = (
+    PageHostSource,
+    BlueJsProgramV1,
+    SourceMap,
+    Vec<ParsedStatementSpan>,
+    Vec<blueice_bluejs::ParsedIdentifierSpan>,
+);
+
+type PreparedEmittedModule = (
+    PageHostModuleGraph,
+    BTreeMap<String, BlueJsProgramV1>,
+    BTreeMap<String, BoundEmittedMap>,
+);
+
+fn emitted_bluets_compiler_options(
+    graph: &PageHostModuleGraph,
+    page_dom_profile: PageDomProfile,
+    emitted_profile: PageHostBlueTsEmissionProfile,
+) -> Result<CompilerOptions, PreparedScriptFailure> {
+    let mut options =
+        bluets_compiler_options(graph, page_dom_profile).map_err(PreparedScriptFailure::plain)?;
+    options.source_map = true;
+    options.inline_sources = true;
+    match emitted_profile {
+        PageHostBlueTsEmissionProfile::Standard => {}
+        PageHostBlueTsEmissionProfile::Es5 => options.target = EcmaTarget::Es5,
+        PageHostBlueTsEmissionProfile::System => options.module_kind = ModuleKind::System,
+        PageHostBlueTsEmissionProfile::LegacyDecorators => {
+            options.experimental_decorators = true;
+        }
+        PageHostBlueTsEmissionProfile::LegacyDecoratorsWithMetadata => {
+            options.experimental_decorators = true;
+            options.emit_decorator_metadata = true;
+        }
+    }
+    Ok(options)
+}
+
+/// Compiles a caller-authorized classic BlueTS graph and retains the exact
+/// generated JavaScript plus its map as one child-owned artifact. This is
+/// deliberately separate from the direct AST bridge: the executable program
+/// below is parsed from the bytes that the source map actually describes.
+pub(super) fn prepare_bluets_emitted_classic(
+    graph: PageHostModuleGraph,
+    page_dom_profile: PageDomProfile,
+    emitted_profile: PageHostBlueTsEmissionProfile,
+) -> Result<PreparedEmittedClassic, PreparedScriptFailure> {
+    let modules = validate_graph(&graph).map_err(PreparedScriptFailure::plain)?;
+    validate_resolutions(&graph, &modules).map_err(PreparedScriptFailure::plain)?;
+    let loader = bluets_loader(&graph, modules).map_err(PreparedScriptFailure::plain)?;
+    let options = emitted_bluets_compiler_options(&graph, page_dom_profile, emitted_profile)?;
+    let compilation = compile(&graph.entry, &loader, options);
+    if compilation.has_errors() {
+        let error = BridgeError::BlueTs(compilation.diagnostics);
+        return Err(PreparedScriptFailure {
+            source_position: bluets_bridge_position(&error, &graph),
+            category: bluets_bridge_category(error),
+        });
+    }
+    let output = compilation
+        .output
+        .ok_or_else(|| PreparedScriptFailure::plain("BlueTS emitted output is unavailable"))?;
+    let artifact = output
+        .artifacts
+        .get(&graph.entry)
+        .ok_or_else(|| PreparedScriptFailure::plain("BlueTS entry output is unavailable"))?;
+    let source_map = artifact
+        .source_map
+        .clone()
+        .ok_or_else(|| PreparedScriptFailure::plain("BlueTS emitted map is unavailable"))?;
+    let generated = PageHostSource::new(
+        format!("{}#bluets-emitted-js", graph.entry),
+        artifact.javascript.clone(),
+    );
+    let (parsed, top_level_spans, identifier_spans) =
+        blueice_bluejs::parse_with_debug_spans(&generated.source)
+            .map_err(|error| PreparedScriptFailure::plain(parse_category(error)))?;
+    let program = BlueJsProgramV1::Script(parsed);
+    program
+        .compile()
+        .map_err(|error| PreparedScriptFailure::plain(compile_category(error)))?;
+    Ok((
+        generated,
+        program,
+        source_map,
+        top_level_spans,
+        identifier_spans,
+    ))
+}
+
+/// Compiles every module in the caller-authorized graph to JavaScript and
+/// validates each child-owned map before any generated module is installed.
+/// The generated graph retains the original canonical module IDs and static
+/// resolution authority, but every source hash describes emitted JavaScript.
+pub(super) fn prepare_bluets_emitted_module_graph(
+    graph: PageHostModuleGraph,
+    page_dom_profile: PageDomProfile,
+) -> Result<PreparedEmittedModule, PreparedScriptFailure> {
+    let modules = validate_graph(&graph).map_err(PreparedScriptFailure::plain)?;
+    validate_resolutions(&graph, &modules).map_err(PreparedScriptFailure::plain)?;
+    let loader = bluets_loader(&graph, modules).map_err(PreparedScriptFailure::plain)?;
+    let options = emitted_bluets_compiler_options(
+        &graph,
+        page_dom_profile,
+        PageHostBlueTsEmissionProfile::Standard,
+    )?;
+    let compilation = compile(&graph.entry, &loader, options);
+    if compilation.has_errors() {
+        let error = BridgeError::BlueTs(compilation.diagnostics);
+        return Err(PreparedScriptFailure {
+            source_position: bluets_bridge_position(&error, &graph),
+            category: bluets_bridge_category(error),
+        });
+    }
+    let output = compilation
+        .output
+        .ok_or_else(|| PreparedScriptFailure::plain("BlueTS emitted output is unavailable"))?;
+    let mut emitted_sources = Vec::with_capacity(graph.modules.len());
+    let mut emitted_maps = BTreeMap::new();
+    let mut total_source_bytes = 0_usize;
+    let mut total_map_bytes = 0_usize;
+    for source in graph.modules {
+        let module_id = source.canonical_module_id;
+        let artifact = output
+            .artifacts
+            .get(&module_id)
+            .ok_or_else(|| PreparedScriptFailure::plain("BlueTS module output is unavailable"))?;
+        let source_map = artifact
+            .source_map
+            .clone()
+            .ok_or_else(|| PreparedScriptFailure::plain("BlueTS emitted map is unavailable"))?;
+        let generated = PageHostSource::new(module_id.clone(), artifact.javascript.clone());
+        total_source_bytes = total_source_bytes
+            .checked_add(generated.source.len())
+            .ok_or_else(|| {
+                PreparedScriptFailure::plain("BlueTS emitted graph exceeds source budget")
+            })?;
+        if total_source_bytes > MAX_SOURCE_BYTES_PER_DOCUMENT {
+            return Err(PreparedScriptFailure::plain(
+                "BlueTS emitted graph exceeds source budget",
+            ));
+        }
+        let (parsed, top_level_spans, identifier_spans) =
+            blueice_bluejs::parse_module_with_debug_spans(&generated.source)
+                .map_err(|error| PreparedScriptFailure::plain(parse_category(error)))?;
+        if parsed.body.len() != top_level_spans.len() {
+            return Err(PreparedScriptFailure::plain(
+                "BlueTS emitted module parser provenance is incomplete",
+            ));
+        }
+        let non_evaluating = parsed
+            .body
+            .iter()
+            .enumerate()
+            .filter_map(|(index, statement)| {
+                matches!(
+                    statement,
+                    blueice_bluejs::Stmt::FunctionDecl(_)
+                        | blueice_bluejs::Stmt::ModuleDefaultFunction { .. }
+                )
+                .then_some(index)
+            })
+            .collect();
+        let bound = BoundEmittedMap::new_with_non_evaluating(
+            generated.clone(),
+            source_map,
+            PageHostBlueTsEmissionProfile::Standard,
+            top_level_spans,
+            identifier_spans,
+            non_evaluating,
+        )
+        .map_err(PreparedScriptFailure::plain)?;
+        total_map_bytes = total_map_bytes
+            .checked_add(bound.retained_bytes().ok_or_else(|| {
+                PreparedScriptFailure::plain("BlueTS emitted maps exceed retention budget")
+            })?)
+            .ok_or_else(|| {
+                PreparedScriptFailure::plain("BlueTS emitted maps exceed retention budget")
+            })?;
+        if total_map_bytes > BoundEmittedMap::MAX_RETAINED_BYTES {
+            return Err(PreparedScriptFailure::plain(
+                "BlueTS emitted maps exceed retention budget",
+            ));
+        }
+        emitted_sources.push(generated);
+        emitted_maps.insert(module_id, bound);
+    }
+    let emitted_graph = PageHostModuleGraph {
+        entry: graph.entry,
+        modules: emitted_sources,
+        resolutions: graph
+            .resolutions
+            .into_iter()
+            .map(|mut resolution| {
+                resolution.specifier =
+                    blueice_bluets::emitted_javascript_specifier(&resolution.specifier, false);
+                resolution
+            })
+            .collect(),
+        resolver_fingerprint: graph.resolver_fingerprint,
+    };
+    let (emitted_graph, programs) =
+        prepare_module_graph(emitted_graph).map_err(PreparedScriptFailure::plain)?;
+    Ok((emitted_graph, programs, emitted_maps))
+}
+
+/// Installs a fully prepared emitted graph as one debugger attachment. Every
+/// retained map must describe the exact generated source admitted under the
+/// same canonical module ID. A failed install discards all earlier modules;
+/// callers publish opaque debugger identities and maps only after success.
+pub(super) fn attach_emitted_module_graph(
+    runtime: &mut BlueJsPageRuntime,
+    tab_id: u64,
+    origin: &BlueJsPageOrigin,
+    graph: &PageHostModuleGraph,
+    programs: &BTreeMap<String, BlueJsProgramV1>,
+    emitted_maps: &BTreeMap<String, BoundEmittedMap>,
+) -> Result<EmittedPageModuleGraphAttachment, &'static str> {
+    let sources = validate_graph(graph)?;
+    if !sources.keys().eq(programs.keys()) || !programs.keys().eq(emitted_maps.keys()) {
+        return Err("BlueTS emitted module graph has incomplete maps or programs");
+    }
+    for (module_id, source) in &sources {
+        let bound = &emitted_maps[module_id];
+        if bound.generated.canonical_module_id != *module_id
+            || bound.generated.source_hash != source.source_hash
+            || bound.generated.source != source.source
+        {
+            return Err("BlueTS emitted module map does not match its generated source");
+        }
+    }
+    let mut installed = Vec::with_capacity(programs.len());
+    let mut modules = BTreeMap::new();
+    for (module_id, program) in programs {
+        let identity = match source_identity(&sources[module_id]) {
+            Ok(identity) => identity,
+            Err(category) => {
+                discard_programs(runtime, tab_id, &installed);
+                return Err(category);
+            }
+        };
+        match runtime.install_program(tab_id, origin, identity, program) {
+            Ok(handle) => {
+                installed.push(handle);
+                modules.insert(module_id.clone(), handle);
+            }
+            Err(error) => {
+                discard_programs(runtime, tab_id, &installed);
+                return Err(page_runtime_category(error));
+            }
+        }
+    }
+    let Some(entry) = modules.get(&graph.entry).copied() else {
+        discard_programs(runtime, tab_id, &installed);
+        return Err("BlueTS emitted module graph has no entry program");
+    };
+    Ok(EmittedPageModuleGraphAttachment { entry, modules })
 }
 
 pub(super) fn prepare_classic(

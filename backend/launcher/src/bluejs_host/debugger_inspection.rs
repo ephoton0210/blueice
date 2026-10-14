@@ -547,6 +547,7 @@ impl BlueJsChildHost {
                                 pending.execution,
                                 DeferredChildExecution::BlueTsClassic { .. }
                                     | DeferredChildExecution::BlueTsModule {
+                                        attachment: DeferredModuleAttachment::Direct(_),
                                         root_safe_point: Some(_),
                                         ..
                                     }

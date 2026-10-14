@@ -154,6 +154,24 @@ impl SpawnedCore {
                     .arg("--script-session-token")
                     .arg(config.session_token());
             }
+            if options.emitted_blue_ts_classic {
+                command.arg("--out-of-process-bluejs-emitted-blue-ts-classic");
+            }
+            if options.emitted_blue_ts_classic_legacy_metadata {
+                command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata");
+            }
+            if options.emitted_blue_ts_classic_legacy_decorators {
+                command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators");
+            }
+            if options.emitted_blue_ts_classic_es5 {
+                command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-es5");
+            }
+            if options.emitted_blue_ts_classic_system {
+                command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-system");
+            }
+            if options.emitted_blue_ts_module {
+                command.arg("--out-of-process-bluejs-emitted-blue-ts-module");
+            }
         }
         if options.core_http_page_script_fixture {
             command
@@ -180,6 +198,12 @@ impl SpawnedCore {
             command.arg("--debugger-socket").arg(debugger_socket);
             if options.debugger_bounded_values {
                 command.arg("--debugger-bounded-values");
+            }
+            if options.debugger_generated_breakpoint {
+                command.arg("--debugger-generated-breakpoint");
+            }
+            if options.debugger_generated_paused_location {
+                command.arg("--debugger-generated-paused-location");
             }
             if options.debugger_static_metadata_inventory {
                 command.arg("--debugger-static-metadata-inventory");

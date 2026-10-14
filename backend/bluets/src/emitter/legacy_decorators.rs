@@ -166,8 +166,15 @@ impl Lowerer<'_, '_> {
         for (index, parameter) in parameters.iter().enumerate() {
             for decorator in &parameter.decorators {
                 self.need_param = true;
+                let anchor = super::relocations::source_anchor(
+                    decorator
+                        .tokens
+                        .first()
+                        .expect("a decorator has tokens")
+                        .start,
+                );
                 entries.push(format!(
-                    "__bluetsParam({index}, {})",
+                    "{anchor}__bluetsParam({index}, {})",
                     self.decorator_text(decorator)?
                 ));
                 self.erase(decorator);
@@ -294,11 +301,13 @@ impl Lowerer<'_, '_> {
                 } else {
                     "null"
                 };
-                let anchor = super::decorators::source_anchor(
+                let anchor = super::relocations::source_anchor(
                     shell.key.first().map_or(shell.span.start, |key| key.start),
                 );
+                let end_anchor = super::relocations::source_anchor(shell.span.end);
+                let unmapped = super::relocations::unmapped();
                 statements.push_str(&format!(
-                    " {anchor}__bluetsDecorate([{}], {target}, {}, {descriptor});",
+                    " {anchor}__bluetsDecorate([{}{unmapped}], {target}, {}, {descriptor}){end_anchor};{unmapped}",
                     entries.join(", "),
                     quoted(&name)
                 ));
@@ -321,14 +330,18 @@ impl Lowerer<'_, '_> {
         ) {
             let types = self.parameter_types(class, &ctor.parameters)?;
             class_entries.push(format!(
-                "__bluetsMetadata(\"design:paramtypes\", [{}])",
+                "{}__bluetsMetadata(\"design:paramtypes\", [{}])",
+                super::relocations::unmapped(),
                 types.join(", ")
             ));
         }
         if class_decorated {
-            let anchor = super::decorators::source_anchor(class.name_span.end);
+            let name_anchor = super::relocations::source_anchor(class.name_span.start);
+            let name_end_anchor = super::relocations::source_anchor(class.name_span.end);
+            let class_end_anchor = super::relocations::source_anchor(class.body_span.end);
+            let unmapped = super::relocations::unmapped();
             statements.push_str(&format!(
-                " {0} = {anchor}__bluetsDecorate([{1}], {0});",
+                " {name_anchor}{0} {name_end_anchor}= {name_end_anchor}__bluetsDecorate([{1}{unmapped}], {name_anchor}{0}{name_end_anchor}){class_end_anchor};{unmapped}",
                 class.name,
                 class_entries.join(", ")
             ));
@@ -340,8 +353,13 @@ impl Lowerer<'_, '_> {
         };
         if class_decorated {
             let header_end = class.name_span.start;
+            let class_anchor = super::relocations::source_anchor(
+                super::decorators::class_keyword_start(class, &self.module.source),
+            );
+            let name_anchor = super::relocations::source_anchor(class.name_span.start);
+            let name_end_anchor = super::relocations::source_anchor(class.name_span.end);
             let header = format!(
-                "let {} = class {}",
+                "{class_anchor}let {name_anchor}{} {name_end_anchor}= {class_anchor}class {}",
                 class.name,
                 newlines(class.span.start, header_end)
             );
@@ -361,13 +379,32 @@ impl Lowerer<'_, '_> {
             } else {
                 String::new()
             };
-            self.push(close, close + 1, "};".to_string());
+            self.push(
+                close,
+                close + 1,
+                format!(
+                    "{}{}{};{}",
+                    super::relocations::unmapped(),
+                    "}",
+                    super::relocations::source_anchor(class.body_span.end),
+                    super::relocations::unmapped()
+                ),
+            );
             self.push(
                 class.span.end,
                 class.span.end,
                 format!("{statements}{export_suffix}"),
             );
         } else if !statements.is_empty() {
+            // A member-only legacy transform copies the class body, but the
+            // closing brace immediately before generated decorator calls is
+            // synthetic in TypeScript's emitted map, not a user breakpoint.
+            let close = class.body_span.end - 1;
+            self.push(
+                close,
+                close + 1,
+                format!("{}{}", super::relocations::unmapped(), "}"),
+            );
             self.push(class.span.end, class.span.end, statements);
         }
         Ok(())
@@ -379,7 +416,12 @@ impl Lowerer<'_, '_> {
         shell: &ClassMemberShell,
         kind: ElementKind,
     ) -> Result<Vec<String>, Diagnostic> {
-        let metadata = |key: &str, value: String| format!("__bluetsMetadata(\"{key}\", {value})");
+        let metadata = |key: &str, value: String| {
+            format!(
+                "{}__bluetsMetadata(\"{key}\", {value})",
+                super::relocations::unmapped()
+            )
+        };
         match kind {
             ElementKind::Field => {
                 let field = shell.field.as_ref().expect("a field member");

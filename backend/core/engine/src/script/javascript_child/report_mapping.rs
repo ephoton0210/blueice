@@ -33,26 +33,28 @@ pub(super) fn child_report(
                 })
             }
         },
-        PageHostScriptLanguage::BlueTs => match report.outcome {
-            PageHostScriptOutcome::Executed => {
-                ChildExecutionReport::BlueTs(BlueTsPageExecutionReport::Executed {
-                    tab_id: report.tab_id,
-                    document_generation: report.document_generation,
-                    ordinal: report.ordinal,
-                    kind: core_blue_ts_kind(report.kind),
-                })
+        PageHostScriptLanguage::BlueTs | PageHostScriptLanguage::BlueTsEmitted => {
+            match report.outcome {
+                PageHostScriptOutcome::Executed => {
+                    ChildExecutionReport::BlueTs(BlueTsPageExecutionReport::Executed {
+                        tab_id: report.tab_id,
+                        document_generation: report.document_generation,
+                        ordinal: report.ordinal,
+                        kind: core_blue_ts_kind(report.kind),
+                    })
+                }
+                PageHostScriptOutcome::Rejected { category } => {
+                    ChildExecutionReport::BlueTs(BlueTsPageExecutionReport::Rejected {
+                        tab_id: report.tab_id,
+                        document_generation: report.document_generation,
+                        ordinal: report.ordinal,
+                        kind: core_blue_ts_kind(report.kind),
+                        category: leak_blue_ts_category(category),
+                        source_position,
+                    })
+                }
             }
-            PageHostScriptOutcome::Rejected { category } => {
-                ChildExecutionReport::BlueTs(BlueTsPageExecutionReport::Rejected {
-                    tab_id: report.tab_id,
-                    document_generation: report.document_generation,
-                    ordinal: report.ordinal,
-                    kind: core_blue_ts_kind(report.kind),
-                    category: leak_blue_ts_category(category),
-                    source_position,
-                })
-            }
-        },
+        }
     }
 }
 
@@ -64,7 +66,10 @@ pub(super) fn verified_child_inline_position(
 ) -> Option<InlineBlueTsSourcePosition> {
     if report.tab_id != tab_id.as_u64()
         || report.document_generation != document_generation
-        || report.language != PageHostScriptLanguage::BlueTs
+        || !matches!(
+            report.language,
+            PageHostScriptLanguage::BlueTs | PageHostScriptLanguage::BlueTsEmitted
+        )
     {
         return None;
     }
@@ -228,19 +233,34 @@ pub(super) fn push_child_failure_report(
             core_js_kind(kind),
             category,
         )),
-        PageHostScriptLanguage::BlueTs => blue_ts_reports.push(rejected_blue_ts_report(
-            tab_id,
-            document_generation,
-            ordinal,
-            core_blue_ts_kind(kind),
-            category,
-        )),
+        PageHostScriptLanguage::BlueTs | PageHostScriptLanguage::BlueTsEmitted => blue_ts_reports
+            .push(rejected_blue_ts_report(
+                tab_id,
+                document_generation,
+                ordinal,
+                core_blue_ts_kind(kind),
+                category,
+            )),
     }
 }
 
-pub(super) fn child_language(language: CombinedPageScriptLanguage) -> PageHostScriptLanguage {
+pub(super) fn child_language(
+    language: CombinedPageScriptLanguage,
+    emitted_blue_ts_classic: bool,
+    emitted_blue_ts_module: bool,
+) -> PageHostScriptLanguage {
     match language {
         CombinedPageScriptLanguage::JavaScript(_) => PageHostScriptLanguage::JavaScript,
+        CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Classic)
+            if emitted_blue_ts_classic =>
+        {
+            PageHostScriptLanguage::BlueTsEmitted
+        }
+        CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Module)
+            if emitted_blue_ts_module =>
+        {
+            PageHostScriptLanguage::BlueTsEmitted
+        }
         CombinedPageScriptLanguage::BlueTs(_) => PageHostScriptLanguage::BlueTs,
     }
 }
@@ -303,6 +323,41 @@ pub(super) fn blue_ts_report_ordinal(report: &BlueTsPageExecutionReport) -> u32 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn emitted_policy_selects_classic_and_module_independently() {
+        let classic = CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Classic);
+        let module = CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Module);
+        let javascript = CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic);
+        assert_eq!(
+            child_language(classic, false, false),
+            PageHostScriptLanguage::BlueTs
+        );
+        assert_eq!(
+            child_language(classic, true, false),
+            PageHostScriptLanguage::BlueTsEmitted
+        );
+        assert_eq!(
+            child_language(module, true, false),
+            PageHostScriptLanguage::BlueTs
+        );
+        assert_eq!(
+            child_language(classic, false, true),
+            PageHostScriptLanguage::BlueTs
+        );
+        assert_eq!(
+            child_language(module, false, true),
+            PageHostScriptLanguage::BlueTsEmitted
+        );
+        assert_eq!(
+            child_language(module, true, true),
+            PageHostScriptLanguage::BlueTsEmitted
+        );
+        assert_eq!(
+            child_language(javascript, true, true),
+            PageHostScriptLanguage::JavaScript
+        );
+    }
 
     #[test]
     fn child_position_requires_exact_inline_identity_generation_and_utf8_range() {

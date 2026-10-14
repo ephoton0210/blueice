@@ -20,6 +20,7 @@ fn document() -> PageHostDocument {
             document_origin: "https://example.test".to_string(),
         },
         debugger_execution_control: true,
+        emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
         scripts: vec![PageHostScript {
             ordinal: 0,
             language: PageHostScriptLanguage::JavaScript,
@@ -1123,6 +1124,8 @@ fn private_script_position_requires_a_bounded_bluets_rejection() {
     report.source_position.as_mut().unwrap().end = PAGE_HOST_REPORT_POSITION_MAX_OFFSET + 1;
     assert!(!report.is_well_formed());
     report.source_position.as_mut().unwrap().end = 2;
+    report.language = PageHostScriptLanguage::BlueTsEmitted;
+    assert!(report.is_well_formed());
     report.language = PageHostScriptLanguage::JavaScript;
     assert!(!report.is_well_formed());
     report.language = PageHostScriptLanguage::BlueTs;

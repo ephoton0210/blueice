@@ -282,13 +282,35 @@ impl Vm {
                         if let Value::Object(function) = self.stack[base + 1] {
                             self.with_roots(|heap| heap.set_closure_home(function, target))?;
                         }
-                        self.call_native(
-                            self.stack[base + 1].clone(),
-                            self.stack[base].clone(),
-                            Vec::new(),
-                            false,
-                        )?;
-                        self.stack.truncate(base + 1);
+                        let callee = self.stack[base + 1].clone();
+                        let direct_debugger_call = self.debugger_nested_pause_request.is_some()
+                            && callee.object_id().is_some_and(|id| {
+                                self.heap
+                                    .closure(id)
+                                    .expect("the static-block callee is a live operand")
+                                    .is_some()
+                            });
+                        let previous = std::mem::replace(
+                            &mut self.debugger_nested_direct_call,
+                            direct_debugger_call,
+                        );
+                        let caller_generation = self
+                            .debugger_nested_pause_request
+                            .is_some()
+                            .then_some(code.debugger_program_generation)
+                            .flatten();
+                        let previous_caller_generation = std::mem::replace(
+                            &mut self.debugger_nested_direct_caller_generation,
+                            caller_generation,
+                        );
+                        let result =
+                            self.call_native(callee, self.stack[base].clone(), Vec::new(), false);
+                        self.debugger_nested_direct_call = previous;
+                        self.debugger_nested_direct_caller_generation = previous_caller_generation;
+                        result?;
+                        if self.debugger_nested_continuation.is_none() {
+                            self.stack.truncate(base + 1);
+                        }
                     }
                     Opcode::DefineInstanceField => {
                         // The receiver and value stay on the operand stack (and
@@ -1926,7 +1948,10 @@ impl Vm {
                     );
             }
             if self.debugger_nested_continuation.is_some() {
-                debug_assert_eq!(instruction.opcode, Opcode::Call);
+                debug_assert!(matches!(
+                    instruction.opcode,
+                    Opcode::Call | Opcode::CallClassStaticBlock
+                ));
                 for handler in &mut handlers {
                     handler.stack_depth -= handler_stack_base;
                 }

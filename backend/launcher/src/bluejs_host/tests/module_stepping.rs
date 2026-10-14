@@ -43,7 +43,7 @@ fn bluets_module_child_pauses_steps_and_resumes_the_exact_pending_entry() {
     let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
         panic!("the attached module is pending");
     };
-    let entry_handle = attachment.entry.handle;
+    let entry_handle = attachment.entry_handle();
     let point = host
         .runtime
         .module_evaluate_entry_safe_point(7, entry_handle)
@@ -298,7 +298,7 @@ fn bluets_module_source_span_step_stops_at_the_next_bound_statement() {
     };
     let point = host
         .runtime
-        .module_evaluate_entry_safe_point(7, attachment.entry.handle)
+        .module_evaluate_entry_safe_point(7, attachment.entry_handle())
         .unwrap();
     let target = PageHostDebuggerSafePoint {
         program,

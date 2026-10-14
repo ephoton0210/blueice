@@ -233,7 +233,7 @@ impl BlueJsChildHost {
             } => {
                 let Ok(expected) = self
                     .runtime
-                    .module_evaluate_entry_safe_point(tab_id, attachment.entry.handle)
+                    .module_evaluate_entry_safe_point(tab_id, attachment.entry_handle())
                 else {
                     return invalid_debugger_state();
                 };
@@ -281,6 +281,16 @@ impl BlueJsChildHost {
             return Err(invalid_debugger_state());
         }
         let document = self.documents.get_mut(&tab_id).expect("validated document");
+        if document
+            .emitted_maps
+            .get(&safe_point.program)
+            .is_some_and(|map| map.emission_profile == PageHostBlueTsEmissionProfile::System)
+        {
+            // The foreign page loader's caller chain cannot be retained by
+            // the bounded classic nested debugger. Raw safe-point arming
+            // must not bypass generated-position resolution's refusal.
+            return Err(invalid_debugger_state());
+        }
         if !document.debugger_execution_control
             || document.debugger_execution_states.get(&safe_point.program)
                 != Some(&ChildDebuggerExecutionStatus::Pending)
@@ -387,11 +397,8 @@ impl BlueJsChildHost {
         };
         if pending.nested_safe_point.is_some()
             || pending.linked_safe_point.is_some()
-            || attachment.entry.handle != entry_handle
-            || !attachment
-                .modules
-                .values()
-                .any(|module| module.handle == dependency_handle)
+            || attachment.entry_handle() != entry_handle
+            || !attachment.module_handles().contains(&dependency_handle)
         {
             return Err(invalid_debugger_state());
         }
@@ -415,7 +422,7 @@ impl BlueJsChildHost {
                 tab_id,
                 entry_handle,
                 dependency_handle,
-                attachment.modules.values().map(|module| module.handle),
+                attachment.module_handles(),
                 point,
             )
             .map_err(|_| invalid_request())?;

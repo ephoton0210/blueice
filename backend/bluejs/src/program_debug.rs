@@ -193,13 +193,22 @@ pub struct BlueJsSafePoint {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlueJsCodeUnitInfo {
     id: BlueJsCodeUnitId,
+    nesting_depth: usize,
     instruction_offsets: Vec<u32>,
+    identifier_offsets: Vec<crate::bytecode::IdentifierOffset>,
 }
 
 impl BlueJsCodeUnitInfo {
     /// The generation-bound identity of this code unit.
     pub fn id(&self) -> BlueJsCodeUnitId {
         self.id
+    }
+
+    /// Structural code-unit nesting below the root. The current nested
+    /// debugger continuation can pause only a directly called depth-one
+    /// closure; deeper units require a separate multi-frame continuation.
+    pub fn nesting_depth(&self) -> usize {
+        self.nesting_depth
     }
 
     /// Instruction boundaries that this code unit accepts as safe points.
@@ -270,6 +279,100 @@ impl BlueJsCompiledProgram {
             .get(&node)
             .copied()
             .ok_or(BlueJsProgramDebugError::AstNodeUnbound)
+    }
+
+    /// Returns a safe point only when exactly one evaluation
+    /// of this identifier expression was compiler-recorded inside the given
+    /// source-order root statement. A source front end must independently
+    /// prove the corresponding token position; a name alone is not a source
+    /// location and duplicate names are deliberately unbound.
+    pub fn unique_identifier_safe_point(
+        &self,
+        statement_index: usize,
+        name: &str,
+    ) -> Option<BlueJsSafePoint> {
+        let mut matches = self
+            .code_units
+            .iter()
+            .flat_map(|unit| {
+                unit.identifier_offsets
+                    .iter()
+                    .map(move |record| (unit.id, record))
+            })
+            .filter(|(_, record)| record.statement_index == statement_index && record.name == name);
+        let (code_unit, record) = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+        Some(BlueJsSafePoint {
+            code_unit,
+            bytecode_offset: record.bytecode_offset,
+        })
+    }
+
+    /// Returns two distinct root-code-unit identifier evaluations in the
+    /// compiler's actual lowering order. A caller may attach source tokens
+    /// only after independently proving the owning AST's evaluation order;
+    /// duplicate names alone do not establish source provenance.
+    pub fn two_root_identifier_safe_points(
+        &self,
+        statement_index: usize,
+        name: &str,
+    ) -> Option<[BlueJsSafePoint; 2]> {
+        let unit = self.code_units.first()?;
+        let mut matches = unit
+            .identifier_offsets
+            .iter()
+            .filter(|record| record.statement_index == statement_index && record.name == name);
+        let first = matches.next()?;
+        let second = matches.next()?;
+        if matches.next().is_some()
+            || first.bytecode_offset >= second.bytecode_offset
+            || self.code_units.iter().skip(1).any(|other| {
+                other
+                    .identifier_offsets
+                    .iter()
+                    .any(|record| record.statement_index == statement_index && record.name == name)
+            })
+        {
+            return None;
+        }
+        Some([
+            BlueJsSafePoint {
+                code_unit: unit.id,
+                bytecode_offset: first.bytecode_offset,
+            },
+            BlueJsSafePoint {
+                code_unit: unit.id,
+                bytecode_offset: second.bytecode_offset,
+            },
+        ])
+    }
+
+    /// Reverse of the unique identifier binding for a safe point. An
+    /// instruction shared by multiple identifier records is not attributable
+    /// to one source token and therefore returns no identifier.
+    pub fn unique_identifier_at_safe_point(
+        &self,
+        safe_point: BlueJsSafePoint,
+    ) -> Option<(usize, &str)> {
+        let unit = self
+            .code_units
+            .get(safe_point.code_unit.ordinal() as usize)?;
+        if unit.id != safe_point.code_unit {
+            return None;
+        }
+        let mut matches = unit
+            .identifier_offsets
+            .iter()
+            .filter(|record| record.bytecode_offset == safe_point.bytecode_offset);
+        let record = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+        self.unique_identifier_safe_point(record.statement_index, &record.name)
+            .filter(|point| *point == safe_point)
+            .map(|_| (record.statement_index, record.name.as_str()))
     }
 
     fn validate_safe_point(
@@ -457,7 +560,7 @@ impl BlueJsProgramRegistry {
             .ok_or(BlueJsProgramDebugError::GenerationExhausted)?;
         let handle = BlueJsProgramHandle { generation };
         let mut code_units = Vec::new();
-        collect_code_units(&mut bytecode, generation, limits, &mut code_units)?;
+        collect_code_units(&mut bytecode, generation, limits, 0, &mut code_units)?;
         let ast_nodes = ast_descriptors
             .into_iter()
             .enumerate()
@@ -506,6 +609,20 @@ impl BlueJsProgramRegistry {
                         bytecode_offset: *bytecode_offset,
                     },
                 );
+            }
+        }
+        for unit in &code_units {
+            for record in &unit.identifier_offsets {
+                let Some(Some((start, end))) =
+                    bytecode.root_statement_ranges.get(record.statement_index)
+                else {
+                    return Err(BlueJsProgramDebugError::AstBytecodeShapeMismatch);
+                };
+                if unit.id.ordinal == 0
+                    && (record.bytecode_offset < *start || record.bytecode_offset >= *end)
+                {
+                    return Err(BlueJsProgramDebugError::AstBytecodeShapeMismatch);
+                }
             }
         }
         self.programs.insert(
@@ -633,6 +750,7 @@ fn collect_code_units(
     bytecode: &mut Bytecode,
     generation: BlueJsProgramGeneration,
     limits: IdentityLimits,
+    nesting_depth: usize,
     code_units: &mut Vec<BlueJsCodeUnitInfo>,
 ) -> Result<(), BlueJsProgramDebugError> {
     let ordinal = identity_component(
@@ -652,15 +770,32 @@ fn collect_code_units(
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let identifier_offsets = std::mem::take(&mut bytecode.identifier_offsets);
+    if identifier_offsets
+        .iter()
+        .any(|record| !instruction_offsets.contains(&record.bytecode_offset))
+    {
+        return Err(BlueJsProgramDebugError::AstBytecodeShapeMismatch);
+    }
     code_units.push(BlueJsCodeUnitInfo {
         id: BlueJsCodeUnitId {
             generation,
             ordinal,
         },
+        nesting_depth,
         instruction_offsets,
+        identifier_offsets,
     });
     for child in &mut bytecode.functions {
-        collect_code_units(std::rc::Rc::make_mut(child), generation, limits, code_units)?;
+        collect_code_units(
+            std::rc::Rc::make_mut(child),
+            generation,
+            limits,
+            nesting_depth
+                .checked_add(1)
+                .ok_or(BlueJsProgramDebugError::CodeUnitLimitExceeded)?,
+            code_units,
+        )?;
     }
     Ok(())
 }

@@ -279,6 +279,7 @@ fn test_metadata() -> BuildMetadata {
         strict_boundaries: Vec::new(),
         strict_artifacts: Vec::new(),
         source_map: true,
+        inline_source_map: None,
         declaration: true,
         remove_comments: false,
         new_line: "lf",

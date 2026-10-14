@@ -19,6 +19,9 @@ pub struct DebuggerMetadataSessionAuthorization {
     /// one core-owned pause incarnation. The two value selectors consume only
     /// their matching receipt family; a static relation needs its own grant.
     observed_scope_entries: Arc<Mutex<DebuggerScopeReceipts>>,
+    /// Opaque program IDs actually returned by this stream's ListPrograms.
+    /// Generated-map operations cannot target guessed program numbers.
+    observed_programs: Arc<Mutex<HashSet<DebuggerProgram>>>,
     /// Bounded per-stream receipts for opaque metadata handles emitted by the
     /// public inventory operation. A handle must not become a summary or
     /// source-inventory target merely because its numeric fields are guessed.
@@ -49,6 +52,7 @@ struct DebuggerScopeReceipts {
 }
 
 pub const DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES: usize = 4_096;
+pub const DEBUGGER_SESSION_MAX_OBSERVED_PROGRAMS: usize = 4_096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct DebuggerMetadataIdentity {
@@ -210,6 +214,37 @@ pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_SYMBOL_IDENTITIES: usize = 65_5
 pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_CONTRACT_IDENTITIES: usize = 65_536;
 
 impl DebuggerMetadataSessionAuthorization {
+    /// Atomically receipts one complete source-free program inventory. Only
+    /// exact generations returned on this stream can become generated-map
+    /// targets; a later realm generation cannot reuse these receipts.
+    pub fn observe_programs(&self, programs: &[DebuggerProgram]) -> bool {
+        if programs.iter().any(|program| !program.is_well_formed()) {
+            return false;
+        }
+        let Ok(mut observed) = self.observed_programs.lock() else {
+            return false;
+        };
+        let new_count = programs
+            .iter()
+            .copied()
+            .filter(|program| !observed.contains(program))
+            .collect::<HashSet<_>>()
+            .len();
+        if observed.len().saturating_add(new_count) > DEBUGGER_SESSION_MAX_OBSERVED_PROGRAMS {
+            return false;
+        }
+        observed.extend(programs.iter().copied());
+        true
+    }
+
+    pub fn observed_program(&self, program: DebuggerProgram) -> bool {
+        program.is_well_formed()
+            && self
+                .observed_programs
+                .lock()
+                .is_ok_and(|observed| observed.contains(&program))
+    }
+
     /// An independent owner/client grant; scope and metadata grants do not
     /// imply permission to read a runtime value.
     pub fn permits_bounded_values(&self) -> bool {
@@ -560,6 +595,7 @@ pub fn metadata_session_authorization(
         granted: granted_metadata_capabilities.clone(),
         granted_bounded_values: *granted_bounded_values,
         observed_scope_entries: Arc::new(Mutex::new(DebuggerScopeReceipts::default())),
+        observed_programs: Arc::new(Mutex::new(HashSet::new())),
         observed_metadata_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_source_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_type_identities: Arc::new(Mutex::new(BTreeSet::new())),

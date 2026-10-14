@@ -580,6 +580,61 @@ impl PageHostClient for PageHostConnection {
         })
     }
 
+    fn debugger_emitted_original_position(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
+            tab_id,
+            document_generation,
+            program,
+            generated_line,
+            generated_column_utf16,
+        })
+    }
+
+    fn debugger_emitted_map_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_emitted_safe_point(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
+            tab_id,
+            document_generation,
+            program,
+            generated_line,
+            generated_column_utf16,
+        })
+    }
+
+    fn debugger_emitted_paused_root_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+            tab_id,
+            document_generation,
+            program,
+        })
+    }
+
+    fn debugger_emitted_paused_root_location_available(&self) -> bool {
+        true
+    }
+
     fn debugger_bluets_metadata_symbol_type(
         &mut self,
         tab_id: u64,

@@ -17,6 +17,7 @@ pub use decorators::DECORATOR_HELPER_V1_VERSION;
 pub use legacy_decorators::LEGACY_DECORATOR_HELPER_V1_VERSION;
 pub(crate) use module_wrappers::VERSION as MODULE_WRAPPERS_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
+pub use source_map_lookup::{SourceMapLookupError, SourceMapOriginalPosition};
 pub(crate) use system::HELPER_SOURCE as SYSTEM_HELPER_SOURCE;
 pub(crate) use targets::TARGET_HELPER_V1_SOURCES;
 pub use targets::TARGET_HELPER_V1_VERSION;
@@ -43,6 +44,7 @@ mod output_options;
 mod private_lowering;
 mod reexports;
 mod relocations;
+mod source_map_lookup;
 mod system;
 mod targets;
 mod token_maps;
@@ -514,7 +516,7 @@ fn runtime_declarations(declarations: &[Declaration]) -> Vec<(&Declaration, bool
 
 /// The specifier an emitted module is imported by: a TypeScript extension becomes
 /// the JavaScript one (`.tsx` stays `.jsx` when JSX is preserved).
-fn javascript_specifier(specifier: &str, preserve_jsx: bool) -> String {
+pub fn javascript_specifier(specifier: &str, preserve_jsx: bool) -> String {
     for (source, output) in [(".mts", ".mjs"), (".cts", ".cjs")] {
         if let Some(stem) = specifier.strip_suffix(source) {
             return format!("{stem}{output}");
@@ -621,6 +623,12 @@ fn apply_edits_with_provenance(
                     relocations::Part::Anchor(offset) => {
                         if segment_limit.is_some() {
                             emitted.mark(offset);
+                            anchored = true;
+                        }
+                    }
+                    relocations::Part::Unmapped => {
+                        if segment_limit.is_some() {
+                            emitted.insert_unmapped("");
                             anchored = true;
                         }
                     }
@@ -848,6 +856,17 @@ impl<'a> ProvenanceEmitter<'a> {
                 }
             }
             let next = characters.peek().map(|(_, character)| *character);
+            if self.segment_limit.is_some() && is_line_break(character, next) {
+                let line_start = self.source[..position]
+                    .rfind('\n')
+                    .map_or(0, |index| index + 1);
+                if self.source[line_start..position]
+                    .trim_start()
+                    .starts_with("//")
+                {
+                    self.mark(position);
+                }
+            }
             self.push(character, next);
             if let Some(token) = self.tokens.get(token_index) {
                 if token.end == position + character.len_utf8() {
@@ -857,7 +876,8 @@ impl<'a> ProvenanceEmitter<'a> {
                     token_index += 1;
                 }
             }
-            if is_line_break(character, next) {
+            if is_line_break(character, next) && position + character.len_utf8() < self.source.len()
+            {
                 self.mark(source_offset + offset + character.len_utf8());
             }
         }

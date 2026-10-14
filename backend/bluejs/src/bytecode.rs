@@ -532,6 +532,15 @@ pub(crate) struct AbruptJump {
     pub target: u32,
 }
 
+/// One identifier expression's exact instruction, recorded by the
+/// compiler while lowering the owning source-order statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IdentifierOffset {
+    pub statement_index: usize,
+    pub name: String,
+    pub bytecode_offset: u32,
+}
+
 /// Read-only compiled code plus its constant pool and binding/scope
 /// metadata. Can execute repeatedly in the same or independent VMs;
 /// runtime object handles are never stored in its constant pool.
@@ -550,6 +559,10 @@ pub struct Bytecode {
     /// order statements. `None` means the statement emits no root-code-unit
     /// instruction and therefore has no executable safe point.
     pub(crate) root_statement_offsets: Vec<Option<u32>>,
+    /// Exact code-unit instruction starts emitted while evaluating an
+    /// identifier expression inside a root statement. These records are
+    /// compiler provenance, not inferred from neighboring instructions.
+    pub(crate) identifier_offsets: Vec<IdentifierOffset>,
     /// Exact emitted instruction ranges for root statements, in source order.
     /// The compiler records both ends; consumers must not infer ownership by
     /// searching for a nearby statement start.
@@ -679,6 +692,7 @@ impl Bytecode {
             debugger_code_unit_ordinal: None,
             debugger_program_generation: None,
             root_statement_offsets: Vec::new(),
+            identifier_offsets: Vec::new(),
             root_statement_ranges: Vec::new(),
             root_function_child_indices: Vec::new(),
             root_statement_child_ranges: Vec::new(),

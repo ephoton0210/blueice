@@ -48,6 +48,7 @@ impl Args {
                 | "--stripInternal"
                 | "--downlevelIteration"
                 | "--sourceMap"
+                | "--inlineSourceMap"
                 | "--declaration"
                 | "--declarationMap"
                 | "--emitDeclarationOnly"

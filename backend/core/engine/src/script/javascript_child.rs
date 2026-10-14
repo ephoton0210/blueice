@@ -27,6 +27,7 @@ use super::{
 use crate::script::inline_runner::InlineBlueTsSourcePosition;
 use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
+    JavaScriptPageDebuggerEmittedOriginalPosition, JavaScriptPageDebuggerEmittedPausedRootLocation,
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExceptionLocation,
     JavaScriptPageDebuggerExceptionLocationTarget, JavaScriptPageDebuggerExecutionState,
     JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerLinkedExecutionState,
@@ -80,10 +81,11 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
-    self, PageHostChildStats, PageHostDebuggerBlueTsMetadataSymbolContract,
-    PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
-    PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerLinkedExecutionState,
-    PageHostDebuggerLinkedFrame, PageHostDebuggerLinkedSource, PageHostDebuggerLinkedStackSnapshot,
+    self, PageHostBlueTsEmissionProfile, PageHostChildStats,
+    PageHostDebuggerBlueTsMetadataSymbolContract, PageHostDebuggerBlueTsMetadataSymbolLocation,
+    PageHostDebuggerBlueTsMetadataSymbolType, PageHostDebuggerExecutionState,
+    PageHostDebuggerFrame, PageHostDebuggerLinkedExecutionState, PageHostDebuggerLinkedFrame,
+    PageHostDebuggerLinkedSource, PageHostDebuggerLinkedStackSnapshot,
     PageHostDebuggerLinkedValueTarget, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
     PageHostDebuggerSafePoint, PageHostDebuggerScopeEntry, PageHostDebuggerStackSnapshot,
     PageHostDebuggerStaticScopeTarget, PageHostDebuggerValuePreview, PageHostDebuggerValueTarget,
@@ -201,6 +203,15 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// This changes document scheduling, so it is selected only by the core
     /// constructor and defaults to false for the existing page-host path.
     native_debugger_execution_control: bool,
+    /// Trusted startup-only choice to install BlueTSC-emitted classic code
+    /// and its exact source map as one child artifact.
+    emitted_blue_ts_classic: bool,
+    /// Independent owner-only choice for generated ESM graph artifacts.
+    /// Neither page markup nor debugger requests can enable this route.
+    emitted_blue_ts_module: bool,
+    /// Core-selected lowering profile for emitted BlueTS only. Direct BlueTS
+    /// and plain JavaScript are unaffected.
+    emitted_bluets_profile: PageHostBlueTsEmissionProfile,
     hold_pending_debugger_execution_once: bool,
     reserved_debugger_hold_once: BTreeSet<TabId>,
     /// Remaining one-turn discovery/configuration deferrals keyed by the
@@ -656,6 +667,9 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             child,
             external_source_authorizer: None,
             native_debugger_execution_control: false,
+            emitted_blue_ts_classic: false,
+            emitted_blue_ts_module: false,
+            emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
             hold_pending_debugger_execution_once: false,
             reserved_debugger_hold_once: BTreeSet::new(),
             debugger_execution_deferrals: BTreeMap::new(),
@@ -696,6 +710,47 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
         self.native_debugger_execution_control = true;
     }
 
+    /// Selects the exact emitted-artifact route for classic BlueTS page
+    /// scripts. This is a construction-time owner policy, never a page or
+    /// debugger request; the ordinary direct route remains the default.
+    pub fn enable_emitted_blue_ts_classic(&mut self) {
+        self.emitted_blue_ts_classic = true;
+    }
+
+    /// Selects child-compiled emitted ESM graphs independently of classic
+    /// scripts. The exact generated JavaScript and maps stay child-owned.
+    pub fn enable_emitted_blue_ts_module(&mut self) {
+        self.emitted_blue_ts_module = true;
+    }
+
+    /// Selects legacy decorator plus metadata emit for emitted classic
+    /// BlueTS scripts. Only the startup owner can call this method.
+    pub fn enable_emitted_blue_ts_legacy_metadata(&mut self) {
+        self.emitted_blue_ts_classic = true;
+        self.emitted_bluets_profile = PageHostBlueTsEmissionProfile::LegacyDecoratorsWithMetadata;
+    }
+
+    /// Selects legacy decorators without metadata for emitted classic
+    /// BlueTS scripts. This remains a construction-time owner policy.
+    pub fn enable_emitted_blue_ts_legacy_decorators(&mut self) {
+        self.emitted_blue_ts_classic = true;
+        self.emitted_bluets_profile = PageHostBlueTsEmissionProfile::LegacyDecorators;
+    }
+
+    /// Selects ES5 emission for classic BlueTS scripts. This is an
+    /// owner-only startup policy, never a page or debugger option.
+    pub fn enable_emitted_blue_ts_es5(&mut self) {
+        self.emitted_blue_ts_classic = true;
+        self.emitted_bluets_profile = PageHostBlueTsEmissionProfile::Es5;
+    }
+
+    /// Selects System-module wrapper emission for classic BlueTS scripts.
+    /// A page must supply its own System loader as ordinary JavaScript.
+    pub fn enable_emitted_blue_ts_system(&mut self) {
+        self.emitted_blue_ts_classic = true;
+        self.emitted_bluets_profile = PageHostBlueTsEmissionProfile::System;
+    }
+
     /// Wraps a caller-owned child connection and the only external-source
     /// authority it may use. The authorizer is intentionally installed only
     /// here and exposed only through immutable authorization calls.
@@ -707,6 +762,9 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             child,
             external_source_authorizer: Some(Box::new(authorizer)),
             native_debugger_execution_control: false,
+            emitted_blue_ts_classic: false,
+            emitted_blue_ts_module: false,
+            emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
             hold_pending_debugger_execution_once: false,
             reserved_debugger_hold_once: BTreeSet::new(),
             debugger_execution_deferrals: BTreeMap::new(),

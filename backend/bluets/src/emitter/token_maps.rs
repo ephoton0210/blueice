@@ -17,6 +17,36 @@ pub(super) fn mark_start(source: &str, tokens: &[Token], index: usize) -> bool {
     if token.is("function") && index > 0 && tokens[index - 1].is("export") {
         return false;
     }
+    // TypeScript keeps an empty parameter/call close on the opening `(`
+    // position rather than assigning `)` its own source column. This also
+    // lets a following body open inherit the callable-name end.
+    if token.is(")") && index > 0 && tokens[index - 1].is("(") {
+        return false;
+    }
+    // A rewritten callable body with no intervening trivia begins at the
+    // parameter-list end; TypeScript does not assign `{` a new source column.
+    if token.is("{") && index > 0 && tokens[index - 1].is(")") {
+        return false;
+    }
+    // An assigned object literal begins at its own brace. The whitespace
+    // before `=`-followed `{` does not make the brace a generated separator.
+    if token.is("{") && index > 0 && tokens[index - 1].is("=") {
+        return true;
+    }
+    // A same-line object-literal close after a value inherits the value end
+    // until the brace's closing segment, matching TypeScript's token boundary.
+    if token.is("}")
+        && index > 0
+        && matches!(
+            tokens[index - 1].kind,
+            TokenKind::Number | TokenKind::String
+        )
+        && source[tokens[index - 1].end..token.start]
+            .bytes()
+            .all(|byte| matches!(byte, b' ' | b'\t'))
+    {
+        return false;
+    }
     if token.kind == TokenKind::Punct
         && !token.is("}")
         && source[..token.start]
@@ -32,6 +62,12 @@ pub(super) fn mark_start(source: &str, tokens: &[Token], index: usize) -> bool {
 }
 
 pub(super) fn mark_end(token: &Token) -> bool {
+    // TypeScript keeps `const`'s following trivia in the same declaration
+    // range as the name. Its own map has no boundary at `const`'s end when
+    // the emitted JavaScript is otherwise byte-identical.
+    if token.is("const") {
+        return false;
+    }
     matches!(
         token.kind,
         TokenKind::Identifier

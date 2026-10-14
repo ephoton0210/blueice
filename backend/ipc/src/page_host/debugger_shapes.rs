@@ -14,6 +14,28 @@ pub struct PageHostDebuggerProgram {
     pub program_generation: u64,
 }
 
+/// Child-private original coordinate selected by one exact emitted-JavaScript
+/// map and program generation. It carries no source text, module identity,
+/// generated code, AST node, safe point or authority for a public debugger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerEmittedOriginalPosition {
+    pub source_index: u32,
+    pub line: u32,
+    pub column_utf16: u32,
+}
+
+/// A child-private projection of one paused root, nested, or linked-frame
+/// instruction. The generated coordinate exists only when that exact
+/// instruction has a parser-recorded statement or unique identifier token;
+/// `original` is absent for generated-only code. Neither field authorizes
+/// public source disclosure by itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerEmittedPausedRootLocation {
+    pub generated_line: u32,
+    pub generated_column_utf16: u32,
+    pub original: Option<PageHostDebuggerEmittedOriginalPosition>,
+}
+
 impl PageHostDebuggerProgram {
     /// Private debugger identities never use zero placeholders.
     pub fn is_well_formed(self) -> bool {

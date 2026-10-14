@@ -12,6 +12,33 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     parse_module_with_edition(source, SyntaxEdition::EsNext)
 }
 
+/// Parses a Module with exact byte spans for its executable body items and
+/// identifier expressions. Static-only import/export headers have no body
+/// safe point. The spans are parser provenance, not debugger authorization.
+pub fn parse_module_with_debug_spans(
+    source: &str,
+) -> Result<(Module, Vec<ParsedStatementSpan>, Vec<ParsedIdentifierSpan>), ParseError> {
+    let escaped = crate::source_encoding::escape(source);
+    let (module, spans, identifiers) = parse_encoded_module(&escaped, SyntaxEdition::EsNext, true)?;
+    let source_bytes = crate::source_encoding::escaped_character_source_bytes(source);
+    let spans = spans
+        .into_iter()
+        .map(|(start, end)| ParsedStatementSpan {
+            start_byte: source_bytes[start],
+            end_byte: source_bytes[end],
+        })
+        .collect();
+    let identifiers = identifiers
+        .into_iter()
+        .map(|(start, end, name)| ParsedIdentifierSpan {
+            start_byte: source_bytes[start],
+            end_byte: source_bytes[end],
+            name,
+        })
+        .collect();
+    Ok((module, spans, identifiers))
+}
+
 /// Parses a Module with the selected body syntax edition. The Module goal
 /// admits static import/export headers even for an ES5 payload; this is not
 /// a claim that an ES5 Script admits module declarations.
@@ -19,8 +46,19 @@ pub fn parse_module_with_edition(
     source: &str,
     edition: SyntaxEdition,
 ) -> Result<Module, ParseError> {
-    let source = crate::source_encoding::escape(source);
-    let mut parser = Parser::new_module(&source);
+    parse_encoded_module(&crate::source_encoding::escape(source), edition, false)
+        .map(|(module, _, _)| module)
+}
+
+type EncodedModuleWithDebugSpans = (Module, Vec<(usize, usize)>, Vec<(usize, usize, String)>);
+
+fn parse_encoded_module(
+    source: &str,
+    edition: SyntaxEdition,
+    capture_spans: bool,
+) -> Result<EncodedModuleWithDebugSpans, ParseError> {
+    let mut parser = Parser::new_module(source);
+    parser.capture_debug_identifiers = capture_spans;
     parser.select_edition(edition)?;
     parser.module_await = true;
     parser.module = true;
@@ -29,7 +67,10 @@ pub fn parse_module_with_edition(
     let mut imports = Vec::new();
     let mut exports = Vec::new();
     let mut requests = Vec::new();
+    let mut spans = Vec::new();
     while !parser.at_eof() {
+        let start = parser.token_start();
+        let body_len = body.len();
         if parser.check_identifier("import")
             && !parser.check_punct_at(1, Punct::LParen)
             && !parser.check_punct_at(1, Punct::Dot)
@@ -62,6 +103,9 @@ pub fn parse_module_with_edition(
                     return Err(parser.syntax_error("class declarations require a name"));
                 }
                 body.push(Stmt::ClassDecl(class));
+                if capture_spans {
+                    spans.push((start, parser.positions[parser.pos]));
+                }
                 continue;
             }
             if let Some((request, module_type)) =
@@ -75,6 +119,10 @@ pub fn parse_module_with_edition(
             }
         } else {
             body.push(parser.parse_statement()?);
+        }
+        if capture_spans && body.len() > body_len {
+            debug_assert_eq!(body.len(), body_len + 1);
+            spans.push((start, parser.positions[parser.pos]));
         }
     }
     let program = Program { body: body.clone() };
@@ -116,12 +164,16 @@ pub fn parse_module_with_edition(
     }) {
         edition.require(SyntaxEdition::EsNext, "import phases")?;
     }
-    Ok(Module {
-        body,
-        imports,
-        exports,
-        requests,
-    })
+    Ok((
+        Module {
+            body,
+            imports,
+            exports,
+            requests,
+        },
+        spans,
+        parser.debug_identifier_spans,
+    ))
 }
 
 /// Module items use one lexical environment: imported bindings, top-level

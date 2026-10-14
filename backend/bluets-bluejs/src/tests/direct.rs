@@ -7,6 +7,39 @@
 use super::*;
 
 #[test]
+fn emitted_standard_decorator_javascript_has_a_bluejs_execution_target() {
+    let fixture = include_str!("../../../bluets/tests/fixtures/k11_source_maps/decorated.ts");
+    // The bare VM has no page-host console; keep the decorator body and
+    // replace only that host-owned sink for this execution-target probe.
+    let source = fixture.replace(
+        "console.log(new Example().method());",
+        "new Example().method();",
+    );
+    assert_ne!(source, fixture);
+    let compilation = blueice_bluets::compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            source_map: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    let output = compilation.output.unwrap();
+    let javascript = &output.artifacts[ENTRY].javascript;
+    let parsed = bluejs::parse(javascript).expect("emitted JavaScript must parse in BlueJS");
+    let bytecode = bluejs::BlueJsProgramV1::Script(parsed)
+        .compile()
+        .expect("emitted JavaScript must compile in BlueJS");
+    assert_eq!(
+        bluejs::Vm::default()
+            .execute(&bytecode)
+            .expect("emitted JavaScript must execute in BlueJS"),
+        bluejs::Value::Number(42.0)
+    );
+}
+
+#[test]
 fn lowers_typed_source_directly_to_bluejs_ast_and_bytecode() {
     let artifact = compile_direct_script(
         ENTRY,

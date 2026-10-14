@@ -16,6 +16,7 @@ fn realm() -> DebuggerPageRealm {
 mod authorization_detail;
 mod authorization_inventory;
 mod capability_mapping;
+mod generated_receipts;
 mod scope_values;
 mod shape_contracts;
 mod source_location;

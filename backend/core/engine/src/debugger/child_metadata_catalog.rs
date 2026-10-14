@@ -118,6 +118,17 @@ pub(super) fn describe_child_location_capabilities(
             session.permits(DebuggerMetadataCapability::OpaqueSourceBreakpoint)
         })
         && locations.debugger_static_metadata_source_breakpoint_available();
+    let generated_breakpoint_available = locations_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueGeneratedBreakpoint)
+        })
+        && locations.debugger_emitted_map_available();
+    let generated_paused_location_available = execution_control_available
+        && stack_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueGeneratedPausedLocation)
+        })
+        && locations.debugger_emitted_paused_root_location_available();
     let static_metadata_contract_location_available = static_metadata_source_inventory_available
         && static_metadata_contract_inventory_available
         && metadata_session.is_some_and(|session| {
@@ -178,6 +189,8 @@ pub(super) fn describe_child_location_capabilities(
             static_metadata_safe_point_span_available,
             static_metadata_source_span_step_available,
             static_metadata_source_breakpoint_available,
+            generated_breakpoint_available,
+            generated_paused_location_available,
             static_metadata_contract_location_available,
             static_metadata_symbol_type_available,
             static_metadata_symbol_contract_available,

@@ -35,22 +35,40 @@ impl Vm {
                 "debugger value target is not an active paused slot",
             ));
         }
-        let (bindings, cells) =
-            match frame.code_unit_ordinal {
-                0 => {
-                    if let Some(root) = &self.debugger_module_continuation {
-                        (&root.execution.bindings, &root.execution.cells)
-                    } else {
-                        (&self.bindings, &self.cells)
-                    }
+        let (bindings, cells) = match frame.code_unit_ordinal {
+            0 => {
+                if let Some(root) = &self.debugger_module_continuation {
+                    (&root.execution.bindings, &root.execution.cells)
+                } else {
+                    (&self.bindings, &self.cells)
                 }
-                _ => {
-                    let child = self.debugger_nested_continuation.as_ref().ok_or(
-                        RuntimeError::Unsupported("debugger nested value frame is unavailable"),
-                    )?;
+            }
+            _ => {
+                if let Some(child) = self
+                    .debugger_nested_continuation
+                    .as_ref()
+                    .filter(|child| child.code_unit_ordinal == frame.code_unit_ordinal)
+                {
                     (&child.execution.bindings, &child.execution.cells)
+                } else if let Some(intermediate) = self
+                    .debugger_nested_intermediate_continuation
+                    .as_ref()
+                    .filter(|intermediate| {
+                        intermediate.code.debugger_code_unit_ordinal
+                            == Some(frame.code_unit_ordinal)
+                    })
+                {
+                    (
+                        &intermediate.execution.bindings,
+                        &intermediate.execution.cells,
+                    )
+                } else {
+                    return Err(RuntimeError::Unsupported(
+                        "debugger nested value frame is unavailable",
+                    ));
                 }
-            };
+            }
+        };
         self.debugger_binding_preview(bindings, cells, entry)
     }
 
@@ -107,7 +125,8 @@ impl Vm {
             .map_err(RuntimeError::Unsupported)
     }
 
-    /// Inspects only an exact paused root or nested invocation. No bytecode is
+    /// Inspects only an exact paused root or nested invocation, including one
+    /// retained intermediate classic caller when present. No bytecode is
     /// executed, no heap getter is read, and no binding value is copied.
     pub fn debugger_stack_snapshot(
         &self,
@@ -144,6 +163,44 @@ impl Vm {
         {
             return Err(RuntimeError::Unsupported(
                 "debugger linked stack is not a dependency child and entry caller",
+            ));
+        }
+        Ok(snapshot)
+    }
+
+    /// Native-only exact three-frame read for a script child called through
+    /// one separately installed synchronous loader closure. Unlike the
+    /// classic read, this preserves each frame's actual program generation.
+    pub fn debugger_foreign_intermediate_stack_snapshot(
+        &self,
+        frame_serial: u64,
+        intermediate_generation: u64,
+        max_frames: u32,
+        max_scope_entries: u32,
+    ) -> Result<VmDebuggerStackSnapshot, RuntimeError> {
+        if self.debugger_continuation.is_none()
+            || self.debugger_module_continuation.is_some()
+            || max_frames < 3
+        {
+            return Err(RuntimeError::Unsupported(
+                "foreign debugger stack requires a retained script caller chain",
+            ));
+        }
+        let snapshot = self.debugger_stack_snapshot_inner(
+            Some(frame_serial),
+            max_frames,
+            max_scope_entries,
+            true,
+        )?;
+        if snapshot.frames.len() != 3
+            || snapshot.stack_truncated
+            || snapshot.program_generation == intermediate_generation
+            || snapshot.frames[0].program_generation != snapshot.program_generation
+            || snapshot.frames[1].program_generation != intermediate_generation
+            || snapshot.frames[2].program_generation != snapshot.program_generation
+        {
+            return Err(RuntimeError::Unsupported(
+                "foreign debugger stack is not the exact child, loader, and root chain",
             ));
         }
         Ok(snapshot)
@@ -206,6 +263,39 @@ impl Vm {
                     max_entries,
                 ));
                 if max_frames > 1 {
+                    if let Some(intermediate) = &self.debugger_nested_intermediate_continuation {
+                        let intermediate_generation = intermediate
+                            .code
+                            .debugger_program_generation
+                            .ok_or(RuntimeError::Unsupported(
+                                "debugger-paused intermediate has no installed program generation",
+                            ))?;
+                        if intermediate_generation != program_generation && !allow_linked {
+                            return Err(RuntimeError::Unsupported(
+                                "nested debugger intermediate frame belongs to another program generation",
+                            ));
+                        }
+                        frames.push(debugger_stack_frame(
+                            intermediate_generation,
+                            intermediate
+                                .code
+                                .debugger_code_unit_ordinal
+                                .expect("installed intermediate code unit retains its ordinal"),
+                            intermediate.pc,
+                            &intermediate.execution.active_scope_slots,
+                            max_entries,
+                        ));
+                    } else {
+                        frames.push(debugger_stack_frame(
+                            program_generation,
+                            0,
+                            root_pc,
+                            root_scopes,
+                            max_entries,
+                        ));
+                    }
+                }
+                if max_frames > 2 && self.debugger_nested_intermediate_continuation.is_some() {
                     frames.push(debugger_stack_frame(
                         program_generation,
                         0,
@@ -217,7 +307,12 @@ impl Vm {
                 Ok(VmDebuggerStackSnapshot {
                     program_generation,
                     frames,
-                    stack_truncated: max_frames == 1,
+                    stack_truncated: max_frames
+                        < if self.debugger_nested_intermediate_continuation.is_some() {
+                            3
+                        } else {
+                            2
+                        },
                 })
             }
             (None, None) => {

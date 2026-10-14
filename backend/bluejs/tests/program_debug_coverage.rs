@@ -3,9 +3,73 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use blueice_bluejs::{
-    parse, BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramRegistry, BlueJsProgramV1,
-    BlueJsSourceIdentity, CompileError,
+    parse, parse_module_with_debug_spans, BlueJsAstNodeKind, BlueJsProgramDebugError,
+    BlueJsProgramRegistry, BlueJsProgramV1, BlueJsSourceIdentity, CompileError,
 };
+
+#[test]
+fn emitted_module_parser_items_match_compiler_root_and_identifier_safe_points() {
+    let source = "import { value } from './dep.js';\nexport const answer = value + 1;";
+    let (module, statements, identifiers) = parse_module_with_debug_spans(source).unwrap();
+    assert_eq!(statements.len(), 1);
+    assert_eq!(identifiers.len(), 1);
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install(
+            BlueJsSourceIdentity::new("page:///main.mjs", "sha256:generated-module").unwrap(),
+            &BlueJsProgramV1::Module(module),
+        )
+        .unwrap();
+    let compiled = registry.get(handle).unwrap();
+    let statements_in_code = compiled
+        .ast_nodes()
+        .iter()
+        .filter(|node| node.is_top_level_statement())
+        .collect::<Vec<_>>();
+    assert_eq!(statements_in_code.len(), statements.len());
+    let root = compiled
+        .safe_point_for_ast_node(statements_in_code[0].id())
+        .unwrap();
+    assert_eq!(root.code_unit.ordinal(), 0);
+    let imported_value = compiled.unique_identifier_safe_point(0, "value").unwrap();
+    assert_eq!(imported_value.code_unit.ordinal(), 0);
+    // A statement and its first expression may share an instruction. Source
+    // projection must treat such a reverse mapping as ambiguous, not invent
+    // an instruction between them.
+    assert_eq!(
+        &source[identifiers[0].start_byte..identifiers[0].end_byte],
+        "value"
+    );
+}
+
+#[test]
+fn hoisted_module_function_retains_its_root_statement_for_nested_identifier() {
+    let source = "export function inner(){ return 41 + (globalThis).offset; }";
+    let (module, statements, identifiers) = parse_module_with_debug_spans(source).unwrap();
+    assert_eq!(statements.len(), 1);
+    assert_eq!(identifiers.len(), 1);
+    assert_eq!(
+        &source[identifiers[0].start_byte..identifiers[0].end_byte],
+        "globalThis"
+    );
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install(
+            BlueJsSourceIdentity::new("page:///dependency.mjs", "sha256:generated-dependency")
+                .unwrap(),
+            &BlueJsProgramV1::Module(module),
+        )
+        .unwrap();
+    let compiled = registry.get(handle).unwrap();
+    let point = compiled
+        .unique_identifier_safe_point(0, "globalThis")
+        .unwrap();
+    assert_eq!(point.code_unit.ordinal(), 1);
+    assert_eq!(
+        compiled.unique_identifier_at_safe_point(point),
+        Some((0, "globalThis"))
+    );
+}
 
 #[test]
 fn program_registry_errors_have_stable_host_facing_diagnostics() {
@@ -147,6 +211,82 @@ fn a_live_program_exposes_its_generation_source_and_executable_inventory() {
         Ok(())
     );
     assert_eq!(registry.validate_safe_point(handle, point), Ok(()));
+}
+
+#[test]
+fn unique_root_identifier_evaluation_has_an_exact_compiler_safe_point() {
+    let source = || BlueJsSourceIdentity::new("page:///decorated.js", "sha256:decorated").unwrap();
+    let mut registry = BlueJsProgramRegistry::default();
+    let program =
+        BlueJsProgramV1::Script(parse("const decorators = [decoSite]; decorators;").unwrap());
+    let handle = registry.install(source(), &program).unwrap();
+    let compiled = registry.get(handle).unwrap();
+    let point = compiled
+        .unique_identifier_safe_point(0, "decoSite")
+        .expect("one evaluated decorator identifier");
+    assert_eq!(registry.validate_safe_point(handle, point), Ok(()));
+    assert_eq!(
+        compiled.unique_identifier_at_safe_point(point),
+        Some((0, "decoSite"))
+    );
+    assert_eq!(compiled.unique_identifier_safe_point(0, "decorators"), None);
+
+    let duplicate =
+        BlueJsProgramV1::Script(parse("const decorators = [decoSite, decoSite];").unwrap());
+    let handle = registry.install(source(), &duplicate).unwrap();
+    let compiled = registry.get(handle).unwrap();
+    assert_eq!(compiled.unique_identifier_safe_point(0, "decoSite"), None);
+}
+
+#[test]
+fn nested_repeated_root_callees_have_two_distinct_compiler_ordered_points() {
+    let program = BlueJsProgramV1::Script(
+        parse("var merged = helper(helper({}, base, true), {b: 2}, false);").unwrap(),
+    );
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install(
+            BlueJsSourceIdentity::new("page:///spread.js", "sha256:spread").unwrap(),
+            &program,
+        )
+        .unwrap();
+    let compiled = registry.get(handle).unwrap();
+    assert_eq!(compiled.unique_identifier_safe_point(0, "helper"), None);
+    let [outer, inner] = compiled
+        .two_root_identifier_safe_points(0, "helper")
+        .expect("the nested calls evaluate distinct callees in source order");
+    assert_ne!(outer, inner);
+    assert!(outer.bytecode_offset < inner.bytecode_offset);
+    assert_eq!(registry.validate_safe_point(handle, outer), Ok(()));
+    assert_eq!(registry.validate_safe_point(handle, inner), Ok(()));
+    assert_eq!(compiled.two_root_identifier_safe_points(0, "base"), None);
+}
+
+#[test]
+fn identifier_provenance_retains_static_block_nesting_depth() {
+    let source = "function decoSite() {} class Direct { static { const decorators = [decoSite]; } } const Indirect = (() => { class Nested { static { const decorators = [decoSite]; } } return Nested; })();";
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install(
+            BlueJsSourceIdentity::new("page:///decorated.js", "sha256:depth").unwrap(),
+            &BlueJsProgramV1::Script(parse(source).unwrap()),
+        )
+        .unwrap();
+    let compiled = registry.get(handle).unwrap();
+    let direct = compiled
+        .unique_identifier_safe_point(1, "decoSite")
+        .unwrap();
+    let indirect = compiled
+        .unique_identifier_safe_point(2, "decoSite")
+        .unwrap();
+    assert_eq!(
+        compiled.code_units()[direct.code_unit.ordinal() as usize].nesting_depth(),
+        1
+    );
+    assert_eq!(
+        compiled.code_units()[indirect.code_unit.ordinal() as usize].nesting_depth(),
+        2
+    );
 }
 
 #[test]

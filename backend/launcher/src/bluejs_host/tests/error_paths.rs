@@ -658,7 +658,7 @@ fn private_child_bluets_module_root_step_rejects_an_uncaught_throw() {
     let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
         panic!("the entry module remains pending");
     };
-    let entry_handle = attachment.entry.handle;
+    let entry_handle = attachment.entry_handle();
     let point = host
         .runtime
         .module_evaluate_entry_safe_point(7, entry_handle)
@@ -765,7 +765,7 @@ fn private_child_bluets_linked_resume_rejects_an_uncaught_throw_in_the_dependenc
     let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
         panic!("the linked module remains pending");
     };
-    let dependency_handle = attachment.modules[dependency].handle;
+    let dependency_handle = attachment.module_handle(dependency).unwrap();
     let dependency_program = host.documents[&7]
         .debugger_programs
         .iter()

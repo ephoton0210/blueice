@@ -12,13 +12,14 @@
 
 use crate::{
     script::javascript::{
-        JavaScriptPageDebuggerError, JavaScriptPageDebuggerExceptionLocationTarget,
-        JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
-        JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerLinkedSpanAccess,
-        JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerLinkedStackSnapshot,
-        JavaScriptPageDebuggerLinkedValueTarget, JavaScriptPageDebuggerNestedExecutionState,
-        JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
-        JavaScriptPageDebuggerScopeEntry, JavaScriptPageDebuggerStaticMetadata,
+        JavaScriptPageDebuggerEmittedPausedRootLocation, JavaScriptPageDebuggerError,
+        JavaScriptPageDebuggerExceptionLocationTarget, JavaScriptPageDebuggerExecutionState,
+        JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerLinkedExecutionState,
+        JavaScriptPageDebuggerLinkedSpanAccess, JavaScriptPageDebuggerLinkedStackFrame,
+        JavaScriptPageDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerLinkedValueTarget,
+        JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
+        JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
+        JavaScriptPageDebuggerStaticMetadata,
         JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
         JavaScriptPageDebuggerStaticMetadataContractTarget,
         JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
@@ -39,6 +40,9 @@ use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
     DebuggerErrorCode, DebuggerExceptionLocation, DebuggerExecutionState, DebuggerFrame,
+    DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget,
+    DebuggerGeneratedLinkedStackLocations, DebuggerGeneratedOriginalPosition,
+    DebuggerGeneratedPausedLocation, DebuggerGeneratedPausedSourceLocation,
     DebuggerLinkedArmTarget, DebuggerLinkedExecutionState, DebuggerLinkedFrame,
     DebuggerLinkedScopeSnapshot, DebuggerLinkedScopeTarget, DebuggerLinkedStackCoordinates,
     DebuggerLinkedStackCoordinatesTarget, DebuggerLinkedStackFrame, DebuggerLinkedStackSnapshot,
@@ -457,6 +461,9 @@ impl DebuggerRequestReceiver {
                 DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target } => {
                     Some(target.source.metadata.program.realm.tab_id)
                 }
+                DebuggerRequest::ArmGeneratedBreakpoint { target } => {
+                    Some(target.program.realm.tab_id)
+                }
                 _ => None,
             };
             let requests_execution_transition = matches!(
@@ -466,6 +473,7 @@ impl DebuggerRequestReceiver {
                     | DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
                     | DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { .. }
                     | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
+                    | DebuggerRequest::ArmGeneratedBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
                     | DebuggerRequest::StepRootInstruction { .. }
                     | DebuggerRequest::StepNestedInstruction { .. }
@@ -681,6 +689,14 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. } => {
             unavailable_static_metadata_source_breakpoint_arm()
         }
+        DebuggerRequest::ResolveGeneratedBreakpoint { .. } => unavailable_generated_breakpoint(),
+        DebuggerRequest::ArmGeneratedBreakpoint { .. } => unavailable_generated_breakpoint_arm(),
+        DebuggerRequest::GetGeneratedPausedLocation { .. } => {
+            unavailable_generated_paused_location()
+        }
+        DebuggerRequest::GetGeneratedLinkedStackLocations { .. } => {
+            unavailable_generated_paused_location()
+        }
         DebuggerRequest::DescribeStaticMetadataContractLocation { .. } => {
             unavailable_static_metadata_contract_location()
         }
@@ -836,7 +852,9 @@ fn handle_debugger_request_with_child_locations_and_pause(
         DebuggerRequest::DescribeCapabilities { realm } => {
             describe_child_location_capabilities(tabs, locations, metadata_session, realm)
         }
-        DebuggerRequest::ListPrograms { realm } => list_child_programs(tabs, locations, realm),
+        DebuggerRequest::ListPrograms { realm } => {
+            list_child_programs(tabs, locations, metadata_session, realm)
+        }
         DebuggerRequest::ListStaticMetadata { program } => {
             list_child_static_metadata(tabs, locations, metadata_session, program)
         }
@@ -910,6 +928,23 @@ fn handle_debugger_request_with_child_locations_and_pause(
         }
         DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target } => {
             arm_child_static_metadata_source_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::ResolveGeneratedBreakpoint { target } => {
+            resolve_child_generated_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::ArmGeneratedBreakpoint { target } => {
+            arm_child_generated_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::GetGeneratedPausedLocation { program } => {
+            child_generated_paused_location(tabs, locations, metadata_session, program)
+        }
+        DebuggerRequest::GetGeneratedLinkedStackLocations { expected_stack } => {
+            child_generated_linked_stack_locations(
+                tabs,
+                locations,
+                metadata_session,
+                expected_stack,
+            )
         }
         DebuggerRequest::DescribeStaticMetadataContractLocation { target } => {
             describe_child_static_metadata_contract_location(
@@ -1122,6 +1157,8 @@ mod child_metadata_details;
 use child_metadata_details::*;
 mod child_control;
 use child_control::*;
+mod child_generated;
+use child_generated::*;
 mod child_inspection;
 use child_inspection::*;
 mod generic_routes;

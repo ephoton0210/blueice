@@ -36,6 +36,9 @@ use file_loader::FileLoader;
 #[path = "bluetsc/node_modules.rs"]
 mod node_modules;
 
+#[path = "bluetsc/source_map_data.rs"]
+mod source_map_data;
+
 #[path = "bluetsc/native_cli/mod.rs"]
 mod native_cli;
 #[path = "bluetsc/tsconfig/mod.rs"]
@@ -262,6 +265,8 @@ struct BuildMetadata {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     strict_artifacts: Vec<StrictArtifactIdentity>,
     source_map: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    inline_source_map: Option<bool>,
     declaration: bool,
     remove_comments: bool,
     new_line: &'static str,
@@ -571,6 +576,7 @@ fn build_metadata(
             Vec::new()
         },
         source_map: invocation.options.source_map,
+        inline_source_map: invocation.inline_source_map.then_some(true),
         declaration: invocation.options.declaration,
         remove_comments: invocation.options.remove_comments,
         new_line: invocation.options.new_line.as_str(),
@@ -810,20 +816,24 @@ fn publish_build(
                 .ok_or_else(|| io::Error::other("artifact path has no parent"))?;
             fs::create_dir_all(js_parent)?;
             let mut javascript = artifact.javascript.clone();
-            if artifact.source_map.is_some() {
-                let map_name = js_path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|name| format!("{name}.map"))
-                    .ok_or_else(|| io::Error::other("artifact filename is not UTF-8"))?;
-                let url = metadata
-                    .map_root
-                    .as_deref()
-                    .filter(|root| !root.is_empty())
-                    .map_or_else(
-                        || map_name.clone(),
-                        |root| format!("{}/{map_name}", root.trim_end_matches('/')),
-                    );
+            if let Some(map) = &artifact.source_map {
+                let url = if metadata.inline_source_map == Some(true) {
+                    source_map_data::url(map)
+                } else {
+                    let map_name = js_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map(|name| format!("{name}.map"))
+                        .ok_or_else(|| io::Error::other("artifact filename is not UTF-8"))?;
+                    metadata
+                        .map_root
+                        .as_deref()
+                        .filter(|root| !root.is_empty())
+                        .map_or_else(
+                            || map_name.clone(),
+                            |root| format!("{}/{map_name}", root.trim_end_matches('/')),
+                        )
+                };
                 let newline = if metadata.new_line == "crlf" {
                     "\r\n"
                 } else {
@@ -833,10 +843,12 @@ fn publish_build(
             }
             fs::write(&js_path, javascript)?;
             if let Some(source_map) = &artifact.source_map {
-                fs::write(
-                    js_path.with_extension(format!("{extension}.map")),
-                    source_map.to_json(),
-                )?;
+                if metadata.inline_source_map != Some(true) {
+                    fs::write(
+                        js_path.with_extension(format!("{extension}.map")),
+                        source_map.to_json(),
+                    )?;
+                }
             }
             if let Some(declaration) = &artifact.declaration {
                 fs::write(

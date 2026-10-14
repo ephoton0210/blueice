@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+mod emitted_map;
 mod linked_frames;
 mod metadata_bindings;
 mod metadata_catalog;
@@ -116,6 +117,16 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         self.child.debugger_bluets_metadata_available()
             && self.child.debugger_bluets_metadata_sources_available()
             && self.child.debugger_bluets_source_breakpoint_available()
+    }
+
+    fn debugger_emitted_map_available(&self) -> bool {
+        self.child.debugger_emitted_map_available()
+    }
+
+    fn debugger_emitted_paused_root_location_available(&self) -> bool {
+        self.child.debugger_emitted_map_available()
+            && self.child.debugger_emitted_paused_root_location_available()
+            && self.child.debugger_execution_control_available()
     }
 
     fn debugger_static_metadata_contract_location_available(&self) -> bool {
@@ -255,6 +266,66 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         }
         self.debugger_programs.insert(tab_id, current);
         Ok(programs)
+    }
+
+    fn debugger_emitted_original_position(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerEmittedOriginalPosition>, JavaScriptPageDebuggerError>
+    {
+        self.core_debugger_emitted_original_position(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+            generated_line,
+            generated_column_utf16,
+        )
+    }
+
+    fn debugger_emitted_safe_point(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        self.core_debugger_emitted_safe_point(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+            generated_line,
+            generated_column_utf16,
+        )
+    }
+
+    fn debugger_emitted_paused_root_location(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<
+        (
+            JavaScriptPageDebuggerSafePoint,
+            Option<JavaScriptPageDebuggerEmittedPausedRootLocation>,
+        ),
+        JavaScriptPageDebuggerError,
+    > {
+        self.core_debugger_emitted_paused_root_location(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )
     }
 
     fn debugger_static_metadata(

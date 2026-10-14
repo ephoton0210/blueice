@@ -606,6 +606,13 @@ impl Parser {
             Token::Keyword(Keyword::Let) if !self.strict => "let".to_string(),
             _ => return Err(self.syntax_error("expected a decorator expression")),
         };
+        if self.capture_debug_identifiers {
+            self.debug_identifier_spans.push((
+                self.tokens[self.pos].start,
+                self.positions[self.pos + 1],
+                name.clone(),
+            ));
+        }
         self.advance();
         let mut expression = Expr::Identifier(name);
         while self.eat_punct(Punct::Dot) {

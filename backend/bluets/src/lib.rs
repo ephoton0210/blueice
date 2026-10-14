@@ -59,10 +59,11 @@ pub use diagnostic::{
     Diagnostic, DiagnosticCode, Severity, SourceSpan, TypeScriptDiagnostic, TypeScriptPosition,
     TypeScriptRelatedInformation, DIAGNOSTICS_VERSION,
 };
+pub use emitter::javascript_specifier as emitted_javascript_specifier;
 pub use emitter::{
     BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
-    SourceMap, CLASS_HELPER_V1_VERSION, DECORATOR_HELPER_V1_VERSION,
-    LEGACY_DECORATOR_HELPER_V1_VERSION, TARGET_HELPER_V1_VERSION,
+    SourceMap, SourceMapLookupError, SourceMapOriginalPosition, CLASS_HELPER_V1_VERSION,
+    DECORATOR_HELPER_V1_VERSION, LEGACY_DECORATOR_HELPER_V1_VERSION, TARGET_HELPER_V1_VERSION,
 };
 pub use enum_eval::{evaluate_enums, evaluate_enums_in, EnumValue, EvaluatedEnum, EvaluatedMember};
 pub use namespace_analysis::{

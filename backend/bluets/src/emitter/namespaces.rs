@@ -420,6 +420,7 @@ impl Walk<'_> {
                     Replacement {
                         text: format!("{parent}.{name}"),
                         wrap_calls: false,
+                        anchor_each_token: false,
                     },
                 )
             })
@@ -471,6 +472,25 @@ pub(super) struct Replacement {
     /// A call `name(..)` becomes `(0, text)(..)`, as TypeScript writes a call
     /// of an imported function so it does not bind `this` to the module.
     pub(super) wrap_calls: bool,
+    /// A generated System export-object access represents one original
+    /// binding token; its punctuation and property name share that site.
+    pub(super) anchor_each_token: bool,
+}
+
+fn anchor_generated_tokens(text: &str, source_start: usize) -> String {
+    let Ok(tokens) = crate::lex("<generated-reference>", text) else {
+        return text.to_string();
+    };
+    let mut anchored = String::new();
+    let mut cursor = 0;
+    for token in tokens.iter().filter(|token| token.kind != TokenKind::Eof) {
+        anchored.push_str(&text[cursor..token.start]);
+        anchored.push_str(&super::relocations::source_anchor(source_start));
+        anchored.push_str(&text[token.start..token.end]);
+        cursor = token.end;
+    }
+    anchored.push_str(&text[cursor..]);
+    anchored
 }
 
 pub(super) fn scan(
@@ -533,6 +553,9 @@ pub(super) fn scan(
         } else if before == Some("{") && after == Some(":") {
             // A label.
             continue;
+        }
+        if target.anchor_each_token {
+            replacement = anchor_generated_tokens(&replacement, start);
         }
         edits.push(TextEdit {
             start,

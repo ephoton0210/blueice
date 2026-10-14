@@ -41,6 +41,7 @@ pub(super) struct Invocation {
     pub(super) out_dir: Option<PathBuf>,
     pub(super) declaration_dir: Option<PathBuf>,
     pub(super) options: CompilerOptions,
+    pub(super) inline_source_map: bool,
     pub(super) imports: BTreeMap<String, PathBuf>,
     pub(super) packages: Option<PackageSettings>,
     pub(super) remote: Option<RemoteSettings>,
@@ -83,6 +84,8 @@ pub(super) struct BlueTscConfig {
     pub(super) out_dir: Option<String>,
     #[serde(default)]
     pub(super) source_map: bool,
+    #[serde(default)]
+    pub(super) inline_source_map: bool,
     #[serde(default)]
     pub(super) declaration: bool,
     #[serde(default)]
@@ -374,6 +377,7 @@ pub(super) fn resolve_explicit_invocation(
         out_dir,
         declaration_dir: None,
         options,
+        inline_source_map: false,
         imports: BTreeMap::new(),
         packages: None,
         remote: None,
@@ -622,7 +626,7 @@ pub(super) fn resolve_config_document(
         allow_js: config.allow_js,
         check_js: config.check_js,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
-        source_map: config.source_map,
+        source_map: config.source_map || config.inline_source_map,
         declaration: config.declaration,
         declaration_map: config.declaration_map,
         emit_declaration_only: config.emit_declaration_only,
@@ -664,6 +668,7 @@ pub(super) fn resolve_config_document(
         out_dir,
         declaration_dir,
         options,
+        inline_source_map: config.inline_source_map,
         imports,
         packages,
         remote,

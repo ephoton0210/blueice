@@ -7,6 +7,7 @@ use super::*;
 pub(super) fn list_child_programs(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
     realm: DebuggerPageRealm,
 ) -> DebuggerReply {
     let tab_id = match resolve_live_realm(tabs, realm) {
@@ -17,16 +18,28 @@ pub(super) fn list_child_programs(
         return unavailable_program_locations();
     }
     match locations.debugger_programs(tab_id, realm.realm_generation) {
-        Ok(programs) => DebuggerReply::Programs(
-            programs
+        Ok(programs) => {
+            let programs = programs
                 .into_iter()
                 .map(|program| DebuggerProgram {
                     realm,
                     program_handle: program.program_handle,
                     program_generation: program.program_generation,
                 })
-                .collect(),
-        ),
+                .collect::<Vec<_>>();
+            if let Some(session) = metadata_session.filter(|session| {
+                session.permits(DebuggerMetadataCapability::OpaqueGeneratedBreakpoint)
+                    || session.permits(DebuggerMetadataCapability::OpaqueGeneratedPausedLocation)
+            }) {
+                if !session.observe_programs(&programs) {
+                    return DebuggerReply::Error {
+                        code: DebuggerErrorCode::ResourceLimit,
+                        message: "debugger program receipt budget is exhausted".to_string(),
+                    };
+                }
+            }
+            DebuggerReply::Programs(programs)
+        }
         Err(error) => debugger_program_error(error),
     }
 }

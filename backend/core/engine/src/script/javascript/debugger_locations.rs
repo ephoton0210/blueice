@@ -120,6 +120,17 @@ pub trait PageJavaScriptDebuggerLocations {
         false
     }
 
+    /// Whether this owner can resolve positions in a generation-bound
+    /// compiler-emitted JavaScript artifact. This private support signal is
+    /// not a public debugger grant.
+    fn debugger_emitted_map_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_emitted_paused_root_location_available(&self) -> bool {
+        false
+    }
+
     /// Whether this route can disclose a separately authorized contract
     /// declaration range under receipted contract and source IDs.
     fn debugger_static_metadata_contract_location_available(&self) -> bool {
@@ -171,6 +182,50 @@ pub trait PageJavaScriptDebuggerLocations {
         tab_id: TabId,
         document_generation: u64,
     ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError>;
+
+    /// Looks up an original coordinate only after the owner re-mints and
+    /// verifies the exact child program generation. A future public route
+    /// must separately authorize this source-structure disclosure.
+    fn debugger_emitted_original_position(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerEmittedOriginalPosition>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    fn debugger_emitted_safe_point(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    fn debugger_emitted_paused_root_location(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<
+        (
+            JavaScriptPageDebuggerSafePoint,
+            Option<JavaScriptPageDebuggerEmittedPausedRootLocation>,
+        ),
+        JavaScriptPageDebuggerError,
+    > {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
 
     /// Lists only core-minted opaque metadata identities for one exact public
     /// program generation. It exposes no static metadata payload; source,

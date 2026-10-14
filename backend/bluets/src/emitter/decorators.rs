@@ -150,11 +150,7 @@ pub(super) fn relocated(start: usize, end: usize) -> String {
     format!("\u{0}M{start},{end}\u{0}")
 }
 
-pub(super) fn source_anchor(offset: usize) -> String {
-    format!("\u{0}A{offset}\u{0}")
-}
-
-fn class_keyword_start(class: &ClassDeclaration, source: &str) -> usize {
+pub(super) fn class_keyword_start(class: &ClassDeclaration, source: &str) -> usize {
     // The declaration span can begin at an export or decorator. The class
     // keyword is the last such token before the checked class name; lexing
     // the header avoids mistaking the word `class` in trivia for that token.
@@ -336,6 +332,22 @@ impl Lowerer<'_, '_> {
                 "a decorator expression with a line comment is not lowered",
             ));
         }
+        // TypeScript removes the grouping parentheses around a simple
+        // type-asserted decorator name. Relocate the surviving name through
+        // the erasure, then retain the original decorator end for the array
+        // boundary rather than mapping synthetic parentheses to source.
+        if inner.len() == 3
+            && tokens.len() == inner.len() + 2
+            && matches!(inner[0].kind, TokenKind::Identifier | TokenKind::Keyword)
+            && inner[1].is("as")
+            && matches!(inner[2].kind, TokenKind::Identifier | TokenKind::Keyword)
+        {
+            return Ok(format!(
+                "{}{}",
+                relocated(inner[0].start, inner[2].end),
+                super::relocations::source_anchor(end)
+            ));
+        }
         Ok(relocated(start, end))
     }
 
@@ -499,6 +511,17 @@ impl Lowerer<'_, '_> {
 
     fn class(&mut self, class: &ClassDeclaration, expression: bool) -> Result<(), Diagnostic> {
         let plans = self.plans(class)?;
+        let name_anchor = if expression {
+            String::new()
+        } else {
+            super::relocations::source_anchor(class.name_span.start)
+        };
+        let name_end_anchor = if expression {
+            String::new()
+        } else {
+            super::relocations::source_anchor(class.name_span.end)
+        };
+        let unmapped = super::relocations::unmapped();
         let class_decorated = !class.decorators.is_empty();
         let extends = class.extends_span.clone();
         let class_this = if class_decorated {
@@ -544,7 +567,8 @@ impl Lowerer<'_, '_> {
                 .collect::<Result<Vec<_>, _>>()?
                 .join(", ");
             lets.push_str(&format!(
-                "let {class_decorators} = [{decorators}]; let {class_descriptor}; let {class_extra} = []; let {class_this}; "
+                "let {class_decorators} = [{decorators}]; {}let {class_descriptor}; let {class_extra} = []; let {class_this}; ",
+                super::relocations::unmapped()
             ));
         }
         if let (Some(name), Some(span)) = (&class_super, &extends) {
@@ -608,7 +632,11 @@ impl Lowerer<'_, '_> {
                 self.push(tokens[0].start, tokens.last().unwrap().end,
                     format!("[({} = [{decorators}], {key} = (typeof ({key} = {value}) === \"symbol\" ? {key} : \"\".concat({key})))]", plan.decorators_var()));
             } else {
-                leading.push_str(&format!("{} = [{decorators}]; ", plan.decorators_var()));
+                leading.push_str(&format!(
+                    "{} = [{decorators}]; {}",
+                    plan.decorators_var(),
+                    super::relocations::unmapped()
+                ));
             }
             if plan.private_descriptor() {
                 if plan.kind == Kind::Accessor {
@@ -636,12 +664,18 @@ impl Lowerer<'_, '_> {
                 .runtime_key
                 .clone()
                 .unwrap_or_else(|| quoted(&plan.name));
+            let mut access = Self::access(plan);
+            if plan.kind == Kind::Method && !plan.private && plan.runtime_key.is_none() {
+                let end = plan.shell.key.last().expect("method key").end;
+                let closing = access.rfind('}').expect("access object closing brace");
+                access.insert_str(closing, &super::relocations::source_anchor(end));
+            }
             let context = format!(
                 "{{ kind: {}, name: {name}, static: {}, private: {}, access: {}, metadata: {metadata} }}",
                 quoted(plan.kind.label()),
                 plan.is_static,
                 plan.private,
-                Self::access(plan)
+                access
             );
             let (initializers, extra) = match plan.kind {
                 Kind::Field | Kind::Accessor => {
@@ -665,7 +699,7 @@ impl Lowerer<'_, '_> {
             } else {
                 (this_for(plan), "null".to_string())
             };
-            let anchor = source_anchor(
+            let anchor = super::relocations::source_anchor(
                 plan.shell
                     .key
                     .first()
@@ -673,8 +707,9 @@ impl Lowerer<'_, '_> {
                     .start,
             );
             format!(
-                "{anchor}{ES_DECORATE}({target}, {descriptor}, {}, {context}, {initializers}, {extra}); ",
-                plan.decorators_var()
+                "{anchor}{ES_DECORATE}({target}, {descriptor}, {}, {context}, {initializers}, {extra}); {}",
+                plan.decorators_var(),
+                super::relocations::unmapped()
             )
         };
         let non_field = |plan: &&Plan| {
@@ -692,9 +727,11 @@ impl Lowerer<'_, '_> {
             }
         }
         if class_decorated {
-            let anchor = source_anchor(class_keyword_start(class, &self.module.source));
+            let anchor =
+                super::relocations::source_anchor(class_keyword_start(class, &self.module.source));
             leading.push_str(&format!(
-                "{anchor}{ES_DECORATE}(null, {class_descriptor} = {{ value: {class_this} }}, {class_decorators}, {{ kind: \"class\", name: {class_this}.name, metadata: {metadata} }}, null, {class_extra}); {} = {class_this} = {class_descriptor}.value; ",
+                "{anchor}{ES_DECORATE}(null, {class_descriptor} = {{ value: {class_this} }}, {class_decorators}, {{ kind: \"class\", name: {class_this}.name, metadata: {metadata} }}, null, {class_extra}); {}{} = {class_this} = {class_descriptor}.value; ",
+                super::relocations::unmapped(),
                 class.name
             ));
         }
@@ -795,13 +832,18 @@ impl Lowerer<'_, '_> {
                     } else {
                         ""
                     };
-                    tail.push_str(&format!(" constructor() {{ {super_call}{statements}; }}"));
+                    tail.push_str(&format!(
+                        " constructor() {{ {super_call}{name_anchor}{statements}{name_end_anchor};{unmapped} }}"
+                    ));
                 }
             }
         }
         let mut trailing: Vec<String> = pending_static;
         if class_decorated {
-            trailing.push(format!("{RUN_INITIALIZERS}({class_this}, {class_extra})"));
+            trailing.push(format!(
+                "{}{RUN_INITIALIZERS}({class_this}, {class_extra})",
+                super::relocations::source_anchor(class.name_span.start)
+            ));
         }
         let mut leading_extra = String::new();
         if !trailing.is_empty() {
@@ -810,9 +852,9 @@ impl Lowerer<'_, '_> {
                 .map(|statement| format!("{statement}; "))
                 .collect();
             if has_static_initializers {
-                tail.push_str(&format!(" static {{ {statements}}}"));
+                tail.push_str(&format!(" static {{ {statements}{unmapped}}}"));
             } else {
-                leading_extra.push_str(&statements);
+                leading_extra.push_str(&format!("{statements}{unmapped}"));
             }
         }
 
@@ -832,15 +874,25 @@ impl Lowerer<'_, '_> {
         let opener = if class_decorated {
             format!("var {} = class{extends_clause} {{ ", class.name)
         } else {
-            format!("return class {}{extends_clause} {{ ", class.name)
+            format!(
+                "return class {name_anchor}{}{name_end_anchor}{extends_clause} {{ {unmapped}",
+                class.name
+            )
         };
         let header = if expression {
             format!("(() => {{ {lets}{opener}{blocks}")
         } else {
-            format!("let {} = (() => {{ {lets}{opener}{blocks}", class.name)
+            format!(
+                "let {name_anchor}{}{name_end_anchor} = (() => {{ {unmapped}{lets}{opener}{blocks}",
+                class.name
+            )
         };
         let header_end = body_open + 1;
-        let header = format!("{header}{}", self.newlines(class.span.start, header_end));
+        let header = format!(
+            "{}{header}{}",
+            super::relocations::unmapped(),
+            self.newlines(class.span.start, header_end)
+        );
         self.push(class.span.start, header_end, header);
 
         let close = class.body_span.end - 1;
@@ -866,7 +918,11 @@ impl Lowerer<'_, '_> {
         } else {
             format!("}}; }})(){terminator}{export_suffix}")
         };
-        self.push(close, close + 1, format!("{tail} {finish}"));
+        self.push(
+            close,
+            close + 1,
+            format!("{}{tail} {finish}", super::relocations::unmapped()),
+        );
         Ok(())
     }
 

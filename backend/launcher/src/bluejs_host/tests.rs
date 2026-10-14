@@ -49,6 +49,7 @@ fn document_with_snapshot(
             document_origin,
         },
         debugger_execution_control: false,
+        emitted_bluets_profile: PageHostBlueTsEmissionProfile::Standard,
         scripts,
     }
 }
@@ -74,6 +75,16 @@ fn blue_ts_classic(ordinal: u32, source: &str) -> PageHostScript {
     PageHostScript {
         ordinal,
         language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Classic,
+        graph: graph(&id, vec![PageHostSource::new(id.clone(), source)]),
+    }
+}
+
+fn blue_ts_emitted_classic(ordinal: u32, source: &str) -> PageHostScript {
+    let id = format!("blueice://page/inline-{ordinal}.ts");
+    PageHostScript {
+        ordinal,
+        language: PageHostScriptLanguage::BlueTsEmitted,
         kind: PageHostScriptKind::Classic,
         graph: graph(&id, vec![PageHostSource::new(id.clone(), source)]),
     }

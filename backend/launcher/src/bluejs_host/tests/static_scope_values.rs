@@ -734,7 +734,7 @@ fn private_child_bluets_module_root_preview_reads_retained_binding() {
     };
     let point = host
         .runtime
-        .module_evaluate_entry_safe_point(7, attachment.entry.handle)
+        .module_evaluate_entry_safe_point(7, attachment.entry_handle())
         .unwrap();
     assert!(matches!(
         host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {

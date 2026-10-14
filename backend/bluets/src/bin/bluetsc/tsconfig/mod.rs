@@ -140,6 +140,7 @@ pub(super) fn resolve(
             "target"
                 | "module"
                 | "sourceMap"
+                | "inlineSourceMap"
                 | "declaration"
                 | "declarationMap"
                 | "emitDeclarationOnly"

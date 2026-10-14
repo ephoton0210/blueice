@@ -53,6 +53,13 @@ pub(in super::super) fn apply_output_flags(
     }
     if let Some(project) = &mut invocation.project_config {
         project.options.extend(flags);
+        invocation.inline_source_map = project
+            .options
+            .get("inlineSourceMap")
+            .and_then(Value::as_bool)
+            == Some(true);
+        invocation.options.source_map = invocation.inline_source_map
+            || project.options.get("sourceMap").and_then(Value::as_bool) == Some(true);
     }
     Ok(())
 }
@@ -65,6 +72,9 @@ pub(super) fn validate_dependencies(options: &Map<String, Value>) -> Result<(), 
             .and_then(Value::as_str)
             .is_some_and(|value| !value.is_empty())
     };
+    if enabled("sourceMap") && enabled("inlineSourceMap") {
+        return Err("compiler options `sourceMap` and `inlineSourceMap` cannot be combined".into());
+    }
     if !enabled("declaration") {
         for name in [
             "emitDeclarationOnly",

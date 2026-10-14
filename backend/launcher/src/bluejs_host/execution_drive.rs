@@ -627,7 +627,7 @@ impl BlueJsChildHost {
                         (Some(target), ChildDebuggerExecutionStatus::Pending) => {
                             let result = self
                                 .runtime
-                                .module_evaluate_entry_safe_point(tab_id, attachment.entry.handle)
+                                .module_evaluate_entry_safe_point(tab_id, attachment.entry_handle())
                                 .and_then(|point| {
                                     if point.bytecode_offset != target.bytecode_offset {
                                         return Err(
@@ -636,8 +636,8 @@ impl BlueJsChildHost {
                                     }
                                     self.runtime.execute_module_graph_until_debugger_pause(
                                         tab_id,
-                                        attachment.entry.handle,
-                                        attachment.modules.values().map(|module| module.handle),
+                                        attachment.entry_handle(),
+                                        attachment.module_handles(),
                                         point,
                                     )
                                 });
@@ -725,9 +725,9 @@ impl BlueJsChildHost {
                                 self.runtime
                                     .execute_module_graph_until_linked_nested_debugger_pause(
                                         tab_id,
-                                        attachment.entry.handle,
+                                        attachment.entry_handle(),
                                         handle,
-                                        attachment.modules.values().map(|module| module.handle),
+                                        attachment.module_handles(),
                                         point,
                                     )
                             });
@@ -736,7 +736,7 @@ impl BlueJsChildHost {
                                     frame,
                                     bytecode_offset,
                                 })) if frame.tab_id() == tab_id
-                                    && frame.entry_program() == attachment.entry.handle
+                                    && frame.entry_program() == attachment.entry_handle()
                                     && dependency_handle == Some(frame.dependency_program())
                                     && frame.code_unit_ordinal() == target.code_unit_ordinal =>
                                 {
@@ -784,7 +784,7 @@ impl BlueJsChildHost {
                                 .runtime
                                 .safe_points(
                                     tab_id,
-                                    attachment.entry.handle,
+                                    attachment.entry_handle(),
                                     usize::try_from(PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM)
                                         .expect("page-host safe-point cap fits usize"),
                                 )
@@ -799,8 +799,8 @@ impl BlueJsChildHost {
                                 self.runtime
                                     .execute_module_graph_until_nested_debugger_pause(
                                         tab_id,
-                                        attachment.entry.handle,
-                                        attachment.modules.values().map(|module| module.handle),
+                                        attachment.entry_handle(),
+                                        attachment.module_handles(),
                                         point,
                                     )
                             });
@@ -808,7 +808,7 @@ impl BlueJsChildHost {
                                 tab_id,
                                 document_generation,
                                 program,
-                                attachment.entry.handle,
+                                attachment.entry_handle(),
                                 target,
                                 result,
                             );
@@ -817,10 +817,7 @@ impl BlueJsChildHost {
                         }
                         (None, ChildDebuggerExecutionStatus::Pending) => {
                             let outcome =
-                                match attachment.execute_in_page_realm(&mut self.runtime, tab_id) {
-                                    Ok(_) => PageHostScriptOutcome::Executed,
-                                    Err(error) => rejected(bluets_bridge_category(error)),
-                                };
+                                attachment.execute_in_page_realm(&mut self.runtime, tab_id);
                             self.documents
                                 .get_mut(&tab_id)
                                 .expect("the advancing module document remains live")
@@ -844,13 +841,18 @@ impl BlueJsChildHost {
                 DeferredChildExecution::BlueTsClassic { handle, .. } => {
                     self.snapshot_bluets_uncaught_location(tab_id, document_generation, [*handle])
                 }
-                DeferredChildExecution::BlueTsModule { attachment, .. } => {
-                    self.snapshot_bluets_uncaught_location(
-                        tab_id,
-                        document_generation,
-                        attachment.modules.values().map(|module| module.handle),
-                    );
-                }
+                DeferredChildExecution::BlueTsModule {
+                    attachment: DeferredModuleAttachment::Direct(attachment),
+                    ..
+                } => self.snapshot_bluets_uncaught_location(
+                    tab_id,
+                    document_generation,
+                    attachment.modules.values().map(|module| module.handle),
+                ),
+                DeferredChildExecution::BlueTsModule {
+                    attachment: DeferredModuleAttachment::Emitted(_),
+                    ..
+                } => {}
                 DeferredChildExecution::JavaScriptClassic { .. }
                 | DeferredChildExecution::JavaScriptModule { .. } => {}
             }

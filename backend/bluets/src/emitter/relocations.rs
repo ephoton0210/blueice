@@ -10,6 +10,7 @@ use crate::syntax::{lex, TokenKind};
 pub(super) enum Part {
     Generated(String),
     Anchor(usize),
+    Unmapped,
     Relocated {
         text: String,
         start: usize,
@@ -23,9 +24,24 @@ impl Part {
     pub(super) fn text(&self) -> &str {
         match self {
             Self::Generated(text) | Self::Relocated { text, .. } => text,
-            Self::Anchor(_) => "",
+            Self::Anchor(_) | Self::Unmapped => "",
         }
     }
+}
+
+pub(super) fn unmapped() -> &'static str {
+    "\u{0}U\u{0}"
+}
+
+pub(super) fn source_anchor(offset: usize) -> String {
+    format!("\u{0}A{offset}\u{0}")
+}
+
+/// Keep a moved slice byte-for-byte, including trivia that may be meaningful
+/// inside a template or comment. The ordinary `M` relocation compacts a
+/// decorator expression; target transforms need this verbatim `V` form.
+pub(super) fn relocated_verbatim(start: usize, end: usize) -> String {
+    format!("\u{0}V{start},{end}\u{0}")
 }
 
 /// Expand `\0M<start>,<end>\0` relocation and `\0A<offset>\0` source-anchor
@@ -48,7 +64,15 @@ pub(super) fn expand(replacement: &str, source: &str, edits: &[TextEdit]) -> Vec
             parts.push(Part::Anchor(offset));
             continue;
         }
-        let Some(range) = marker.strip_prefix('M') else {
+        if marker == "U" {
+            parts.push(Part::Unmapped);
+            continue;
+        }
+        let Some((range, compact)) = marker
+            .strip_prefix('M')
+            .map(|range| (range, true))
+            .or_else(|| marker.strip_prefix('V').map(|range| (range, false)))
+        else {
             continue;
         };
         let Some((start, end)) = range.split_once(',').and_then(|(start, end)| {
@@ -81,7 +105,11 @@ pub(super) fn expand(replacement: &str, source: &str, edits: &[TextEdit]) -> Vec
         }
         text.push_str(&source[cursor..end]);
         parts.push(Part::Relocated {
-            text: compact_expression(&text),
+            text: if compact {
+                compact_expression(&text)
+            } else {
+                text
+            },
             start,
             end,
             erased,

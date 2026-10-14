@@ -18,6 +18,7 @@ fn bare_compiler() -> Compiler {
         max_metadata_entries: limits.max_metadata_entries,
         max_list_items: limits.max_list_items,
         function: false,
+        current_root_statement_index: None,
         local_scope: 0,
         with_depth: 0,
         with_scope_depths: Vec::new(),

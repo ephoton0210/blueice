@@ -466,7 +466,7 @@ fn private_child_bluets_classic_uses_the_same_nested_frame_scheduler() {
 }
 
 #[test]
-fn private_child_classic_rejects_an_unsupported_deeper_nested_target() {
+fn private_child_classic_rejects_a_target_beyond_two_callers() {
     let mut host = BlueJsChildHost::default();
     assert!(matches!(
         host.handle_request(PageHostRequest::SynchronizeDocument {
@@ -474,7 +474,7 @@ fn private_child_classic_rejects_an_unsupported_deeper_nested_target() {
                 1,
                 vec![classic(
                     0,
-                    "function inner() { return 4; } function outer() { return inner(); } outer();",
+                    "function inner() { return 4; } function middle() { return inner(); } function outer() { return middle(); } outer();",
                 )],
             ),
         }),

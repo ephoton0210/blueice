@@ -657,7 +657,7 @@ fn public_socket_keeps_unsupported_deeper_bluets_call_shape_unavailable() {
         let (mut stream, _) = listener.accept().unwrap();
         let mut request = [0_u8; 1024];
         let _ = stream.read(&mut request);
-        let source = "function inner(): number { return 4; } function outer(): number { return inner(); } outer();";
+        let source = "function inner(): number { return 4; } function middle(): number { return inner(); } function outer(): number { return middle(); } outer();";
         let body = format!(
             "<main>unsupported-nested-bluets</main><script type=\"application/x-blueice-typescript\">{source}</script>"
         );

@@ -79,7 +79,7 @@ pub(super) fn lower_commonjs(
     module: &Module,
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
-    bound_import_calls: bool,
+    system_wrapper: bool,
 ) -> Result<BTreeMap<String, Replacement>, Diagnostic> {
     let Ok(tokens) = crate::lex(&module.id, &module.source) else {
         return Ok(BTreeMap::new());
@@ -150,7 +150,8 @@ pub(super) fn lower_commonjs(
                             binding.local.clone(),
                             Replacement {
                                 text: format!("{variable}.{}", binding.imported),
-                                wrap_calls: !bound_import_calls,
+                                wrap_calls: !system_wrapper,
+                                anchor_each_token: false,
                             },
                         );
                     }
@@ -169,7 +170,8 @@ pub(super) fn lower_commonjs(
                             binding.local.clone(),
                             Replacement {
                                 text: format!("{variable}.default"),
-                                wrap_calls: !bound_import_calls,
+                                wrap_calls: !system_wrapper,
+                                anchor_each_token: false,
                             },
                         );
                     } else if binding.imported == "*" {
@@ -319,25 +321,34 @@ pub(super) fn lower_commonjs(
                     }
                 }
                 let from = token_at(variable.span.start);
-                let name_end = tokens[from..]
+                let name_token = tokens[from..]
                     .iter()
                     .take_while(|token| token.start < variable.span.end)
                     .find(|token| {
                         (token.kind == TokenKind::Identifier
                             || matches!(token.text.as_str(), "type" | "of"))
                             && token.text == variable.name
-                    })
-                    .map(|token| token.end);
-                let Some(name_end) = name_end else {
+                    });
+                let Some(name_token) = name_token else {
                     return Err(unsupported(
                         variable.span.clone(),
                         "an exported variable's name could not be located",
                     ));
                 };
+                let replacement = if system_wrapper {
+                    let export_anchor = super::relocations::source_anchor(variable.span.start);
+                    let name_anchor = super::relocations::source_anchor(name_token.start);
+                    format!(
+                        "{export_anchor}exports{export_anchor}.{name_anchor}{}",
+                        variable.name
+                    )
+                } else {
+                    format!("exports.{}", variable.name)
+                };
                 edits.push(TextEdit {
                     start: variable.span.start,
-                    end: name_end,
-                    replacement: format!("exports.{}", variable.name),
+                    end: name_token.end,
+                    replacement,
                 });
             }
             Declaration::Function(function)
@@ -414,13 +425,14 @@ pub(super) fn lower_commonjs(
             Replacement {
                 text: format!("exports.{name}"),
                 wrap_calls: false,
+                anchor_each_token: system_wrapper,
             },
         );
     }
 
     // The header: strictness, helpers, then the keys.
     let mut header = String::new();
-    if es_syntax || has_assignment {
+    if (es_syntax || has_assignment) && !system_wrapper {
         header.push_str("\"use strict\"; ");
     }
     if needs_default {
@@ -431,7 +443,7 @@ pub(super) fn lower_commonjs(
         header.push_str(IMPORT_STAR_HELPER);
         header.push(' ');
     }
-    if es_syntax && !has_assignment {
+    if es_syntax && !has_assignment && !system_wrapper {
         header.push_str("Object.defineProperty(exports, \"__esModule\", { value: true }); ");
         if !chain.is_empty() {
             let keys: Vec<String> = chain

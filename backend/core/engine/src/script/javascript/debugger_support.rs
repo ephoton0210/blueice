@@ -220,6 +220,26 @@ pub struct JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
     pub source_byte: u32,
 }
 
+/// A generated-artifact map coordinate returned only after the core has
+/// verified the private child reply against its own reminted program ID.
+/// It has no module identity, source text, or standalone public authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerEmittedOriginalPosition {
+    pub source_index: u32,
+    pub line: u32,
+    pub column_utf16: u32,
+}
+
+/// An exact paused root instruction's generated statement-start coordinate.
+/// `original` is absent for generated-only code; an unbound instruction has
+/// no such record at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerEmittedPausedRootLocation {
+    pub generated_line: u32,
+    pub generated_column_utf16: u32,
+    pub original: Option<JavaScriptPageDebuggerEmittedOriginalPosition>,
+}
+
 /// One child-validated contract declaration range with no source text,
 /// module identity, plan, or runtime value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

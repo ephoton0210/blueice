@@ -444,6 +444,56 @@ pub trait PageHostClient {
         ))
     }
 
+    fn debugger_emitted_original_position(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement emitted-map original positions",
+        ))
+    }
+
+    /// Private transport support only. Public generated-position operations
+    /// still require an independent owner/client grant and stream receipt.
+    fn debugger_emitted_map_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_emitted_safe_point(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement emitted-map safe points",
+        ))
+    }
+
+    fn debugger_emitted_paused_root_location(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement emitted-map paused root locations",
+        ))
+    }
+
+    fn debugger_emitted_paused_root_location_available(&self) -> bool {
+        false
+    }
+
     fn debugger_bluets_metadata_symbol_type(
         &mut self,
         _tab_id: u64,
@@ -820,6 +870,7 @@ mod tests {
                 document_origin: String::new(),
             },
             debugger_execution_control: false,
+            emitted_bluets_profile: page_host::PageHostBlueTsEmissionProfile::Standard,
             scripts: Vec::new(),
         }
     }

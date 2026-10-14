@@ -183,6 +183,7 @@ fn compile_with_limit_and_mode(
         max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
         max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
+        current_root_statement_index: None,
         local_scope: 0,
         with_depth: 0,
         with_scope_depths: Vec::new(),
@@ -513,6 +514,7 @@ pub(crate) fn compile_eval(
         max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
         max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
+        current_root_statement_index: None,
         local_scope: 1,
         with_depth,
         // Captured bindings form the outer lexical environment of direct
@@ -647,6 +649,8 @@ struct Compiler {
     max_metadata_entries: u64,
     max_list_items: u32,
     function: bool,
+    /// Set only while the root code unit compiles one source-order statement.
+    current_root_statement_index: Option<usize>,
     local_scope: usize,
     with_depth: usize,
     /// The static lexical-scope depth at which each active `with`

@@ -20,13 +20,14 @@ use blueice_bluejs::{
     BlueJsPageDebuggerNestedExecutionState, BlueJsPageDebuggerValueTarget, BlueJsPageOrigin,
     BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle,
     BlueJsProgramV1, BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError,
-    HostObjectFamily, HostObjectKey, HostValue, Module, ParseError, RuntimeError, Value, Vm,
-    VmConfig, VmDebuggerScopeEntry, VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES,
-    VM_DEBUGGER_MAX_STACK_FRAMES,
+    HostObjectFamily, HostObjectKey, HostValue, Module, ParseError, ParsedStatementSpan,
+    RuntimeError, Value, Vm, VmConfig, VmDebuggerScopeEntry, VmDebuggerValuePreview,
+    VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
 };
 use blueice_bluets::{
-    AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
-    Contract, ContractPlan, ContractValue, RuntimePolicy, ValidationLimits,
+    compile, AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
+    Contract, ContractPlan, ContractValue, EcmaTarget, ModuleKind, RuntimePolicy, SourceMap,
+    ValidationLimits,
 };
 use blueice_bluets_bluejs::page_host_typings::{
     page_host_document_runtime_bindings_v1, page_host_dom_event_runtime_bindings_v1,
@@ -52,9 +53,9 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
-    self, PageHostChildStats, PageHostDebuggerBlueTsExceptionLocation,
-    PageHostDebuggerBlueTsMetadataContractDisplay, PageHostDebuggerBlueTsMetadataContractId,
-    PageHostDebuggerBlueTsMetadataContractLocation,
+    self, PageHostBlueTsEmissionProfile, PageHostChildStats,
+    PageHostDebuggerBlueTsExceptionLocation, PageHostDebuggerBlueTsMetadataContractDisplay,
+    PageHostDebuggerBlueTsMetadataContractId, PageHostDebuggerBlueTsMetadataContractLocation,
     PageHostDebuggerBlueTsMetadataContractValidation,
     PageHostDebuggerBlueTsMetadataLoweringSummary, PageHostDebuggerBlueTsMetadataSourceId,
     PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
@@ -62,6 +63,7 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataSymbolId, PageHostDebuggerBlueTsMetadataSymbolLocation,
     PageHostDebuggerBlueTsMetadataSymbolType, PageHostDebuggerBlueTsMetadataTypeDisplay,
     PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerBlueTsSafePointSpan,
+    PageHostDebuggerEmittedOriginalPosition, PageHostDebuggerEmittedPausedRootLocation,
     PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerLinkedExecutionState,
     PageHostDebuggerLinkedFrame, PageHostDebuggerLinkedSource, PageHostDebuggerLinkedStackFrame,
     PageHostDebuggerLinkedStackSnapshot, PageHostDebuggerLinkedValueSnapshot,
@@ -98,7 +100,7 @@ use std::time::{Duration, Instant};
 /// Execution/source limits independently enforced by the child. The caller
 /// cannot widen them by serializing a larger graph over its private socket.
 const MAX_SCRIPTS_PER_DOCUMENT: usize = 256;
-const MAX_MODULES_PER_GRAPH: usize = 8;
+const MAX_MODULES_PER_GRAPH: usize = page_host::PAGE_HOST_MAX_MODULES_PER_GRAPH;
 const MAX_SOURCE_BYTES_PER_MODULE: usize = 1024 * 1024;
 const MAX_SOURCE_BYTES_PER_DOCUMENT: usize = 8 * 1024 * 1024;
 // A freshly rebuilt child may spend several seconds in macOS's first-launch
@@ -214,6 +216,9 @@ struct LiveDocument {
     pending_click_tasks: VecDeque<PendingClickTask>,
     debugger_execution_control: bool,
     debugger_programs: BTreeMap<u64, ChildDebuggerProgram>,
+    /// Compiler-produced maps bound to exact live generated-JavaScript
+    /// programs. Direct BlueTS and ordinary JavaScript have no entry.
+    emitted_maps: BTreeMap<PageHostDebuggerProgram, BoundEmittedMap>,
     /// Exact child-private breakpoint configuration records. These are not a
     /// VM interruption hook; replacing or closing the realm drops them.
     debugger_breakpoints: BTreeSet<PageHostDebuggerSafePoint>,
@@ -261,6 +266,169 @@ struct ChildDebuggerProgram {
     /// Snapshotted before another realm execution can replace the VM sidecar.
     /// The entire record remains private to this document and child program.
     exception_location: Option<ChildDebuggerExceptionLocation>,
+}
+
+struct BoundEmittedMap {
+    generated: PageHostSource,
+    map: SourceMap,
+    emission_profile: PageHostBlueTsEmissionProfile,
+    top_level_spans: Vec<ParsedStatementSpan>,
+    identifier_spans: Vec<blueice_bluejs::ParsedIdentifierSpan>,
+    /// Module FunctionDeclarations are instantiated before evaluation and
+    /// may share the next executable statement's instruction boundary.
+    non_evaluating_top_level_statements: BTreeSet<usize>,
+    /// Parser-certified outer/inner ES5 spread-helper call tokens. The
+    /// compiled safe points are still checked against the live generation.
+    nested_spread_helper: Option<CertifiedNestedSpreadHelper>,
+}
+
+struct CertifiedNestedSpreadHelper {
+    statement_index: usize,
+    name: String,
+    source_starts: [usize; 2],
+}
+
+impl BoundEmittedMap {
+    const MAX_RETAINED_BYTES: usize = 16 * 1024 * 1024;
+    const MAX_SEGMENTS: usize = 200_000;
+
+    fn new(
+        generated: PageHostSource,
+        map: SourceMap,
+        emission_profile: PageHostBlueTsEmissionProfile,
+        top_level_spans: Vec<ParsedStatementSpan>,
+        identifier_spans: Vec<blueice_bluejs::ParsedIdentifierSpan>,
+    ) -> Result<Self, &'static str> {
+        Self::new_with_non_evaluating(
+            generated,
+            map,
+            emission_profile,
+            top_level_spans,
+            identifier_spans,
+            BTreeSet::new(),
+        )
+    }
+
+    fn new_with_non_evaluating(
+        generated: PageHostSource,
+        map: SourceMap,
+        emission_profile: PageHostBlueTsEmissionProfile,
+        top_level_spans: Vec<ParsedStatementSpan>,
+        identifier_spans: Vec<blueice_bluejs::ParsedIdentifierSpan>,
+        non_evaluating_top_level_statements: BTreeSet<usize>,
+    ) -> Result<Self, &'static str> {
+        map.original_position_at(
+            &generated.source,
+            0,
+            0,
+            Self::MAX_SEGMENTS,
+            Self::MAX_RETAINED_BYTES,
+        )
+        .map_err(|_| "BlueTS emitted source map is invalid or over budget")?;
+        let mut bound = Self {
+            generated,
+            map,
+            emission_profile,
+            top_level_spans,
+            identifier_spans,
+            non_evaluating_top_level_statements,
+            nested_spread_helper: None,
+        };
+        if bound
+            .non_evaluating_top_level_statements
+            .iter()
+            .any(|index| *index >= bound.top_level_spans.len())
+        {
+            return Err("BlueTS emitted non-evaluating statement provenance is invalid");
+        }
+        if bound
+            .top_level_spans
+            .iter()
+            .enumerate()
+            .any(|(index, span)| {
+                span.start_byte >= span.end_byte
+                    || span.end_byte > bound.generated.source.len()
+                    || !bound.generated.source.is_char_boundary(span.start_byte)
+                    || !bound.generated.source.is_char_boundary(span.end_byte)
+                    || index > 0 && bound.top_level_spans[index - 1].end_byte > span.start_byte
+            })
+        {
+            return Err("BlueTS emitted parser provenance is invalid");
+        }
+        if bound.identifier_spans.iter().any(|span| {
+            span.start_byte >= span.end_byte
+                || span.end_byte > bound.generated.source.len()
+                || !bound.generated.source.is_char_boundary(span.start_byte)
+                || !bound.generated.source.is_char_boundary(span.end_byte)
+                || {
+                    let index = bound
+                        .top_level_spans
+                        .partition_point(|statement| statement.end_byte <= span.start_byte);
+                    bound.top_level_spans.get(index).is_none_or(|statement| {
+                        statement.start_byte > span.start_byte || span.end_byte > statement.end_byte
+                    })
+                }
+        }) {
+            return Err("BlueTS emitted identifier provenance is invalid");
+        }
+        bound.nested_spread_helper = bound.certify_nested_spread_helper();
+        if bound
+            .retained_bytes()
+            .is_none_or(|bytes| bytes > Self::MAX_RETAINED_BYTES)
+        {
+            return Err("BlueTS emitted source map exceeds retention budget");
+        }
+        Ok(bound)
+    }
+
+    fn retained_bytes(&self) -> Option<usize> {
+        let mut bytes = std::mem::size_of::<Self>()
+            .checked_add(std::mem::size_of::<PageHostDebuggerProgram>())?
+            .checked_add(
+                self.non_evaluating_top_level_statements
+                    .len()
+                    // A B-tree entry owns more than its usize key. Charge a
+                    // conservative whole-node share, not just payload bytes.
+                    .checked_mul(128)?,
+            )?
+            .checked_add(self.generated.canonical_module_id.capacity())?
+            .checked_add(self.generated.source.capacity())?
+            .checked_add(self.generated.source_hash.capacity())?
+            .checked_add(self.map.file.capacity())?
+            .checked_add(self.map.source_root.capacity())?
+            .checked_add(self.map.mappings.capacity())?;
+        bytes = bytes.checked_add(
+            self.top_level_spans
+                .capacity()
+                .checked_mul(std::mem::size_of::<ParsedStatementSpan>())?,
+        )?;
+        bytes = bytes.checked_add(
+            self.identifier_spans
+                .capacity()
+                .checked_mul(std::mem::size_of::<blueice_bluejs::ParsedIdentifierSpan>())?,
+        )?;
+        for span in &self.identifier_spans {
+            bytes = bytes.checked_add(span.name.capacity())?;
+        }
+        if let Some(helper) = &self.nested_spread_helper {
+            bytes = bytes.checked_add(helper.name.capacity())?;
+        }
+        for table in [
+            &self.map.sources,
+            &self.map.sources_content,
+            &self.map.names,
+        ] {
+            bytes = bytes.checked_add(
+                table
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<String>())?,
+            )?;
+            for value in table {
+                bytes = bytes.checked_add(value.capacity())?;
+            }
+        }
+        Some(bytes)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,9 +545,89 @@ enum DeferredChildExecution {
         root_safe_point: Option<PageHostDebuggerSafePoint>,
     },
     BlueTsModule {
-        attachment: DirectPageModuleGraphAttachment,
+        attachment: DeferredModuleAttachment,
         root_safe_point: Option<PageHostDebuggerSafePoint>,
     },
+}
+
+/// A module debugger queue owns the exact installed graph, whether its
+/// provenance is direct BlueTS metadata or child-compiled emitted JavaScript.
+/// Emitted maps live separately in `LiveDocument::emitted_maps`, keyed by the
+/// opaque generation minted for each handle in this attachment.
+enum DeferredModuleAttachment {
+    Direct(DirectPageModuleGraphAttachment),
+    Emitted(EmittedPageModuleGraphAttachment),
+}
+
+struct EmittedPageModuleGraphAttachment {
+    entry: BlueJsProgramHandle,
+    modules: BTreeMap<String, BlueJsProgramHandle>,
+}
+
+impl DeferredModuleAttachment {
+    fn entry_handle(&self) -> BlueJsProgramHandle {
+        match self {
+            Self::Direct(attachment) => attachment.entry.handle,
+            Self::Emitted(attachment) => attachment.entry,
+        }
+    }
+
+    fn module_handles(&self) -> Vec<BlueJsProgramHandle> {
+        match self {
+            Self::Direct(attachment) => attachment
+                .modules
+                .values()
+                .map(|module| module.handle)
+                .collect(),
+            Self::Emitted(attachment) => attachment.modules.values().copied().collect(),
+        }
+    }
+
+    #[cfg(test)]
+    fn module_handle(&self, module_id: &str) -> Option<BlueJsProgramHandle> {
+        match self {
+            Self::Direct(attachment) => attachment
+                .modules
+                .get(module_id)
+                .map(|module| module.handle),
+            Self::Emitted(attachment) => attachment.modules.get(module_id).copied(),
+        }
+    }
+
+    fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        match self {
+            Self::Direct(attachment) => attachment.owned_heap_payload_bytes(),
+            Self::Emitted(attachment) => attachment.modules.iter().try_fold(
+                std::mem::size_of::<BlueJsProgramHandle>(),
+                |bytes, (module_id, _)| {
+                    bytes
+                        .checked_add(std::mem::size_of::<(String, BlueJsProgramHandle)>())?
+                        .checked_add(module_id.capacity())
+                },
+            ),
+        }
+    }
+
+    fn execute_in_page_realm(
+        &self,
+        runtime: &mut BlueJsPageRuntime,
+        tab_id: u64,
+    ) -> PageHostScriptOutcome {
+        match self {
+            Self::Direct(attachment) => match attachment.execute_in_page_realm(runtime, tab_id) {
+                Ok(_) => PageHostScriptOutcome::Executed,
+                Err(error) => rejected(bluets_bridge_category(error)),
+            },
+            Self::Emitted(attachment) => match runtime.execute_module_graph(
+                tab_id,
+                attachment.entry,
+                attachment.modules.values().copied(),
+            ) {
+                Ok(_) => PageHostScriptOutcome::Executed,
+                Err(error) => rejected(page_runtime_category(error)),
+            },
+        }
+    }
 }
 
 struct PendingDebuggerExecution {
@@ -736,6 +984,7 @@ mod execution_drive;
 mod debugger_inspection;
 
 mod debugger_control;
+mod emitted_map_lookup;
 
 mod bluets_metadata_details;
 

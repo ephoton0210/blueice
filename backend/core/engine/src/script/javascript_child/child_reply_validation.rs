@@ -127,12 +127,24 @@ pub(super) fn valid_child_debugger_stack_snapshot(
     max_scope_entries: u32,
 ) -> bool {
     let nested = child_frame.is_some();
-    let expected_frames = if nested && max_frames > 1 { 2 } else { 1 };
-    if snapshot.frames.len() != expected_frames
-        || snapshot.stack_truncated != (nested && max_frames == 1)
+    let frame_count = snapshot.frames.len();
+    let shape_valid = if nested {
+        match (frame_count, max_frames, snapshot.stack_truncated) {
+            (1, 1, true) => true,
+            (2, 2, true) => snapshot.frames[1].code_unit_ordinal != 0,
+            (2, 2.., false) => snapshot.frames[1].code_unit_ordinal == 0,
+            (3, 3.., false) => {
+                snapshot.frames[1].code_unit_ordinal != 0
+                    && snapshot.frames[2].code_unit_ordinal == 0
+            }
+            _ => false,
+        }
+    } else {
+        frame_count == 1 && !snapshot.stack_truncated
+    };
+    if !shape_valid
         || snapshot.frames[0].code_unit_ordinal != top_code_unit
         || snapshot.frames[0].bytecode_offset != top_offset
-        || (expected_frames == 2 && snapshot.frames[1].code_unit_ordinal != 0)
     {
         return false;
     }

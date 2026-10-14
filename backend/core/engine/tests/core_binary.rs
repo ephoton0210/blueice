@@ -34,6 +34,8 @@ mod compiler_debugger;
 mod compiler_output;
 #[path = "core_binary/core_session.rs"]
 mod core_session;
+#[path = "core_binary/generated_fault.rs"]
+mod generated_fault;
 #[path = "core_binary/multi_tab.rs"]
 mod multi_tab;
 #[path = "core_binary/page_execution.rs"]

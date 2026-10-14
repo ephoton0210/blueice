@@ -43,6 +43,18 @@ use std::thread;
 use std::time::{Duration, Instant};
 #[path = "out_of_process_debugger/exceptions.rs"]
 mod exceptions;
+#[path = "out_of_process_debugger/generated.rs"]
+mod generated;
+#[path = "out_of_process_debugger/generated_composed.rs"]
+mod generated_composed;
+#[path = "out_of_process_debugger/generated_es5.rs"]
+mod generated_es5;
+#[path = "out_of_process_debugger/generated_legacy.rs"]
+mod generated_legacy;
+#[path = "out_of_process_debugger/generated_primitives.rs"]
+mod generated_primitives;
+#[path = "out_of_process_debugger/generated_system.rs"]
+mod generated_system;
 #[path = "out_of_process_debugger/linked_runtime_display.rs"]
 mod linked_runtime_display;
 #[path = "out_of_process_debugger/linked_sources.rs"]
@@ -128,6 +140,14 @@ fn clearing_gatekeeper() -> PathBuf {
 /// widening the public debugger test policy as capabilities are added.
 #[derive(Default)]
 struct StaticMetadataPolicy {
+    emitted_blue_ts_classic: bool,
+    emitted_blue_ts_classic_es5: bool,
+    emitted_blue_ts_classic_system: bool,
+    emitted_blue_ts_classic_legacy_decorators: bool,
+    emitted_blue_ts_classic_legacy_metadata: bool,
+    emitted_blue_ts_module: bool,
+    generated_breakpoint: bool,
+    generated_paused_location: bool,
     bounded_values: bool,
     inventory: bool,
     summary: bool,
@@ -209,6 +229,30 @@ impl LauncherProcess {
         ]);
         if policy.bounded_values {
             command.arg("--debugger-bounded-values");
+        }
+        if policy.emitted_blue_ts_classic {
+            command.arg("--out-of-process-bluejs-emitted-blue-ts-classic");
+        }
+        if policy.emitted_blue_ts_classic_legacy_metadata {
+            command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata");
+        }
+        if policy.emitted_blue_ts_classic_legacy_decorators {
+            command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators");
+        }
+        if policy.emitted_blue_ts_classic_es5 {
+            command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-es5");
+        }
+        if policy.emitted_blue_ts_classic_system {
+            command.arg("--out-of-process-bluejs-emitted-blue-ts-classic-system");
+        }
+        if policy.emitted_blue_ts_module {
+            command.arg("--out-of-process-bluejs-emitted-blue-ts-module");
+        }
+        if policy.generated_breakpoint {
+            command.arg("--debugger-generated-breakpoint");
+        }
+        if policy.generated_paused_location {
+            command.arg("--debugger-generated-paused-location");
         }
         if policy.inventory {
             command.arg("--debugger-static-metadata-inventory");

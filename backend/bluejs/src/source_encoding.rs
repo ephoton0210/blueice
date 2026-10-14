@@ -98,6 +98,22 @@ pub(crate) fn escape(text: &str) -> Cow<'_, str> {
     Cow::Owned(escaped)
 }
 
+/// Maps each character boundary in [`escape(text)`] back to its byte offset
+/// in the ordinary host source. A genuine reserved character contributes two
+/// lexer characters but only one source character; both starts map to that
+/// original byte offset. The final entry is always `text.len()`.
+pub(crate) fn escaped_character_source_bytes(text: &str) -> Vec<usize> {
+    let mut offsets = Vec::with_capacity(text.chars().count() + 1);
+    for (byte, character) in text.char_indices() {
+        if is_reserved(character) {
+            offsets.push(byte);
+        }
+        offsets.push(byte);
+    }
+    offsets.push(text.len());
+    offsets
+}
+
 /// Decodes lexer text back to the JavaScript string it encodes.
 pub(crate) fn decode(text: &str) -> JsString {
     if !text.as_bytes().contains(&RESERVED_LEAD_BYTE) {
@@ -200,6 +216,17 @@ mod tests {
                 (code < 0x10F800).then_some(0xD800 + (code - 0x10F000) as u16)
             );
         }
+    }
+
+    #[test]
+    fn escaped_character_boundaries_return_original_byte_offsets() {
+        let source = "a😀\u{10F000}b";
+        let encoded = escape(source);
+        assert_eq!(
+            escaped_character_source_bytes(source),
+            vec![0, 1, 5, 5, 9, 10]
+        );
+        assert_eq!(encoded.chars().count() + 1, 6);
     }
 
     #[test]

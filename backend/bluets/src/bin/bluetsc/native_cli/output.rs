@@ -51,7 +51,7 @@ pub(super) fn publish(
             let extension =
                 output_extension(&relative, invocation.options.jsx == Some(JsxMode::Preserve));
             let path = out.join(relative.with_extension(extension));
-            if artifact.source_map.is_some() {
+            if artifact.source_map.is_some() && !invocation.inline_source_map {
                 emitted.push(path.with_extension(format!("{extension}.map")));
             }
             if artifact.declaration.is_some() {
@@ -83,7 +83,7 @@ pub(super) fn publish(
         let mut javascript = artifact.javascript.clone();
         if let Some(map) = &artifact.source_map {
             if !invocation.options.emit_declaration_only {
-                let (map, url) = source_maps::publication(
+                let (map, external_url) = source_maps::publication(
                     map,
                     invocation,
                     &source,
@@ -91,16 +91,23 @@ pub(super) fn publish(
                     &javascript_path,
                     extension,
                 )?;
+                let url = if invocation.inline_source_map {
+                    super::super::source_map_data::url(&map)
+                } else {
+                    external_url
+                };
                 let newline = match invocation.options.new_line {
                     blueice_bluets::NewLine::Lf => "\n",
                     blueice_bluets::NewLine::CrLf => "\r\n",
                 };
                 javascript.push_str(&format!("{newline}//# sourceMappingURL={url}{newline}"));
-                insert(
-                    &mut writes,
-                    javascript_path.with_extension(format!("{extension}.map")),
-                    map.to_json().into_bytes(),
-                )?;
+                if !invocation.inline_source_map {
+                    insert(
+                        &mut writes,
+                        javascript_path.with_extension(format!("{extension}.map")),
+                        map.to_json().into_bytes(),
+                    )?;
+                }
             }
         }
         if let Some(declaration) = &artifact.declaration {

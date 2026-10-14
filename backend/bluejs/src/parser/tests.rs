@@ -5,6 +5,94 @@
 use super::*;
 
 #[test]
+fn top_level_statement_spans_follow_exact_original_bytes() {
+    let source = "/* lead */ const café = '\u{10F000}';\r\n// gap\r\ncafé;";
+    let (program, spans) = parse_with_top_level_spans(source).unwrap();
+    assert_eq!(program, parse(source).unwrap());
+    assert_eq!(spans.len(), program.body.len());
+    assert_eq!(spans.len(), 2);
+    assert_eq!(
+        &source[spans[0].start_byte..spans[0].end_byte],
+        "const café = '\u{10F000}';"
+    );
+    assert_eq!(&source[spans[1].start_byte..spans[1].end_byte], "café;");
+    assert!(spans[0].end_byte < spans[1].start_byte);
+    assert!(parse_with_top_level_spans("const = ;").is_err());
+}
+
+#[test]
+fn debugger_identifier_spans_follow_parser_built_expressions() {
+    let source = "const result = [café, café];\r\nresult;";
+    let (program, statements, identifiers) = parse_with_debug_spans(source).unwrap();
+    assert_eq!(program, parse(source).unwrap());
+    assert_eq!(statements.len(), 2);
+    assert_eq!(identifiers.len(), 3);
+    assert_eq!(identifiers[0].name, "café");
+    assert_eq!(identifiers[1].name, "café");
+    assert_eq!(identifiers[2].name, "result");
+    for span in identifiers {
+        assert_eq!(&source[span.start_byte..span.end_byte], span.name.as_str());
+    }
+    let (_, _, escaped) = parse_with_debug_spans("const value = \\u0061;").unwrap();
+    assert_eq!(escaped.len(), 1);
+    assert_eq!(escaped[0].name, "a");
+    assert_eq!(
+        &"const value = \\u0061;"[escaped[0].start_byte..escaped[0].end_byte],
+        "\\u0061"
+    );
+    let shorthand_source = "const object = { café };";
+    let (_, _, shorthand) = parse_with_debug_spans(shorthand_source).unwrap();
+    assert_eq!(shorthand.len(), 1);
+    assert_eq!(shorthand[0].name, "café");
+    assert_eq!(
+        &shorthand_source[shorthand[0].start_byte..shorthand[0].end_byte],
+        "café"
+    );
+}
+
+#[test]
+fn module_debugger_spans_follow_only_executable_items_and_original_utf8_bytes() {
+    let source =
+        "import { value } from './dep.js';\r\nexport const answer = value + '🚀';\r\nanswer;";
+    let (module, statements, identifiers) = parse_module_with_debug_spans(source).unwrap();
+    assert_eq!(module, parse_module(source).unwrap());
+    assert_eq!(statements.len(), module.body.len());
+    assert_eq!(
+        statements.len(),
+        2,
+        "static imports have no body safe point"
+    );
+    assert_eq!(
+        statements[0].start_byte,
+        source.find("export const").unwrap()
+    );
+    assert_eq!(statements[1].start_byte, source.rfind("answer;").unwrap());
+    assert_eq!(identifiers.len(), 2);
+    assert_eq!(identifiers[0].name, "value");
+    assert_eq!(identifiers[1].name, "answer");
+    for span in identifiers {
+        assert_eq!(&source[span.start_byte..span.end_byte], span.name);
+    }
+
+    let decorated = "export { value } from './dep.js';\n@deco export class Box {}";
+    let (module, statements, identifiers) = parse_module_with_debug_spans(decorated).unwrap();
+    assert_eq!(module.body.len(), 1);
+    assert_eq!(statements.len(), 1, "a re-export has no body safe point");
+    assert_eq!(statements[0].start_byte, decorated.find("@deco").unwrap());
+    assert_eq!(identifiers.len(), 1);
+    assert_eq!(identifiers[0].name, "deco");
+
+    let unexported_decorator = "@deco class Box {}";
+    let (module, statements, identifiers) =
+        parse_module_with_debug_spans(unexported_decorator).unwrap();
+    assert_eq!(module.body.len(), 1);
+    assert_eq!(statements.len(), 1);
+    assert_eq!(statements[0].start_byte, 0);
+    assert_eq!(identifiers.len(), 1);
+    assert_eq!(identifiers[0].name, "deco");
+}
+
+#[test]
 fn assignment_cover_lookahead_stops_at_the_matching_delimiter() {
     assert!(Parser::new("[value].property").cover_assignment_target_has_lhs_suffix());
     assert!(!Parser::new("{value}").cover_assignment_target_has_lhs_suffix());

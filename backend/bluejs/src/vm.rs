@@ -57,8 +57,9 @@ use completion::{
     call_stack_exhausted, Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
 };
 use debugger::{
-    DebuggerContinuation, DebuggerFrameKind, DebuggerInterpreterExit, ModuleDebuggerContinuation,
-    ModuleDebuggerPauseRequest, NestedDebuggerContinuation, NestedDebuggerPauseRequest,
+    DebuggerContinuation, DebuggerFrameKind, DebuggerInterpreterExit,
+    IntermediateDebuggerContinuation, ModuleDebuggerContinuation, ModuleDebuggerPauseRequest,
+    NestedDebuggerContinuation, NestedDebuggerPauseRequest,
 };
 pub use debugger::{
     VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
@@ -837,6 +838,8 @@ pub struct Vm {
     debugger_module_continuation: Option<ModuleDebuggerContinuation>,
     debugger_nested_pause_request: Option<NestedDebuggerPauseRequest>,
     debugger_nested_continuation: Option<NestedDebuggerContinuation>,
+    debugger_nested_intermediate_continuation: Option<IntermediateDebuggerContinuation>,
+    debugger_nested_intermediate_active: bool,
     debugger_nested_parent_execution: Option<SuspendedModuleExecution>,
     debugger_nested_direct_call: bool,
     debugger_nested_direct_caller_generation: Option<u64>,

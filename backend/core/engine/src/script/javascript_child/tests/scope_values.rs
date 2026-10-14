@@ -127,6 +127,56 @@ fn core_rejects_malformed_child_stack_shapes_and_scope_budgets() {
         2,
         1
     ));
+    let intermediate = PageHostDebuggerStackFrame {
+        code_unit_ordinal: 2,
+        bytecode_offset: 6,
+        scope_entries: Vec::new(),
+        scope_truncated: false,
+    };
+    let three_frames = PageHostDebuggerStackSnapshot {
+        frames: vec![
+            full.frames[0].clone(),
+            intermediate.clone(),
+            full.frames[1].clone(),
+        ],
+        stack_truncated: false,
+    };
+    assert!(valid_child_debugger_stack_snapshot(
+        &three_frames,
+        Some(child),
+        1,
+        4,
+        3,
+        1
+    ));
+    assert!(!valid_child_debugger_stack_snapshot(
+        &three_frames,
+        Some(child),
+        1,
+        4,
+        2,
+        1
+    ));
+    let truncated_middle = PageHostDebuggerStackSnapshot {
+        frames: vec![full.frames[0].clone(), intermediate],
+        stack_truncated: true,
+    };
+    assert!(valid_child_debugger_stack_snapshot(
+        &truncated_middle,
+        Some(child),
+        1,
+        4,
+        2,
+        1
+    ));
+    assert!(!valid_child_debugger_stack_snapshot(
+        &truncated_middle,
+        Some(child),
+        1,
+        4,
+        3,
+        1
+    ));
 }
 
 struct SnapshotReplyChild {

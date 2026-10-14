@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 mod authorization;
+mod emitted_map;
 mod lifecycle;
 mod linked_execution;
 mod linked_pause;

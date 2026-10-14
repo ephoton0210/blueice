@@ -32,7 +32,14 @@ pub(super) fn lower(
             return Ok(emitted);
         };
         let helper = unused_name(&emitted.javascript, "object_properties", &mut sequence);
-        let mut replacement = "{}".to_string();
+        let anchor_offset = open
+            .checked_sub(2)
+            .and_then(|index| tokens.get(index))
+            .map_or(tokens[open - 1].start, |token| token.end);
+        let source_anchor = super::super::relocations::source_anchor(anchor_offset);
+        let unmapped = super::super::relocations::unmapped();
+        let mut replacement = format!("{source_anchor}{{{source_anchor}}}");
+        let mut previous_end = anchor_offset;
         for (start, end) in properties {
             let spread = tokens[start].is("...");
             let first = start + usize::from(spread);
@@ -48,13 +55,26 @@ pub(super) fn lower(
                     "target object spread does not yet lower prototype setters or super properties",
                 ));
             }
-            let source = &emitted.javascript[tokens[first].start..tokens[end - 1].end];
+            let source = super::super::relocations::relocated_verbatim(
+                tokens[first].start,
+                tokens[end - 1].end,
+            );
+            let previous_end_anchor = super::super::relocations::source_anchor(previous_end);
+            let end_offset = tokens[end - 1].end;
+            let end_anchor = super::super::relocations::source_anchor(end_offset);
             let argument = if spread {
-                format!("({source})")
+                if first + 1 == end && tokens[first].kind == TokenKind::Identifier {
+                    source
+                } else {
+                    format!("{unmapped}({source}{unmapped})")
+                }
             } else {
-                format!("{{{source}}}")
+                format!("{previous_end_anchor}{{{source}{end_anchor}}}")
             };
-            replacement = format!("{helper}({replacement}, {argument}, {spread})");
+            replacement = format!(
+                "{source_anchor}{helper}{source_anchor}({replacement}{previous_end_anchor}, {argument}{unmapped}, {spread}{end_anchor})"
+            );
+            previous_end = end_offset;
         }
         emitted = mapped_edits(
             emitted,
@@ -63,7 +83,7 @@ pub(super) fn lower(
                     start: directive_end(&tokens),
                     end: directive_end(&tokens),
                     replacement: format!(
-                        "\n{}\n",
+                        "{unmapped}\n{}\n",
                         HELPER.replace("__blueice_target_object_properties", &helper)
                     ),
                 },

@@ -8918,3 +8918,1364 @@ legacy source-map parity. Native leaves the generated decorator-array closing
 brackets unmapped while BlueTS currently maps them to expression ends.
 Parameter and metadata helper frames, other helper families, complete K.0 and
 final-source hosted CI remain open.
+
+### K.11 CRLF/astral token oracle and map validation (2026-10-12)
+
+The machine-readable K.11 token matrix now has a third accepted row. Its
+fixture is stored with LF line endings but the oracle feeds CRLF source text
+to both pinned TypeScript 5.9.3 and the public BlueTSC compiler. An astral
+character inside the emitted string exercises UTF-16 generated and original
+columns. The aligned token scanner advances by UTF-8 bytes and UTF-16 code
+units separately. Native and BlueTSC agree on every emitted token's decoded
+original position and unmapped state in this row, not just sampled positions.
+
+The same three-row oracle also checks Source Map v3 metadata (`version`,
+`file`, `sourceRoot`, normalized `sources`, `names` and inline source text),
+equal Node exit status/stdout/stderr, map-on/off JavaScript identity,
+deterministic repeated map output and `inlineSources`-disabled omission of
+`sourcesContent` without changing mappings or JavaScript. Its decoder now
+rejects invalid VLQ fields, non-increasing generated columns and source/name
+indices outside the map tables. The six pinned K.11 oracles and both ordinary
+decoder regressions pass locally; this is a focused extension, not completion
+of K.11.1's eleven required rows, full decorator mapping parity, CLI/debugger
+acceptance or the final K.0/hosted gate.
+
+### K.11 legacy punctuation, metadata and target-helper frames (2026-10-12)
+
+The existing legacy class/member oracle was strengthened to inspect both
+generated closing brackets of the `__decorate` argument arrays. Native leaves
+them unmapped; BlueTS had inherited the relocated decorator expression's
+source end. An explicit unmapped provenance marker now closes each generated
+array while preserving the JavaScript bytes in source-map-off emission.
+
+A separate pinned fixture enables `experimentalDecorators` and
+`emitDecoratorMetadata` on a method parameter. Native and BlueTSC execute the
+same `parameter 0`, `method`, `42` output. The oracle found BlueTS anchoring
+`__param` to the preceding method decorator and mapping `__metadata` to the
+method signature, whereas Native anchors `__param` to the parameter decorator
+and leaves generated metadata unmapped. The legacy lowering now places an
+explicit source anchor on each parameter helper call and an unmapped marker
+before metadata helper calls; the parameter, metadata and decorator-array
+sites agree with the pinned map, and map-on/off JavaScript is identical.
+
+An ES5 object-spread fixture covers a non-decorator generated helper. Native
+emits `__assign`; BlueTS emits its separately versioned object-properties
+helper. Both execute to `3`, but BlueTS initially mapped its helper definition
+to source start and its call to the object literal brace. Target lowering now
+marks the helper definition generated-only and anchors the call at the end of
+the assignment's left-hand identifier, matching Native's measured locations.
+This is a representative helper-frame comparison, not full token or
+mapping-set parity for the differing helper bodies. K.11.1's machine-readable
+matrix still has only three rows; System wrapping, complete per-token
+alignment, public CLI/debugger acceptance and final K.0/hosted CI remain open.
+
+### K.11 System wrapper sites (2026-10-12)
+
+One pinned ES2022/System fixture exports a mutable value and a hoisted
+function, invokes it, then prints `42`. A closed Node loader executes both
+Native and BlueTSC `System.register` artifacts without dependency imports.
+Both maps leave the wrapper call unmapped and map the hoisted function to the
+`export` token and the execute-body `console.log` to its original token.
+Runtime status/stdout/stderr, inline source content, `names` and map-on/off
+JavaScript agree. This verifies three debugger-facing sites, not all generated
+wrapper tokens or the full decoded mapping set. The eleven-row matrix,
+external/inline CLI publication, public debugger route and final gate remain
+open.
+
+### K.11 eleven-row matrix and CLI publication (2026-10-12)
+
+The machine-readable matrix now has exactly eleven named rows, one per required
+category. Each row records its fixture, expected acceptance, line endings,
+target, module, legacy/metadata flags, external map, `inlineSources` on/off and
+Node loader. The pinned public-API replay executes all eleven; copied code,
+erased annotations and CRLF/astral code pass complete emitted-token position
+comparison. Comment-end, `const` boundary and terminal-line provenance now
+also make the entire decoded mapping sets equal for the copied and erased rows
+whose JavaScript bytes are identical. Eight transformed rows deliberately fail
+the aggregate oracle:
+their Native and BlueTSC token streams differ, so a checked token/role table
+and classification of every unmatched token are still required. This is not
+an acceptable K.11.2 result. The failure prints the first difference and
+token counts for every red row rather than hiding later rows. All eleven rows
+passed the separately checked metadata, inlineSources, deterministic-output,
+map-on/off JavaScript and Node execution assertions before reaching that
+alignment failure.
+
+The public CLI now supports both external `.map` publication and
+`inlineSourceMap` data URLs. A pinned TypeScript 5.9.3 project oracle compares
+map metadata and Node execution for both modes and `inlineSources` states
+across all eleven matrix rows (44 Native and 44 BlueTSC publications); a managed-build regression
+switches external → inline → external in one output tree and checks stale-map
+removal and manifest mode. Simultaneous `sourceMap` and `inlineSourceMap` is
+rejected before publication. An ordinary decoder regression covers nonempty
+named segment indices, and a bounded public compiler-limit regression checks
+that a segment-budget failure returns no output artifact. These tests are
+necessary K.11.3 evidence, not complete acceptance of all row/CLI modes.
+The public debugger breakpoint/step/stack route and full K.0/hosted final gate
+remain unverified. No K.11 acceptance box is checked and these edits remain
+uncommitted under the current completion-before-commit instruction.
+
+### K.11 standard decorator generated-only scaffold (2026-10-12–13)
+
+The pinned method-decorator oracle measured six synthetic sites—class IIFE,
+initializer state, metadata setup, decorator-array assignment, post-decoration
+metadata branch and synthetic constructor—as unmapped in Native but source-
+mapped in BlueTSC. The class header/footer and generated segments after
+relocated decorator arrays and helper calls now carry explicit unmapped
+transitions. All eight prior site-level pinned oracles still pass. The oracle
+now uses the public lexer to count complete strings, templates and operators
+as single non-trivia tokens. Subsequent measured class-name and member-call
+anchors plus empty-call boundary correction make the ordered mapped-role
+sequences equal for the standard-method, compacted-relocation,
+erased-relocation and composed-decorator rows (108, 110, 108 and 198 tokens).
+The erased type assertion now drops the same grouping parentheses as Native;
+the composed class initializer call is anchored to the class name. Earlier
+character-split counts are superseded. The transition diagnostic identifies
+the first divergent generated-only gap: Native's decorator helper definitions
+precede user code, while BlueTSC emits its helpers after the initial user
+function. An equal mapped-role sequence does not classify those differing
+generated tokens or verify their full mapping state. All eight transformed
+rows and the complete K.11 gate therefore remain red.
+The standard-decorator site oracle additionally checks every non-trivia token
+across both complete generated-helper regions as unmapped, rather than only
+their first identifier.
+
+The 2026-10-13 continuation moves the decoder and UTF-16 token lookup into
+`source_map_tokens_oracle/decoding.rs` (the test driver is 1,317 lines), rejects
+out-of-range generated positions and VLQ magnitude overflow, and keeps the
+same eight transformed rows red until full alignment exists. Legacy
+class/member and parameter/metadata punctuation now carries Native-measured
+class-keyword, name, method-end and class-end anchors; their ordered mapped
+roles match at 81/81 and 83/83 tokens. ES5 object-spread lowering now uses a
+verbatim relocation for the spread operand and literal properties, with
+generated-only flags and a checked `__assign`/BlueTSC-helper role. Its ordered
+mapped roles match at 42/42; the extra BlueTSC flag tokens remain unmapped.
+The full emitted-token transition table is still absent. The System path now
+omits its redundant CommonJS strictness/`__esModule`/export-initialization
+prelude while retaining import helpers; its ordinary module and relocation
+tests pass, as does the ignored public-CLI replay of all 82 accepted K.7.2
+module cases against their pinned execution/declaration observations. A pinned
+function-body-open assertion now matches Native's parameter-list source anchor.
+This removes 28 falsely source-anchored tokens, and a pinned token-wide check
+confirms both the leading wrapper and the post-function slot scaffolding are
+wholly unmapped in Native and BlueTSC. The row still has 35 Native versus 31
+BlueTSC mapped tokens because the
+two System export-call forms differ. Full K.11.2,
+public debugger lookup, K.0 and hosted CI therefore remain open. No K.11
+change is committed yet.
+
+The next System source-site pass keeps export-object reads and compound writes
+at the single original binding-token position instead of allowing the emitted
+`exports.` prefix to shift the property name beyond the source token. Its
+initializer maps `exports` and the synthetic dot to the Native export-keyword
+site and the property name to the Native declared-name site. A red-then-green
+pinned regression checks all three generated tokens at both function and
+execute-body reads/writes, plus the initializer. The decoder now also checks
+the original line and UTF-16 column against each available `sourcesContent`
+entry, rejects a missing entry and accepts a CRLF/astral line at its valid
+UTF-16 end. Nine ordinary decoder tests, ordinary module/System source-map
+tests, the 44-mode public CLI publication replay, focused warnings-denied
+Clippy, formatting and whitespace checks pass. The full eleven-row decoded
+oracle still reports the same eight transformed rows red; System remains 35
+Native versus 31 BlueTSC mapped tokens because callback publication and
+object-property publication have different token roles. The full checked
+role/transition alignment, debugger path, final K.0 and hosted gate remain
+unverified. No K.11 commit has been made.
+
+A full pinned System role check now enumerates all 35 Native and 31 BlueTSC
+source-anchored tokens in five corresponding semantic groups: the hoisted
+function header, compound export write, export initializer, user function
+call and console read. Every token in both outputs is also checked against
+its expected mapped state: only the hoisted function and execute-body user
+windows are mapped; the leading wrapper, function-to-execute scaffolding and
+trailing wrapper are unmapped. Correcting `find` to `rfind` for Native's second
+`exports_1("answer", ...)` occurrence was necessary: the previous test had
+mistaken the function write for the execute initializer, leaving an unchecked
+middle region. The full eleven-row public-API oracle now invokes this exact
+System checker with the frozen row's options, so System is no longer among its
+red differences. Seven divergent decorator/ES5-helper rows still lack their
+complete generated-only token/transition role tables, and K.11.2 remains
+unchecked. This focused System check, formatting and warnings-denied Clippy
+pass; no K.11 commit has been made.
+
+The remaining seven divergent rows now have exhaustive role/state coverage
+inside the eleven-row pinned public-API oracle. For the ES5 object-spread row,
+both helper-definition prefixes are entirely generated-only (108 Native and
+181 BlueTSC tokens); both executable bodies have the same 42 ordered mapped
+roles, and BlueTSC's four extra helper-flag tokens are explicitly unmapped.
+The six decorator rows use a reviewed generated-only run table keyed to each
+preceding mapped-role ordinal: each run freezes its token count, all token
+spellings via a deterministic FNV-1a fingerprint, and a semantic role such as
+helper definition, decorator setup/application, class scaffold or synthetic
+constructor. Every source-anchored token is compared in order for role,
+source identity, original line, UTF-16 column and optional name index; a
+changed or missing mapped/unmapped run fails. A separate SHA-256 inventory of
+every decoded mapped/unmapped state change, including positions in comments
+and whitespace, freezes the line-reset-aware transition schedule for both
+compilers in all eleven rows. Identical-JavaScript rows still compare the
+entire decoded segment sets. The aggregate pinned oracle and all 23 ordinary
+and ignored tests in its suite now pass; all three public CLI publication
+tests, 28 emitter unit tests, three declaration-option tests, six module
+wrapper tests including pinned oracles, formatting and focused warnings-denied
+Clippy pass. This is local K.11.2/K.11.3 evidence, not K.11 closure: the public
+debugger breakpoint/step/stack route, full K.0 coverage/workspace gate,
+committed fixture baseline and same-source hosted confirmation remain open.
+No K.11 commit or push has occurred.
+
+The compiler now exposes a pure `SourceMap::original_position_at` lookup for
+zero-based generated UTF-16 positions. It validates the complete decoded
+stream before returning a source-table index/position or `None` for an
+unmapped frame, and requires explicit segment and total-input byte budgets;
+it grants no source-text or live-program authority. Four ordinary public-API
+tests cover relocated decorator sites, legacy parameter/metadata helper
+sites, ES5 object-spread helpers, System wrapper scaffolding, astral columns,
+malformed later segments and both budgets. The eleven-row pinned public-API
+oracle independently checks this lookup at every BlueTSC emitted non-trivia
+token against its own decoded map; that aggregate is green. This is a
+compiler-side prerequisite, not a debugger completion claim: the page host
+currently executes BlueTS through the direct AST bridge rather than the
+emitted JavaScript represented by this map. No emitted-artifact identity is
+bound to its public breakpoint, step or stack session yet, so K.11.4 remains
+open along with the final K.0 and hosted gates. No K.11 commit or push has
+occurred.
+
+The two existing out-of-process debugger source-breakpoint/step regressions
+pass when run with permission to bind their local fixture sockets. Their
+first sandboxed attempt was blocked before assertions by `PermissionDenied`
+at the test gatekeeper bind; that is not a product failure. These tests cover
+the direct BlueTS source-span path only and do not close the emitted-map
+breakpoint/step/stack requirement. Focused source-map lookup tests, the
+eleven-row aggregate oracle, formatting, whitespace checks and warnings-
+denied Clippy on the affected test targets pass after the final lookup
+validation change. The complete K.0 and hosted gates remain outstanding.
+
+A feasibility regression in `bluets-bluejs` now compiles the standard
+decorator fixture through BlueTSC, parses the emitted JavaScript into a
+BlueJS structured program, compiles its bytecode and executes it to the
+expected `42` result. Only the final `console.log` is replaced with a bare
+expression for this bare-VM probe because `console` is supplied by the page
+host, not `Vm::default()`. This proves the decorator helper syntax itself is
+not blocked by the BlueJS parser/VM. It does not attach the exact emitted
+artifact to a page-host program or associate parser token positions with
+BlueJS AST/safe-point identities. The generated-position debugger route and
+K.11.4 remain open; this probe must not be counted as a public debugger
+breakpoint, step or stack regression.
+
+The page-host admission regression takes the same BlueTSC standard-decorator
+emission as a JavaScript classic script, runs it in a real `BlueJsChildHost`
+document, and has the next script verify the decorator result is `42`. Its
+compiler map resolves the relocated decorator identifier to its original
+UTF-16 site while the helper definition resolves to no user source. Only
+the final host-owned `console.log` sink is replaced by a `globalThis` result
+assignment. This narrows the K.11.4 gap to live emitted-artifact/source-map
+binding and exact generated-token-to-BlueJS-safe-point provenance plus
+public breakpoint, step and stack routing; neither test supplies those yet.
+
+The remaining implementation boundary is explicit. A trusted page-host
+declaration must cause the child to compile the original closed BlueTS graph
+to an emitted JavaScript artifact and Source Map in one operation, then
+install exactly those JavaScript bytes under a generation-bound BlueJS
+program identity. The direct-AST BlueTS route remains a separate route and
+must not be silently relabeled as emitted execution. The child must retain
+the compiler map privately, validate its complete bounded contents and bind
+it to the installed generated-source hash/generation; a page-provided map
+must not be accepted as authority. BlueJS parsing must supply exact
+generated-token-to-AST/safe-point provenance, or generated breakpoint
+resolution must fail closed rather than guessing a nearby instruction.
+Finally, distinct default-deny debugger grants and same-stream opaque
+receipts must govern generated-position resolution, arming, source-level
+step and stack projection. Tests must reject stale generations, wrong
+artifact hashes, malformed/unmapped helper positions and missing grants,
+then prove a relocated decorator pause/step/stack through the public route.
+
+The first emitted-artifact page-host slice is now implemented without
+changing the default direct AST route. Private page-host protocol v45 adds an
+explicit `BlueTsEmitted` classic declaration: the child compiles its already
+authorized closed BlueTS graph with a source map, parses exactly the emitted
+JavaScript, and installs that generated source in BlueJS. Under debugger
+admission it retains the compiler map keyed by the exact child program
+generation, verifies the generated module/hash against the live registry,
+validates the complete map under fixed segment/input limits, charges retained
+map bytes to child static-payload accounting, and drops the map on realm
+replacement. A new private core/child lookup resolves one generated UTF-16
+position to a bounded original source-table coordinate or an explicit
+unmapped result. Unit regressions cover child-compiled decorator execution,
+relocated and helper-only lookups, substituted hashes and stale generations;
+the isolated child-process IPC regression proves the same generation binding
+across the authenticated Unix socket. This is still not a public debugger
+grant, generated-token-to-safe-point binding, breakpoint arm, source step or
+stack projection. The core browser adapter still selects the default direct
+BlueTS route, so v45 emitted admission is currently reached only by an
+explicit trusted child-host request, not an ordinary page navigation.
+K.11.4 and final K.0/hosted gates remain open, and no K.11
+commit or push has occurred.
+
+The next emitted-artifact slice now records exact original-source byte spans
+for every parsed top-level statement, including CRLF, non-ASCII text and a
+literal character in BlueJS's reserved lexer-encoding range. The child keeps
+those spans with the generation-bound emitted map and resolves a generated
+position to a compiler-recorded root safe point only when it is both mapped
+and exactly at a parser-recorded statement start. A mapped inner token,
+relocated decorator expression and unmapped helper body are explicitly
+unbound; none may borrow the nearest statement instruction. The real
+supervised child-process regression verifies an exact mapped breakpoint,
+paused root stack snapshot and one step to a distinct instruction before
+realm replacement, while stale generation and invalid generated coordinates
+are rejected. The lookup remains child-private; it does not establish the
+nested decorator AST/bytecode provenance, public default-deny capability and
+same-stream receipt, or mapped stack-location projection that K.11.4 requires.
+The emitted route is still an explicit trusted classic-script request, not
+the default browser navigation path. No K.11 commit or push has occurred.
+
+Focused verification of this uncommitted slice: `cargo fmt --all -- --check`
+and `git diff --check` pass; warnings-denied library Clippy passes for
+`blueice-bluejs`, `blueice-ipc` and `blueice-launcher`. The BlueJS library
+suite passes 1,146/1,146, launcher 175/175, and IPC 136/136 tests. Launcher
+and IPC library suites require permission to bind their local Unix test
+sockets; the initial sandboxed runs failed only at those binds, and the
+identical permission-enabled commands passed. The focused real supervised
+child-process emitted-map breakpoint/step/stack regression passes. The
+compiler source-map lookup suite passes 4/4; the token oracle passes all
+14 ordinary tests and all nine explicitly invoked ignored tests against the
+locally cached TypeScript 5.9.3 executable; the external/inline CLI
+publication oracle passes against that same executable. A broader four-crate
+all-target warnings-denied Clippy was intentionally interrupted after partial
+progress because BlueJS alone contains 399 test files; it is **not** a green
+K.0 gate. Workspace tests, coverage and hosted final-source CI likewise have
+not been run on this uncommitted candidate. K.11 remains open; no commit or
+push has occurred.
+
+The emitted-artifact child protocol now has an exact paused-root reverse
+projection. It requires a live paused root safe point in the same pending
+program generation, revalidates that instruction against BlueJS, correlates
+it with exactly one compiler-recorded top-level AST safe point and parser byte
+span, then resolves that statement start through the retained, fully
+validated map. No matching instruction or an ambiguous shared instruction
+returns an explicit unlocated result; a generated helper may have a generated
+coordinate but no original user coordinate. The real supervised child-process
+regression checks denial before pause, a mapped paused statement start, an
+unlocated interior instruction after step, and stale-generation rejection.
+An in-process admission regression deliberately arms the raw internal helper
+safe point and confirms its paused projection has no original location. The
+focused child-process test and all 175 launcher library tests pass, as do
+`cargo check` for IPC/launcher and warnings-denied IPC/launcher library
+Clippy. This remains **child-private**: the core adapter, public default-deny
+grant, same-stream receipt, relocated nested safe point and public stack
+projection are not implemented. K.11.4 and K.11.6 remain open; no K.11 commit
+or push has occurred.
+
+The core page-host adapter now carries the three emitted-map child requests
+through its authenticated `PageHostClient`: generated-to-original lookup,
+exact generated-to-safe-point binding, and paused-root reverse projection.
+Unsupported clients default to refusal. The out-of-process executor first
+resolves its own reminted program identity to the exact live child program,
+checks every reply's tab/document/program and query tuple, bounds returned
+coordinates and source indices, and never exposes the child handle. A forged
+success reply naming a different child generation is rejected for all three
+operations in the adapter regression; a Unix socket-pair test verifies the
+actual private request/reply frames. Both focused engine tests, `cargo check
+-p blueice-engine`, warnings-denied engine library Clippy, and all 466 engine
+library tests (with local fixture-socket permission) pass. This
+does **not** advertise or route any public debugger operation: independent
+owner/client generated-map grants, same-stream program receipts, public
+breakpoint arm, public step/stack location projection and relocated nested
+safe points remain open. No K.11 commit or push has occurred.
+
+The next uncommitted K.11.4 slice closes the initial public generated-map
+authorization and routing seam. Debugger protocol v44 and metadata manifest
+v6 define independent, default-denied generated breakpoint and paused-location
+capabilities. A session can resolve or arm one generated position, or project
+one paused root location, only after the exact core-reminted program identity
+has been returned by `ListPrograms` on that same debugger stream; receipts
+are bounded and never transfer between streams. Core rechecks the live realm,
+capability report, child program tuple, generated coordinate, and compiler-
+verified safe point before returning a source-free binding or arming the
+existing one-shot root breakpoint. The paused projection verifies the current
+root execution state against the first stack safe point and the child-private
+reverse-map tuple before returning bounded generated/original coordinates.
+The core and launcher expose separate owner flags for these grants, without
+implicitly enabling the static-metadata inventory. A separate, default-off
+owner flag selects the BlueTSC-emitted artifact for classic BlueTS pages on
+ordinary supervised navigation; modules and all default paths remain direct.
+
+Focused evidence for this slice: the IPC library suite passes 138/138 tests
+with local Unix-socket permission; the public-route engine unit regression
+passes, as do the core/launcher owner-flag tests. Two real launcher/core/child
+public-socket regressions pass: an ungranted owner refuses generated binding
+and arm, while an explicitly granted emitted-classic page binds an exact
+statement start, leaves an inner token unbound, arms and pauses at that exact
+root, projects its original coordinate, returns no location after stepping to
+an interior instruction, and refuses malformed coordinates, guessed program
+identities, and stale navigation generations. A third real-process regression
+arms the compiler-verified generated decorator-helper root and confirms its
+public paused projection has a generated coordinate but no original source.
+`cargo check -p blueice-engine
+-p blueice-launcher --all-targets` passes.
+The three affected crates also pass `cargo clippy -p blueice-ipc -p
+blueice-engine -p blueice-launcher --all-targets -- -D warnings` after
+resolving its large-error, argument-count and needless-update findings.
+The current engine and launcher library suites pass 468/468 and 176/176
+tests respectively with local fixture-socket permission; `cargo fmt --all --
+--check` and `git diff --check` pass after the final source edits.
+This is not K.11 closure: nested relocated decorator positions and a public
+malformed-map refusal still need real-process regressions; emitted modules
+remain unsupported, and
+the full matrix and final-source K.0/hosted gates have not passed. Per the
+user's K.11 completion condition, this slice remains uncommitted and unpushed.
+
+The public paused generated-location route now cross-checks every located
+reply against two independent child-private reads on the same core-reminted
+program generation: the source-map original-position lookup at the returned
+generated coordinate, and the exact generated-to-safe-point binding. A mapped
+position must resolve to the currently observed paused stack point; an
+unmapped generated helper must remain unbound and have no original position.
+An inconsistent map coordinate or AST/bytecode binding returns a fixed
+`InvalidExecutionState` error without disclosing the proposed location. The
+engine public-route regression injects each contradiction separately, while
+all three real launcher/core/child generated-debugger regressions remain
+green after rebuilding the core binary. This tightens the public trust
+boundary but is not a complete malformed-map real-process regression: the
+production child generates its own map, so a public client cannot inject a
+malformed map fixture. Nested relocated AST spans and the remaining K.11
+matrix/final-source gates are still open; no commit or push has occurred.
+
+The real launcher/core/child decorator regression now compiles the same
+served source independently, verifies that the compacted generated
+`decoSite` token maps to the original decorator identifier, then queries
+that exact generated coordinate through the public debugger stream. Because
+BlueJS currently records compiler safe points only for top-level AST
+statements, the nested relocated token must resolve without a safe point
+and its arm request must fail with `InvalidSafePoint`; it may not borrow the
+surrounding statement or helper root. The focused public-process regression
+passes after the new assertion, as does the pinned TypeScript 5.9.3
+eleven-row decoded mapping oracle (`decoded_token_maps_match_pinned_typescript`,
+1/1). This records the relocation boundary rather than satisfying K.11.4:
+the exact nested parser-span/bytecode safe-point linkage and a positive
+relocated public breakpoint remain open. No K.11 completion box was checked,
+and no commit or push has occurred.
+
+For this same uncommitted source, `cargo fmt --all -- --check`, `git diff
+--check`, the focused real-process relocated/helper debugger regression, the
+pinned 5.9.3 eleven-row decoded-map oracle, and
+`cargo clippy -p blueice-launcher --all-targets -- -D warnings` pass.
+An early `cargo test --workspace` attempt was stopped after approximately
+nineteen minutes of first-time dependency/test-binary compilation, before
+test execution; it is **not** a workspace-test result or K.11.6 evidence.
+The later launcher Clippy pass followed removal of an accidental long-lived,
+read-only `du` scan over `target`. The final-source workspace, coverage and
+hosted gates must be run after the missing K.11.4 implementation lands.
+
+The next uncommitted K.11.4 investigation adds an exact identifier-expression
+bridge without pretending that source-map coordinates are executable by
+themselves. BlueJS now retains parser-produced identifier byte spans and
+compiler-recorded identifier-evaluation instruction offsets, grouped by the
+owning top-level statement and installed code unit. The child binds only a
+literal, unique source token to a unique compiler instruction after the
+retained generated map proves that the token is source-mapped; duplicate or
+escaped spellings, unmatched statements and unmapped helper bodies cannot
+borrow a neighboring instruction. The reverse paused-location path uses the
+same uniqueness checks, while core independently re-reads the map and binding
+before disclosing a projected original position. Debugger protocol v45 and
+page-host protocol v46 allow the generated paused-location reply to identify
+either a root or a directly nested safe point. BlueJS's class-static-block
+call now preserves its operands and continuation when a directly called
+block pauses, and a focused VM regression proves pause, resume and correct
+root completion for that one-level case.
+
+The positive real-process standard-decorator test exposed a stricter
+execution limit: BlueTSC's measured relocation occurs inside a class static
+block **inside an immediately invoked arrow function**. Its exact identifier
+instruction is therefore structurally two code units below the program root.
+The current nested debugger continuation owns only one child frame and can
+resume only a direct synchronous root call; it cannot suspend and restore the
+intermediate arrow frame. The first public test accepted the breakpoint but
+execution completed without pausing, which is not an acceptable K.11.4
+result. Code-unit metadata now retains structural nesting depth, and the
+child refuses generated-token binding past depth one, so the public arm
+fails closed instead of acknowledging an unreachable breakpoint. A focused
+child admission regression confirms the compiler-known decorator point is
+depth two and deliberately unbound. This conservative depth limit does not
+claim all depth-one instructions are dynamically reached; it only prevents
+known unsupported deeper targets from being advertised. Multi-frame VM
+continuation, its stack/step/throw semantics, a positive relocated
+launcher/core/child regression, malformed-map real-process refusal, emitted
+module admission, the full K.11 matrix and final-source gates remain open.
+No K.11 completion box is checked, and no commit or push has occurred.
+
+Focused verification of this uncommitted candidate: the direct BlueJS
+class-static-block pause/resume regression passes; the compiler identifier
+provenance regression verifies direct depth one versus IIFE-contained depth
+two; the child-host emitted-map admission regression proves refusal of the
+known unsupported decorator frame; the IPC v45 nested generated-location
+shape round-trips; and the core public generated-route authorization and
+cross-check regression passes. After rebuilding the actual core executable,
+all four launcher/core/child public generated-debugger cases pass, including
+default denial, mapped root pause/projection, helper non-disclosure and
+depth-two decorator fail-closed resolution/arm. `cargo fmt --all -- --check`
+and `git diff --check` pass after the latest source edits. The four affected
+crates' warnings-denied library Clippy passes. An attempted four-crate
+all-target Clippy discovered that the parser API edit accidentally removed
+the existing `parse_with_edition` crate-root export; that export was restored,
+and `cargo check -p blueice-bluejs --test syntax_editions` now passes. The
+second all-target pass was stopped after more than twenty minutes of actively
+checking BlueJS's 399 test files, with no further diagnostic, because this is
+not yet a final K.11 source. It is **not** an all-target pass. The K.0
+workspace/coverage and hosted final-source gates also remain unrun for this
+candidate.
+
+The subsequent uncommitted K.11.4 slice turns that depth-two boundary into
+a real pause rather than only a safe refusal. A test-first BlueJS public
+runtime regression reproduced `Unsupported("nested debugger pause requires a
+direct synchronous closure call")` for the exact `root → IIFE → class static
+block` shape. The VM now captures a separate intermediate synchronous
+continuation with its own operand stack, lexical bindings, iterator and
+handler state, and GC roots when the selected child suspends. Child step
+retains all three frames; child completion is applied to the intermediate's
+waiting `Call` or `CallClassStaticBlock` instruction exactly once, then that
+frame resumes to its return or catch before rejoining the root. Remaining
+instruction budget and installed program identity remain attached to the
+saved execution. Module/linked nested requests deliberately retain their
+existing one-child behavior; generated classic positions deeper than two
+structural code units still fail closed. The VM stack snapshot and value
+selector can name the intermediate frame without mistaking it for the root
+or selected child.
+
+The child emitted-map lookup now admits a unique mapped identifier at depth
+two and validates the actual two- or three-frame paused stack before reverse
+projection. The core's child-reply validator no longer assumes every nested
+stack has exactly two frames: it accepts only consistent full two-/three-frame
+or bounded truncated shapes, validates every returned safe point, and rejects
+forged root placement or length. The public generated-location route likewise
+requires a complete current stack ending at the same program root before it
+cross-checks the child map and exact compiler binding. The real supervised
+launcher/core/child decorator test now resolves and arms the compacted
+`decoSite` token, pauses at its own non-root safe point, observes all three
+frames, projects the original `@decoSite` UTF-16 coordinate, steps to a
+distinct unlocated instruction, resumes the nested frame into its root, and
+resumes the root to Completed. The helper body remains unmapped and never
+inherits that user-source coordinate.
+
+Focused evidence on this candidate: all 20
+`cargo test -p blueice-bluejs --test coverage_hard_debugger` cases pass,
+including no-replay normal completion, a child throw handled by the
+intermediate IIFE catch, and a 512-budget differential sweep proving that
+pause/resume never turns an otherwise exhausted program into a success. All
+62 BlueJS library tests matching `debugger` pass; the old depth-two refusal
+test now checks the still-unsupported third dynamic call level before the
+target executes. The child emitted-map admission and core forged/truncated
+three-frame stack regressions pass; `cargo check -p blueice-engine -p
+blueice-launcher --all-targets` passes; the rebuilt `blueice-core` and all
+four real public generated-debugger cases pass on the latest source, including
+nested and root resume to Completed. Warnings-denied library Clippy for
+BlueJS, IPC, engine and launcher, `cargo fmt --all -- --check`, and `git diff
+--check` also pass. This closes only the bounded multi-frame K.11.4 subitem.
+Full matrix-wide generated/helper/relocation coverage, malformed-map
+real-process refusal, emitted module admission, the full K.0
+workspace/coverage gate and hosted final-source gate remain open. K.11 is
+still open; no commit or push has occurred.
+
+The next local verification adds a public bounded-stack assertion to the
+relocated decorator socket test: a two-frame request returns exactly the child
+and intermediate frames with `stack_truncated`, while a full three-frame
+request retains the root. After one nested instruction step, all three frame
+identities remain unchanged except for the selected child's new safe point.
+A BlueJS internal regression separately reads a local value from the retained
+intermediate IIFE and rejects the same scope entry when mislabeled as the
+child frame. The focused internal and real-process tests pass. The pinned
+TypeScript 5.9.3 `source_map_tokens_oracle` suite passes all 23 ordinary and
+ignored tests on this uncommitted candidate, including the complete eleven-row
+public-API map/Node replay. The pinned public CLI source-map publication suite
+passes 3/3, including external/inline delivery and `inlineSources` on/off for
+all eleven rows; the local Node execution oracle is v26.7.0. The child nested
+scheduler passes 5/5 and warnings-denied
+BlueJS/IPC/engine/launcher library Clippy also passes. These current-source
+results satisfy the bounded K.11.2 mapping and K.11.3 metadata/publication
+checks and strengthen the bounded K.11.4 evidence. They do not satisfy the
+committed-fixture K.11.1 requirement, malformed-map real-process or emitted-
+module K.11.4 cases, complete K.0 gate or
+hosted final-source K.11.6 gate. No commit or push has occurred.
+
+The focused K.11.5 replay on that same candidate also passes four public
+source-map lookup tests, one System wrapper map test, 28 emitter unit tests,
+three declaration-map option/publication tests and all 20 BlueJS hard-debugger
+cases. The pinned eleven-row replay compares Native and BlueTSC Node exit
+status, stdout and stderr and repeats each compilation to check stable map and
+JavaScript output. K.11.5 is checked along with K.11.2 and K.11.3; K.11.1,
+K.11.4, K.11.6 and K.11 itself remain open. No commit or push has occurred.
+
+### K.11 emitted ESM page-host admission, without debugger authority (2026-10-13)
+
+The next test-first child-host slice reproduced the existing refusal of an
+explicit `BlueTsEmitted` module graph with a static import. The child now
+compiles the complete caller-authorized BlueTS graph with maps and inline
+sources, requires an emitted artifact and validated map for every input
+module, bounds aggregate generated-source and retained-map bytes, and
+preflights the exact emitted JavaScript as a BlueJS ESM graph before installing
+anything. Each generated `PageHostSource` hashes the emitted JavaScript rather
+than the input TypeScript. The authorized static resolutions are transformed
+using BlueTSC's own exported JavaScript-specifier rule (`.ts` to `.js`, with
+the compiler's `.mts`/`.cts`/`.tsx` variants); the ordinary graph validator
+rejects collisions, missing targets and emitted requests with no matching
+authorized edge. The original typed source and any external map remain
+untrusted as executable or debugger artifacts.
+
+The focused child unit regression executes a two-module imported value and
+checks both retained map/hash pairs and the transformed resolution key. A
+separate supervised child-process test executes the same shape through the
+actual page-host IPC connection. Both pass. Debugger-controlled emitted
+modules are deliberately rejected with no installed debugger program: the
+linked module map/program-generation attachment and public generated-location
+route are not implemented, so silently treating the request as a direct
+BlueTS module would misrepresent K.11.4. Ordinary JavaScript and direct
+BlueTS module paths are unchanged. Final focused verification on this source:
+the child admission suite passes 20/20 with local socket permission; the new
+supervised emitted-module test passes 1/1; all four existing public generated-
+debugger socket regressions pass; pinned TypeScript 5.9.3 source-map oracles
+pass 23/23 and CLI publication passes 3/3; warnings-denied BlueTSC/launcher
+library Clippy, `cargo fmt --all -- --check` and `git diff --check` pass. The
+ordinary sandbox's owner-only socket test fails with `Operation not permitted`
+but passes when local socket access is granted; this is not a code failure.
+This narrows the emitted-module admission gap but does not close K.11.4,
+K.11.6 or K.11 overall; no commit or push has occurred.
+
+The next uncommitted prerequisite for debugger-mode emitted modules adds
+`parse_module_with_debug_spans` to BlueJS. It derives original UTF-8 byte
+offsets from the same escaped-character mapping as Script parsing, records
+one top-level statement span per executable Module body item, and captures
+identifier-expression tokens when the parser constructs those expressions.
+Static imports and pure re-exports deliberately add no body span. Exported
+declarations and decorated class forms retain their full source interval. A
+test-first exported-decorator regression exposed one parser gap: the direct
+`@deco` Identifier AST construction had bypassed the ordinary expression
+span recorder. It now records the exact initial decorator identifier token;
+member property names remain non-evaluated names. Both exported and bare
+decorated classes are covered.
+The same parser audit found object-literal shorthand values (`{ café }`):
+their value-side `Expr::Identifier` was also constructed manually from a
+property key, so it had no debug span despite reading the binding. A
+test-first original-byte regression now requires the shorthand token, and
+the parser records it at the consumed key token boundary. Ordinary
+non-computed property names remain excluded because they are not variable
+reads.
+The child now uses those spans when admitting each BlueTSC-emitted ESM map;
+an empty provenance table can no longer accidentally represent a module that
+contains executable body statements. The parser/registry regressions check
+the original offsets, body/AST item count and the compiler's exact imported-
+identifier safe point. The compiler can legitimately assign the same initial
+instruction to an exported statement and its first identifier; reverse
+projection must treat that as ambiguous rather than fabricate a distinct
+offset. The child admission suite passes 20/20 on the source
+with this change. This does not yet install generated module maps under live
+debugger program identities or expose module breakpoint/step projection, so
+the explicit debugger-mode refusal and K.11.4 remain in force. No commit or
+push has occurred.
+
+Final-source verification for this parser-provenance slice reruns the 96-case
+BlueJS parser suite and the 20-case child-host admission suite, both green.
+Warnings-denied BlueJS/launcher library Clippy, workspace formatting, and
+`git diff --check` are also green. The public page-host protocol intentionally
+has no input field for a caller-supplied source map: the child constructs maps
+from its own compilation. Consequently, a real-process malformed-map
+regression needs a separately designed, tightly bounded test-only fault
+injection point; the existing child admission regression rejects malformed
+complete mapping streams, but that is not yet the K.11.4 public-process
+malformed-map acceptance item. Do not weaken the child-owned map boundary to
+make this test possible.
+
+The emitted-module child admission fixture now exercises an imported binding
+used as an object-literal shorthand value, verifies every retained identifier
+span against the exact generated JavaScript bytes, and checks that the map
+and preflighted program sets have identical canonical module IDs. The
+ordinary execution boundary also requires key-set equality rather than only
+equal map/program counts. This is a provenance completeness check, not yet a
+debugger-mode linked attachment.
+
+The expanded shorthand fixture initially failed before map admission because
+its variable name `object` was rejected by the current BlueTSC input subset;
+renaming that local binding to `record` preserved the `{ value }` construct
+under test. On the final uncommitted source, the complete child admission
+suite passes 20/20, BlueJS parser tests pass 96/96, program/debug coverage
+passes 8/8, the real child-process emitted-module test passes 1/1, and the
+four public generated-debugger socket regressions pass 4/4. BlueJS/launcher
+library Clippy with `-D warnings`, workspace rustfmt check, and diff
+whitespace check pass. These focused gates do not substitute for K.11.6's
+committed-source K.0 and hosted CI gates.
+
+### K.11 emitted ESM debugger attachment in the child (2026-10-14)
+
+The next child-local step replaces the explicit debugger-mode refusal for an
+authorized `BlueTsEmitted` module graph with an atomic live attachment. The
+prepared graph must have identical canonical module-ID key sets across
+generated sources, compiled BlueJS programs, and validated BlueTSC maps; each
+retained map must describe the exact generated source and source hash that
+will be installed. The child installs every module before publishing any
+opaque debugger-program identity. A failed source identity, duplicate module,
+bytecode or per-realm program admission discards all previously installed
+graph programs. A failed opaque-handle registration closes the document
+rather than leaving a partially mapped realm. Per-document retained-map
+budgeting includes maps from earlier emitted scripts before installation.
+
+One pending debugger execution retains the entry handle and the complete
+installed module-handle set. The existing verified module pause, step,
+resume, and bounded linked-child machinery can therefore operate on either
+direct BlueTS provenance or emitted JavaScript provenance without replacing
+the graph with a direct AST. Generated-map lookups still require the exact
+live runtime source identity and opaque generation. Direct BlueTS source-span
+stepping and direct exception provenance stay restricted to direct
+attachments; emitted modules use generated-location operations.
+
+The child regression now checks two live module/map pairs, the
+compiler-generated imported `value` token's exact original coordinate and
+BlueJS safe point, an entry-module pause, and exact paused projection of the
+first mapped statement back to its original TypeScript coordinate. Separate
+regressions prove
+that a one-program realm rejects the second module and returns to zero live
+programs with no map or debugger identity, and that a substituted generated
+source hash is refused before any install. The focused three-test attachment
+set passes 3/3; the complete child-host library passes 84/84, including
+existing direct-module linked debugger and resource-accounting regressions.
+The supervised real-child regression now passes 1/1: it sends the explicit
+emitted module over the authenticated page-host IPC connection, resolves the
+first generated mapped statement to an exact safe point, arms and observes a
+pause, projects the exact original TypeScript coordinate, and resumes to a
+successful report. The full child-host library passes 84/84 and final-source
+launcher all-target Clippy with `-D warnings`, workspace rustfmt, and
+`git diff --check` pass. Crucially, this does not yet expose emitted-module selection
+through the trusted core/launcher option or prove public out-of-process
+module breakpoints, so K.11.4 and K.11 remain open. No commit or push has
+occurred.
+
+### K.11 owner-selected emitted ESM route to the public debugger (2026-10-14)
+
+The launcher and core now carry a separate, default-off
+`--out-of-process-bluejs-emitted-blue-ts-module` startup selector alongside
+the existing classic selector. The launcher validates that the supervised
+BlueJS child was selected and forwards only a boolean to the trusted core;
+the core likewise requires its private page-host socket. No page, frontend,
+debugger or compiler/MCP request can supply an emitted module, source map,
+resolver, or map path through this option. At document admission the core
+selects `BlueTsEmitted` only for BlueTS Module declarations when the module
+selector is on. The classic and module selectors are independent, and plain
+JavaScript is unaffected. The executor defaults both selectors off in each
+constructor. Generated-breakpoint and paused-location metadata capabilities
+remain separately default-denied and still require their own owner grants,
+client handshake requests, and same-stream opaque program receipt.
+
+A real launcher/core/child debugger regression serves an inline BlueTS
+module, independently compiles its emitted JavaScript to locate a mapped
+token, and then uses the public debugger socket to resolve/arm that exact
+generated coordinate, pause, project the original TypeScript location and
+resume. The core route-selection test passes 1/1, and the core and launcher
+command-line validation tests each pass 1/1. The first public test attempt
+failed before navigation because `cargo test -p blueice-launcher` had launched
+a stale, separately built `blueice-core` executable that did not recognize
+the new owner flag. Explicitly rebuilding it with
+`cargo build -p blueice-engine --bin blueice-core` followed by the same
+public regression passes 1/1. A second real-process test requests both
+generated metadata capabilities with only the emitted-module route selected:
+the handshake grants an empty manifest, and generated resolve, arm, and
+paused-location requests all return `Unsupported`. The complete six-case
+generated public regression group passes 6/6, preserving the classic,
+relocated-decorator, helper non-disclosure and default-denied paths. Engine
+and launcher all-target Clippy with `-D warnings` passes. This route does
+not by itself close K.11.4: the full matrix of
+generated helper/wrapper/relocated positions, malformed-map fault path,
+module dependency frames, and final-source K.0/hosted gates remain open.
+No commit or push has occurred.
+
+### K.11 emitted dependency exact breakpoint through linked execution (2026-10-14)
+
+A two-source owner-HTTP page now exercises an emitted BlueTS ESM entry and
+dependency over the public launcher/core/child debugger sockets. The first
+fixture used `Number(41)`, which the page compiler correctly rejected because
+that global is outside its supplied typings; a local-variable variant then
+exposed an exact-binding gap rather than a page-admission failure. The final
+fixture uses one source-map-mapped, parser-recorded `globalThis` expression in
+the dependency's hoisted function body. The original child preparation test
+proved both emitted maps and both programs were complete, but its live
+program had no `unique_identifier_safe_point` for this token. The cause was
+BlueJS's root-level function-declaration hoist: the child function was
+compiled before `current_root_statement_index` was set for that declaration.
+The compiler now sets and restores this index only while compiling each
+hoisted top-level function declaration. No nearest-token or nearest-bytecode
+fallback was introduced. A BlueJS regression proves the exact nested code
+unit 1 point and its reverse identifier provenance; a child-host regression
+proves the map, parser token and installed program agree.
+
+The real-process test now resolves the generated dependency coordinate to
+the exact nested safe point, arms it under the existing verified linked
+entry/dependency control, observes the two-program linked stack, and requests
+resume. A forged generation is refused before map lookup by the same-stream
+opaque-program receipt (`Unsupported`); the dependency's currently paused
+position is **not** projected by the root/nested-only
+`GetGeneratedPausedLocation` operation (`InvalidExecutionState`). That
+explicit failure is intentional pending a separate linked generated-stack
+projection with both frame identities and maps. The focused BlueJS, child
+preparation and final public end-to-end regressions each pass 1/1, including
+the forged-generation refusal. The complete generated public-debugger group
+passes 7/7 with classic, relocated-decorator, helper non-disclosure, inline
+emitted ESM and default-deny coverage. Workspace rustfmt and diff whitespace
+checks pass. The full generated matrix, malformed-map
+public fault path, K.0 and hosted gates remain. K.11.4 and K.11 remain
+open; do not commit yet.
+
+The complete BlueJS program-debug coverage binary passes 9/9. The launcher
+child-host library binary passes 181/181 when local Unix socket binding is
+permitted; running the same binary inside the restricted default sandbox
+produces nine `Operation not permitted` socket-test failures, with the other
+172 tests passing. Warnings-denied BlueJS/launcher library Clippy passes. An
+all-target run was stopped after approximately 13 minutes while it was still
+compiling the large BlueJS integration-test inventory; it is not a passed
+gate and must be rerun at K.11.6.
+
+### K.11 receipted generated locations for a linked emitted ESM pause (2026-10-14)
+
+Public debugger protocol v46 adds `GetGeneratedLinkedStackLocations` with
+the complete child-first two-frame stack as its target. This is a distinct
+read under the existing independently default-denied generated paused-
+location capability; both opaque programs must have crossed the same
+debugger stream's inventory, and the full expected stack must equal the
+current linked pause. The ordinary `GetLinkedStack` remains source-free, and
+the older single-program `GetGeneratedPausedLocation` continues to reject
+linked frames. The reply is all-or-nothing: two ordered optional generated
+locations, never a partial vector or an inferred nearest token.
+
+The child now validates each emitted map against its exact live generated
+source and program generation, obtains both safe points from the actual
+linked runtime stack, and reverse-resolves a parser/bytecode token only when
+that instruction has unique provenance. Core revalidates each projected
+original position and its exact generated safe-point binding against the
+child's independent map operations, then rereads the complete linked stack
+before publishing either location. A mapped dependency identifier projects
+to its original TypeScript UTF-16 coordinate; the suspended entry caller has
+no unique token at its saved instruction and remains explicitly `None`.
+No guessed caller coordinate or synthetic source has been introduced.
+
+The public launcher/core/child regression proves mapped dependency
+projection, explicit unbound entry, rejection of a well-formed but altered
+frame handle, denial without the capability even after both program
+receipts, denial with the capability but no same-stream receipts, and
+invalidation immediately after resume. The child-host regression separately
+checks refusal before pause and exact per-program projection during the
+linked pause. IPC shape tests cover the v46 request/reply round-trip and
+reordered-frame refusal. Focused public generated regressions pass 7/7,
+IPC library tests pass 139/139 with local socket permission, the child-host
+regression passes 1/1, and the existing engine generated authorization test
+passes 1/1. IPC/engine/launcher library Clippy with `-D warnings` passes.
+These are not K.11.6's workspace, coverage, all-target and hosted gates.
+The full source-map matrix's mapped/unmapped/relocated debugger sites and a
+public malformed-map fault path remain open, so K.11.4 and K.11 are not
+complete and no commit or push has occurred.
+
+### K.11 public debugger relocation across compacted and erased decorators (2026-10-14)
+
+The out-of-process generated-debugger regression now exercises two more
+source-map oracle constructs through the real launcher/core/child route:
+`decorated_parenthesized.ts` (`@(  decoSite  )`) and
+`decorated_erased_assertion.ts` (`@(decoSite as any)`). The committed oracle
+fixtures themselves are unchanged. For page execution only, each served copy
+replaces its final `console.log` sink with a typed local result because the
+page-host ambient/runtime profile does not expose `console`; the decorator
+syntax and token positions remain intact. This is supplementary public
+execution evidence, not a claim that the adapted copies are byte-identical
+to the frozen oracle rows.
+
+For each served copy, the test independently compiles the same source with
+BlueTSC maps, locates `decoSite` inside the emitted decorator list (including
+the possible retained parentheses), and verifies the map's exact original
+UTF-16 coordinate before using any debugger operation. The public debugger
+then resolves that generated token to a non-root BlueJS safe point, arms it,
+observes the nested pause, projects the same original TypeScript token, and
+resumes through the suspended callers to completion. Both variants pass in
+one real-process test; the complete generated public regression group now
+passes 8/8. Warnings-denied Clippy for the launcher out-of-process debugger
+test target passes. The standard decorator's existing helper non-disclosure,
+three-frame step, and linked ESM cases remain green.
+
+This advances K.11.4's relocated-site evidence but does not close it:
+composed and legacy decorator/parameter/metadata helper sites, the ES5
+object-spread helper, the System wrapper, exact frozen-row debugger coverage,
+and a public malformed-map fault path still require proof. K.11.6's
+same-commit workspace/coverage/hosted gate is also outstanding. No commit
+or push has occurred.
+
+### K.11 owner-selected legacy parameter and metadata helper route (2026-10-14)
+
+Private page-host protocol v47 carries a core-owned BlueTS emission profile,
+defaulting to `Standard`. The launcher startup flag
+`--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata` selects
+`LegacyDecoratorsWithMetadata` and implies the emitted classic route; the
+launcher forwards that selection to the core over its supervised process
+configuration. The core alone copies the profile into the authenticated
+document request. Neither page bytes, public debugger requests nor compiler/MCP
+traffic can set it. The child compiles the accepted classic graph with
+`experimental_decorators`, `emit_decorator_metadata`, `source_map` and
+`inline_sources` together and installs its exact generated JavaScript and map.
+The independent emitted ESM route always retains the standard profile, even
+if the owner selected legacy classic in the same document. Launcher/core CLI
+tests verify the private-child requirement, implied classic selection and ESM
+non-selection; child-host tests verify default rejection and successful
+execution with the explicit legacy profile.
+
+The real-process public debugger test uses a runtime-adapted copy of the
+pinned `legacy_parameter_metadata.ts` row: it removes only decorator-body
+`console.log` calls and replaces the final `console.log` sink with a
+`globalThis` result, because the page-host runtime does not expose `console`.
+Its decorator syntax and token coordinates are unchanged. An independent
+BlueTSC compile of those exact served bytes verifies that the emitted
+`__bluetsParam(0, parameterDecor)` call maps to the original
+`@parameterDecor` identifier. Both the generated `var __bluetsParam`
+definition and the generated `__bluetsMetadata("design:type"...)` call are
+unmapped. Through public launcher/core/child sockets, the same parameter
+call resolves to an exact root safe point, arms and pauses, projects the
+original UTF-16 coordinate, resumes and completes. The two synthetic sites
+do not resolve to generated breakpoints. This is supplementary debugger
+evidence, not byte-for-byte execution of the frozen oracle fixture.
+
+Verification: focused child-host legacy tests 2/2; launcher and core CLI
+selection tests 1/1 each; all nine public generated-debugger regressions
+9/9; IPC library suite 139/139 and launcher child-host library suite
+183/183; `cargo check -p blueice-ipc -p blueice-engine -p blueice-launcher
+--all-targets` and the corresponding warnings-denied all-target Clippy pass.
+Workspace formatting and diff whitespace checks pass.
+K.11.4 remains open for complete frozen-matrix debugger coverage,
+non-decorator helper and System-wrapper public sites, and the malformed-map
+public fault path. K.11.6's same-commit workspace, coverage and hosted gates
+remain open. No commit or push has occurred.
+
+### K.11 legacy class/member emission without metadata (2026-10-14)
+
+The frozen `legacy_decorated.ts` row deliberately has no method return-type
+annotation. Selecting the previously added legacy-plus-metadata profile for
+that row fails BlueTSC's required metadata type check; changing the oracle
+fixture would change the measured case. Private page-host v47 therefore now
+has a separate `LegacyDecorators` profile. The trusted launcher startup flag
+`--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators` selects
+emitted classic plus `experimental_decorators` without
+`emit_decorator_metadata`. It is independent of the metadata profile, and
+the launcher and core parsers reject simultaneous legacy profile flags.
+Both require the private supervised child; emitted ESM remains on its
+standard compiler options. A child-host regression proves that this exact
+fixture (with runtime-only `console` adaptation) executes under legacy
+decorators, while the metadata profile rejects its missing annotation.
+
+The public regression compiles the exact served bytes independently and
+uses the bound map to check two legacy `__bluetsDecorate` call sites before
+querying the debugger. The member call maps to the original `method()`
+token; the class call maps to the end of the `class Example` header, which
+is the measured source anchor rather than the class keyword. The generated
+helper definition and `], Example.prototype` punctuation are unmapped.
+For each mapped call, a fresh launcher/core/child process resolves one
+exact root safe point, arms, pauses, projects the original UTF-16 position,
+resumes, and completes. The synthetic sites remain unbound. The served
+copy removes only decorator-body `console.log` calls and replaces the final
+sink with a `globalThis` result; the frozen oracle file is unchanged, so
+this is public debugger evidence supplementary to, not a replacement for,
+the pinned Native-versus-BlueTSC row.
+
+Verification: child-host profile test 1/1, launcher and core owner-flag tests
+1/1 each, public generated-debugger group 10/10, IPC library 139/139,
+launcher library 184/184, three-crate all-target `cargo check`, and
+warnings-denied three-crate all-target Clippy. K.11.4 still lacks public
+composed standard-decorator, ES5 object-spread and System wrapper sites,
+the malformed-map public fault path and full frozen-row coverage. K.11.6
+also remains open; no commit or push has occurred.
+
+### K.11 public composed standard-decorator relocation (2026-10-14)
+
+The pinned `decorated_multiple.ts` row supplies one class decorator and two
+composed member decorators. A separate public regression serves a
+runtime-adapted copy, removing only unsupported decorator-body `console`
+calls and replacing its final sink with a `globalThis` result. The frozen
+oracle fixture and its decorator token positions are unchanged. Before
+opening any debugger socket, the test compiles the exact served source with
+BlueTSC maps and verifies that the emitted `_method_decorators` list's
+`outer` and `inner` identifiers and the `_classDecorators` list's
+`classDecor` identifier each map to their distinct original `@` tokens.
+It explicitly selects the identifiers inside the generated brackets rather
+than the similarly named synthetic list variables. The
+`var __bluetsEsDecorate` helper body remains unmapped.
+
+For each token, a fresh public launcher/core/child run negotiates only the
+two generated debugger capabilities, holds the document, refuses a
+breakpoint on the helper body, resolves and arms the exact nested token,
+observes the nested pause, projects its original UTF-16 line/column, then
+resumes through the saved root caller to completion. This proves the three
+composed relocation sites independently, without changing the compiler
+artifact through a debugger-supplied map. The complete public generated
+group passes 11/11; warnings-denied Clippy for the out-of-process debugger
+test target passes. This is supplemental runtime-adapted evidence rather
+than byte-for-byte execution of the frozen oracle row. ES5 object-spread,
+System-wrapper and malformed-map public fault-path coverage, the complete
+matrix debugger gate, and K.11.6 remain open. No commit or push has occurred.
+
+### K.11 ES5 object-spread helper through the public debugger (2026-10-14)
+
+The frozen ES5 `object_spread_helper.ts` oracle row measures a generated
+helper definition as unmapped and its source-anchored call at the end of the
+`merged` binding. The owner-selected emitted-classic ES5 startup profile now
+passes only `EcmaTarget::Es5` to the child compiler; it implies the emitted
+classic route, requires the supervised private child, excludes both legacy
+profiles, and leaves emitted ESM on its standard profile. Launcher and core
+CLI tests pass for these boundaries. A child-host test executes the actual
+ES5 helper and checks the resulting spread value. The runtime-adapted copy
+replaces only the fixture's final `console.log` with an in-script assertion:
+ES5's ambient lib does not declare `globalThis`, so a global sink would
+change the type-checking outcome. The frozen oracle source remains untouched.
+
+This row exposed a genuine debugger provenance gap. The emitted `var merged`
+initializer calls `__blueice_target_object_properties_0` twice, outer and
+inner, in the same root statement. BlueJS previously exposed only a
+same-name *unique* identifier safe point, so the mapped outer call was
+unbound. BlueJS now retains a pair of distinct root safe points in actual
+compiler lowering order, but the child may associate them with generated
+token bytes only after it reparses and certifies the precise nested-call AST
+shape, complete parser statement/identifier spans, exactly two literal
+same-name callee tokens and no competing candidate. Arbitrary duplicate
+names remain unbound. The certified outer callee can share the declaration's
+first instruction offset; its instruction-specific provenance takes priority
+over that coincident statement boundary only for this proven pair. The map
+remains bound to the exact child-generated source hash and live program
+generation; no client-supplied map or nearest-token guess is accepted.
+
+The public launcher/core/child test independently compiles the exact served
+bytes with ES5 maps, verifies the helper definition is unmapped and its
+outer call maps to the measured original UTF-16 position, then proves the
+definition cannot resolve a breakpoint while the outer call resolves,
+arms, pauses, reverse-projects and resumes to successful completion. The
+complete generated public group passes 12/12. A BlueJS-level regression
+proves both compiler-recorded callee safe points differ and remain valid,
+while the older unique-name API still rejects the duplicate. A child-host
+regression on a real ES5 BlueTSC artifact separately verifies that both
+outer and inner generated callee tokens bind to distinct live safe points
+and reverse-project to their respective exact generated bytes. IPC library
+tests pass 139/139 and the launcher library suite passes 186/186. Four
+affected libraries and the public debugger test target pass warnings-denied
+focused Clippy; workspace rustfmt and diff whitespace checks pass. A broader
+four-crate all-target Clippy run was interrupted while still compiling the
+large BlueJS integration inventory, so it is not a passed K.11.6 gate. This is
+runtime-adapted public evidence, not exact frozen-row execution. System
+wrapper and malformed-map public fault-path cases, full matrix debugger
+coverage, K.11.6 and a final-source gate remain open. No commit or push
+has occurred.
+
+### K.11 System wrapper admission and bounded debugger refusal (2026-10-14)
+
+The exact frozen `system_wrapper.ts` fixture compiles with the public BlueTSC
+System module option and executes through an ordinary, page-supplied
+`System.register` loader in the child host. A separate owner-selected emitted
+classic profile now selects `ModuleKind::System` without admitting a
+debugger- or page-asserted module kind. The profile requires the supervised
+private child and is mutually exclusive with ES5 and legacy classic
+profiles. Its executable child and public tests append only an ambient
+`console.log` declaration after the frozen source, because the page host's
+checked-global policy does not otherwise admit `console`; the frozen oracle
+file and its original token coordinates remain unchanged.
+
+The public test independently checks that the generated
+`System.register` wrapper token is unmapped and that the `console.log` token
+inside the generated execute body maps to the original UTF-16 source token.
+The page loader is an earlier, separately installed JavaScript program. It
+calls the generated declaration and execute callbacks across that program
+boundary. The current BlueJS nested debugger retains at most the bounded
+same-program root/intermediate/child chain; it cannot suspend the target
+execute body through this foreign loader. Previously the exact generated
+identifier resolver returned a live safe point and arm succeeded, yet the
+program completed without a pause. The child now binds the owner-selected
+emission profile to each exact compiler-emitted map and refuses nested
+generated System targets at resolution. A mixed-document child regression
+proves that an ordinary emitted ESM module keeps its Standard map profile
+beside a System classic; the limitation cannot spill over to that unrelated
+module. The public resolver returns no safe point and arm
+returns `InvalidSafePoint`. Direct raw nested-safe-point arming is also
+rejected for the same System artifact, so listing a raw safe point cannot
+bypass the generated resolver. The pending child test verifies no breakpoint
+record is left behind, and the public test observes the source-free
+`InvalidExecutionState` reply. The debugger never promises a pause it cannot
+deliver.
+This guard does not change original-position lookup or any other emission
+profile. A future System pause capability requires a separately verified
+cross-program continuation and stack projection, not a broader map guess.
+
+Verification: exact frozen System child execution 1/1, owner-selected
+adapted System child execution 1/1, mixed-profile child admission 1/1,
+launcher and core owner-flag tests 1/1
+each, real-process System debugger regression 1/1, and the full public
+generated-debugger group 13/13. The launcher/core all-target warnings-denied
+Clippy gate passes with `-D warnings`; launcher library tests pass 189/189,
+IPC library tests pass 139/139, and workspace rustfmt plus `git diff --check`
+pass. The first unprivileged library runs were denied at Unix socket bind
+(nine launcher and four IPC tests); both exact suites pass with the permitted
+local-socket test execution. K.11.4 remains open for
+the public malformed-map fault path and complete frozen-row debugger
+coverage. K.11.1 requires committed fixtures, and K.11.6 requires the
+final committed-source local and hosted gate. No commit or push has occurred.
+
+### K.11 malformed emitted-map fault path through the public debugger (2026-10-14)
+
+The child only accepts compiler-owned source maps: neither a page nor a
+debugger client can submit replacement map bytes. To exercise the otherwise
+unreachable malformed-map branch without adding a product fault-injection
+switch, a child-host unit test admits a real emitted BlueTSC classic artifact,
+then deliberately corrupts its retained mapping stream in test-owned memory.
+Both private original-position and safe-point lookup return `HostFailure`
+after complete map validation; neither returns a partial coordinate or
+breakpoint. The program remains pending and the breakpoint set stays empty.
+The separate core adapter test injects that same private error at each of
+the three emitted lookup operations and verifies it becomes source-free
+`NoLiveRealm`, not a relayed map message or fallback location.
+
+An out-of-process public test now starts the actual `blueice-core` binary
+with a private test child server. The server delegates document admission,
+BlueTSC compilation, artifact installation, program inventory, and ordinary
+requests to the real `BlueJsChildHost`; only the three emitted-map lookup
+replies are replaced with the exact `HostFailure` category produced by a
+malformed map. The public debugger independently negotiates the generated
+breakpoint grant, acquires a next-document hold, navigates the page, obtains
+a same-stream program receipt, then resolves and arms a generated position.
+Both operations return only `CapabilityUnavailable`, the private fault text
+is absent from the raw public reply, two private lookups are observed, and
+the public breakpoint inventory remains empty. The browser, core, child
+transport and debugger use real sockets, while fault injection stays entirely
+inside test code; this does not create a page- or owner-selectable map
+substitution path in production.
+
+Focused verification: child malformed-map regression 1/1, core adapter
+malformed-map regression 1/1, receipted public-route unit regression 1/1,
+and real-core subprocess/public-debugger regression 1/1. The complete
+launcher library suite passes 190/190, the engine library suite passes
+470/470, the real-core `core_binary` integration target passes 21/21, and
+launcher/engine all-target Clippy passes with warnings denied. Workspace
+rustfmt and `git diff --check` pass.
+This covers the
+public malformed-map fault path of K.11.4, but does not by itself close
+K.11.4's full frozen-row debugger matrix, K.11.1's committed fixture
+requirement, or K.11.6's final committed-source local/hosted gate. No commit
+or push has occurred.
+
+### K.11 copied, erased and CRLF/astral rows through public module debugging (2026-10-14)
+
+Three further frozen matrix prefixes now cross the owner-selected emitted
+ESM page-host route and the public generated debugger: `basic.ts`,
+`erased.ts`, and `crlf_astral.ts`. The exact oracle files remain unchanged.
+The served copies append only an ambient `console.log` declaration after the
+frozen bytes; an earlier ordinary page script supplies a checked `console`
+implementation and verifies the expected results 3, 42 and 2. Child-host
+execution passes all three. Before each real-process launch, the public test
+independently compiles the exact served source, checks that the generated
+`console.log` token maps back to its frozen source coordinate, and checks the
+selected executable module-entry and paused-instruction token mappings.
+The CRLF/non-BMP source is kept byte-for-byte in its prefix, so the measured
+line/column calculations use UTF-16 rather than byte columns.
+
+Each row then negotiates only the generated breakpoint and paused-location
+capabilities, acquires a next-document hold, inventories the page loader and
+the emitted module as distinct opaque programs, immediately arms the module
+entry through the receipted generated operation, checks exact resolution,
+observes a real pause and original/generated location, and resumes to
+completion. The basic and CRLF/astral entries project their statement-start
+tokens. The erased row exposes a more precise boundary: its leading
+`export function double` is hoisted at module instantiation and cannot be
+an evaluation breakpoint, while the first executable `export const result`
+starts by evaluating the `double(21)` callee. BlueJS records that callee's
+exact identifier instruction at the same bytecode offset as the statement
+start. The child now marks parser-certified top-level module function
+declarations as non-evaluating *only in the root code unit*, so their
+synthetic declaration boundary cannot borrow the later evaluation entry;
+nested function-body identifiers remain available. At a coincident root
+offset, an independently certified unique literal identifier token takes
+precedence over the statement boundary in paused reverse projection. The
+erased public pause therefore reports the actual `double(21)` token, not a
+nearest-token guess or the unrelated hoisted declaration. The pre-existing
+emitted dependency nested-frame test initially exposed an overbroad filter;
+the root-only correction restores it.
+
+Verification: the three-row child execution test passes, the focused
+exported-entry and erased-provenance child tests pass, the complete public
+generated-debugger group passes 14/14 (including the linked dependency),
+the launcher library suite passes 193/193, and launcher/engine all-target
+Clippy passes with warnings denied. This is runtime-adapted public evidence
+for three additional frozen prefixes, not byte-for-byte execution of the
+unaltered oracle files. Other matrix debugger coverage, K.11.1's committed
+fixtures and K.11.6's final committed-source local/hosted gate remain open.
+No commit or push has occurred.
+
+#### K.11 continuation: public frozen-prefix stack and step projection (2026-10-14)
+
+The three emitted-ESM public debugger rows for copied code, erased annotations
+and CRLF/non-BMP source now exercise `GetStack` at the mapped pause, a real
+`StepRootInstruction`, the post-step stack, and `GetGeneratedPausedLocation`
+at the resulting interior instruction. Each root stack contains precisely the
+current safe point without truncation, and the interior step has no exact
+generated/original source token to disclose. The focused real-process
+three-row regression and all 11 `generated_` public regressions pass;
+`cargo fmt --all -- --check`, launcher all-target warnings-denied Clippy, and
+`git diff --check` pass. The first attempted exact test-name filter matched
+zero tests; it was rerun with the correct module-qualified filter and passed
+one test executing all three rows. The ordinary page-host typing profile does
+not declare `console`, so these rows still use the documented trailing
+declaration and page-supplied `console` loader. This is not unaltered frozen
+artifact admission. A second compilation of each original fixture is now
+compared against its served adaptation: executable JavaScript agrees after
+removing only terminal newlines, and the frozen source-map mappings are a
+complete prefix of the adapted mappings, while the exact emitted bytes,
+mapping strings and `sourcesContent` currently differ. The test permits
+future convergence of emitted bytes and mappings, but requires the map's
+`sourcesContent` to identify the actual served source in each case.
+The first strict comparison exposed the additional emitted newlines and
+mapped declaration suffix. This measured difference keeps K.11.4 and the
+final-source gate open. No commit or push has occurred.
+
+#### K.11 continuation: locally recovered pinned oracle (2026-10-14)
+
+The local npm cache contains the executable TypeScript 5.9.3 `tsc`; Node is
+v26.7.0. With `BLUEICE_BLUETSC_ORACLE` set to that verified binary,
+`cargo test -p blueice-bluets --test source_map_tokens_oracle -- --include-ignored`
+passes all 23 tests, including the nine normally ignored Native comparisons.
+The matrix parser confirms all eleven required rows. The same pinned binary
+with `cargo test -p blueice-bluets --test source_map_publication -- --include-ignored`
+passes 3/3, including every eleven-row external/inline and
+`inlineSources`-on/off CLI combination (44 cases). The initial publication
+run without `--include-ignored` passed only its two non-oracle controls; the
+full three-test rerun is the acceptance evidence. The exact frozen fixture
+still cannot be compiled as a checked page-host script with `console.log`
+because the fixed runtime-verified ambient profile has no `console` binding.
+Adding only a declaration would violate that inventory boundary. This
+remains a product design/implementation gap for K.11.4, not an oracle gap;
+K.11.1 additionally requires committed fixtures, and K.11.6 still requires
+the final committed-source local and hosted gates. No commit or push occurred.
+
+#### K.11 continuation: legacy helper-call stack and step (2026-10-14)
+
+The real launcher/core/child public debugger test for legacy class and member
+`__bluetsDecorate` calls now checks a one-frame stack at each exact mapped
+pause, steps one root instruction, checks that the new safe point remains the
+sole stack frame, and requires the interior instruction to have no inherited
+generated/original token location. Both independent executions pass, and the
+complete `generated_` public regression group passes 11/11. The new checks
+extend K.11.4's measured breakpoint/step/stack evidence to both legacy
+decorator helper-call anchors without changing the frozen oracle fixture or
+granting debugger capabilities to the page. Launcher all-target Clippy with
+warnings denied, workspace rustfmt and `git diff --check` also pass.
+
+An intermediate `cargo test --workspace` run successfully compiled every
+target in 68m 25s and passed the BlueJS library's 1,149 tests, the Test262
+runner's 20 tests, gatekeeper's four library tests, and the first two BlueJS
+integration suites (3/3 and 5/5). The remaining hundreds of BlueJS integration
+binaries take roughly a minute each to launch on this macOS host. Because
+K.11.4 still needs product changes, the intermediate-source run was
+intentionally interrupted before completion; it is not a K.11.6 workspace
+pass. The compiled targets remain available for the required final-source
+rerun. No commit or push occurred.
+
+#### K.11 continuation: legacy parameter/metadata public step (2026-10-14)
+
+The owner-selected emitted-classic legacy-metadata public test now inspects
+the exact `__bluetsParam(0, parameterDecor)` breakpoint's one-frame stack,
+steps one root instruction, verifies that the new safe point remains the sole
+stack frame, and requires the interior instruction to report no inherited
+generated/original location. Its existing map and public resolution assertions
+continue to prove the parameter call is source-anchored while the generated
+`__bluetsParam` definition and metadata call are unmapped and unbound. The
+focused real-process test passes, as does the complete 47-test public
+out-of-process debugger suite; workspace rustfmt, launcher all-target
+warnings-denied Clippy and `git diff --check` pass. This advances the legacy
+parameter/metadata part of K.11.4 without changing the frozen source or
+widening capability policy. K.11.4's exact frozen page-host route, System
+cross-program execution, remaining matrix-wide sites, and K.11.6 are still
+open. No commit or push occurred.
+
+System's remaining positive debugger gap is not in source-map decoding:
+`emitted_map_lookup` already sees the mapped execute-body token, then
+deliberately filters its nested safe point because the page-supplied
+`System.register` function is installed by a different JavaScript program.
+The current bounded nested execution route starts one program and cannot
+retain a foreign caller continuation. Removing that filter alone would
+promise a breakpoint that does not pause. Closing the System row therefore
+requires a verified cross-program continuation and stack policy (or an
+explicitly different, owner-selected runtime contract), not a looser
+generated-position lookup.
+
+#### K.11 continuation: exact intermediate frame generation boundary (2026-10-14)
+
+A test-first VM regression deliberately changed a retained classic
+intermediate frame to a different installed-program generation while leaving
+the paused child and root unchanged. Before the fix, the ordinary classic
+stack snapshot succeeded because it copied the root generation into the
+intermediate frame instead of reading the retained bytecode; the test failed
+as expected. The VM now reads that frame's actual generation, refuses a
+missing generation, and rejects any different generation through the
+single-program classic stack API. The linked API retains its separate
+cross-program path. The new regression passes both foreign and missing
+generation cases; the BlueJS library suite passes 1,150/1,150 and the full
+public out-of-process debugger suite passes 47/47 on the product fix.
+
+The public System regression now also inventories realm breakpoints after
+both refused raw nested arming and refused generated arming, requiring an
+empty list in each case. This confirms fail-closed behavior leaves no
+partial breakpoint. K.11.4's positive System pause still needs a true
+cross-program continuation with per-frame identities and same-stream
+receipts; the classic snapshot must not be repurposed. No commit or push
+occurred.
+
+Workspace rustfmt and `git diff --check` pass. BlueJS and launcher library
+Clippy with `-D warnings` passes. A combined all-target Clippy run reached
+the BlueJS integration test targets without reporting a warning, but was
+stopped after 13 minutes because K.11's remaining product work will change
+this intermediate source and the hundreds of targets require a final-source
+rerun. It is not recorded as an all-target pass.
+
+#### K.11 continuation: real foreign loader continuation (2026-10-14)
+
+Two test-first BlueJS VM regressions now install a System-shaped loader and
+generated script as distinct program generations in one VM. An explicit
+foreign-intermediate pause request selects only the exact loader generation
+as the direct synchronous caller of the emitted execute callback. The
+three-frame native snapshot reports generated child, foreign loader and
+generated root with their real generation IDs; the ordinary classic snapshot
+still rejects the foreign frame. One test steps and resumes the original
+invocation once; the other resumes a thrown completion through the waiting
+loader into the root catch. Both assert that loader and callback effects each
+occur exactly once.
+
+The page runtime now requires two live, distinct, same-realm script handles
+before starting this VM route, and its dedicated stack read verifies the
+exact paused frame and loader handle. A public-boundary regression covers a
+foreign-tab loader, a same-handle loader, a wrong owned loader at stack read,
+classic-stack refusal, step/resume and no effect replay. The focused tests
+pass, the full BlueJS library passes 1,153/1,153, and BlueJS plus launcher
+library Clippy with warnings denied passes. No launcher/core/IPC System
+arming behavior changed; its public breakpoint list still must remain empty
+until a loader artifact receipt and per-frame same-stream projection are
+implemented and tested. K.11.4 and K.11 remain open. No commit or push
+occurred.
+
+#### K.11 checked-item milestone and exact System artifact (2026-10-14)
+
+The frozen eleven-row matrix, decoded token/transition oracle, map metadata
+and CLI publication checks, and executable-output comparisons satisfy
+K.11.1, K.11.2, K.11.3 and K.11.5. The pinned TypeScript executable is
+5.9.3 at the local npm cache; with `BLUEICE_BLUETSC_ORACLE` set to it,
+`cargo test -p blueice-bluets --test source_map_tokens_oracle -- --include-ignored`
+passes 23/23, and `cargo test -p blueice-bluets --test source_map_publication -- --include-ignored`
+passes 3/3. `cargo test -p blueice-bluets --test source_map_lookup`
+passes 4/4. A run without the oracle environment variable failed only the
+nine tests requiring that pinned executable; it is not the verified result.
+
+The real frozen System fixture, compiled through BlueTSC with the page
+ambient `console` declaration, now has an integration regression in
+`blueice-bluets-bluejs`. It identifies the mapped emitted `console` token,
+binds its parser/compiler-exact nested safe point, and pauses the actual
+emitted script through a distinct, page-owned System loader. It verifies
+the three true child/loader/root program generations, classic-stack refusal,
+one instruction step, normal resume and exactly one loader and console
+effect. The focused integration test passes. This does not resolve the
+separate frozen-source ambient `console` admission gap or the public
+same-stream receipt/projection requirement; K.11.4 stays unchecked.
+
+The 47 public out-of-process debugger tests pass when local socket binding
+is allowed. Their first sandboxed run failed at the gatekeeper bind with
+`EPERM` before any test assertions, and is not counted as a product failure.
+BlueJS library tests pass 1,153/1,153 and BlueJS plus launcher library
+Clippy with `-D warnings` passes. The full all-target, workspace, coverage
+and hosted final-source gates still belong to K.11.6 and are not claimed.

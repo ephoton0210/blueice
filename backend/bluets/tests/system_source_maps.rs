@@ -70,6 +70,17 @@ fn hoisted_functions_and_execute_body_keep_original_source_lines() {
         );
         assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
         let artifact = &compilation.output.as_ref().unwrap().artifacts[ID];
+        assert!(artifact.javascript.contains("'use strict';"));
+        assert!(
+            !artifact.javascript.contains("\"use strict\";"),
+            "System must not retain a second CommonJS strictness prelude"
+        );
+        assert!(
+            !artifact
+                .javascript
+                .contains("_define(exports, \"__esModule\""),
+            "System must not publish CommonJS-only module metadata"
+        );
         let mapped = source_lines(&artifact.source_map.as_ref().unwrap().mappings);
         for (text, expected) in [
             ("function bump(", 1),

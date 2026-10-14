@@ -62,6 +62,18 @@ struct Args {
     /// BlueJS page-host child for each core generation. The endpoint/token
     /// are generated internally and are never CLI values.
     out_of_process_bluejs: bool,
+    /// Owner-only selection of exact BlueTSC-emitted classic scripts.
+    emitted_blue_ts_classic: bool,
+    /// Owner-only ES5 target for emitted classic BlueTS.
+    emitted_blue_ts_classic_es5: bool,
+    /// Owner-only System wrapper emit for classic BlueTS.
+    emitted_blue_ts_classic_system: bool,
+    /// Owner-only legacy decorator profile without metadata.
+    emitted_blue_ts_classic_legacy_decorators: bool,
+    /// Owner-only legacy decorator/metadata profile for emitted classic.
+    emitted_blue_ts_classic_legacy_metadata: bool,
+    /// Independent owner-only selection of emitted BlueTS ESM graphs.
+    emitted_blue_ts_module: bool,
     /// Explicit opt-in compiler MCP attachment endpoint. Without an owner
     /// catalog file, the launcher passes its fixed core-owned fixture.
     compiler_mcp_socket: Option<PathBuf>,
@@ -78,6 +90,10 @@ struct Args {
     debugger_socket: Option<PathBuf>,
     /// Owner opt-in for the separately negotiated bounded-value debugger route.
     debugger_bounded_values: bool,
+    /// Owner-only opt-in; an exact-stream program receipt is still required.
+    debugger_generated_breakpoint: bool,
+    /// Independently grants paused generated/original projection.
+    debugger_generated_paused_location: bool,
     /// Owner opt-in for the debugger's source-free opaque static-metadata
     /// inventory. It requires the separate debugger endpoint and does not
     /// grant metadata reads or source/runtime inspection.
@@ -165,11 +181,19 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut frame_dir = None;
     let mut gatekeeper_socket = None;
     let mut out_of_process_bluejs = false;
+    let mut emitted_blue_ts_classic = false;
+    let mut emitted_blue_ts_classic_es5 = false;
+    let mut emitted_blue_ts_classic_system = false;
+    let mut emitted_blue_ts_classic_legacy_decorators = false;
+    let mut emitted_blue_ts_classic_legacy_metadata = false;
+    let mut emitted_blue_ts_module = false;
     let mut compiler_mcp_socket = None;
     let mut compiler_catalog_file = None;
     let mut page_http_policy_file = None;
     let mut debugger_socket = None;
     let mut debugger_bounded_values = false;
+    let mut debugger_generated_breakpoint = false;
+    let mut debugger_generated_paused_location = false;
     let mut debugger_static_metadata_inventory = false;
     let mut debugger_static_metadata_summary = false;
     let mut debugger_static_metadata_source_inventory = false;
@@ -212,11 +236,31 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--out-of-process-bluejs" => out_of_process_bluejs = true,
+            "--out-of-process-bluejs-emitted-blue-ts-classic" => emitted_blue_ts_classic = true,
+            "--out-of-process-bluejs-emitted-blue-ts-classic-es5" => {
+                emitted_blue_ts_classic = true;
+                emitted_blue_ts_classic_es5 = true;
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-classic-system" => {
+                emitted_blue_ts_classic = true;
+                emitted_blue_ts_classic_system = true;
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators" => {
+                emitted_blue_ts_classic = true;
+                emitted_blue_ts_classic_legacy_decorators = true;
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata" => {
+                emitted_blue_ts_classic = true;
+                emitted_blue_ts_classic_legacy_metadata = true;
+            }
+            "--out-of-process-bluejs-emitted-blue-ts-module" => emitted_blue_ts_module = true,
             "--compiler-mcp-socket" => compiler_mcp_socket = Some(PathBuf::from(value()?)),
             "--compiler-catalog-file" => compiler_catalog_file = Some(PathBuf::from(value()?)),
             "--page-http-policy-file" => page_http_policy_file = Some(PathBuf::from(value()?)),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
             "--debugger-bounded-values" => debugger_bounded_values = true,
+            "--debugger-generated-breakpoint" => debugger_generated_breakpoint = true,
+            "--debugger-generated-paused-location" => debugger_generated_paused_location = true,
             "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
             "--debugger-static-metadata-source-inventory" => {
@@ -284,6 +328,12 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let control_socket = control_socket.unwrap_or_else(default_control_socket_path);
     if debugger_bounded_values && debugger_socket.is_none() {
         return Err("--debugger-bounded-values requires --debugger-socket".to_string());
+    }
+    if debugger_generated_breakpoint && debugger_socket.is_none() {
+        return Err("--debugger-generated-breakpoint requires --debugger-socket".to_string());
+    }
+    if debugger_generated_paused_location && debugger_socket.is_none() {
+        return Err("--debugger-generated-paused-location requires --debugger-socket".to_string());
     }
     if debugger_static_metadata_inventory && debugger_socket.is_none() {
         return Err("--debugger-static-metadata-inventory requires --debugger-socket".to_string());
@@ -532,6 +582,48 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if page_http_policy_file.is_some() && !out_of_process_bluejs {
         return Err("--page-http-policy-file requires --out-of-process-bluejs".to_string());
     }
+    if emitted_blue_ts_classic_legacy_decorators && emitted_blue_ts_classic_legacy_metadata {
+        return Err("legacy decorator emission profiles are mutually exclusive".to_string());
+    }
+    if emitted_blue_ts_classic_es5
+        && (emitted_blue_ts_classic_legacy_decorators || emitted_blue_ts_classic_legacy_metadata)
+    {
+        return Err("emitted classic compiler profiles are mutually exclusive".to_string());
+    }
+    if emitted_blue_ts_classic_system
+        && (emitted_blue_ts_classic_es5
+            || emitted_blue_ts_classic_legacy_decorators
+            || emitted_blue_ts_classic_legacy_metadata)
+    {
+        return Err("emitted classic compiler profiles are mutually exclusive".to_string());
+    }
+    if emitted_blue_ts_classic_system && !out_of_process_bluejs {
+        return Err("--out-of-process-bluejs-emitted-blue-ts-classic-system requires --out-of-process-bluejs".to_string());
+    }
+    if emitted_blue_ts_classic_es5 && !out_of_process_bluejs {
+        return Err(
+            "--out-of-process-bluejs-emitted-blue-ts-classic-es5 requires --out-of-process-bluejs"
+                .to_string(),
+        );
+    }
+    if emitted_blue_ts_classic_legacy_decorators && !out_of_process_bluejs {
+        return Err("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-decorators requires --out-of-process-bluejs".to_string());
+    }
+    if emitted_blue_ts_classic_legacy_metadata && !out_of_process_bluejs {
+        return Err("--out-of-process-bluejs-emitted-blue-ts-classic-legacy-metadata requires --out-of-process-bluejs".to_string());
+    }
+    if emitted_blue_ts_classic && !out_of_process_bluejs {
+        return Err(
+            "--out-of-process-bluejs-emitted-blue-ts-classic requires --out-of-process-bluejs"
+                .to_string(),
+        );
+    }
+    if emitted_blue_ts_module && !out_of_process_bluejs {
+        return Err(
+            "--out-of-process-bluejs-emitted-blue-ts-module requires --out-of-process-bluejs"
+                .to_string(),
+        );
+    }
     Ok(Args {
         rendezvous_socket,
         control_socket,
@@ -540,11 +632,19 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         frame_dir,
         gatekeeper_socket,
         out_of_process_bluejs,
+        emitted_blue_ts_classic,
+        emitted_blue_ts_classic_es5,
+        emitted_blue_ts_classic_system,
+        emitted_blue_ts_classic_legacy_decorators,
+        emitted_blue_ts_classic_legacy_metadata,
+        emitted_blue_ts_module,
         compiler_mcp_socket,
         compiler_catalog_file,
         page_http_policy_file,
         debugger_socket,
         debugger_bounded_values,
+        debugger_generated_breakpoint,
+        debugger_generated_paused_location,
         debugger_static_metadata_inventory,
         debugger_static_metadata_summary,
         debugger_static_metadata_source_inventory,
@@ -591,6 +691,28 @@ fn main() -> ExitCode {
     if args.out_of_process_bluejs {
         core_options = core_options.supervise_out_of_process_bluejs();
     }
+    if args.emitted_blue_ts_classic {
+        core_options = core_options.supervise_out_of_process_bluejs_with_emitted_blue_ts_classic();
+    }
+    if args.emitted_blue_ts_classic_legacy_metadata {
+        core_options = core_options
+            .supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_legacy_metadata();
+    }
+    if args.emitted_blue_ts_classic_legacy_decorators {
+        core_options = core_options
+            .supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_legacy_decorators();
+    }
+    if args.emitted_blue_ts_classic_es5 {
+        core_options =
+            core_options.supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_es5();
+    }
+    if args.emitted_blue_ts_classic_system {
+        core_options =
+            core_options.supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_system();
+    }
+    if args.emitted_blue_ts_module {
+        core_options = core_options.supervise_out_of_process_bluejs_with_emitted_blue_ts_module();
+    }
     if let Some(compiler_mcp_socket) = args.compiler_mcp_socket.clone() {
         core_options = if let Some(path) = args.compiler_catalog_file.as_deref() {
             let catalog = match read_owner_compiler_catalog_file(path) {
@@ -635,6 +757,12 @@ fn main() -> ExitCode {
     }
     if args.debugger_bounded_values {
         core_options = core_options.with_debugger_bounded_values();
+    }
+    if args.debugger_generated_breakpoint {
+        core_options = core_options.with_debugger_generated_breakpoint();
+    }
+    if args.debugger_generated_paused_location {
+        core_options = core_options.with_debugger_generated_paused_location();
     }
     if args.debugger_static_metadata_inventory {
         core_options = core_options.with_debugger_static_metadata_inventory();

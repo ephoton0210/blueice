@@ -53,7 +53,7 @@ mod statements;
 mod tests;
 
 pub use editions::SyntaxEdition;
-pub use module::{parse_module, parse_module_with_edition};
+pub use module::{parse_module, parse_module_with_debug_spans, parse_module_with_edition};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
@@ -63,6 +63,24 @@ pub struct ParseError {
     /// True only when the parser recognized a specified syntax error. Other
     /// parse failures may still be unsupported valid grammar in this subset.
     pub known_syntax: bool,
+}
+
+/// One exact top-level statement range in the original host source. The
+/// half-open byte offsets exclude leading trivia and include the statement's
+/// final consumed token. This is parser provenance, not a bytecode safe point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedStatementSpan {
+    pub start_byte: usize,
+    pub end_byte: usize,
+}
+
+/// An identifier expression's exact source token, captured when the parser
+/// constructs the expression rather than guessed from a later text search.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedIdentifierSpan {
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub name: String,
 }
 
 impl From<LexError> for ParseError {
@@ -81,6 +99,43 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     parse_with_edition(source, SyntaxEdition::EsNext)
 }
 
+/// Parses a Script and records one exact source range for each returned
+/// top-level AST statement, in the same order as `Program::body`. These
+/// ranges alone do not authorize debugger binding of nested expressions.
+pub fn parse_with_top_level_spans(
+    source: &str,
+) -> Result<(Program, Vec<ParsedStatementSpan>), ParseError> {
+    parse_with_debug_spans(source).map(|(program, statements, _)| (program, statements))
+}
+
+/// Parses a Script with exact top-level statement and identifier-expression
+/// token spans. Callers must still prove a unique compiler-recorded safe point
+/// before allowing a debugger action at any identifier token.
+pub fn parse_with_debug_spans(
+    source: &str,
+) -> Result<(Program, Vec<ParsedStatementSpan>, Vec<ParsedIdentifierSpan>), ParseError> {
+    let escaped = crate::source_encoding::escape(source);
+    let (program, spans, identifiers) =
+        parse_encoded_script(&escaped, SyntaxEdition::EsNext, true)?;
+    let source_bytes = crate::source_encoding::escaped_character_source_bytes(source);
+    let spans = spans
+        .into_iter()
+        .map(|(start, end)| ParsedStatementSpan {
+            start_byte: source_bytes[start],
+            end_byte: source_bytes[end],
+        })
+        .collect();
+    let identifiers = identifiers
+        .into_iter()
+        .map(|(start, end, name)| ParsedIdentifierSpan {
+            start_byte: source_bytes[start],
+            end_byte: source_bytes[end],
+            name,
+        })
+        .collect();
+    Ok((program, spans, identifiers))
+}
+
 /// Parses Script syntax restricted to the selected output edition. Built-in
 /// runtime APIs are independent of this grammar selection.
 pub fn parse_with_edition(source: &str, edition: SyntaxEdition) -> Result<Program, ParseError> {
@@ -95,12 +150,28 @@ pub(crate) fn parse_encoded(source: &str) -> Result<Program, ParseError> {
 }
 
 fn parse_encoded_with_edition(source: &str, edition: SyntaxEdition) -> Result<Program, ParseError> {
+    parse_encoded_script(source, edition, false).map(|(program, _, _)| program)
+}
+
+type EncodedScriptWithDebugSpans = (Program, Vec<(usize, usize)>, Vec<(usize, usize, String)>);
+
+fn parse_encoded_script(
+    source: &str,
+    edition: SyntaxEdition,
+    capture_spans: bool,
+) -> Result<EncodedScriptWithDebugSpans, ParseError> {
     let mut parser = Parser::new_script(source);
+    parser.capture_debug_identifiers = capture_spans;
     parser.select_edition(edition)?;
     let mut body = Vec::new();
+    let mut spans = Vec::new();
     let mut prologue = DirectivePrologue::default();
     while !parser.at_eof() {
+        let start = parser.token_start();
         body.push(parser.parse_prologue_statement(&mut prologue)?);
+        if capture_spans {
+            spans.push((start, parser.positions[parser.pos]));
+        }
     }
     let program = Program { body };
     if contains_super_call_outside_class(&program)
@@ -112,7 +183,7 @@ fn parse_encoded_with_edition(source: &str, edition: SyntaxEdition) -> Result<Pr
         .map_err(|error| parser.syntax_error(error.to_string()))?;
     parser.validate_edition()?;
     editions::validate_body(&program.body, edition)?;
-    Ok(program)
+    Ok((program, spans, parser.debug_identifier_spans))
 }
 
 /// Parses direct-eval source (lexer text) before its caller applies context-sensitive
@@ -409,6 +480,8 @@ struct Parser {
     positions: Vec<usize>,
     tokenizer: Tokenizer,
     pos: usize,
+    capture_debug_identifiers: bool,
+    debug_identifier_spans: Vec<(usize, usize, String)>,
     /// Set while parsing a `for`-loop head's init clause, so the
     /// relational-expression tier refuses to consume a bare `in` as a
     /// binary operator there -- see this module's doc comment.
@@ -475,6 +548,8 @@ impl Parser {
             positions,
             tokenizer,
             pos: 0,
+            capture_debug_identifiers: false,
+            debug_identifier_spans: Vec::new(),
             no_in: false,
             generator_depth: 0,
             async_depth: 0,

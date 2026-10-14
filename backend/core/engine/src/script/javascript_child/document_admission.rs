@@ -4,6 +4,14 @@
 
 use super::*;
 
+#[derive(Clone, Copy)]
+pub(super) struct DocumentExecutionPolicy {
+    pub debugger_execution_control: bool,
+    pub emitted_blue_ts_classic: bool,
+    pub emitted_blue_ts_module: bool,
+    pub emitted_bluets_profile: PageHostBlueTsEmissionProfile,
+}
+
 pub(super) fn authorized_document(
     tab_id: TabId,
     identity: &LiveDocument,
@@ -11,7 +19,7 @@ pub(super) fn authorized_document(
     document_url: &str,
     declarations: Vec<CombinedPageScriptDeclaration>,
     external_source_authorizer: Option<&dyn OutOfProcessPageScriptSourceAuthorizer>,
-    debugger_execution_control: bool,
+    policy: DocumentExecutionPolicy,
 ) -> (
     PageHostDocument,
     Vec<JavaScriptPageExecutionReport>,
@@ -31,7 +39,11 @@ pub(super) fn authorized_document(
                     inline_module_id(tab_id, identity.document_generation, ordinal, language);
                 scripts.push(PageHostScript {
                     ordinal,
-                    language: child_language(language),
+                    language: child_language(
+                        language,
+                        policy.emitted_blue_ts_classic,
+                        policy.emitted_blue_ts_module,
+                    ),
                     kind: child_kind(language),
                     graph: PageHostModuleGraph {
                         entry: module_id.clone(),
@@ -56,7 +68,11 @@ pub(super) fn authorized_document(
             ) {
                 Ok(graph) => scripts.push(PageHostScript {
                     ordinal,
-                    language: child_language(language),
+                    language: child_language(
+                        language,
+                        policy.emitted_blue_ts_classic,
+                        policy.emitted_blue_ts_module,
+                    ),
                     kind: child_kind(language),
                     graph,
                 }),
@@ -86,7 +102,8 @@ pub(super) fn authorized_document(
             tab_id: tab_id.as_u64(),
             document_generation: identity.document_generation,
             snapshot,
-            debugger_execution_control,
+            debugger_execution_control: policy.debugger_execution_control,
+            emitted_bluets_profile: policy.emitted_bluets_profile,
             scripts,
         },
         reports,
@@ -406,7 +423,12 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             document_url,
             declarations,
             self.external_source_authorizer.as_deref(),
-            self.native_debugger_execution_control,
+            DocumentExecutionPolicy {
+                debugger_execution_control: self.native_debugger_execution_control,
+                emitted_blue_ts_classic: self.emitted_blue_ts_classic,
+                emitted_blue_ts_module: self.emitted_blue_ts_module,
+                emitted_bluets_profile: self.emitted_bluets_profile,
+            },
         );
         let inline_scripts: Vec<_> = document
             .scripts

@@ -7,7 +7,10 @@ use crate::{
     SourceSpan, StrictRuntimeBoundary,
 };
 
-use super::{encode_mappings, source_line_column, ProvenanceEmitter, ProvenanceSegment, SourceMap};
+use super::{
+    apply_edits_with_provenance, encode_mappings, relocations, source_line_column,
+    ProvenanceEmitter, ProvenanceSegment, SourceMap, TextEdit,
+};
 
 #[test]
 fn copied_token_provenance_stops_at_the_owner_segment_limit() {
@@ -84,6 +87,24 @@ fn relocation_spliced_through_a_token_uses_range_anchors_only() {
         decode_mappings(&encode_mappings(&emitted.provenance)),
         vec![(0, 0, 0, 0), (0, 5, 0, 13)]
     );
+}
+
+#[test]
+fn verbatim_relocation_preserves_trivia_and_original_token_columns() {
+    let source = "value  /* keep */  + other";
+    let emitted = apply_edits_with_provenance(
+        source,
+        vec![TextEdit {
+            start: 0,
+            end: source.len(),
+            replacement: relocations::relocated_verbatim(0, source.len()),
+        }],
+        Some(64),
+    );
+    assert_eq!(emitted.javascript, source);
+    let mappings = decode_mappings(&encode_mappings(&emitted.provenance));
+    let other = source.find("other").unwrap();
+    assert!(mappings.contains(&(0, other, 0, other)), "{mappings:?}");
 }
 
 #[test]

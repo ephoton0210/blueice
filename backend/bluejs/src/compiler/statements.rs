@@ -484,7 +484,10 @@ impl Compiler {
             }
             let start = self.offset();
             let child_index = self.metadata_index(self.bytecode.functions.len())?;
-            self.function_declaration(statement)?;
+            self.current_root_statement_index = Some(index);
+            let declaration = self.function_declaration(statement);
+            self.current_root_statement_index = None;
+            declaration?;
             // A successful declaration emits its closure and adds exactly one
             // direct child. The metadata cap above makes its index a u32.
             offsets[index] = Some(start);
@@ -582,7 +585,9 @@ impl Compiler {
             }
             let start = self.offset();
             let children_before = self.bytecode.functions.len();
+            self.current_root_statement_index = Some(index);
             self.statement(statement, true)?;
+            self.current_root_statement_index = None;
             if self.offset() > start {
                 offsets[index] = Some(start);
                 ranges[index] = Some((start, self.offset()));
