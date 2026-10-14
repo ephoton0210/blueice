@@ -10,6 +10,9 @@
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
 //! and an opt-in root-code-unit pause/resume seam.
+//! Version forty-seven adds an exact three-frame System generated-location
+//! read under independent same-stream emitted and loader program receipts.
+//! The foreign loader frame never inherits a BlueTS source location.
 //! Version forty-five extends the separately granted generated-token family
 //! to exact nested code-unit identifier instructions and an active-frame-
 //! checked paused projection. It does not infer a nearby instruction or
@@ -101,7 +104,7 @@ use std::sync::{Arc, Mutex, Weak};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 46;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 47;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -301,6 +304,13 @@ pub enum DebuggerRequest {
     /// partial stack refuses the whole read.
     GetGeneratedLinkedStackLocations {
         expected_stack: DebuggerLinkedStackSnapshot,
+    },
+    /// Projects only an exact paused System emitted/loader/emitted stack. Both
+    /// programs require independent same-stream receipts and the generated
+    /// paused-location grant; the foreign loader has no BlueTS source.
+    GetGeneratedSystemStackLocations {
+        frame: DebuggerFrame,
+        loader: DebuggerProgram,
     },
     /// Describes one contract declaration range only after separate exact
     /// contract and source inventory receipts on this debugger stream.
@@ -570,6 +580,7 @@ pub enum DebuggerReply {
     GeneratedBreakpoint(DebuggerGeneratedBreakpoint),
     GeneratedPausedLocation(DebuggerGeneratedPausedLocation),
     GeneratedLinkedStackLocations(DebuggerGeneratedLinkedStackLocations),
+    GeneratedSystemStackLocations(Box<DebuggerGeneratedSystemStackLocations>),
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataContractLocation`].
     /// It contains only receipted IDs and a bounded byte range.
     StaticMetadataContractLocation(DebuggerStaticMetadataContractLocation),
@@ -731,6 +742,7 @@ pub fn negotiate_with_values(
         | DebuggerRequest::ArmGeneratedBreakpoint { .. }
         | DebuggerRequest::GetGeneratedPausedLocation { .. }
         | DebuggerRequest::GetGeneratedLinkedStackLocations { .. }
+        | DebuggerRequest::GetGeneratedSystemStackLocations { .. }
         | DebuggerRequest::DescribeStaticMetadataContractLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolType { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolContract { .. }

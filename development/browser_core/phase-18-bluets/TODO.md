@@ -721,6 +721,14 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     token projector for emitted child and root, keep the foreign loader
     source-free, compare the complete stack and original coordinates in core,
     and reject a moved pause or substituted child location.
+  - [x] Add the read-only public System three-frame request and core route
+    under the independently default-denied paused-location grant. Require
+    separate emitted and loader receipts on this exact debugger stream before
+    touching the page host, verify the active core frame and both exact
+    program generations, reject a substituted source position, and never
+    project a BlueTS coordinate onto the foreign loader. Keep System
+    resolution and arming closed until their own public checks are complete;
+    real-process positive disclosure belongs to the remaining System item.
   - [ ] Require independent same-stream loader and emitted receipts, then
     expose only the exact three-frame generated/original projection with
     step, resume and thrown-completion regressions.
@@ -1281,6 +1289,25 @@ public debugger suite remains 47/47. Three-crate all-target Clippy with
 warnings denied, workspace formatting and diff checks pass. The location
 array is boxed on the private reply so the protocol does not inflate every
 existing `PageHostReply` error path.
+
+Public debugger protocol v47 adds a read-only
+`GetGeneratedSystemStackLocations` request for an exact emitted/loader/emitted
+pause. The existing independently default-denied generated paused-location
+grant must be negotiated, and `ListPrograms` must have receipted the emitted
+and loader generations separately on this same debugger stream before core
+queries the page host. Core matches the active nested frame, checks the
+complete fixed stack and both generations, revalidates the emitted original
+position against the bound artifact, keeps the loader's location empty, and
+rechecks the pause. IPC wire/shape and core-route regressions cover an absent
+grant, an emitted-only receipt, another stream, the wrong grant, a substituted
+loader generation, a stale frame, a contradictory original position and a
+forged loader source location. This closes only the read-only public-route
+subcheck: no public System generated resolution/arm or real-process positive
+pause/step/resume/throw is claimed. The existing generic System routes remain
+fail-closed. With v47 binaries rebuilt, IPC, launcher and engine library
+suites pass 142/142, 194/194 and 484/484; the real-process public debugger
+suite passes 47/47. Three-crate all-target Clippy with warnings denied,
+workspace formatting and diff checks pass.
 
 ### K.12 Projects — M10 — gap G-M2
 

@@ -50,6 +50,87 @@ fn generated_paused_location_accepts_exact_nested_safe_points() {
 }
 
 #[test]
+fn system_generated_stack_requires_exact_emitted_loader_emitted_order() {
+    let emitted = DebuggerProgram {
+        realm: realm(),
+        program_handle: 11,
+        program_generation: 12,
+    };
+    let loader = DebuggerProgram {
+        program_handle: 21,
+        program_generation: 22,
+        ..emitted
+    };
+    let frame = DebuggerFrame {
+        program: emitted,
+        code_unit_ordinal: 2,
+        core_instance: [7; 16],
+        frame_handle: 1,
+    };
+    let points = [
+        DebuggerSafePoint {
+            program: emitted,
+            code_unit_ordinal: 2,
+            bytecode_offset: 9,
+        },
+        DebuggerSafePoint {
+            program: loader,
+            code_unit_ordinal: 1,
+            bytecode_offset: 5,
+        },
+        DebuggerSafePoint {
+            program: emitted,
+            code_unit_ordinal: 0,
+            bytecode_offset: 3,
+        },
+    ];
+    let result = DebuggerGeneratedSystemStackLocations {
+        frame,
+        loader,
+        safe_points: points,
+        locations: [
+            Some(DebuggerGeneratedPausedSourceLocation {
+                generated_line: 4,
+                generated_column_utf16: 8,
+                original: Some(DebuggerGeneratedOriginalPosition {
+                    source_index: 0,
+                    line: 2,
+                    column_utf16: 6,
+                }),
+            }),
+            None,
+            None,
+        ],
+    };
+    assert!(result.is_well_formed());
+    assert!(!DebuggerGeneratedSystemStackLocations {
+        safe_points: [points[1], points[0], points[2]],
+        ..result
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedSystemStackLocations {
+        locations: [None, result.locations[0], None],
+        ..result
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedSystemStackLocations {
+        loader: emitted,
+        ..result
+    }
+    .is_well_formed());
+    let request = DebuggerRequest::GetGeneratedSystemStackLocations { frame, loader };
+    assert_eq!(
+        serde_json::from_slice::<DebuggerRequest>(&serde_json::to_vec(&request).unwrap()).unwrap(),
+        request
+    );
+    let reply = DebuggerReply::GeneratedSystemStackLocations(Box::new(result));
+    assert_eq!(
+        serde_json::from_slice::<DebuggerReply>(&serde_json::to_vec(&reply).unwrap()).unwrap(),
+        reply
+    );
+}
+
+#[test]
 fn symbol_breakpoint_candidate_requires_executable_kind_and_contained_exact_span() {
     let program = DebuggerProgram {
         realm: realm(),
@@ -524,7 +605,7 @@ fn public_static_scope_grant_and_wire_are_independent_of_values() {
             static_scope_relation: true,
             ..Default::default()
         });
-    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 46);
+    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 47);
     assert_eq!(DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION, 6);
     assert_eq!(
         manifest.capabilities,

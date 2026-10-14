@@ -371,3 +371,175 @@ pub(super) fn child_generated_linked_stack_locations(
     }
     DebuggerReply::GeneratedLinkedStackLocations(result)
 }
+
+pub(super) fn child_generated_system_stack_locations(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    frame: DebuggerFrame,
+    loader: DebuggerProgram,
+) -> DebuggerReply {
+    let emitted = frame.program;
+    if !frame.is_well_formed()
+        || !loader.is_well_formed()
+        || emitted == loader
+        || emitted.realm != loader.realm
+    {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid generated System stack target".to_string(),
+        };
+    }
+    let mut tab_id = None;
+    for program in [emitted, loader] {
+        match authorize_generated_program(
+            tabs,
+            locations,
+            metadata_session,
+            program,
+            DebuggerMetadataCapability::OpaqueGeneratedPausedLocation,
+        ) {
+            Ok(authorized) if tab_id.is_none_or(|prior| prior == authorized) => {
+                tab_id = Some(authorized);
+            }
+            Ok(_) => return unavailable_generated_paused_location(),
+            Err(reply) => return *reply,
+        }
+    }
+    let tab_id = tab_id.expect("well-formed System target has two programs");
+    let paused = |tabs: &TabManager, locations: &mut dyn PageJavaScriptDebuggerLocations| {
+        match child_execution_state(tabs, locations, emitted) {
+            DebuggerReply::ExecutionState {
+                state:
+                    DebuggerExecutionState::NestedPaused {
+                        frame: active,
+                        safe_point,
+                    },
+                ..
+            } if active == frame => Ok(safe_point),
+            DebuggerReply::Error { code, message } => {
+                Err(Box::new(DebuggerReply::Error { code, message }))
+            }
+            _ => Err(Box::new(DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                message: "generated System stack is no longer the exact pause".to_string(),
+            })),
+        }
+    };
+    let top = match paused(tabs, locations) {
+        Ok(point) => point,
+        Err(reply) => return *reply,
+    };
+    let internal_frame = JavaScriptPageDebuggerFrame {
+        tab_id,
+        document_generation: emitted.realm.realm_generation,
+        program_handle: emitted.program_handle,
+        program_generation: emitted.program_generation,
+        code_unit_ordinal: frame.code_unit_ordinal,
+        core_instance: frame.core_instance,
+        frame_handle: frame.frame_handle,
+    };
+    let internal_loader = JavaScriptPageDebuggerProgram {
+        program_handle: loader.program_handle,
+        program_generation: loader.program_generation,
+    };
+    let projection = match locations.debugger_system_stack_locations(
+        internal_frame,
+        internal_loader,
+        DEBUGGER_MAX_SCOPE_ENTRIES,
+    ) {
+        Ok(projection) => projection,
+        Err(error) => return debugger_program_error(error),
+    };
+    if projection.stack.frame != internal_frame
+        || projection.stack.max_scope_entries != DEBUGGER_MAX_SCOPE_ENTRIES
+    {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "generated System stack changed during projection".to_string(),
+        };
+    }
+    let safe_points = projection.stack.frames.map(|entry| {
+        let program = DebuggerProgram {
+            realm: emitted.realm,
+            program_handle: entry.program.program_handle,
+            program_generation: entry.program.program_generation,
+        };
+        DebuggerSafePoint {
+            program,
+            code_unit_ordinal: entry.safe_point.code_unit_ordinal,
+            bytecode_offset: entry.safe_point.bytecode_offset,
+        }
+    });
+    if safe_points[0] != top || projection.locations[1].is_some() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "generated System stack changed during projection".to_string(),
+        };
+    }
+    let mut projected = [None; 3];
+    for index in [0, 2] {
+        if let Some(location) = projection.locations[index] {
+            let original = location
+                .original
+                .map(|original| DebuggerGeneratedOriginalPosition {
+                    source_index: original.source_index,
+                    line: original.line,
+                    column_utf16: original.column_utf16,
+                });
+            let public = DebuggerGeneratedPausedSourceLocation {
+                generated_line: location.generated_line,
+                generated_column_utf16: location.generated_column_utf16,
+                original,
+            };
+            if !public.is_well_formed() {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "invalid generated System source location".to_string(),
+                };
+            }
+            let bound = match locations.debugger_emitted_original_position(
+                tab_id,
+                emitted.realm.realm_generation,
+                emitted.program_handle,
+                emitted.program_generation,
+                location.generated_line,
+                location.generated_column_utf16,
+            ) {
+                Ok(bound) => bound,
+                Err(error) => return debugger_program_error(error),
+            };
+            if bound.map(|bound| DebuggerGeneratedOriginalPosition {
+                source_index: bound.source_index,
+                line: bound.line,
+                column_utf16: bound.column_utf16,
+            }) != original
+            {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidExecutionState,
+                    message: "generated System projection disagrees with its bound map".to_string(),
+                };
+            }
+            projected[index] = Some(public);
+        }
+    }
+    let result = DebuggerGeneratedSystemStackLocations {
+        frame,
+        loader,
+        safe_points,
+        locations: projected,
+    };
+    if !result.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid generated System stack projection".to_string(),
+        };
+    }
+    if paused(tabs, locations) != Ok(top) {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "generated System stack moved after projection".to_string(),
+        };
+    }
+    DebuggerReply::GeneratedSystemStackLocations(Box::new(result))
+}

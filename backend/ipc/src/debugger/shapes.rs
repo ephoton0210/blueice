@@ -594,6 +594,36 @@ impl DebuggerGeneratedLinkedStackLocations {
     }
 }
 
+/// Exact child-first System pause under two independently receipted opaque
+/// programs. The middle loader frame has no emitted BlueTS map and must never
+/// borrow a source coordinate from either emitted frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedSystemStackLocations {
+    pub frame: DebuggerFrame,
+    pub loader: DebuggerProgram,
+    pub safe_points: [DebuggerSafePoint; 3],
+    pub locations: [Option<DebuggerGeneratedPausedSourceLocation>; 3],
+}
+
+impl DebuggerGeneratedSystemStackLocations {
+    pub fn is_well_formed(self) -> bool {
+        let emitted = self.frame.program;
+        self.frame.matches_safe_point(self.safe_points[0])
+            && self.loader.is_well_formed()
+            && self.loader.realm == emitted.realm
+            && self.loader != emitted
+            && self.safe_points[1].program == self.loader
+            && self.safe_points[1].code_unit_ordinal != 0
+            && self.safe_points[2].program == emitted
+            && self.safe_points[2].code_unit_ordinal == 0
+            && self.safe_points.iter().all(|point| point.is_well_formed())
+            && self.locations[1].is_none()
+            && self.locations.iter().all(|location| {
+                location.is_none_or(DebuggerGeneratedPausedSourceLocation::is_well_formed)
+            })
+    }
+}
+
 impl DebuggerStaticMetadataSourceBreakpoint {
     pub fn is_well_formed(self) -> bool {
         self.target.is_well_formed()
