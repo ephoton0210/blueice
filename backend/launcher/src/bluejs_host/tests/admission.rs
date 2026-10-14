@@ -45,55 +45,153 @@ fn emitted_map_admission_rejects_an_invalid_complete_stream() {
 
 #[test]
 fn corrupted_live_emitted_map_discloses_no_partial_location_or_safe_point() {
-    let mut host = BlueJsChildHost::default();
-    let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
-        document: debugger_document(
-            1,
-            vec![blue_ts_emitted_classic(0, "const answer: number = 42;")],
-        ),
-    });
-    assert!(matches!(
-        reply,
-        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
-    ));
-    let program = *host.documents[&7].emitted_maps.keys().next().unwrap();
-    let bound = host
-        .documents
-        .get_mut(&7)
-        .unwrap()
-        .emitted_maps
-        .get_mut(&program)
-        .unwrap();
-    bound.map.mappings.push_str(";!");
-    for reply in [
-        host.handle_request(PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
-            tab_id: 7,
-            document_generation: 1,
-            program,
-            generated_line: 0,
-            generated_column_utf16: 0,
-        }),
-        host.handle_request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
-            tab_id: 7,
-            document_generation: 1,
-            program,
-            generated_line: 0,
-            generated_column_utf16: 0,
-        }),
+    for (kind, mappings) in [
+        ("bad VLQ", "!"),
+        ("non-monotonic generated column", "AAAA,AAAA"),
+        ("out-of-range source index", "ACAA"),
+        ("out-of-range name index", "AAAAA"),
     ] {
+        let mut host = BlueJsChildHost::default();
+        let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(
+                1,
+                vec![blue_ts_emitted_classic(0, "const answer: number = 42;")],
+            ),
+        });
         assert!(matches!(
             reply,
-            PageHostReply::Error {
-                code: PageHostErrorCode::HostFailure,
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = *host.documents[&7].emitted_maps.keys().next().unwrap();
+        let safe_point =
+            match host.handle_request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                generated_line: 0,
+                generated_column_utf16: 0,
+            }) {
+                PageHostReply::DebuggerEmittedSafePoint {
+                    safe_point: Some(point),
+                    ..
+                } => point,
+                reply => panic!("{kind}: expected a mapped root safe point, got {reply:?}"),
+            };
+        let bound = host
+            .documents
+            .get_mut(&7)
+            .unwrap()
+            .emitted_maps
+            .get_mut(&program)
+            .unwrap();
+        bound.map.mappings = mappings.to_string();
+        assert_eq!(
+            bound.map.original_position_at(
+                &bound.generated.source,
+                0,
+                0,
+                BoundEmittedMap::MAX_SEGMENTS,
+                BoundEmittedMap::MAX_RETAINED_BYTES,
+            ),
+            Err(blueice_bluets::SourceMapLookupError::MalformedMap),
+            "{kind} must be a real decoder fault"
+        );
+        for reply in [
+            host.handle_request(PageHostRequest::ResolveDebuggerEmittedOriginalPosition {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                generated_line: 0,
+                generated_column_utf16: 0,
+            }),
+            host.handle_request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                generated_line: 0,
+                generated_column_utf16: 0,
+            }),
+        ] {
+            assert!(
+                matches!(
+                    reply,
+                    PageHostReply::Error {
+                        code: PageHostErrorCode::HostFailure,
+                        ..
+                    }
+                ),
+                "{kind}: {reply:?}"
+            );
+        }
+        assert!(host.documents[&7].debugger_breakpoints.is_empty(), "{kind}");
+        assert_eq!(
+            host.documents[&7].debugger_execution_states[&program],
+            ChildDebuggerExecutionStatus::Pending,
+            "{kind}"
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let paused_location =
+            host.handle_request(PageHostRequest::GetDebuggerEmittedPausedRootLocation {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            });
+        assert!(
+            matches!(
+                paused_location,
+                PageHostReply::Error {
+                    code: PageHostErrorCode::HostFailure,
+                    ..
+                }
+            ),
+            "{kind}: paused projection must not disclose partial source: {paused_location:?}"
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ClearDebuggerBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }),
+            PageHostReply::DebuggerBreakpointCleared {
+                was_present: true,
                 ..
             }
         ));
+        assert!(host.documents[&7].debugger_breakpoints.is_empty(), "{kind}");
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert!(
+            matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                    if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+            ),
+            "{kind}: failed map inspection must not stop page execution"
+        );
     }
-    assert!(host.documents[&7].debugger_breakpoints.is_empty());
-    assert_eq!(
-        host.documents[&7].debugger_execution_states[&program],
-        ChildDebuggerExecutionStatus::Pending
-    );
 }
 
 #[test]

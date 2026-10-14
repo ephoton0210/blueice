@@ -1007,6 +1007,36 @@ mod script_execution;
 use script_execution::*;
 
 impl BlueJsChildHost {
+    /// Debug-build-only test seam; it is never reachable through page-host IPC.
+    #[cfg(debug_assertions)]
+    #[doc(hidden)]
+    pub fn corrupt_retained_emitted_map_for_test(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        mappings: &str,
+    ) {
+        let document = self.documents.get_mut(&tab_id).expect("live test realm");
+        assert_eq!(document.generation, document_generation);
+        let bound = document
+            .emitted_maps
+            .get_mut(&program)
+            .expect("live test emitted map");
+        bound.map.mappings = mappings.to_string();
+        assert_eq!(
+            bound.map.original_position_at(
+                &bound.generated.source,
+                0,
+                0,
+                BoundEmittedMap::MAX_SEGMENTS,
+                BoundEmittedMap::MAX_RETAINED_BYTES,
+            ),
+            Err(blueice_bluets::SourceMapLookupError::MalformedMap),
+            "the test must damage the child-retained map itself"
+        );
+    }
+
     fn exact_document(
         &self,
         tab_id: u64,

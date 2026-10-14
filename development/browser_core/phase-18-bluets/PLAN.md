@@ -10375,3 +10375,34 @@ The rebuilt v51 final-source verification passes IPC 141/141, launcher
 three-crate all-target Clippy, workspace formatting and diff checks pass.
 The fixed location array is boxed to keep the shared private reply enum
 within Clippy's existing error-size contract.
+
+### K.11.4 AC-K11.A — malformed retained maps (2026-10-14)
+
+The out-of-process regression uses the real launcher and core binaries and a
+separate test child running the production `BlueJsChildHost` state machine over
+the private page-host protocol. After the first valid mapped safe-point
+resolution, a debug-build-only Rust test seam directly replaces the map
+retained by that child. It is not a page-host IPC operation, is absent from
+release builds, and does not replace a lookup reply with a fabricated error.
+The four actual decoder failures are bad VLQ, non-monotonic generated column,
+out-of-range source index, and out-of-range name index. A child-host unit test
+independently checks all four against the retained map and execution state.
+
+For every corruption, the public debugger refuses subsequent generated
+resolution, generated arming, and paused original-source projection with the
+same fixed, source-free error. Its breakpoint inventory remains empty after
+the failed arm. The test uses an independently armed raw safe point to reach a
+real pause, clears it, resumes, and observes both debugger completion and an
+`Executed` BlueTS page report. The child never sends a partial source
+coordinate. The process test counts as one case looping over four faults;
+`out_of_process_debugger` now has 52 tests, all passing.
+
+Local verification on this source: `cargo test -p blueice-launcher` passes,
+including its 200 library tests and 52 public debugger tests;
+`cargo clippy -p blueice-launcher -p blueice-engine --all-targets -- -D warnings`
+and the final launcher all-target Clippy pass; `cargo fmt --all -- --check`
+and `git diff --check` pass. With pinned TypeScript 5.9.3 and Acorn 8.15.0,
+`FORCE_COLOR=0 cargo test -p blueice-bluets -p blueice-bluets-bluejs -- --include-ignored`
+passes, including the TypeScript oracle. This closes AC-K11.A only;
+substituted-map and helper-frame cases (AC-K11.B/C), the K.11.4 parent tick,
+and K.11.6 final-source/coverage/hosted gates remain open.

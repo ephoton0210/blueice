@@ -554,7 +554,7 @@ journal are in `PLAN_HISTORY.md` ("Archived from TODO.md: K.11"); only open work
   - Done: map bound to generation-bound page-host artifact; exact AST/bytecode safe points; decorator and
     three-frame System pauses; exact-source positive path (pause, step, stack, original location, resume,
     helper definitions unbound) for all 11 rows; default-denied same-stream receipted operations.
-  - [ ] **AC-K11.A Malformed retained map, out-of-process.** Real launcher/core/child session, >= 3
+  - [x] **AC-K11.A Malformed retained map, out-of-process.** Real launcher/core/child session, >= 3
     corruption kinds (bad VLQ, non-monotonic column, out-of-range source/name index). *Pass when:* resolution,
     arming and paused projection each refuse, disclose no partial source, retain no breakpoint, and the
     page still runs to completion.

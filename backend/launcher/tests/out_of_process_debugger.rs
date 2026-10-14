@@ -55,6 +55,9 @@ mod generated_frozen_classic;
 mod generated_frozen_standard;
 #[path = "out_of_process_debugger/generated_legacy.rs"]
 mod generated_legacy;
+#[cfg(debug_assertions)]
+#[path = "out_of_process_debugger/generated_map_faults.rs"]
+mod generated_map_faults;
 #[path = "out_of_process_debugger/generated_primitives.rs"]
 mod generated_primitives;
 #[path = "out_of_process_debugger/generated_system.rs"]
@@ -203,6 +206,22 @@ impl LauncherProcess {
         policy: StaticMetadataPolicy,
         owner_http_policy: Option<&Path>,
     ) -> Self {
+        Self::spawn_with_binary(
+            gatekeeper_socket,
+            policy,
+            owner_http_policy,
+            Path::new(env!("CARGO_BIN_EXE_blueice-launcher")),
+            None,
+        )
+    }
+
+    fn spawn_with_binary(
+        gatekeeper_socket: &Path,
+        policy: StaticMetadataPolicy,
+        owner_http_policy: Option<&Path>,
+        launcher_binary: &Path,
+        map_fault_mode: Option<&str>,
+    ) -> Self {
         let test_guard = LAUNCHER_DEBUGGER_TEST_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -215,7 +234,14 @@ impl LauncherProcess {
         let _ = std::fs::remove_file(&debugger_socket);
         let _ = std::fs::remove_dir_all(&frame_dir);
 
-        let mut command = Command::new(env!("CARGO_BIN_EXE_blueice-launcher"));
+        let mut command = Command::new(launcher_binary);
+        if let Some(mode) = map_fault_mode {
+            command.env("BLUEICE_TEST_MAP_FAULT_MODE", mode);
+            command.env(
+                "BLUEICE_TEST_MAP_FAULT_EXECUTABLE",
+                std::env::current_exe().expect("fault child test executable path"),
+            );
+        }
         command.args([
             "--socket",
             rendezvous_socket.to_str().unwrap(),
