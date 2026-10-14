@@ -332,6 +332,113 @@ impl BlueJsChildHost {
         Ok(())
     }
 
+    /// Child-private System arm with an explicit, earlier page-owned loader.
+    /// This is not reachable from raw or generated public arming until core
+    /// can require independent same-stream receipts for both programs.
+    pub(super) fn arm_debugger_system_target(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> Result<(), PageHostReply> {
+        self.exact_debugger_safe_point(tab_id, document_generation, safe_point)?;
+        if !loader_program.is_well_formed()
+            || loader_program == safe_point.program
+            || safe_point.code_unit_ordinal == 0
+        {
+            return Err(invalid_debugger_state());
+        }
+        let document = self.documents.get_mut(&tab_id).expect("validated document");
+        let target_pending = document
+            .pending_debugger_executions
+            .iter()
+            .find(|pending| pending.program == Some(safe_point.program))
+            .ok_or_else(invalid_debugger_state)?;
+        let target_ordinal = target_pending.ordinal;
+        if !document.debugger_execution_control
+            || document.debugger_execution_states.get(&safe_point.program)
+                != Some(&ChildDebuggerExecutionStatus::Pending)
+            || document
+                .emitted_maps
+                .get(&safe_point.program)
+                .is_none_or(|map| map.emission_profile != PageHostBlueTsEmissionProfile::System)
+            || target_pending.language != PageHostScriptLanguage::BlueTsEmitted
+            || target_pending.kind != PageHostScriptKind::Classic
+            || target_pending.nested_safe_point.is_some()
+            || target_pending.system_loader_program.is_some()
+            || target_pending.linked_safe_point.is_some()
+            || !matches!(
+                target_pending.execution,
+                DeferredChildExecution::JavaScriptClassic {
+                    root_safe_point: None,
+                    ..
+                }
+            )
+        {
+            return Err(invalid_debugger_state());
+        }
+        let loader_is_earlier = document.pending_debugger_executions.iter().any(|pending| {
+            pending.program == Some(loader_program)
+                && pending.ordinal < target_ordinal
+                && pending.language == PageHostScriptLanguage::JavaScript
+                && pending.kind == PageHostScriptKind::Classic
+                && matches!(
+                    pending.execution,
+                    DeferredChildExecution::JavaScriptClassic { .. }
+                )
+        });
+        if !loader_is_earlier
+            || document.debugger_execution_states.get(&loader_program)
+                != Some(&ChildDebuggerExecutionStatus::Pending)
+            || document
+                .debugger_programs
+                .get(&loader_program.program_handle)
+                .is_none_or(|record| record.program_generation != loader_program.program_generation)
+        {
+            return Err(invalid_debugger_state());
+        }
+        let max = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
+            .expect("page-host debugger breakpoint cap fits usize");
+        if !document.debugger_breakpoints.contains(&safe_point)
+            && document.debugger_breakpoints.len() == max
+        {
+            return Err(resource_limit());
+        }
+        document.debugger_breakpoints.insert(safe_point);
+        let pending = document
+            .pending_debugger_executions
+            .iter_mut()
+            .find(|pending| pending.program == Some(safe_point.program))
+            .expect("validated pending System script");
+        pending.nested_safe_point = Some(safe_point);
+        pending.system_loader_program = Some(loader_program);
+        Ok(())
+    }
+
+    pub(super) fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        match self.arm_debugger_system_target(
+            tab_id,
+            document_generation,
+            loader_program,
+            safe_point,
+        ) {
+            Ok(()) => PageHostReply::DebuggerSystemNestedBreakpointArmed {
+                tab_id,
+                document_generation,
+                loader_program,
+                safe_point,
+            },
+            Err(reply) => reply,
+        }
+    }
+
     pub(super) fn arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         tab_id: u64,

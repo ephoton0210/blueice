@@ -10279,3 +10279,40 @@ is allowed. Their first sandboxed run failed at the gatekeeper bind with
 BlueJS library tests pass 1,153/1,153 and BlueJS plus launcher library
 Clippy with `-D warnings` passes. The full all-target, workspace, coverage
 and hosted final-source gates still belong to K.11.6 and are not claimed.
+
+#### K.11 continuation: exact System loader arm in the private page host (2026-10-14)
+
+Private page-host protocol v48 introduces an arm request and reply that name
+both the earlier page-loader program and an exact emitted System nested safe
+point. The child validates the document generation, two distinct live
+program identities, System emission profile, a still-pending classic emitted
+declaration, an earlier still-pending JavaScript classic loader, and the
+breakpoint cap before mutating any state. Its fixed-size pending execution
+record retains the loader association; the scheduler later resolves the
+exact runtime loader handle and uses the page-runtime foreign-intermediate
+pause primitive. It never falls back to the ordinary classic route when an
+associated loader cannot be resolved.
+
+A test-first child-host regression runs the frozen System source through the
+actual owner-selected emitted profile. It binds the mapped `console` token
+to the compiler-recorded nested safe point, rejects ordinary raw arming,
+rejects a stale document, same-program loader and later-program loader with
+an empty breakpoint table, then accepts the explicit earlier loader arm.
+Advancing executes the loader once and pauses the real execute callback;
+the native stack reports generated child, foreign loader and generated root
+with distinct correct generations while the ordinary private one-program
+stack request still refuses. Nested resume, root resume and the following
+page script verify exactly one loader and console effect. The new v48 request
+and reply round-trip through the bounded private IPC codec.
+
+Focused child and IPC tests pass. IPC library passes 139/139 and launcher
+library passes 194/194 with local socket permission; the public real-process
+debugger suite passes 47/47 after rebuilding all three v48 binaries. A
+pre-rebuild public-suite attempt failed at core startup because it launched
+the previous protocol binary, not because a debugger assertion failed.
+IPC and launcher all-target Clippy with warnings denied, core/engine check,
+workspace formatting and diff checks pass. The public generated breakpoint
+filter remains fail-closed for System. Core still needs independent same-
+stream receipts for the loader and emitted program, plus a complete three-
+frame projection before a public System arm may become reachable. Thus the
+System checklist row and K.11.4 remain open.

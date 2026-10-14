@@ -275,10 +275,33 @@ impl BlueJsChildHost {
                                                 && point.bytecode_offset == target.bytecode_offset
                                         })
                                     });
-                                let result = point.map(|point| {
-                                    self.runtime.execute_program_until_nested_debugger_pause(
-                                        tab_id, *handle, point,
-                                    )
+                                let system_loader =
+                                    self.documents.get(&tab_id).and_then(|document| {
+                                        pending.system_loader_program.map(|loader| {
+                                            document
+                                                .debugger_programs
+                                                .get(&loader.program_handle)
+                                                .filter(|record| {
+                                                    record.program_generation
+                                                        == loader.program_generation
+                                                })
+                                                .map(|record| record.runtime_handle)
+                                        })
+                                    });
+                                let result = point.map(|point| match system_loader {
+                                    Some(Some(loader)) => self
+                                        .runtime
+                                        .execute_program_until_foreign_intermediate_debugger_pause(
+                                            tab_id, *handle, loader, point,
+                                        ),
+                                    Some(None) => {
+                                        Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+                                    }
+                                    None => {
+                                        self.runtime.execute_program_until_nested_debugger_pause(
+                                            tab_id, *handle, point,
+                                        )
+                                    }
                                 });
                                 let outcome = match result {
                                     Some(Ok(BlueJsPageDebuggerNestedExecutionState::Paused {

@@ -408,6 +408,17 @@ impl BlueJsChildHost {
                 document_generation,
                 safe_point,
             ),
+            PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+                tab_id,
+                document_generation,
+                loader_program,
+                safe_point,
+            } => self.arm_debugger_system_nested_breakpoint(
+                tab_id,
+                document_generation,
+                loader_program,
+                safe_point,
+            ),
             PageHostRequest::ArmDebuggerLinkedNestedSafePointBreakpoint {
                 tab_id,
                 document_generation,
@@ -967,6 +978,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Classic,
                             program: Some(program),
                             nested_safe_point: None,
+                            system_loader_program: None,
                             linked_safe_point: None,
                             execution: DeferredChildExecution::JavaScriptClassic {
                                 handle,
@@ -1076,6 +1088,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Classic,
                             program: Some(program),
                             nested_safe_point: None,
+                            system_loader_program: None,
                             linked_safe_point: None,
                             execution: DeferredChildExecution::JavaScriptClassic {
                                 handle,
@@ -1096,6 +1109,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Module,
                             program: None,
                             nested_safe_point: None,
+                            system_loader_program: None,
                             linked_safe_point: None,
                             execution: DeferredChildExecution::JavaScriptModule { graph, programs },
                         },
@@ -1182,6 +1196,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Module,
                             program: Some(entry_program),
                             nested_safe_point: None,
+                            system_loader_program: None,
                             linked_safe_point: None,
                             execution: DeferredChildExecution::BlueTsModule {
                                 attachment: DeferredModuleAttachment::Emitted(attachment),
@@ -1227,6 +1242,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Classic,
                             program: Some(program),
                             nested_safe_point: None,
+                            system_loader_program: None,
                             linked_safe_point: None,
                             execution: DeferredChildExecution::BlueTsClassic {
                                 handle: attachment.handle,
@@ -1274,6 +1290,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Module,
                             program: Some(program),
                             nested_safe_point: None,
+                            system_loader_program: None,
                             linked_safe_point: None,
                             execution: DeferredChildExecution::BlueTsModule {
                                 attachment: DeferredModuleAttachment::Direct(attachment),

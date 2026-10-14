@@ -636,6 +636,9 @@ struct PendingDebuggerExecution {
     kind: PageHostScriptKind,
     program: Option<PageHostDebuggerProgram>,
     nested_safe_point: Option<PageHostDebuggerSafePoint>,
+    /// Exact earlier page loader for a System execute-body pause. The fixed
+    /// field is bounded by the existing per-document pending-script cap.
+    system_loader_program: Option<PageHostDebuggerProgram>,
     linked_safe_point: Option<PageHostDebuggerSafePoint>,
     execution: DeferredChildExecution,
 }

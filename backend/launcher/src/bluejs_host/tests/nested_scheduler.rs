@@ -5,6 +5,195 @@
 use super::*;
 
 #[test]
+fn private_system_scheduler_binds_the_earlier_loader_without_public_stack_leak() {
+    let frozen = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../bluets/tests/fixtures/k11_source_maps/system_wrapper.ts"
+    ));
+    let source = format!("{frozen}\ndeclare const console: {{ log(value: number): void }};\n");
+    let loader = "var loaderCalls = 0; var consoleCalls = 0; var console = { log: function(value) { consoleCalls++; if (value !== 42) throw 7; } }; var System = { register: function(dependencies, declare) { loaderCalls++; var exports = {}; var body = declare(function(name, value) { exports[name] = value; return value; }, { id: 'main' }); body.execute(); if (exports.answer !== 42) throw 8; } };";
+    let mut selected = debugger_document(
+        1,
+        vec![
+            classic(0, loader),
+            blue_ts_emitted_classic(1, &source),
+            classic(2, "if (loaderCalls !== 1 || consoleCalls !== 1) throw 9;"),
+        ],
+    );
+    selected.emitted_bluets_profile = PageHostBlueTsEmissionProfile::System;
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument { document: selected }),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let programs = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+        tab_id: 7,
+        document_generation: 1,
+    }) {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs,
+        reply => panic!("expected three installed programs: {reply:?}"),
+    };
+    assert_eq!(programs.len(), 3);
+    let loader_program = programs[0];
+    let emitted_program = programs[1];
+    let bound = &host.documents[&7].emitted_maps[&emitted_program];
+    let token = bound.generated.source.rfind("console.log(").unwrap();
+    let statement_index = bound
+        .top_level_spans
+        .iter()
+        .position(|span| span.start_byte <= token && token < span.end_byte)
+        .unwrap();
+    let emitted_handle =
+        host.documents[&7].debugger_programs[&emitted_program.program_handle].runtime_handle;
+    let loader_handle =
+        host.documents[&7].debugger_programs[&loader_program.program_handle].runtime_handle;
+    let point = host
+        .runtime
+        .program_registry()
+        .get(emitted_handle)
+        .unwrap()
+        .unique_identifier_safe_point(statement_index, "console")
+        .unwrap();
+    let target = PageHostDebuggerSafePoint {
+        program: emitted_program,
+        code_unit_ordinal: point.code_unit.ordinal(),
+        bytecode_offset: point.bytecode_offset,
+    };
+    assert_ne!(target.code_unit_ordinal, 0);
+    assert!(host.arm_debugger_nested_target(7, 1, target).is_err());
+    assert!(host.documents[&7].debugger_breakpoints.is_empty());
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+            tab_id: 7,
+            document_generation: 2,
+            loader_program,
+            safe_point: target,
+        }),
+        PageHostReply::Error { .. }
+    ));
+    assert!(host.documents[&7].debugger_breakpoints.is_empty());
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+            tab_id: 7,
+            document_generation: 1,
+            loader_program: emitted_program,
+            safe_point: target,
+        }),
+        PageHostReply::Error { .. }
+    ));
+    assert!(host.documents[&7].debugger_breakpoints.is_empty());
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+            tab_id: 7,
+            document_generation: 1,
+            loader_program: programs[2],
+            safe_point: target,
+        }),
+        PageHostReply::Error { .. }
+    ));
+    assert!(host.documents[&7].debugger_breakpoints.is_empty());
+    let stale_loader = PageHostDebuggerProgram {
+        program_generation: loader_program.program_generation + 1,
+        ..loader_program
+    };
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+            tab_id: 7,
+            document_generation: 1,
+            loader_program: stale_loader,
+            safe_point: target,
+        }),
+        PageHostReply::Error { .. }
+    ));
+    assert!(host.documents[&7].debugger_breakpoints.is_empty());
+    assert_eq!(
+        host.handle_request(PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+            tab_id: 7,
+            document_generation: 1,
+            loader_program,
+            safe_point: target,
+        }),
+        PageHostReply::DebuggerSystemNestedBreakpointArmed {
+            tab_id: 7,
+            document_generation: 1,
+            loader_program,
+            safe_point: target,
+        }
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+    ));
+    let frame = match host.documents[&7].debugger_execution_states[&emitted_program] {
+        ChildDebuggerExecutionStatus::NestedPaused { frame, safe_point } => {
+            assert_eq!(safe_point, target);
+            frame
+        }
+        status => panic!("System execute body must pause: {status:?}"),
+    };
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerStackSnapshot {
+            tab_id: 7,
+            document_generation: 1,
+            program: emitted_program,
+            frame: Some(child_debugger_frame(7, 1, emitted_program, frame)),
+            max_frames: 3,
+            max_scope_entries: 256,
+        }),
+        PageHostReply::Error { .. }
+    ));
+    let snapshot = host
+        .runtime
+        .debugger_foreign_intermediate_stack_snapshot(7, frame, loader_handle, 3, 256)
+        .unwrap();
+    assert_eq!(
+        snapshot
+            .frames
+            .iter()
+            .map(|frame| frame.program_generation)
+            .collect::<Vec<_>>(),
+        vec![
+            emitted_handle.generation().as_u64(),
+            loader_handle.generation().as_u64(),
+            emitted_handle.generation().as_u64(),
+        ]
+    );
+    host.request_debugger_nested_advance(7, 1, frame, true)
+        .unwrap();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    assert!(matches!(
+        host.documents[&7].debugger_execution_states[&emitted_program],
+        ChildDebuggerExecutionStatus::Paused(_)
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+            program: emitted_program,
+        }),
+        PageHostReply::DebuggerExecutionResumed { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            if reports.len() == 2 && reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+    ));
+}
+
+#[test]
 fn private_child_classic_scheduler_steps_only_its_paused_nested_invocation() {
     let mut host = BlueJsChildHost::default();
     let source =

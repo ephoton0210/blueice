@@ -1181,6 +1181,19 @@ source-map lookup 4/4, and out-of-process debugger regression suite 47/47.
 K.11.1, K.11.2, K.11.3 and K.11.5 are complete for this committed matrix;
 K.11.4 and K.11.6 remain open.
 
+Private page-host protocol v48 now carries an explicit System loader-program
+identity alongside the emitted execute-body safe point. The child accepts
+only an earlier, still-pending JavaScript classic loader in the same exact
+document, stores the association in its bounded pending execution, and uses
+the cross-program page-runtime continuation when execution advances. A
+test-first child scheduler regression pauses the frozen System fixture's
+mapped execute token, checks the actual three program generations, resumes
+without duplicate loader/output effects, and proves wrong/later/stale arms
+leave no breakpoint. Ordinary raw System arm and the single-program stack
+remain denied. This is a private transport and scheduler milestone only:
+core has no receipted public System arm or three-frame original-location
+projection yet, so the System subitem and K.11.4 remain unchecked.
+
 ### K.12 Projects — M10 — gap G-M2
 
 - [ ] **K.12.1 References and build (XL).** `references`, `composite`, `--build` with `.tsbuildinfo`

@@ -65,7 +65,7 @@ fn private_value_target_requires_exact_root_or_nested_frame_shape() {
     target.safe_point.program.program_generation -= 1;
     target.frame_index = 2;
     assert!(!target.is_well_formed());
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 47);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 48);
 }
 
 #[test]
@@ -402,7 +402,7 @@ fn private_static_scope_relation_round_trips_without_values_or_displays() {
     let (mut writer, mut reader) = UnixStream::pair().unwrap();
     write_page_host_reply(&mut writer, &reply).unwrap();
     assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 47);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 48);
 }
 
 #[test]
@@ -829,6 +829,12 @@ fn nested_frame_commands_and_states_round_trip_on_private_wire() {
             document_generation: 3,
             safe_point,
         },
+        PageHostRequest::ArmDebuggerSystemNestedBreakpoint {
+            tab_id: 7,
+            document_generation: 3,
+            loader_program: program,
+            safe_point,
+        },
         PageHostRequest::StepDebuggerNestedInstruction { frame },
         PageHostRequest::ResumeDebuggerNestedExecution { frame },
         PageHostRequest::GetDebuggerStackSnapshot {
@@ -851,6 +857,12 @@ fn nested_frame_commands_and_states_round_trip_on_private_wire() {
         PageHostReply::DebuggerNestedSafePointBreakpointArmed {
             tab_id: 7,
             document_generation: 3,
+            safe_point,
+        },
+        PageHostReply::DebuggerSystemNestedBreakpointArmed {
+            tab_id: 7,
+            document_generation: 3,
+            loader_program: program,
             safe_point,
         },
         PageHostReply::DebuggerExecutionState {

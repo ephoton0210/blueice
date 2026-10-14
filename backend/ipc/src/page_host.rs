@@ -12,7 +12,10 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
-//! Version 46 allows the existing emitted-artifact private lookup to return
+//! Version 48 adds a child-private System execute-body arm that binds an
+//! explicit earlier, same-document page-loader program. The public debugger
+//! cannot reach this operation until both program receipts and the complete
+//! three-frame projection are available. Version 46 allows the existing emitted-artifact private lookup to return
 //! compiler-recorded nested identifier safe points and an active-frame-
 //! verified paused projection; no map or AST record crosses the boundary.
 //! Version 45 distinguishes an explicitly selected child-compiled BlueTS
@@ -134,7 +137,8 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-/// V45 distinguishes compiler-emitted BlueTS JavaScript from direct AST
+/// V48 adds an exact System loader-to-emitted-execute arm without granting
+/// any public debugger client access. V45 distinguishes compiler-emitted BlueTS JavaScript from direct AST
 /// lowering for a separately admitted classic-script execution path. It
 /// grants no debugger map read by itself. V44 adds a bounded private BlueTS
 /// rejection-position candidate. V43 adds
@@ -143,7 +147,7 @@ use std::io::{self, Read, Write};
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 47;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 48;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -775,6 +779,15 @@ pub enum PageHostRequest {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    /// Arms a System execute-body target through one exact earlier JavaScript
+    /// page loader. The child verifies both installed program generations;
+    /// this private operation carries no public debugger authority.
+    ArmDebuggerSystemNestedBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Arms a dependency child under an exact pending BlueTS module entry.
     ArmDebuggerLinkedNestedSafePointBreakpoint {
         tab_id: u64,
@@ -1141,6 +1154,12 @@ pub enum PageHostReply {
     DebuggerNestedSafePointBreakpointArmed {
         tab_id: u64,
         document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    DebuggerSystemNestedBreakpointArmed {
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
         safe_point: PageHostDebuggerSafePoint,
     },
     DebuggerLinkedNestedSafePointBreakpointArmed {
