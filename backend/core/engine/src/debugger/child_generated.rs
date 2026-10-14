@@ -247,6 +247,81 @@ pub(super) fn arm_child_generated_system_breakpoint(
     }
 }
 
+pub(super) fn step_child_generated_instruction(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerGeneratedStepTarget,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid generated step target".to_string(),
+        };
+    }
+    match target {
+        DebuggerGeneratedStepTarget::Single { program, frame } => {
+            let projected =
+                match child_generated_paused_location(tabs, locations, metadata_session, program) {
+                    DebuggerReply::GeneratedPausedLocation(projected) => projected,
+                    reply => return reply,
+                };
+            match child_execution_state(tabs, locations, program) {
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Paused { safe_point },
+                    ..
+                } if frame.is_none() && safe_point == projected.safe_point => {
+                    step_child_root_instruction(tabs, locations, program)
+                }
+                DebuggerReply::ExecutionState {
+                    state:
+                        DebuggerExecutionState::NestedPaused {
+                            frame: active,
+                            safe_point,
+                        },
+                    ..
+                } if frame == Some(active) && safe_point == projected.safe_point => {
+                    step_child_nested_instruction(tabs, locations, active)
+                }
+                DebuggerReply::Error { code, message } => DebuggerReply::Error { code, message },
+                _ => DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidExecutionState,
+                    message: "generated step requires the exact projected pause".to_string(),
+                },
+            }
+        }
+        DebuggerGeneratedStepTarget::System { frame, loader } => {
+            let projected = match child_generated_system_stack_locations(
+                tabs,
+                locations,
+                metadata_session,
+                frame,
+                loader,
+            ) {
+                DebuggerReply::GeneratedSystemStackLocations(projected) => projected,
+                reply => return reply,
+            };
+            match child_execution_state(tabs, locations, frame.program) {
+                DebuggerReply::ExecutionState {
+                    state:
+                        DebuggerExecutionState::NestedPaused {
+                            frame: active,
+                            safe_point,
+                        },
+                    ..
+                } if active == frame && safe_point == projected.safe_points[0] => {
+                    step_child_nested_instruction(tabs, locations, frame)
+                }
+                DebuggerReply::Error { code, message } => DebuggerReply::Error { code, message },
+                _ => DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidExecutionState,
+                    message: "generated System step requires the exact projected pause".to_string(),
+                },
+            }
+        }
+    }
+}
+
 pub(super) fn child_generated_paused_location(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,

@@ -7,6 +7,7 @@ use blueice_ipc::debugger::{
     DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget,
     DebuggerGeneratedLinkedStackLocations, DebuggerGeneratedOriginalPosition,
     DebuggerGeneratedPausedLocation, DebuggerGeneratedPausedSourceLocation,
+    DebuggerGeneratedStepTarget,
 };
 
 fn serve_generated_documents(listener: TcpListener, count: usize) -> thread::JoinHandle<()> {
@@ -870,7 +871,12 @@ fn public_generated_breakpoint_and_paused_projection_bind_one_real_emitted_artif
     assert!(matches!(
         debugger_request(
             &mut debugger,
-            DebuggerRequest::StepRootInstruction { program },
+            DebuggerRequest::StepGeneratedInstruction {
+                target: DebuggerGeneratedStepTarget::Single {
+                    program,
+                    frame: None,
+                },
+            },
         ),
         DebuggerReply::ExecutionStepRequested { .. }
     ));
@@ -1257,7 +1263,12 @@ fn public_relocated_decorator_breakpoint_pauses_at_its_original_token() {
     assert_eq!(
         debugger_request(
             &mut debugger,
-            DebuggerRequest::StepNestedInstruction { frame }
+            DebuggerRequest::StepGeneratedInstruction {
+                target: DebuggerGeneratedStepTarget::Single {
+                    program,
+                    frame: Some(frame),
+                },
+            }
         ),
         DebuggerReply::NestedStepRequested { frame }
     );

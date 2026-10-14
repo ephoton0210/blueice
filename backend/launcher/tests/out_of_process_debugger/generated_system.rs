@@ -4,7 +4,7 @@
 
 use super::*;
 use blueice_ipc::debugger::{
-    DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget,
+    DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget, DebuggerGeneratedStepTarget,
     DebuggerGeneratedSystemBreakpoint, DebuggerGeneratedSystemBreakpointTarget,
 };
 
@@ -433,7 +433,9 @@ fn public_system_requires_explicit_dual_program_breakpoint_and_stack_route() {
     assert_eq!(
         debugger_request(
             &mut debugger,
-            DebuggerRequest::StepNestedInstruction { frame },
+            DebuggerRequest::StepGeneratedInstruction {
+                target: DebuggerGeneratedStepTarget::System { frame, loader },
+            },
         ),
         DebuggerReply::NestedStepRequested { frame }
     );

@@ -43,31 +43,31 @@ use blueice_ipc::debugger::{
     DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget,
     DebuggerGeneratedLinkedStackLocations, DebuggerGeneratedOriginalPosition,
     DebuggerGeneratedPausedLocation, DebuggerGeneratedPausedSourceLocation,
-    DebuggerGeneratedSystemBreakpoint, DebuggerGeneratedSystemBreakpointTarget,
-    DebuggerGeneratedSystemStackLocations, DebuggerLinkedArmTarget, DebuggerLinkedExecutionState,
-    DebuggerLinkedFrame, DebuggerLinkedScopeSnapshot, DebuggerLinkedScopeTarget,
-    DebuggerLinkedStackCoordinates, DebuggerLinkedStackCoordinatesTarget, DebuggerLinkedStackFrame,
-    DebuggerLinkedStackSnapshot, DebuggerLinkedValueSnapshot, DebuggerMetadataCapability,
-    DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
-    DebuggerRequest, DebuggerSafePoint, DebuggerScopeEntry, DebuggerScopeSnapshot,
-    DebuggerStackCoordinates, DebuggerStackCoordinatesTarget, DebuggerStackSnapshot,
-    DebuggerStaticMetadataContractDisplay, DebuggerStaticMetadataContractId,
-    DebuggerStaticMetadataContractLocation, DebuggerStaticMetadataContractLocationTarget,
-    DebuggerStaticMetadataContractValidation, DebuggerStaticMetadataHandle,
-    DebuggerStaticMetadataLoweringSummary, DebuggerStaticMetadataSafePointSpan,
-    DebuggerStaticMetadataSafePointSpanTarget, DebuggerStaticMetadataSourceBreakpoint,
-    DebuggerStaticMetadataSourceBreakpointTarget, DebuggerStaticMetadataSourceId,
-    DebuggerStaticMetadataSourceProvenance, DebuggerStaticMetadataSummary,
-    DebuggerStaticMetadataSymbolContract, DebuggerStaticMetadataSymbolDisplay,
-    DebuggerStaticMetadataSymbolId, DebuggerStaticMetadataSymbolLocation,
-    DebuggerStaticMetadataSymbolLocationTarget, DebuggerStaticMetadataSymbolType,
-    DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId, DebuggerStaticScopeRelation,
-    DebuggerStaticScopeTarget, DebuggerValuePreview, DebuggerValueSnapshot, DebuggerValueTarget,
-    DEBUGGER_MAX_SCOPE_ENTRIES, DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_MAX_VALUE_CONTAINER_LENGTH,
-    DEBUGGER_MAX_VALUE_DEPTH, DEBUGGER_MAX_VALUE_NODES, DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
-    DEBUGGER_PROTOCOL_VERSION, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
-    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
-    DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DebuggerGeneratedStepTarget, DebuggerGeneratedSystemBreakpoint,
+    DebuggerGeneratedSystemBreakpointTarget, DebuggerGeneratedSystemStackLocations,
+    DebuggerLinkedArmTarget, DebuggerLinkedExecutionState, DebuggerLinkedFrame,
+    DebuggerLinkedScopeSnapshot, DebuggerLinkedScopeTarget, DebuggerLinkedStackCoordinates,
+    DebuggerLinkedStackCoordinatesTarget, DebuggerLinkedStackFrame, DebuggerLinkedStackSnapshot,
+    DebuggerLinkedValueSnapshot, DebuggerMetadataCapability, DebuggerMetadataSessionAuthorization,
+    DebuggerPageRealm, DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint,
+    DebuggerScopeEntry, DebuggerScopeSnapshot, DebuggerStackCoordinates,
+    DebuggerStackCoordinatesTarget, DebuggerStackSnapshot, DebuggerStaticMetadataContractDisplay,
+    DebuggerStaticMetadataContractId, DebuggerStaticMetadataContractLocation,
+    DebuggerStaticMetadataContractLocationTarget, DebuggerStaticMetadataContractValidation,
+    DebuggerStaticMetadataHandle, DebuggerStaticMetadataLoweringSummary,
+    DebuggerStaticMetadataSafePointSpan, DebuggerStaticMetadataSafePointSpanTarget,
+    DebuggerStaticMetadataSourceBreakpoint, DebuggerStaticMetadataSourceBreakpointTarget,
+    DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
+    DebuggerStaticMetadataSummary, DebuggerStaticMetadataSymbolContract,
+    DebuggerStaticMetadataSymbolDisplay, DebuggerStaticMetadataSymbolId,
+    DebuggerStaticMetadataSymbolLocation, DebuggerStaticMetadataSymbolLocationTarget,
+    DebuggerStaticMetadataSymbolType, DebuggerStaticMetadataTypeDisplay,
+    DebuggerStaticMetadataTypeId, DebuggerStaticScopeRelation, DebuggerStaticScopeTarget,
+    DebuggerValuePreview, DebuggerValueSnapshot, DebuggerValueTarget, DEBUGGER_MAX_SCOPE_ENTRIES,
+    DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_MAX_VALUE_CONTAINER_LENGTH, DEBUGGER_MAX_VALUE_DEPTH,
+    DEBUGGER_MAX_VALUE_NODES, DEBUGGER_MAX_VALUE_PAYLOAD_BYTES, DEBUGGER_PROTOCOL_VERSION,
+    DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
+    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashSet};
@@ -484,6 +484,7 @@ impl DebuggerRequestReceiver {
                     | DebuggerRequest::ResumeExecution { .. }
                     | DebuggerRequest::StepRootInstruction { .. }
                     | DebuggerRequest::StepNestedInstruction { .. }
+                    | DebuggerRequest::StepGeneratedInstruction { .. }
                     | DebuggerRequest::ResumeNestedExecution { .. }
                     | DebuggerRequest::ResumeLinkedNestedExecution { .. }
                     | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
@@ -715,6 +716,7 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::GetGeneratedSystemStackLocations { .. } => {
             unavailable_generated_paused_location()
         }
+        DebuggerRequest::StepGeneratedInstruction { .. } => unavailable_generated_paused_location(),
         DebuggerRequest::DescribeStaticMetadataContractLocation { .. } => {
             unavailable_static_metadata_contract_location()
         }
@@ -972,6 +974,9 @@ fn handle_debugger_request_with_child_locations_and_pause(
         }
         DebuggerRequest::GetGeneratedSystemStackLocations { frame, loader } => {
             child_generated_system_stack_locations(tabs, locations, metadata_session, frame, loader)
+        }
+        DebuggerRequest::StepGeneratedInstruction { target } => {
+            step_child_generated_instruction(tabs, locations, metadata_session, target)
         }
         DebuggerRequest::DescribeStaticMetadataContractLocation { target } => {
             describe_child_static_metadata_contract_location(

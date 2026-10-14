@@ -612,6 +612,38 @@ impl DebuggerGeneratedPausedLocation {
     }
 }
 
+/// One source-free instruction step after the exact generated pause has been
+/// revalidated under the independently granted paused-location capability.
+/// A System step additionally names its separately inventoried page loader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DebuggerGeneratedStepTarget {
+    Single {
+        program: DebuggerProgram,
+        frame: Option<DebuggerFrame>,
+    },
+    System {
+        frame: DebuggerFrame,
+        loader: DebuggerProgram,
+    },
+}
+
+impl DebuggerGeneratedStepTarget {
+    pub fn is_well_formed(self) -> bool {
+        match self {
+            Self::Single { program, frame } => {
+                program.is_well_formed()
+                    && frame.is_none_or(|frame| frame.is_well_formed() && frame.program == program)
+            }
+            Self::System { frame, loader } => {
+                frame.is_well_formed()
+                    && loader.is_well_formed()
+                    && loader.realm == frame.program.realm
+                    && loader != frame.program
+            }
+        }
+    }
+}
+
 /// All-or-nothing generated locations for the exact child-first linked
 /// dependency/entry pause. Each position is independently map-bound to its
 /// own opaque program; a missing exact token remains `None` rather than

@@ -50,6 +50,66 @@ fn generated_paused_location_accepts_exact_nested_safe_points() {
 }
 
 #[test]
+fn generated_step_target_requires_exact_single_or_dual_program_identity() {
+    let program = DebuggerProgram {
+        realm: realm(),
+        program_handle: 11,
+        program_generation: 12,
+    };
+    let frame = DebuggerFrame {
+        program,
+        code_unit_ordinal: 2,
+        core_instance: [7; 16],
+        frame_handle: 19,
+    };
+    let loader = DebuggerProgram {
+        program_handle: 21,
+        program_generation: 22,
+        ..program
+    };
+    for target in [
+        DebuggerGeneratedStepTarget::Single {
+            program,
+            frame: None,
+        },
+        DebuggerGeneratedStepTarget::Single {
+            program,
+            frame: Some(frame),
+        },
+        DebuggerGeneratedStepTarget::System { frame, loader },
+    ] {
+        assert!(target.is_well_formed());
+        let request = DebuggerRequest::StepGeneratedInstruction { target };
+        assert_eq!(
+            serde_json::from_slice::<DebuggerRequest>(&serde_json::to_vec(&request).unwrap())
+                .unwrap(),
+            request
+        );
+    }
+    assert!(!DebuggerGeneratedStepTarget::Single {
+        program: loader,
+        frame: Some(frame),
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedStepTarget::System {
+        frame,
+        loader: program,
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedStepTarget::System {
+        frame,
+        loader: DebuggerProgram {
+            realm: DebuggerPageRealm {
+                realm_generation: program.realm.realm_generation + 1,
+                ..program.realm
+            },
+            ..loader
+        },
+    }
+    .is_well_formed());
+}
+
+#[test]
 fn system_generated_stack_requires_exact_emitted_loader_emitted_order() {
     let emitted = DebuggerProgram {
         realm: realm(),
@@ -678,7 +738,7 @@ fn public_static_scope_grant_and_wire_are_independent_of_values() {
             static_scope_relation: true,
             ..Default::default()
         });
-    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 48);
+    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 49);
     assert_eq!(DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION, 6);
     assert_eq!(
         manifest.capabilities,

@@ -13,6 +13,7 @@ use crate::script::javascript::{
 struct GeneratedLocations {
     paused: bool,
     armed: bool,
+    step_calls: usize,
     contradictory_map: bool,
     contradictory_binding: bool,
     malformed_map_failure: bool,
@@ -127,6 +128,24 @@ impl PageJavaScriptDebuggerLocations for GeneratedLocations {
         true
     }
 
+    fn debugger_stepping_available(&self) -> bool {
+        true
+    }
+
+    fn step_debugger_root_instruction(
+        &mut self,
+        _tab: TabId,
+        _generation: u64,
+        handle: u64,
+        program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if (handle, program_generation) != (7, 3) {
+            return Err(JavaScriptPageDebuggerError::StaleProgram);
+        }
+        self.step_calls += 1;
+        Ok(())
+    }
+
     fn debugger_stack_available(&self) -> bool {
         true
     }
@@ -233,6 +252,7 @@ struct SystemGeneratedLocations {
     contradictory_original: bool,
     projection_calls: usize,
     armed: bool,
+    step_calls: usize,
 }
 
 impl PageJavaScriptDebuggerLocations for SystemGeneratedLocations {
@@ -284,6 +304,22 @@ impl PageJavaScriptDebuggerLocations for SystemGeneratedLocations {
 
     fn debugger_nested_frames_available(&self) -> bool {
         true
+    }
+
+    fn step_debugger_nested_instruction(
+        &mut self,
+        frame: JavaScriptPageDebuggerFrame,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if (
+            frame.program_handle,
+            frame.program_generation,
+            frame.frame_handle,
+        ) != (7, 3, 9)
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidSafePoint);
+        }
+        self.step_calls += 1;
+        Ok(())
     }
 
     fn debugger_emitted_paused_root_location_available(&self) -> bool {
@@ -489,6 +525,7 @@ fn system_stack_disclosure_requires_both_same_stream_receipts_and_never_maps_loa
         contradictory_original: false,
         projection_calls: 0,
         armed: false,
+        step_calls: 0,
     };
     assert_eq!(
         handle_debugger_request_with_child_locations(&tabs, &mut locations, None, request()),
@@ -681,6 +718,7 @@ fn system_generated_arm_requires_dual_receipts_and_an_exact_nested_token() {
         contradictory_original: false,
         projection_calls: 0,
         armed: false,
+        step_calls: 0,
     };
     let session = session(
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_generated_breakpoint(),
@@ -788,6 +826,7 @@ fn generated_public_routes_require_independent_grants_and_same_stream_program_re
     let mut locations = GeneratedLocations {
         paused: false,
         armed: false,
+        step_calls: 0,
         contradictory_map: false,
         contradictory_binding: false,
         malformed_map_failure: false,
@@ -963,11 +1002,222 @@ fn generated_public_routes_require_independent_grants_and_same_stream_program_re
 }
 
 #[test]
+fn generated_root_step_requires_its_own_grant_receipt_and_exact_pause() {
+    let (tabs, realm) = loaded_tabs();
+    let program = DebuggerProgram {
+        realm,
+        program_handle: 7,
+        program_generation: 3,
+    };
+    let target = DebuggerGeneratedStepTarget::Single {
+        program,
+        frame: None,
+    };
+    let request = || DebuggerRequest::StepGeneratedInstruction { target };
+    let mut locations = GeneratedLocations {
+        paused: false,
+        armed: false,
+        step_calls: 0,
+        contradictory_map: false,
+        contradictory_binding: false,
+        malformed_map_failure: false,
+    };
+    assert_eq!(
+        handle_debugger_request_with_child_locations(&tabs, &mut locations, None, request()),
+        unavailable_generated_paused_location()
+    );
+    let breakpoint_only = session(
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_generated_breakpoint(),
+    );
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&breakpoint_only),
+            DebuggerRequest::ListPrograms { realm },
+        ),
+        DebuggerReply::Programs(vec![program])
+    );
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&breakpoint_only),
+            request(),
+        ),
+        unavailable_generated_paused_location()
+    );
+    let authorized = session(
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_generated_paused_location(
+        ),
+    );
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            request(),
+        ),
+        unavailable_generated_paused_location(),
+        "another stream's program receipt cannot authorize stepping"
+    );
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            DebuggerRequest::ListPrograms { realm },
+        ),
+        DebuggerReply::Programs(vec![program])
+    );
+    assert!(matches!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            request(),
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    assert_eq!(locations.step_calls, 0);
+    locations.paused = true;
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            request(),
+        ),
+        DebuggerReply::ExecutionStepRequested { program }
+    );
+    assert_eq!(locations.step_calls, 1);
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            DebuggerRequest::StepGeneratedInstruction {
+                target: DebuggerGeneratedStepTarget::Single {
+                    program: DebuggerProgram {
+                        program_generation: program.program_generation + 1,
+                        ..program
+                    },
+                    frame: None,
+                },
+            },
+        ),
+        unavailable_generated_paused_location()
+    );
+    assert_eq!(locations.step_calls, 1);
+}
+
+#[test]
+fn generated_system_step_requires_both_receipts_and_an_exact_frame() {
+    let (tabs, realm) = loaded_tabs();
+    let emitted = DebuggerProgram {
+        realm,
+        program_handle: 7,
+        program_generation: 3,
+    };
+    let loader = DebuggerProgram {
+        program_handle: 8,
+        program_generation: 4,
+        ..emitted
+    };
+    let frame = DebuggerFrame {
+        program: emitted,
+        code_unit_ordinal: 1,
+        core_instance: [7; 16],
+        frame_handle: 9,
+    };
+    let request = || DebuggerRequest::StepGeneratedInstruction {
+        target: DebuggerGeneratedStepTarget::System { frame, loader },
+    };
+    let mut locations = SystemGeneratedLocations {
+        include_loader: false,
+        foreign_location: false,
+        contradictory_original: false,
+        projection_calls: 0,
+        armed: false,
+        step_calls: 0,
+    };
+    let authorized = session(
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_generated_paused_location(
+        ),
+    );
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            DebuggerRequest::ListPrograms { realm },
+        ),
+        DebuggerReply::Programs(vec![emitted])
+    );
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            request(),
+        ),
+        unavailable_generated_paused_location()
+    );
+    assert_eq!(locations.projection_calls, 0);
+    assert_eq!(locations.step_calls, 0);
+    locations.include_loader = true;
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            DebuggerRequest::ListPrograms { realm },
+        ),
+        DebuggerReply::Programs(vec![emitted, loader])
+    );
+    assert!(matches!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            DebuggerRequest::StepGeneratedInstruction {
+                target: DebuggerGeneratedStepTarget::System {
+                    frame: DebuggerFrame {
+                        frame_handle: frame.frame_handle + 1,
+                        ..frame
+                    },
+                    loader,
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    assert_eq!(locations.step_calls, 0);
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&authorized),
+            request(),
+        ),
+        DebuggerReply::NestedStepRequested { frame }
+    );
+    assert_eq!(locations.step_calls, 1);
+}
+
+#[test]
 fn receipted_public_generated_routes_hide_a_private_malformed_map_failure() {
     let (tabs, realm) = loaded_tabs();
     let mut locations = GeneratedLocations {
         paused: true,
         armed: false,
+        step_calls: 0,
         contradictory_map: false,
         contradictory_binding: false,
         malformed_map_failure: true,

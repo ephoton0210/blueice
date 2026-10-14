@@ -757,7 +757,7 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     BlueTSC-emitted artifact/map. Supply any ambient `console` declaration
     separately rather than appending text to that source, and verify its
     generation-bound installation before checking this parent System row.
-  - [ ] Add independently default-denied, same-stream receipted public
+  - [x] Add independently default-denied, same-stream receipted public
     debugger operations for generated breakpoint resolution/arming and
     paused step/stack-location projection. Unmapped helper bodies and
     wrapper scaffolding must stay unbound.
@@ -1435,6 +1435,24 @@ or nearest-instruction fallback. An added regression checks that duplicate
 The focused regression and full launcher library suite pass 1/1 and 197/197.
 This closes the binding mechanism subcheck, while matrix-wide public debugger
 coverage and the final K.11.6 gate remain open.
+
+Public debugger protocol v49 now has an explicit `StepGeneratedInstruction`
+target for a single emitted program's root or nested pause and for a System
+pause with its independently identified loader. The core first performs the
+existing fully validated generated-location or System three-frame projection
+under the default-denied paused-location grant and same-stream program
+receipt(s), rechecks the exact active safe point/frame, then schedules only
+one source-free instruction. Denied grant, another stream's receipt, missing
+loader receipt, stale generation, an unpaused program or substituted frame
+cannot trigger a step. The ordinary source-free step requests remain
+compatible; they do not project generated or original coordinates. Real
+launcher/core/child regressions now use the new route for emitted root,
+relocated nested decorator and System execute-body steps; existing helper
+and wrapper unbound checks remain green. IPC 144/144, engine library 488/488,
+launcher library 197/197 and out-of-process debugger 48/48 pass on rebuilt
+v49 binaries. Three-crate all-target Clippy with denied warnings and workspace
+formatting pass. The public-operation subcheck is complete, but K.11.4 still
+needs its matrix-wide real-process acceptance and K.11.6 remains open.
 
 ### K.12 Projects — M10 — gap G-M2
 

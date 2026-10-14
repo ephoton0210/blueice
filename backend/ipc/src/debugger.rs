@@ -107,7 +107,7 @@ use std::sync::{Arc, Mutex, Weak};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 48;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 49;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -326,6 +326,12 @@ pub enum DebuggerRequest {
     GetGeneratedSystemStackLocations {
         frame: DebuggerFrame,
         loader: DebuggerProgram,
+    },
+    /// Revalidates an exact generated pause under the default-denied
+    /// paused-location grant and same-stream program receipt(s), then schedules
+    /// one source-free instruction. This grants no source text or raw map.
+    StepGeneratedInstruction {
+        target: DebuggerGeneratedStepTarget,
     },
     /// Describes one contract declaration range only after separate exact
     /// contract and source inventory receipts on this debugger stream.
@@ -762,6 +768,7 @@ pub fn negotiate_with_values(
         | DebuggerRequest::GetGeneratedPausedLocation { .. }
         | DebuggerRequest::GetGeneratedLinkedStackLocations { .. }
         | DebuggerRequest::GetGeneratedSystemStackLocations { .. }
+        | DebuggerRequest::StepGeneratedInstruction { .. }
         | DebuggerRequest::DescribeStaticMetadataContractLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolType { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolContract { .. }
