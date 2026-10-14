@@ -212,6 +212,7 @@ impl Vm {
                 }
                 let mut state = self.heap.file_reader(reader)?.clone();
                 self.admit_scheduling_work(HostSchedulingUsage {
+                    pending_browser_tasks: 1,
                     payload_bytes: 4 * std::mem::size_of::<BrowserTask>(),
                     ..HostSchedulingUsage::default()
                 })?;

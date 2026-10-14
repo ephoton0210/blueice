@@ -274,6 +274,7 @@ impl ModuleChecker<'_> {
             declarations: namespace.body.clone(),
             edits: owner.edits.clone(),
             generic_call_type_arguments: owner.generic_call_type_arguments.clone(),
+            generic_call_type_argument_spans: owner.generic_call_type_argument_spans.clone(),
             nested_functions: owner.nested_functions.clone(),
             class_expressions: owner.class_expressions.clone(),
             type_references: owner.type_references.clone(),

@@ -1092,6 +1092,27 @@ fn lowers_checked_member_calls_with_the_receiver() {
 }
 
 #[test]
+fn lowers_checked_call_and_constructor_type_arguments_with_nested_closers() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function identity<T>(value: T): T { return value; } \
+             const target = { value: 42 }; \
+             const ref = new WeakRef<{ value: number }>(target); \
+             const nested = new WeakRef<WeakRef<{ value: number }>>(ref); \
+             identity<number>(nested.deref()!.deref()!.value);",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Number(42.0)
+    );
+}
+
+#[test]
 fn lowers_checked_identifier_constructor_calls() {
     let artifact = compile_direct_script(
         ENTRY,

@@ -10,6 +10,7 @@ use std::cell::RefCell;
 
 pub const MAX_PENDING_HOST_MICROTASKS: usize = 1024;
 pub const MAX_PENDING_HOST_REACTIONS: usize = 1024;
+pub const MAX_PENDING_BROWSER_TASKS: usize = 64;
 pub const MAX_HOST_SCHEDULING_BYTES: usize = 8 * 1024 * 1024;
 
 /// Owned scheduling slot capacities and payloads, separate from managed heap
@@ -17,6 +18,8 @@ pub const MAX_HOST_SCHEDULING_BYTES: usize = 8 * 1024 * 1024;
 /// BigInt limb capacity and process RSS are not represented by this ledger.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HostSchedulingUsage {
+    /// Browser and cleanup tasks; page snapshots include their ShadowRealms.
+    pub pending_browser_tasks: usize,
     pub pending_microtasks: usize,
     pub pending_reactions: usize,
     pub payload_bytes: usize,
@@ -25,6 +28,9 @@ pub struct HostSchedulingUsage {
 impl HostSchedulingUsage {
     fn add(self, other: Self) -> Self {
         Self {
+            pending_browser_tasks: self
+                .pending_browser_tasks
+                .saturating_add(other.pending_browser_tasks),
             pending_microtasks: self
                 .pending_microtasks
                 .saturating_add(other.pending_microtasks),
@@ -36,6 +42,9 @@ impl HostSchedulingUsage {
     }
     fn sub(self, other: Self) -> Self {
         Self {
+            pending_browser_tasks: self
+                .pending_browser_tasks
+                .saturating_sub(other.pending_browser_tasks),
             pending_microtasks: self
                 .pending_microtasks
                 .saturating_sub(other.pending_microtasks),
@@ -46,7 +55,8 @@ impl HostSchedulingUsage {
         }
     }
     fn fits(self) -> bool {
-        self.pending_microtasks <= MAX_PENDING_HOST_MICROTASKS
+        self.pending_browser_tasks <= MAX_PENDING_BROWSER_TASKS
+            && self.pending_microtasks <= MAX_PENDING_HOST_MICROTASKS
             && self.pending_reactions <= MAX_PENDING_HOST_REACTIONS
             && self.payload_bytes <= MAX_HOST_SCHEDULING_BYTES
     }
@@ -56,6 +66,7 @@ impl HostSchedulingUsage {
 struct Account {
     usage: HostSchedulingUsage,
     failed: bool,
+    next_cleanup_task_serial: u64,
 }
 
 pub(super) struct SchedulingScope {
@@ -64,6 +75,20 @@ pub(super) struct SchedulingScope {
 }
 
 impl SchedulingScope {
+    pub(super) fn same_document(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.account, &other.account)
+    }
+
+    pub(super) fn next_cleanup_task_serial(&self) -> Result<u64, RuntimeError> {
+        let mut account = self.account.borrow_mut();
+        let serial = account.next_cleanup_task_serial;
+        let Some(next) = serial.checked_add(1) else {
+            account.failed = true;
+            return Err(RuntimeError::SchedulingLimit);
+        };
+        account.next_cleanup_task_serial = next;
+        Ok(serial)
+    }
     pub(super) fn new() -> Self {
         Self {
             account: Rc::new(RefCell::new(Account::default())),
@@ -430,11 +455,16 @@ impl Vm {
             })?;
             self.synchronize_scheduling_usage()?;
         }
+        self.enqueue_finalization_cleanup_jobs()?;
         Ok(())
     }
 
     fn own_scheduling_usage(&self) -> HostSchedulingUsage {
         let mut usage = HostSchedulingUsage {
+            pending_browser_tasks: self
+                .browser_tasks
+                .len()
+                .saturating_add(self.host_finalization_tasks.len()),
             pending_microtasks: self.promise_jobs.len(),
             pending_reactions: self.heap.pending_async_generator_requests(),
             payload_bytes: self
@@ -495,6 +525,11 @@ impl Vm {
                     .saturating_add(text.owned_heap_payload_bytes().unwrap_or(usize::MAX));
             }
         }
+        usage.payload_bytes = usage.payload_bytes.saturating_add(
+            self.host_finalization_tasks
+                .capacity()
+                .saturating_mul(std::mem::size_of::<host_finalization::HostFinalizationTask>()),
+        );
         for frame in self.async_continuations.values() {
             usage.payload_bytes = usage
                 .payload_bytes

@@ -285,7 +285,7 @@ impl Heap {
         let marked = self.mark(true, protected);
         let young: HashSet<_> = self.nursery.iter().copied().collect();
         let mut released_weak_entries: usize = 0;
-        for object in self.objects.values_mut() {
+        for (id, object) in &mut self.objects {
             if let ObjectKind::WeakCollection { entries, .. } = &mut object.kind {
                 let mut released: usize = 0;
                 entries.retain(|key, value| {
@@ -311,12 +311,17 @@ impl Heap {
                 }
             }
             if let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind {
-                for cell in cells {
+                for cell in cells.iter_mut() {
                     if cell.target.as_ref().is_some_and(|target| {
                         matches!(target, WeakCollectionKey::Object(key) if young.contains(key) && !marked.contains(key))
                     }) {
                         cell.target = None;
                     }
+                }
+                if let Some(index) = cells.iter().position(|cell| cell.target.is_none()) {
+                    self.pending_finalization.insert(*id, index);
+                } else {
+                    self.pending_finalization.remove(id);
                 }
             }
         }
@@ -340,13 +345,14 @@ impl Heap {
         }
         self.remembered.clear();
         self.clean_abort_weak_edges();
+        self.prune_finalization_cleanup_index();
         self.minor_collections += 1;
     }
 
     pub(super) fn major_gc(&mut self, protected: &[ObjectId]) {
         let marked = self.mark(false, protected);
         let mut released_weak_entries: usize = 0;
-        for object in self.objects.values_mut() {
+        for (id, object) in &mut self.objects {
             if let ObjectKind::WeakCollection { entries, .. } = &mut object.kind {
                 let mut released: usize = 0;
                 entries.retain(|key, value| {
@@ -370,12 +376,17 @@ impl Heap {
                 }
             }
             if let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind {
-                for cell in cells {
+                for cell in cells.iter_mut() {
                     if cell.target.as_ref().is_some_and(
                         |target| matches!(target, WeakCollectionKey::Object(key) if !marked.contains(key)),
                     ) {
                         cell.target = None;
                     }
+                }
+                if let Some(index) = cells.iter().position(|cell| cell.target.is_none()) {
+                    self.pending_finalization.insert(*id, index);
+                } else {
+                    self.pending_finalization.remove(id);
                 }
             }
         }
@@ -404,6 +415,16 @@ impl Heap {
             .max(self.config.major_threshold_bytes)
             .min(self.config.max_heap_bytes);
         self.clean_abort_weak_edges();
+        self.prune_finalization_cleanup_index();
         self.major_collections += 1;
+    }
+
+    fn prune_finalization_cleanup_index(&mut self) {
+        self.pending_finalization
+            .retain(|id, _| self.objects.contains_key(id));
+        if self.pending_finalization.len().saturating_mul(4) < self.pending_finalization.capacity()
+        {
+            self.pending_finalization.shrink_to_fit();
+        }
     }
 }

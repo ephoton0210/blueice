@@ -19,7 +19,9 @@ Core tab and refreshes it after task/render entries; broader host-buffer and
 aggregate resource accounting remain open. M1f replaces permanent Promise roots
 with live-owner tracing, roots work through publication and restores awaited
 for-await cleanup. The public page regressions cover bounded managed heap and
-native scheduling payload during repeated timer polls. See the
+native scheduling payload during repeated timer polls. M1g adds document-owned
+registry cleanup tasks, automatic GC notifications at host checkpoints and a
+shared 64-task browser/cleanup cap; the milestone record tracks final gates. See the
 [`browser-integration milestone record`](BROWSER_INTEGRATION_TODO.md#milestone-record)
 for current evidence and remaining task-ordering/resource work. The tables
 below retain the original analysis baseline except for the dated M1f rows.

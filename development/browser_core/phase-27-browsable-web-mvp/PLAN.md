@@ -10,7 +10,9 @@ M0a compatibility, M1b session-driven timers and M1c's separate animation-frame
 render entry with real frame/Representation acceptance. M1d bounds document
 scheduling work and owned payloads, including ShadowRealms. M1e charges that
 payload to Core's live per-tab ledger. M1f restores collectible Promise state
-and awaited for-await cleanup with bounded timer-poll regressions. M1 remains
+and awaited for-await cleanup with bounded timer-poll regressions. M1g adds
+document-owned finalization tasks, automatic checkpoint discovery and shared
+browser-task admission across ShadowRealms. M1 remains
 in progress for task-source ordering and broader host-buffer/aggregate
 accounting.
 
@@ -115,6 +117,8 @@ M1e propagates that payload through private v59 acknowledgements to the exact
 live Core tab, including post-turn refresh and lifecycle/revocation release.
 M1f adds live-owner Promise tracing, explicit async/host roots and awaited
 for-await cleanup, with managed-heap/native-payload timer-poll acceptance.
+M1g adds a separate cleanup task source and shared document browser-task cap,
+including task delivery and FIFO across ShadowRealms.
 Task-source ordering and complete host-buffer/aggregate accounting remain
 open, so M1 remains in progress.
 

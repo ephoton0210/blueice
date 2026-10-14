@@ -6,7 +6,7 @@
 
 use crate::EcmaTarget;
 
-pub(super) const VERSION: &str = "blue-ts-ecma-lib-v2";
+pub(super) const VERSION: &str = "blue-ts-ecma-lib-v3";
 
 pub(super) fn sources(target: EcmaTarget) -> Vec<(&'static str, &'static str)> {
     const SOURCES: &[(EcmaTarget, &str, &str)] = &[

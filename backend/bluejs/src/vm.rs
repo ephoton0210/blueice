@@ -30,6 +30,7 @@ mod execution;
 mod for_in;
 mod functions;
 mod host_animation_frames;
+mod host_finalization;
 mod host_objects;
 mod host_registration;
 mod host_scheduling;
@@ -37,8 +38,8 @@ mod host_timers;
 use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::SchedulingScope;
 pub use host_scheduling::{
-    HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_HOST_MICROTASKS,
-    MAX_PENDING_HOST_REACTIONS,
+    HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_BROWSER_TASKS,
+    MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS,
 };
 mod interpreter;
 mod intl;
@@ -1152,6 +1153,10 @@ pub struct Vm {
     host_scheduling: Option<SchedulingScope>,
     active_scheduling_bytes: usize,
     browser_tasks: VecDeque<browser_tasks::BrowserTask>,
+    host_finalization_tasks: VecDeque<host_finalization::HostFinalizationTask>,
+    active_finalization_registry: Option<ObjectId>,
+    next_browser_task_is_finalization: bool,
+    browser_task_realm_cursor: usize,
     /// Heap edges of displaced async frames and active iterator records that
     /// live outside the operand stack. Nested frames retain their own suffix
     /// until they return, fail, or hand ownership to a suspended frame.

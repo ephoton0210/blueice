@@ -35,6 +35,62 @@ fn library_types_never_enter_the_source_graph_or_outputs() {
 }
 
 #[test]
+fn weak_reference_and_cleanup_declarations_follow_the_selected_library_edition() {
+    let source = "const ref: WeakRef<{value: number}> = new WeakRef<{value: number}>({value: 7}); const value: {value: number} | undefined = ref.deref(); const registry: FinalizationRegistry<number> = new FinalizationRegistry<number>((held: number): void => {}); registry.register({}, 7); const removed: boolean = registry.unregister({});";
+    for target in [EcmaTarget::Es2021, EcmaTarget::Es2022, EcmaTarget::Es2023] {
+        let result = checked(
+            source,
+            CompilerOptions {
+                target,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(
+            !result.has_errors(),
+            "{target:?}: {:#?}",
+            result.diagnostics
+        );
+    }
+    assert!(checked(
+        source,
+        CompilerOptions {
+            target: EcmaTarget::Es2020,
+            ..CompilerOptions::default()
+        }
+    )
+    .has_errors());
+
+    let symbols = "const ref = new WeakRef<symbol>(Symbol()); const registry = new FinalizationRegistry<number>((held: number): void => {}); registry.register(Symbol(), 7, Symbol()); registry.unregister(Symbol());";
+    for target in [EcmaTarget::Es2021, EcmaTarget::Es2022, EcmaTarget::Es2023] {
+        let result = checked(
+            symbols,
+            CompilerOptions {
+                target,
+                ..CompilerOptions::default()
+            },
+        );
+        assert_eq!(
+            result.has_errors(),
+            target < EcmaTarget::Es2023,
+            "{target:?}: {:#?}",
+            result.diagnostics
+        );
+    }
+}
+
+#[test]
+fn weak_reference_declarations_reject_primitive_targets_and_wrong_holdings() {
+    for source in [
+        "new WeakRef<number>(7);",
+        "const registry = new FinalizationRegistry<number>((held: number): void => {}); registry.register({}, 'wrong');",
+        "const registry = new FinalizationRegistry<number>((held: number): void => {}); registry.register(7, 1);",
+        "const registry = new FinalizationRegistry<number>((held: number): void => {}); registry.unregister('wrong');",
+    ] {
+        assert!(checked(source, CompilerOptions::default()).has_errors(), "{source}");
+    }
+}
+
+#[test]
 fn owner_and_local_declarations_replace_standard_names() {
     let options = CompilerOptions {
         ambient_declaration_modules: vec![ModuleSource::new(

@@ -1659,6 +1659,9 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
 /// (including the generational write barrier), and explicit roots.
 /// No mutable reference to an object's backing map escapes this type.
 pub struct Heap {
+    // First cleared cell in each ready registry. This is an index, not a
+    // strong edge: dead registries are removed by collection.
+    pending_finalization: HashMap<ObjectId, usize>,
     identity: u64,
     next_object: u64,
     next_root: u64,

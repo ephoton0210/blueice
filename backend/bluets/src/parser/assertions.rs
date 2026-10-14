@@ -7,6 +7,13 @@
 use super::*;
 
 impl Module {
+    /// Original ranges of parsed, static-only type arguments on calls and
+    /// constructor calls. Direct lowering erases these without reparsing types
+    /// or changing the positions of the remaining runtime tokens.
+    pub fn erased_call_type_argument_spans(&self) -> impl Iterator<Item = SourceSpan> + '_ {
+        self.generic_call_type_argument_spans.iter().cloned()
+    }
+
     /// Original ranges containing an `as`, `satisfies` or const assertion's
     /// erased type syntax. Runtime consumers keep the operand's original tokens.
     pub fn erased_assertion_spans(&self) -> impl Iterator<Item = SourceSpan> + '_ {

@@ -75,6 +75,11 @@ impl Parser {
                         .is_some_and(|token| token.is("("))
                     {
                         let type_arguments = self.parse_call_type_arguments(index + 2, close);
+                        self.generic_call_type_argument_spans.push(SourceSpan::new(
+                            &self.id,
+                            self.tokens[index + 1].start,
+                            self.tokens[close].end,
+                        ));
                         self.edits.push(TextEdit {
                             start: self.tokens[index + 1].start,
                             end: self.tokens[close].end,

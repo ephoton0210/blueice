@@ -758,6 +758,7 @@ fn render_members(
                     .collect(),
                 edits: Vec::new(),
                 generic_call_type_arguments: BTreeMap::new(),
+                generic_call_type_argument_spans: Vec::new(),
                 nested_functions: BTreeMap::new(),
                 class_expressions: BTreeMap::new(),
                 type_references: Vec::new(),

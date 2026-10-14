@@ -76,6 +76,14 @@ owners and collects dead native
 scheduling payload under pressure at successful host checkpoints, so repeated
 page timers can release their charge without navigation. Awaited for-await
 cleanup retains pending stream cancellation across collection.
+M1g gives FinalizationRegistry cleanup its own document-owned task source and
+shares the 64-entry pending browser-task bound with ShadowRealms. Cells stay
+in the managed heap until delivery, and active native holdings enter the
+scheduling ledger. This adds a public pending-task counter without changing
+the installed profile or private wire fields.
+BlueTS's separate standard-library identity advances to v3 for edition-selected
+WeakRef/FinalizationRegistry types; this does not change the generated v12
+host declaration artifact or its 47 installed entries.
 See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).

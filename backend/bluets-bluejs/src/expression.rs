@@ -37,7 +37,10 @@ impl<'a> ExpressionLowerer<'a> {
 
     pub(super) fn parse(mut self) -> Result<bluejs::Expr, BridgeError> {
         if let Some(module) = self.module_ast {
-            let spans = module.erased_assertion_spans().collect::<Vec<_>>();
+            let spans = module
+                .erased_assertion_spans()
+                .chain(module.erased_call_type_argument_spans())
+                .collect::<Vec<_>>();
             let erased = |token: &Token| {
                 spans
                     .iter()

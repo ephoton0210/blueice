@@ -14,7 +14,7 @@ const ASYNC_ITERATION: (&str, &str) = (
     include_str!("standard_library/ecma-async-iteration.v2.d.ts"),
 );
 
-pub const VERSION: &str = "blue-ts-ecma-lib-v2";
+pub const VERSION: &str = "blue-ts-ecma-lib-v3";
 const BASE: &str = include_str!("standard_library/ecma-base.v1.d.ts");
 const ES2022: &str = include_str!("standard_library/ecma-es2022.v1.d.ts");
 const ADDITIONS: &str = include_str!("standard_library/ecma-additions.v2.d.ts");
@@ -45,6 +45,18 @@ fn sources(target: EcmaTarget) -> Vec<(&'static str, &'static str)> {
     } else {
         profiles::sources(target)
     };
+    if target >= EcmaTarget::Es2021 {
+        sources.push((
+            "ecma-weakrefs.v3.d.ts",
+            include_str!("standard_library/ecma-weakrefs.v3.d.ts"),
+        ));
+    }
+    if target >= EcmaTarget::Es2023 {
+        sources.push((
+            "ecma-weakref-symbols.v3.d.ts",
+            include_str!("standard_library/ecma-weakref-symbols.v3.d.ts"),
+        ));
+    }
     sources.push(DECORATORS);
     sources
 }
@@ -134,7 +146,7 @@ mod tests {
     #[test]
     fn declarations_parse_and_the_target_selects_exact_static_content() {
         assert_eq!(modules(EcmaTarget::Es2020).len(), 4);
-        assert_eq!(modules(EcmaTarget::Es2022).len(), 5);
+        assert_eq!(modules(EcmaTarget::Es2022).len(), 6);
         let old = identity(EcmaTarget::Es2020);
         let new = identity(EcmaTarget::Es2022);
         assert_eq!(old.version, VERSION);
@@ -146,6 +158,7 @@ mod tests {
                 "ecma-es2022.v1.d.ts",
                 "ecma-additions.v2.d.ts",
                 "ecma-async-iteration.v2.d.ts",
+                "ecma-weakrefs.v3.d.ts",
                 "decorator-contexts.v1.d.ts"
             ]
         );

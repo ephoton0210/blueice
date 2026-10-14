@@ -4,6 +4,10 @@
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/finalization_cleanup_index.rs"]
+mod finalization_cleanup_index_contracts;
+
 static NEXT_HEAP: AtomicU64 = AtomicU64::new(1);
 
 #[cfg(any(test, coverage))]
@@ -60,6 +64,7 @@ impl Heap {
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .map_err(|_| HeapError::IdExhausted)?;
         Ok(Self {
+            pending_finalization: HashMap::new(),
             identity,
             next_object: 1,
             next_root: 1,
@@ -412,16 +417,67 @@ impl Heap {
                 !remove
             });
             object.bytes -= released;
+            if let Some(index) = cells.iter().position(|cell| cell.target.is_none()) {
+                self.pending_finalization.insert(registry, index);
+            } else {
+                self.pending_finalization.remove(&registry);
+            }
             (cells.len() != previous_len, released)
         };
         self.managed_bytes -= released;
         Ok(removed)
     }
 
+    pub(crate) fn pending_finalization_registries(&self) -> Vec<ObjectId> {
+        let mut registries: Vec<_> = self.pending_finalization.keys().copied().collect();
+        registries.sort_by_key(|id| id.serial);
+        registries
+    }
+
+    /// Remove one cleared cell only when its cleanup task actually invokes
+    /// the callback. Until then unregister can still cancel its holdings.
+    pub(crate) fn take_finalization_registry_cleanup_cell(
+        &mut self,
+        registry: ObjectId,
+    ) -> Result<Option<(Value, Value)>, HeapError> {
+        let object = self
+            .objects
+            .get_mut(&registry)
+            .ok_or(HeapError::InvalidObject(registry))?;
+        let ObjectKind::FinalizationRegistry {
+            cleanup_callback,
+            cells,
+        } = &mut object.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(registry));
+        };
+        let Some(index) = self.pending_finalization.get(&registry).copied() else {
+            return Ok(None);
+        };
+        let cell = cells.swap_remove(index);
+        if let Some(next) = cells[index..].iter().position(|cell| cell.target.is_none()) {
+            self.pending_finalization.insert(registry, index + next);
+        } else {
+            self.pending_finalization.remove(&registry);
+        }
+        let released = size_of::<FinalizationCell>()
+            .saturating_add(cell.holdings.payload_bytes())
+            .saturating_add(
+                cell.unregister_token
+                    .as_ref()
+                    .map_or(0, weak_collection_key_bytes),
+            );
+        object.bytes -= released;
+        self.managed_bytes -= released;
+        Ok(Some((cleanup_callback.clone(), cell.holdings)))
+    }
+
     /// Transfers cells whose weak target was cleared by collection to the VM
     /// job queue. The callback and holdings stay strongly reachable through
     /// the returned job until the host invokes the callback.
     pub(crate) fn take_finalization_registry_cleanup_jobs(&mut self) -> Vec<(Value, Value)> {
+        self.pending_finalization.clear();
+        self.pending_finalization.shrink_to_fit();
         let mut jobs = Vec::new();
         let mut released: usize = 0;
         for object in self.objects.values_mut() {

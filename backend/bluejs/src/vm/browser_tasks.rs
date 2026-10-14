@@ -47,6 +47,7 @@ impl Vm {
             ));
         }
         self.admit_scheduling_work(HostSchedulingUsage {
+            pending_browser_tasks: 1,
             payload_bytes: text
                 .owned_heap_payload_bytes()
                 .unwrap_or(usize::MAX)
@@ -82,6 +83,16 @@ impl Vm {
     /// A paused debugger realm keeps its jobs and tasks until it resumes. Core
     /// can yield between turns without cancelling pending FileReader reads.
     pub fn run_browser_task_turn(&mut self, max_tasks: usize) -> Result<bool, RuntimeError> {
+        if self.host_scheduling.is_some() {
+            return self.run_document_browser_task_turn(max_tasks);
+        }
+        self.run_own_browser_task_turn(max_tasks)
+    }
+
+    pub(super) fn run_own_browser_task_turn(
+        &mut self,
+        max_tasks: usize,
+    ) -> Result<bool, RuntimeError> {
         self.check_scheduling_failure()?;
         if self.ensure_no_debugger_continuation().is_err() {
             return Ok(false);

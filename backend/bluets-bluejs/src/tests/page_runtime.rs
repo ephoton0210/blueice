@@ -22,6 +22,40 @@ fn artifact() -> DirectScript {
     .unwrap()
 }
 
+#[test]
+fn checked_finalization_registry_callbacks_run_in_page_browser_turns() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, "function cleanup(held: string): void { record(held); } const registry = new FinalizationRegistry<string>(cleanup); async function pressure() { return 'x'.repeat(400000); } function poll(): void { registry.register({}, 'cleanup'); pressure(); pressure(); pressure(); } poll();")]),
+        CompilerOptions {
+            require_declared_global_calls: true,
+            ambient_declaration_modules: vec![ModuleSource::new("memory:///owner.d.ts", "declare function record(value: string): void;")],
+            ..CompilerOptions::default()
+        },
+    ).unwrap();
+    let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let output = log.clone();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    runtime
+        .configure_realm_bindings(7, |host| {
+            host.install_global_function("record", 1, move |args: &[bluejs::HostValue]| {
+                output.borrow_mut().push(args[0].clone());
+                Ok(bluejs::HostValue::Undefined)
+            })
+        })
+        .unwrap();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    runtime.execute_program(7, attachment.handle).unwrap();
+    runtime.run_microtask_checkpoint(7).unwrap();
+    assert!(log.borrow().is_empty());
+    runtime.flush_drag_tasks(7).unwrap();
+    assert_eq!(*log.borrow(), [bluejs::HostValue::String("cleanup".into())]);
+}
+
 fn origin() -> bluejs::BlueJsPageOrigin {
     bluejs::BlueJsPageOrigin::new("https://example.test").unwrap()
 }

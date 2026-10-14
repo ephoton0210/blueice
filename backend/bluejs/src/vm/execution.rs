@@ -138,7 +138,7 @@ impl Vm {
             Ok(())
         })
         .expect("major collection does not allocate or return a heap error");
-        self.enqueue_finalization_cleanup_jobs();
+        self.enqueue_finalization_cleanup_jobs()?;
         self.bindings.resize(code.bindings.len(), None);
         self.synchronize_scheduling_usage()?;
         self.binding_metadata = code.bindings.clone();
@@ -211,7 +211,7 @@ impl Vm {
             Ok(())
         })
         .expect("major collection does not allocate or return a heap error");
-        self.enqueue_finalization_cleanup_jobs();
+        self.enqueue_finalization_cleanup_jobs()?;
         self.uncaught_throw_site = if result.as_ref().is_err_and(RuntimeError::is_catchable) {
             self.pending_throw_site
         } else {
@@ -222,10 +222,14 @@ impl Vm {
         result
     }
 
-    pub(super) fn enqueue_finalization_cleanup_jobs(&mut self) {
+    pub(super) fn enqueue_finalization_cleanup_jobs(&mut self) -> Result<(), RuntimeError> {
+        if self.host_scheduling.is_some() {
+            return self.enqueue_host_finalization_tasks();
+        }
         for (callback, holdings) in self.heap.take_finalization_registry_cleanup_jobs() {
             self.enqueue_promise_job(PromiseJob::FinalizationCleanup { callback, holdings });
         }
+        Ok(())
     }
 
     /// GlobalDeclarationInstantiation for this VM's implemented classic

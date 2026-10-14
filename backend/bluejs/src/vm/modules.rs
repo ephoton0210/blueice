@@ -370,7 +370,7 @@ impl Vm {
             }
             self.last_module_namespace = None;
             self.collect_module_garbage();
-            self.enqueue_finalization_cleanup_jobs();
+            self.enqueue_finalization_cleanup_jobs()?;
             self.stack.clear();
             self.bindings.clear();
             self.binding_metadata.clear();
@@ -772,7 +772,7 @@ impl Vm {
         self.pending_completions.clear();
         self.completion_saves.clear();
         self.collect_module_garbage();
-        self.enqueue_finalization_cleanup_jobs();
+        self.enqueue_finalization_cleanup_jobs()?;
         self.uncaught_throw_site = if result.as_ref().is_err_and(RuntimeError::is_catchable) {
             self.pending_throw_site
         } else {

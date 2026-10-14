@@ -70,19 +70,27 @@ fn request_for_tab_with_frames(
 
 #[test]
 fn scheduling_exhaustion_in_one_real_child_realm_keeps_another_tab_rendering() {
+    scheduling_exhaustion_case("try { for (var i = 0; i < 1025; i += 1) { queueMicrotask(noop); } } catch (error) {} document.getElementById('counter').textContent = 'escaped';");
+}
+
+#[test]
+fn cleanup_task_exhaustion_in_one_real_child_keeps_another_tab_rendering() {
+    scheduling_exhaustion_case("for (var i = 0; i < 65; i += 1) { var registry = new FinalizationRegistry(noop); registries.push(registry); registry.register({}, 0); } for (var j = 0; j < 3; j += 1) { Promise.resolve('x'.repeat(400000)).then(noop); }");
+}
+
+fn scheduling_exhaustion_case(exhaustion: &str) {
     let (bad_fixture, bad_url, gatekeeper) = fixture(
         "<p id=counter>failed:0</p><script>
-        var attempts = 0;
+        var attempts = 0; var registries = [];
         function noop() {}
         function exhaust() {
             attempts += 1;
             document.getElementById('counter').textContent = 'failed:' + attempts;
-            try { for (var i = 0; i < 1025; i += 1) { queueMicrotask(noop); } } catch (error) {}
-            document.getElementById('counter').textContent = 'escaped';
+            __EXHAUST__
         }
         setInterval(exhaust, 200);
     </script>"
-            .into(),
+            .replace("__EXHAUST__", exhaustion),
     );
     let (_good_fixture, good_url, _) = fixture(
         "<p id=counter>tick:0</p><script>
@@ -273,6 +281,23 @@ fn javascript_and_bluets_intervals_publish_matching_frames_and_representations()
         function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
         function tick(): void { count += 1; queueMicrotask(publish); if (count === 3) { clearInterval(timer); } }
         timer = setInterval(tick, 500);", true);
+}
+
+#[test]
+fn javascript_and_bluets_cleanup_tasks_publish_post_microtask_frames() {
+    counter_frames("let count: number = 0; let timer: number = 0;
+        function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
+        async function pressure() { return 'x'.repeat(400000); }
+        function cleanup(): void {
+            count += 1; queueMicrotask(publish);
+            if (count === 3) { clearInterval(timer); }
+        }
+        const registry = new FinalizationRegistry(cleanup);
+        function poll(): void {
+            registry.register({}, 0);
+            pressure(); pressure(); pressure();
+        }
+        timer = setInterval(poll, 500);", true);
 }
 
 #[test]

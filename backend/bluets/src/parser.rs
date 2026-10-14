@@ -45,6 +45,7 @@ pub struct Module {
     /// callee token's source-byte offset. They are static-only and erased from
     /// JavaScript, but retained for the checker to validate a local call.
     pub(crate) generic_call_type_arguments: BTreeMap<usize, Vec<Type>>,
+    pub(crate) generic_call_type_argument_spans: Vec<SourceSpan>,
     /// Structured arrow functions and function expressions found inside
     /// runtime expressions, keyed by the byte offset of their first token.
     /// Their annotations are erased through `edits`; the checker reads

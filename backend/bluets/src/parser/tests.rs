@@ -753,6 +753,13 @@ fn records_and_erases_explicit_direct_call_type_arguments() {
     assert!(module.edits.iter().any(|edit| {
         &source[edit.start..edit.end] == "<string>" && edit.replacement.is_empty()
     }));
+    assert_eq!(
+        module
+            .erased_call_type_argument_spans()
+            .map(|span| source[span.start..span.end].to_owned())
+            .collect::<Vec<_>>(),
+        ["<string>"]
+    );
 }
 #[test]
 fn class_expressions_keep_their_lexical_name_and_do_not_declare_it_in_the_parent() {

@@ -97,6 +97,12 @@ work and exposes its retained payload ledger.
       task/render entries and removes the charge on replacement/close or
       realm revocation. Excess scheduling bytes and invalid combined totals
       fail the existing exact-document containment path without replay.
+- [x] **M1g: document browser-task admission and cleanup scheduling.** A
+      shared 64-task cap includes browser tasks and pending registry cleanup
+      tasks throughout the document's ShadowRealms. Public scheduling stats
+      expose the aggregate pending count. Cleanup has its own FIFO task
+      source and alternates with ready browser work within a bounded turn;
+      general timer/network/UI source ordering remains open.
 - [x] **M1b: timer wake-up.** `DragTasksFlushed.next_wake_in_ms` carries the
       next runnable delay. Core validates its identity/range, clears it on
       replacement/close, and shortens its ordinary polling timeout for an
@@ -116,7 +122,7 @@ work and exposes its retained payload ledger.
 ## B. Promise, GC and error reporting (P0/P1)
 
 Spec shape is done: `PromiseCapability` records, `WeakRef`,
-`FinalizationRegistry` (cleanup runs as a queued job after collection).
+`FinalizationRegistry` (page cleanup runs as a queued engine task after collection).
 M1f replaces permanent Promise roots with live-owner tracing and explicit
 ownership for queued/running jobs, module work and host waits.
 
@@ -137,8 +143,12 @@ ownership for queued/running jobs, module work and host waits.
 
 - [ ] Host unhandled-rejection tracking (`HostPromiseRejectionTracker`) and
       the `unhandledrejection` / `rejectionhandled` events
-- [ ] Drive FinalizationRegistry cleanup jobs from the event loop, not only
-      from a manual job drain (*verify*)
+- [x] **M1g: event-loop FinalizationRegistry cleanup.** Successful page host
+      checkpoints discover GC-cleared cells and queue engine tasks, including
+      collections during callbacks. Registry/cell ownership survives until
+      delivery, so unregister still works before cleanup. One cell per task
+      preserves the turn's callback bound and schedules remaining cells in
+      later tasks; microtasks finish before the next cleanup callback.
 - [ ] Error reporting for uncaught exceptions in tasks (`window.onerror`
       shape), without aborting `core`'s session loop
 - [x] **M1f: long-lived timer GC behavior.** Public page-runtime fixtures
@@ -362,6 +372,69 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1g — Document-owned FinalizationRegistry tasks (2026-10-15)
+
+- Public red-first page tests exposed cleanup executing inside the Promise
+  checkpoint, unregister losing already-extracted cells and ShadowRealm
+  cleanup running synchronously before control returned to the page.
+  Separate resource/turn regressions caught callbacks continuing with queued
+  microtasks after exhaustion and an entire registry bypassing the turn's
+  callback budget.
+- Page VMs keep one pending task/root per registry and leave cells in the
+  managed heap until delivery. Each task consumes one cleared cell; the
+  remaining cells stay cancellable and can be queued again. Callback throws
+  preserve remaining work and complete the normal checkpoint; resource
+  failures stop immediately. Active holdings keep explicit GC roots and their
+  native payload is charged while the callback/checkpoint executes.
+- Cleanup tasks use a document-wide serial/FIFO across ShadowRealms. Browser
+  turns traverse same-account realms without recursive Rust calls and refresh
+  after callbacks create new realms. Ready ordinary work and cleanup alternate
+  within the same finite task budget. Foreign-document records are excluded;
+  debugger pauses preserve queued work and navigation drops the old tree.
+- Added a shared 64-entry browser/cleanup-task count to scheduling admission
+  and public snapshots. Existing browser producers reserve their count before
+  publication. A GC-maintained ready-registry/cell index avoids scanning the
+  full heap at each microtask and repeatedly shifting or scanning live cells
+  while consuming cleanup. Collection removes dead registry index entries.
+- References: [HTML cleanup tasks](https://html.spec.whatwg.org/multipage/webappapis.html#hostenqueuefinalizationregistrycleanupjob),
+  [ECMAScript cleanup-cell selection](https://tc39.es/ecma262/multipage/executable-code-and-execution-contexts.html#sec-cleanup-finalization-registry).
+  Standalone language VMs retain their existing manual job policy; installed
+  v12 globals/typings and the private v59 wire schema remain unchanged.
+- The real typed-page fixture exposed missing standard `WeakRef` and
+  `FinalizationRegistry` declarations. Added original, edition-selected
+  `ecma-weakrefs.v3.d.ts` and advanced the standard-library identity to v3;
+  symbol targets are selected only from ES2023, following the
+  [TypeScript edition split](https://github.com/microsoft/TypeScript/blob/v5.9.3/src/lib/es2023.collection.d.ts).
+  Preserved prior declaration files and the owner-selected page profile.
+  Direct lowering erases parser-recorded call/constructor type-argument
+  ranges while retaining original runtime token positions. Typed cleanup,
+  nested generic closers, invalid target/holding types and edition selection
+  have focused regression coverage. Page fixtures use named callbacks in the
+  current direct bridge subset.
+- The unfiltered pinned Test262 inventory completed in 492.221 seconds:
+  **102,921 / 102,926 modes**, with one pre-existing stale baseline entry and
+  four excluded modes, **zero failures/timeouts**. All 102,926 mode paths,
+  source hashes and dispositions match M1f; the inventory hash remains
+  `331ed129027852eb95d1742dd0377027ed504e5fb70a499eadae3f143d709c2f`.
+  The corpus, adapter and disposition policy are unchanged. See the checked-in
+  [machine summary](test262-browser-finalization-macos-summary.json).
+- Final macOS gates: **2,962 related tests passed**: 2,739 tests across the
+  five affected libraries, 199 public runtime/allocation cases, 16 standard
+  library/edition cases and eight rebuilt real Core/child fixtures. One
+  existing launcher case and four optional compiler-oracle cases remain
+  ignored. This includes 16 new public page cleanup cases, five new
+  ownership/index contracts and all 41 cases in the three Promise allocation
+  targets. Socket-dependent tests ran with local socket access.
+- Real JavaScript and BlueTS pages each produced three distinct unsolicited
+  frames with matching post-cleanup-microtask Representation text/generations.
+  A 65-registry task overflow failed only its document, without replay, while
+  another tab kept rendering and the failed tab accepted navigation. Existing
+  timer, animation-frame and FileReader fixtures remain green. All-target
+  Clippy for the five affected crates and workspace formatting passed.
+- General task-source ordering, complete host-buffer/aggregate accounting and
+  rejection/error events remain open. Full workspace and coverage gates are
+  not claimed by M1g.
 
 ### M1f — Collectible Promise state and awaited iterator cleanup (2026-10-15)
 

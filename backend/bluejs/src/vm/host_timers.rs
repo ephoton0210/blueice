@@ -330,6 +330,7 @@ impl Vm {
     ) -> Result<u32, RuntimeError> {
         self.check_scheduling_failure()?;
         self.ensure_no_debugger_continuation()?;
+        self.enqueue_finalization_cleanup_jobs()?;
         let mut uncaught = 0;
         for _ in 0..max_jobs {
             self.remaining_instructions = self.config.instruction_budget;
@@ -342,6 +343,7 @@ impl Vm {
                 Err(error) if is_page_exception(&error) => uncaught += 1,
                 Err(error) => return Err(error),
             }
+            self.enqueue_finalization_cleanup_jobs()?;
         }
         if self.promise_jobs.is_empty() {
             self.finish_host_checkpoint()?;
