@@ -104,6 +104,10 @@ impl Vm {
                     RuntimeError::RangeError("frame identifiers are exhausted".into())
                 })?;
                 let callback = argument.object_id().expect("callable is an object");
+                self.admit_scheduling_work(HostSchedulingUsage {
+                    payload_bytes: 4 * std::mem::size_of::<HostAnimationFrame>(),
+                    ..HostSchedulingUsage::default()
+                })?;
                 let root = self.heap.root(callback)?;
                 self.host_animation_frame_next_id += 1;
                 self.host_animation_frames.push(HostAnimationFrame {
@@ -111,6 +115,7 @@ impl Vm {
                     callback,
                     root,
                 });
+                self.synchronize_scheduling_usage()?;
                 Ok(Value::Number(f64::from(handle)))
             }
             HostAnimationFrameFunction::Cancel => {
@@ -125,6 +130,10 @@ impl Vm {
                         .unroot(frame.root)
                         .expect("frame registration owns its root");
                 }
+                if self.host_animation_frames.is_empty() {
+                    self.host_animation_frames.shrink_to_fit();
+                }
+                self.synchronize_scheduling_usage()?;
                 Ok(Value::Undefined)
             }
         }
@@ -139,6 +148,7 @@ impl Vm {
         &mut self,
         timestamp_ms: f64,
     ) -> Result<BlueJsAnimationFrameRun, RuntimeError> {
+        self.check_scheduling_failure()?;
         if !timestamp_ms.is_finite() || timestamp_ms < 0.0 {
             return Err(RuntimeError::RangeError(
                 "frame timestamp must be finite and non-negative".into(),
@@ -165,6 +175,7 @@ impl Vm {
                 continue;
             };
             let frame = self.host_animation_frames.remove(index);
+            self.synchronize_scheduling_usage()?;
             self.remaining_instructions = self.config.instruction_budget;
             run.callbacks_run += 1;
             let result = self.call_native(
@@ -184,6 +195,10 @@ impl Vm {
             run.uncaught_errors += self.run_host_microtask_checkpoint()?;
         }
         run.uncaught_errors += self.run_host_microtask_checkpoint()?;
+        if self.host_animation_frames.is_empty() {
+            self.host_animation_frames.shrink_to_fit();
+        }
+        self.synchronize_scheduling_usage()?;
         Ok(run)
     }
 }

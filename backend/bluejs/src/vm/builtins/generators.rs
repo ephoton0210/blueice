@@ -1223,14 +1223,13 @@ impl Vm {
                             "yield* iterator does not provide a throw method".into(),
                         )?,
                     };
-                    self.promise_jobs
-                        .push_back(PromiseJob::AsyncGeneratorDelegate {
-                            generator,
-                            target,
-                            kind: AsyncGeneratorDelegateKind::CloseMissingThrow,
-                            value: error,
-                            fulfilled: false,
-                        });
+                    self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind: AsyncGeneratorDelegateKind::CloseMissingThrow,
+                        value: error,
+                        fulfilled: false,
+                    });
                     return Ok(Some(Value::Undefined));
                 }
                 match close {
@@ -1332,37 +1331,33 @@ impl Vm {
             .status
             .clone_for_await()
         {
-            PromiseAwaitStatus::Pending => self
-                .promises
-                .get_mut(&promise)
-                .expect("checked pending Promise exists")
-                .reactions
-                .push(PromiseReaction::AsyncGeneratorDelegate {
+            PromiseAwaitStatus::Pending => self.enqueue_promise_reaction(
+                promise,
+                PromiseReaction::AsyncGeneratorDelegate {
                     generator,
                     target,
                     kind,
-                }),
+                },
+            ),
             // Await always crosses a job boundary, including for an answer
             // that is not a promise or is already settled.
             PromiseAwaitStatus::Fulfilled(value) => {
-                self.promise_jobs
-                    .push_back(PromiseJob::AsyncGeneratorDelegate {
-                        generator,
-                        target,
-                        kind,
-                        value,
-                        fulfilled: true,
-                    });
+                self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
+                    generator,
+                    target,
+                    kind,
+                    value,
+                    fulfilled: true,
+                });
             }
             PromiseAwaitStatus::Rejected(value) => {
-                self.promise_jobs
-                    .push_back(PromiseJob::AsyncGeneratorDelegate {
-                        generator,
-                        target,
-                        kind,
-                        value,
-                        fulfilled: false,
-                    });
+                self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
+                    generator,
+                    target,
+                    kind,
+                    value,
+                    fulfilled: false,
+                });
             }
         }
         Ok(Some(Value::Undefined))
@@ -1700,35 +1695,31 @@ impl Vm {
                 .status
                 .clone_for_await()
             {
-                PromiseAwaitStatus::Pending => self
-                    .promises
-                    .get_mut(&promise)
-                    .expect("checked pending Promise exists")
-                    .reactions
-                    .push(PromiseReaction::AsyncGeneratorDelegate {
+                PromiseAwaitStatus::Pending => self.enqueue_promise_reaction(
+                    promise,
+                    PromiseReaction::AsyncGeneratorDelegate {
                         generator,
                         target,
                         kind,
-                    }),
+                    },
+                ),
                 PromiseAwaitStatus::Fulfilled(value) => {
-                    self.promise_jobs
-                        .push_back(PromiseJob::AsyncGeneratorDelegate {
-                            generator,
-                            target,
-                            kind,
-                            value,
-                            fulfilled: true,
-                        });
+                    self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                        value,
+                        fulfilled: true,
+                    });
                 }
                 PromiseAwaitStatus::Rejected(value) => {
-                    self.promise_jobs
-                        .push_back(PromiseJob::AsyncGeneratorDelegate {
-                            generator,
-                            target,
-                            kind,
-                            value,
-                            fulfilled: false,
-                        });
+                    self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                        value,
+                        fulfilled: false,
+                    });
                 }
             }
             Ok(())
@@ -1797,6 +1788,10 @@ impl Vm {
                 return self.promise_reject(error);
             }
         };
+        self.admit_scheduling_work(HostSchedulingUsage {
+            pending_reactions: 1,
+            ..HostSchedulingUsage::default()
+        })?;
         let base = self.stack.len();
         self.stack.extend([receiver.clone(), value.clone()]);
         let result = (|| {
@@ -1828,6 +1823,7 @@ impl Vm {
             // Queue growth may collect. Protect the caller's operands and
             // the VM-owned promises, not only the queue's own heap edges.
             self.with_roots(|heap| heap.set_async_generator_control(generator, control))?;
+            self.synchronize_scheduling_usage()?;
             self.resume_async_generator_next(generator)?;
             Ok(Value::Object(target))
         })();
@@ -1899,37 +1895,33 @@ impl Vm {
                 .status
                 .clone_for_await();
             match status {
-                PromiseAwaitStatus::Pending => self
-                    .promises
-                    .get_mut(&awaited)
-                    .expect("checked pending Promise exists")
-                    .reactions
-                    .push(PromiseReaction::AsyncGeneratorYield {
+                PromiseAwaitStatus::Pending => self.enqueue_promise_reaction(
+                    awaited,
+                    PromiseReaction::AsyncGeneratorYield {
                         generator,
                         target,
                         result,
-                    }),
+                    },
+                ),
                 PromiseAwaitStatus::Fulfilled(value) => {
                     // Await always crosses a Promise job boundary, including
                     // for a value that Promise.resolve fulfilled immediately.
-                    self.promise_jobs
-                        .push_back(PromiseJob::AsyncGeneratorYield {
-                            generator,
-                            target,
-                            result,
-                            value,
-                            fulfilled: true,
-                        });
+                    self.enqueue_promise_job(PromiseJob::AsyncGeneratorYield {
+                        generator,
+                        target,
+                        result,
+                        value,
+                        fulfilled: true,
+                    });
                 }
                 PromiseAwaitStatus::Rejected(value) => {
-                    self.promise_jobs
-                        .push_back(PromiseJob::AsyncGeneratorYield {
-                            generator,
-                            target,
-                            result,
-                            value,
-                            fulfilled: false,
-                        });
+                    self.enqueue_promise_job(PromiseJob::AsyncGeneratorYield {
+                        generator,
+                        target,
+                        result,
+                        value,
+                        fulfilled: false,
+                    });
                 }
             }
             Ok(())

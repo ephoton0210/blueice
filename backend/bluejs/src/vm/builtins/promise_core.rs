@@ -512,51 +512,53 @@ impl Vm {
         };
         let reactions = std::mem::take(&mut record.reactions);
         record.status = status;
-        self.promise_jobs
-            .extend(reactions.into_iter().map(|reaction| match reaction {
-                PromiseReaction::Then(reaction) => PromiseJob::Reaction {
-                    target: reaction.target,
-                    handler: if fulfilled {
-                        reaction.on_fulfilled
-                    } else {
-                        reaction.on_rejected
-                    },
-                    value: value.clone(),
-                    fulfilled,
+        for job in reactions.into_iter().map(|reaction| match reaction {
+            PromiseReaction::Then(reaction) => PromiseJob::Reaction {
+                target: reaction.target,
+                handler: if fulfilled {
+                    reaction.on_fulfilled
+                } else {
+                    reaction.on_rejected
                 },
-                PromiseReaction::ModuleAwait { continuation } => PromiseJob::ModuleAwait {
-                    continuation,
-                    value: value.clone(),
-                    fulfilled,
-                },
-                PromiseReaction::AsyncAwait { continuation } => PromiseJob::AsyncAwait {
-                    continuation,
-                    value: value.clone(),
-                    fulfilled,
-                },
-                PromiseReaction::AsyncGeneratorYield {
-                    generator,
-                    target,
-                    result,
-                } => PromiseJob::AsyncGeneratorYield {
-                    generator,
-                    target,
-                    result,
-                    value: value.clone(),
-                    fulfilled,
-                },
-                PromiseReaction::AsyncGeneratorDelegate {
-                    generator,
-                    target,
-                    kind,
-                } => PromiseJob::AsyncGeneratorDelegate {
-                    generator,
-                    target,
-                    kind,
-                    value: value.clone(),
-                    fulfilled,
-                },
-            }));
+                value: value.clone(),
+                fulfilled,
+            },
+            PromiseReaction::ModuleAwait { continuation } => PromiseJob::ModuleAwait {
+                continuation,
+                value: value.clone(),
+                fulfilled,
+            },
+            PromiseReaction::AsyncAwait { continuation } => PromiseJob::AsyncAwait {
+                continuation,
+                value: value.clone(),
+                fulfilled,
+            },
+            PromiseReaction::AsyncGeneratorYield {
+                generator,
+                target,
+                result,
+            } => PromiseJob::AsyncGeneratorYield {
+                generator,
+                target,
+                result,
+                value: value.clone(),
+                fulfilled,
+            },
+            PromiseReaction::AsyncGeneratorDelegate {
+                generator,
+                target,
+                kind,
+            } => PromiseJob::AsyncGeneratorDelegate {
+                generator,
+                target,
+                kind,
+                value: value.clone(),
+                fulfilled,
+            },
+        }) {
+            self.enqueue_promise_job(job);
+        }
+        let _ = self.synchronize_scheduling_usage();
         Ok(())
     }
 
@@ -597,7 +599,7 @@ impl Vm {
             self.settle_tracked_promise(promise, PromiseStatus::Fulfilled(resolution));
             return Ok(());
         }
-        self.promise_jobs.push_back(PromiseJob::Thenable {
+        self.enqueue_promise_job(PromiseJob::Thenable {
             target: promise,
             thenable: resolution,
             then,

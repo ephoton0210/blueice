@@ -211,6 +211,10 @@ impl Vm {
                     );
                 }
                 let mut state = self.heap.file_reader(reader)?.clone();
+                self.admit_scheduling_work(HostSchedulingUsage {
+                    payload_bytes: 4 * std::mem::size_of::<BrowserTask>(),
+                    ..HostSchedulingUsage::default()
+                })?;
                 state.epoch = state.epoch.checked_add(1).ok_or_else(|| {
                     RuntimeError::RangeError("FileReader identity exhausted".into())
                 })?;
@@ -234,6 +238,7 @@ impl Vm {
                     stage: 0,
                     root,
                 });
+                self.synchronize_scheduling_usage()?;
             }
             _ => unreachable!("constructor handled above"),
         }

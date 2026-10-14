@@ -41,6 +41,7 @@ impl Vm {
         let mut child = Vm::new(self.config)
             .map_err(|_| RuntimeError::RangeError("could not create a ShadowRealm".into()))?;
         child.bounded_host_microtask_checkpoints = self.bounded_host_microtask_checkpoints;
+        child.host_scheduling = self.host_scheduling.as_ref().map(SchedulingScope::child);
         // Realms created within one ShadowRealm agent share the
         // GlobalSymbolRegistry, matching `$262.createRealm()`'s identical
         // choice for the same spec-mandated reason (`Symbol.for` is
@@ -135,6 +136,7 @@ impl Vm {
         this: Value,
         source_text: Value,
     ) -> Result<Value, RuntimeError> {
+        self.synchronize_scheduling_usage()?;
         let this_id = self.require_shadow_realm(&this, "evaluate")?;
         let Value::String(source_text) = source_text else {
             return Err(RuntimeError::TypeError(
@@ -318,6 +320,7 @@ impl Vm {
         specifier: Value,
         export_name: Value,
     ) -> Result<Value, RuntimeError> {
+        self.synchronize_scheduling_usage()?;
         let this_id = self.require_shadow_realm(&this, "importValue")?;
         // ToString happens in the caller's own realm and propagates
         // directly (not as a promise rejection) -- it runs before
@@ -441,6 +444,7 @@ impl Vm {
         args: Vec<Value>,
         construct: bool,
     ) -> Result<Value, RuntimeError> {
+        self.synchronize_scheduling_usage()?;
         if construct {
             return Err(RuntimeError::TypeError(
                 "a ShadowRealm wrapped function has no [[Construct]]".into(),

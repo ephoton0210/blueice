@@ -46,12 +46,20 @@ impl Vm {
                 "Browser task queue limit exceeded".into(),
             ));
         }
+        self.admit_scheduling_work(HostSchedulingUsage {
+            payload_bytes: text
+                .owned_heap_payload_bytes()
+                .unwrap_or(usize::MAX)
+                .saturating_add(4 * std::mem::size_of::<BrowserTask>()),
+            ..HostSchedulingUsage::default()
+        })?;
         let root = self.heap.root(callback)?;
         self.browser_tasks.push_back(BrowserTask::DragString {
             callback,
             text,
             root,
         });
+        self.synchronize_scheduling_usage()?;
         Ok(())
     }
 
@@ -74,14 +82,26 @@ impl Vm {
     /// A paused debugger realm keeps its jobs and tasks until it resumes. Core
     /// can yield between turns without cancelling pending FileReader reads.
     pub fn run_browser_task_turn(&mut self, max_tasks: usize) -> Result<bool, RuntimeError> {
+        self.check_scheduling_failure()?;
         if self.ensure_no_debugger_continuation().is_err() {
             return Ok(false);
         }
         self.run_host_microtask_checkpoint()?;
         for _ in 0..max_tasks {
             let Some(task) = self.browser_tasks.pop_front() else {
+                self.browser_tasks.shrink_to_fit();
+                self.synchronize_scheduling_usage()?;
                 return Ok(true);
             };
+            let active_bytes = match &task {
+                BrowserTask::DragString { text, .. } => {
+                    text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+                }
+                _ => 0,
+            };
+            self.active_scheduling_bytes =
+                self.active_scheduling_bytes.saturating_add(active_bytes);
+            self.synchronize_scheduling_usage()?;
             self.remaining_instructions = self.config.instruction_budget;
             let (result, root, next, report_page_exception) = match task {
                 BrowserTask::AbortTimeout {
@@ -138,11 +158,14 @@ impl Vm {
                     Err(error) => (Err(error), Some(root), None, false),
                 },
             };
+            self.active_scheduling_bytes =
+                self.active_scheduling_bytes.saturating_sub(active_bytes);
             if let Some(next) = next {
                 self.browser_tasks.push_back(next);
             } else if let Some(root) = root {
                 self.heap.unroot(root)?;
             }
+            self.synchronize_scheduling_usage()?;
             if let Err(error) = result {
                 if !report_page_exception || !super::web_drag_drop::drag_page_exception(&error) {
                     return Err(error);
@@ -150,6 +173,10 @@ impl Vm {
             }
             self.run_host_microtask_checkpoint()?;
         }
+        if self.browser_tasks.is_empty() {
+            self.browser_tasks.shrink_to_fit();
+        }
+        self.synchronize_scheduling_usage()?;
         Ok(self.browser_tasks.is_empty())
     }
 
@@ -168,6 +195,7 @@ impl Vm {
             }
         }
         self.browser_tasks = retained;
+        self.synchronize_scheduling_usage()?;
         Ok(())
     }
 }

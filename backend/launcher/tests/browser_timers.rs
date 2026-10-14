@@ -46,7 +46,17 @@ fn request_with_frames(
     message: ClientMessage,
     frames: &mut VecDeque<FrameMessage>,
 ) -> ServerMessage {
-    blueice_ipc::write_client_message_with_ids(stream, Some(1), Some(id), &message).unwrap();
+    request_for_tab_with_frames(stream, 1, id, message, frames)
+}
+
+fn request_for_tab_with_frames(
+    stream: &mut UnixStream,
+    tab: u64,
+    id: u64,
+    message: ClientMessage,
+    frames: &mut VecDeque<FrameMessage>,
+) -> ServerMessage {
+    blueice_ipc::write_client_message_with_ids(stream, Some(tab), Some(id), &message).unwrap();
     loop {
         let (tab, reply_id, message) = blueice_ipc::read_server_message_with_ids(stream).unwrap();
         if reply_id == Some(id) && !matches!(message, ServerMessage::FrameReady { .. }) {
@@ -56,6 +66,144 @@ fn request_with_frames(
             frames.push_back((tab, reply_id, message));
         }
     }
+}
+
+#[test]
+fn scheduling_exhaustion_in_one_real_child_realm_keeps_another_tab_rendering() {
+    let (bad_fixture, bad_url, gatekeeper) = fixture(
+        "<p id=counter>failed:0</p><script>
+        var attempts = 0;
+        function noop() {}
+        function exhaust() {
+            attempts += 1;
+            document.getElementById('counter').textContent = 'failed:' + attempts;
+            try { for (var i = 0; i < 1025; i += 1) { queueMicrotask(noop); } } catch (error) {}
+            document.getElementById('counter').textContent = 'escaped';
+        }
+        setInterval(exhaust, 200);
+    </script>"
+            .into(),
+    );
+    let (_good_fixture, good_url, _) = fixture(
+        "<p id=counter>tick:0</p><script>
+        var count = 0; var timer = 0;
+        function tick() {
+            count += 1; document.getElementById('counter').textContent = 'tick:' + count;
+            if (count === 3) { clearInterval(timer); }
+        }
+        timer = setInterval(tick, 500);
+    </script>"
+            .into(),
+    );
+    let core = SpawnedCore::spawn_with_options(
+        240.0,
+        120.0,
+        &bad_fixture.root.join("frames"),
+        CoreLaunchOptions::default()
+            .with_gatekeeper_socket(gatekeeper)
+            .supervise_out_of_process_bluejs_with_page_dom(),
+    )
+    .unwrap();
+    let mut stream = core.stream.try_clone().unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    let mut frames = VecDeque::new();
+    assert!(matches!(
+        request_with_frames(
+            &mut stream,
+            1,
+            ClientMessage::Navigate {
+                url: bad_url.clone()
+            },
+            &mut frames
+        ),
+        ServerMessage::Navigated { .. }
+    ));
+    let ServerMessage::TabOpened {
+        tab_id: good_tab, ..
+    } = request_with_frames(
+        &mut stream,
+        2,
+        ClientMessage::OpenTab {
+            url: Some(good_url),
+        },
+        &mut frames,
+    )
+    else {
+        panic!("healthy tab must open");
+    };
+    let mut previous_generation = 0;
+    for count in 1..=3 {
+        let generation = loop {
+            let (tab, id, message) = frames
+                .pop_front()
+                .unwrap_or_else(|| blueice_ipc::read_server_message_with_ids(&mut stream).unwrap());
+            if let ServerMessage::FrameReady { generation, .. } = message {
+                if tab == Some(good_tab) && id.is_none() {
+                    break generation;
+                }
+            }
+        };
+        assert!(generation > previous_generation);
+        previous_generation = generation;
+        let ServerMessage::Representation(snapshot) = request_for_tab_with_frames(
+            &mut stream,
+            good_tab,
+            10 + count,
+            ClientMessage::GetRepresentation,
+            &mut frames,
+        ) else {
+            panic!("healthy tab must remain observable");
+        };
+        assert_eq!(snapshot.generation, generation);
+        assert!(snapshot
+            .nodes
+            .iter()
+            .any(|node| node.name.as_deref() == Some(&format!("tick:{count}"))));
+    }
+    let ServerMessage::Representation(failed) = request_with_frames(
+        &mut stream,
+        20,
+        ClientMessage::GetRepresentation,
+        &mut frames,
+    ) else {
+        panic!("failed page keeps its last DOM snapshot");
+    };
+    assert!(
+        failed
+            .nodes
+            .iter()
+            .any(|node| node.name.as_deref() == Some("failed:1")),
+        "{failed:?}"
+    );
+    assert!(!failed
+        .nodes
+        .iter()
+        .any(|node| node.name.as_deref() == Some("escaped")));
+    assert!(matches!(
+        request_with_frames(
+            &mut stream,
+            21,
+            ClientMessage::Navigate {
+                url: bad_url.replace("/counter", "/replacement")
+            },
+            &mut frames
+        ),
+        ServerMessage::Navigated { .. }
+    ));
+    let ServerMessage::Representation(replacement) = request_with_frames(
+        &mut stream,
+        22,
+        ClientMessage::GetRepresentation,
+        &mut frames,
+    ) else {
+        panic!("failed tab must accept a successor document");
+    };
+    assert!(replacement
+        .nodes
+        .iter()
+        .any(|node| node.name.as_deref() == Some("replacement")));
 }
 
 fn fixture(body: String) -> (Fixture, String, PathBuf) {

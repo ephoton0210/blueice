@@ -361,7 +361,7 @@ fn top_level_await_cannot_bypass_the_page_job_budget() {
     assert_eq!(
         page.runtime.execute_program(TAB, handle),
         Err(BlueJsPageRuntimeError::Runtime(
-            RuntimeError::InstructionLimit
+            RuntimeError::SchedulingLimit
         ))
     );
 
@@ -414,7 +414,7 @@ fn an_async_module_graph_cannot_bypass_the_page_job_budget() {
     assert_eq!(
         page.runtime.execute_module_graph(TAB, handle, [handle]),
         Err(BlueJsPageRuntimeError::Runtime(
-            RuntimeError::InstructionLimit
+            RuntimeError::SchedulingLimit
         ))
     );
 }
@@ -422,17 +422,9 @@ fn an_async_module_graph_cannot_bypass_the_page_job_budget() {
 #[test]
 fn a_page_shadow_realm_inherits_bounded_job_draining() {
     let mut page = Page::new();
-    assert_eq!(
-        page.run(
-            "var limited = false;
-             try {
-                 new ShadowRealm().evaluate('for (var i = 0; i < 1100; i++) { Promise.resolve().then(() => {}); } 0;');
-             } catch (error) { limited = error instanceof TypeError; }
-             limited;",
-        ).unwrap(),
-        // ShadowRealm intentionally masks the child's exception as TypeError.
-        Value::Bool(true)
-    );
+    assert!(matches!(page.run(
+        "try { new ShadowRealm().evaluate('for (var i = 0; i < 1100; i++) { Promise.resolve().then(() => {}); } 0;'); } catch (error) {}"
+    ), Err(BlueJsPageRuntimeError::Runtime(RuntimeError::SchedulingLimit))));
 }
 
 #[test]

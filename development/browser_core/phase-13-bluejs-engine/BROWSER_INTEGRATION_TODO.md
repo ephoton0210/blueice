@@ -40,7 +40,8 @@ implemented and verified on `feature/bluejs-browser-integration-gaps`.
 The integrated branch has host-owned Promise checkpoints and session-driven
 timers and a separate render entry for animation frames in the owner-selected
 File DOM profile. General task-source ordering and complete queue/byte
-accounting remain open.
+accounting remain open; M1d now bounds the VM's document-owned scheduling
+work and exposes its retained payload ledger.
 
 - [ ] Macrotask queue that drains microtasks after every task (per
       `research/js-bytecode-eventloop.md`)
@@ -82,6 +83,14 @@ accounting remain open.
       (one bounded queue today, no source priority); decide before `fetch`
 - [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
       host-held bytes, so a runaway page degrades only itself
+- [x] **M1d: document scheduling admission.** Page VMs and their ShadowRealms
+      share a 1,024-job, 1,024-waiting-reaction/request and 8 MiB owned-payload
+      budget. Promise settlement, thenables, async functions/generators,
+      module await and finalizer jobs use one admission path. Resource
+      exhaustion is an uncatchable document failure; navigation replaces it.
+      The public page runtime exposes counts and bytes. The Core tab-cache
+      ledger still needs these bytes, and complete task-source/host-buffer
+      accounting remains in the unchecked item above.
 - [x] **M1b: timer wake-up.** `DragTasksFlushed.next_wake_in_ms` carries the
       next runnable delay. Core validates its identity/range, clears it on
       replacement/close, and shortens its ordinary polling timeout for an
@@ -344,6 +353,58 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1d — Document-owned scheduling admission (2026-10-14)
+
+- Added shared document admission for at most 1,024 queued microtasks and
+  1,024 pending reactions, module-import waiters and async-generator requests.
+  The page VM and its ShadowRealms contribute to one account; standalone
+  ECMAScript VMs retain their host-neutral policy. Every Promise/thenable,
+  async/await, async-generator, dynamic-import, finalizer and `queueMicrotask`
+  job producer now uses the same gate. Async frames preflight their captured
+  state before publication. The existing 1,024-timer, 64-frame and 64-browser-
+  task bounds remain in force.
+- Added an 8 MiB scheduling-payload cap and public page-runtime usage API.
+  It counts owned container slot capacities, copied strings/Symbol
+  descriptions/logical BigInt limbs, Promise record/status/reaction storage,
+  timer arguments/roots, browser task strings, await frame buffers, import
+  waiter storage and a module continuation's owned outer bytecode copy.
+  Managed heap objects and shared installed code have separate ledgers.
+  Allocator/control-table overhead, spare BigInt limb capacity and RSS are
+  outside this metric; broader host buffers and Core tab-cache propagation
+  remain follow-up work.
+- Running jobs and timer/browser callbacks retain their payload charge.
+  One-shot timer arguments move into the running task instead of being
+  copied; interval argument copies must fit before allocation. Clear/fire,
+  cancellation and empty queues update accounting and release capacity where
+  the container no longer owns work. Parent usage is synchronized before
+  entering a ShadowRealm so child admission cannot use stale parent charges.
+- Scheduling exhaustion latches `SchedulingLimit` for the document. Page
+  `try/catch`, Promise combinators and the ShadowRealm error membrane cannot
+  turn it into successful execution. Later script/task/render entries refuse
+  the failed document; replacement/close discards the account. Infallible
+  Promise settlement continues internal bookkeeping without a Rust panic,
+  while the execution boundary returns the resource failure.
+- Red-first regressions established that six distinct producers and owned
+  timer/Promise strings previously escaped pending-work/payload bounds.
+  Twelve public page-runtime tests now cover eight producer forms, native
+  combinator fanout, captured async arguments, reaction-to-job transfer,
+  running interval/one-shot payloads, release, shared ShadowRealm admission,
+  uncaught failure, exact 1,024-entry admission and fresh-document admission,
+  plus a bare-VM control.
+- The real HTTP/Core/supervised-child two-tab fixture overflows one timer's
+  microtask admission even inside `try/catch`, preserves its last DOM mutation,
+  and observes three matching unsolicited frames/Representations from the
+  healthy tab. The failed tab subsequently navigates to a successor document.
+- Final macOS verification: 2,691 affected library tests passed (one existing
+  launcher case ignored), plus 12 scheduling-limit, 37 timer and 14 frame
+  runtime tests. Rebuilt Core/launcher binaries passed the five real
+  timer/frame/two-tab fixtures and the real FileReader fixture. All-target
+  Clippy for BlueJS, bridge, Core, IPC and launcher passed with `-D warnings`;
+  formatting and working/staged diff checks passed. Full workspace, coverage
+  and unfiltered Test262 gates are not claimed. M1 remains in progress for
+  task-source ordering, full host accounting, Promise collectibility and
+  error-event reporting.
 
 ### M1c — Animation-frame render entry and continued frame delivery (2026-10-14)
 

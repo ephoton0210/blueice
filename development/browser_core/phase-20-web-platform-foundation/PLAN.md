@@ -19,7 +19,9 @@ M1c extends the latest artifact to `core-script-dom-animation-frame-v12`
 (47 entries) and supplies a separate private v58 render entry, Core-owned
 software cadence, callback snapshots and pre-paint microtask cleanup. Typed and
 ordinary counter fixtures verify frame updates and direct rAF self-rearming.
-Task-source ordering, general queue/byte caps and Promise collectibility
+M1d adds document-owned scheduling admission (1,024 jobs, 1,024 waiting
+reactions/requests and 8 MiB retained payload), shared with ShadowRealms.
+Task-source ordering, full host/Core byte accounting and Promise collectibility
 remain open.
 
 ## Objective

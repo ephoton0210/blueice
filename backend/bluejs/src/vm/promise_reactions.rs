@@ -16,7 +16,6 @@ impl PromiseRecord {
     fn add_then_reaction(&mut self, reaction: PromiseThenReaction) -> Option<PromiseJob> {
         let (fulfilled, value) = match &self.status {
             PromiseStatus::Pending => {
-                self.reactions.push(PromiseReaction::Then(reaction));
                 return None;
             }
             PromiseStatus::Fulfilled(value) => (true, value.clone()),
@@ -43,6 +42,21 @@ impl Vm {
         on_rejected: Value,
         target: ReactionTarget,
     ) -> Result<(), RuntimeError> {
+        if self
+            .promises
+            .get(&promise)
+            .is_some_and(|record| matches!(record.status, PromiseStatus::Pending))
+        {
+            self.enqueue_promise_reaction(
+                promise,
+                PromiseReaction::Then(PromiseThenReaction {
+                    target,
+                    on_fulfilled,
+                    on_rejected,
+                }),
+            );
+            return Ok(());
+        }
         let record = self
             .promises
             .get_mut(&promise)
@@ -52,7 +66,7 @@ impl Vm {
             on_fulfilled,
             on_rejected,
         }) {
-            self.promise_jobs.push_back(job);
+            self.enqueue_promise_job(job);
         }
         Ok(())
     }

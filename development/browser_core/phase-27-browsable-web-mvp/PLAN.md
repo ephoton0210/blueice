@@ -7,8 +7,10 @@
 (PR #25) merged in (see "Integration record"). The integrated
 `feature/bluejs-browser-integration-gaps` branch completes M1a checkpoints,
 M0a compatibility, M1b session-driven timers and M1c's separate animation-frame
-render entry with real frame/Representation acceptance. M1 remains in progress for task-source ordering,
-queue/byte budgets and Promise collectibility.
+render entry with real frame/Representation acceptance. M1d bounds document
+scheduling work and owned payloads, including ShadowRealms. M1 remains in
+progress for task-source ordering, full host/Core accounting and Promise
+collectibility.
 
 ## Objective
 
@@ -105,7 +107,9 @@ M1c adds `requestAnimationFrame`/`cancelAnimationFrame`, the exact v12 artifact,
 and private v58 render requests. A Core-owned software cadence runs the callback
 snapshot and its microtask cleanup before dirty frame publication. JavaScript
 and BlueTS counter fixtures also verify direct rAF self-rearming without further
-timers/frontend work. Task-source ordering, queue/byte accounting and Promise
+timers/frontend work. M1d adds shared document admission for queued jobs,
+waiting reactions/requests and owned scheduling payloads. Task-source ordering,
+complete host/Core byte accounting and Promise
 collectibility remain open, so M1 remains in progress.
 
 - **M0 — Integration.** Merge PR #25's BlueJS line; re-verify. (Done for the

@@ -28,6 +28,10 @@ impl Vm {
                 "Browser task queue limit exceeded".into(),
             ));
         }
+        self.admit_scheduling_work(HostSchedulingUsage {
+            payload_bytes: 4 * std::mem::size_of::<BrowserTask>(),
+            ..HostSchedulingUsage::default()
+        })?;
         let signal = self.fresh_abort_signal()?;
         self.browser_tasks.push_back(BrowserTask::AbortTimeout {
             signal,
@@ -35,6 +39,7 @@ impl Vm {
             delay: Duration::from_millis(number as u64),
             root: None,
         });
+        self.synchronize_scheduling_usage()?;
         Ok(Value::Object(signal))
     }
     pub(in crate::vm) fn refresh_abort_timer_roots(

@@ -181,6 +181,8 @@ impl Vm {
             promises: HashMap::new(),
             promise_jobs: VecDeque::new(),
             bounded_host_microtask_checkpoints: false,
+            host_scheduling: None,
+            active_scheduling_bytes: 0,
             browser_tasks: VecDeque::new(),
             async_frame_roots: Vec::new(),
             test262_done: None,

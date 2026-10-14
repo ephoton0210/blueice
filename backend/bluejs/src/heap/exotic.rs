@@ -5,6 +5,17 @@
 use super::*;
 
 impl Heap {
+    pub(crate) fn pending_async_generator_requests(&self) -> usize {
+        self.objects
+            .values()
+            .fold(0usize, |count, object| match &object.kind {
+                ObjectKind::Generator {
+                    async_control: Some(control),
+                    ..
+                } => count.saturating_add(control.requests.len()),
+                _ => count,
+            })
+    }
     /// Allocates a Proxy exotic object. Trap dispatch stays in the VM so it
     /// can call JavaScript functions while preserving interpreter roots.
     pub(crate) fn alloc_proxy(

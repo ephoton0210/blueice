@@ -1139,7 +1139,7 @@ impl Vm {
                         .active_module_name
                         .clone()
                         .unwrap_or_else(|| "<script>".to_string());
-                    self.promise_jobs.push_back(PromiseJob::DynamicImport {
+                    self.enqueue_promise_job(PromiseJob::DynamicImport {
                         target: promise,
                         referrer,
                         specifier,
@@ -1787,6 +1787,10 @@ impl Vm {
             .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
             .status
             .clone_for_await();
+        self.admit_scheduling_work(HostSchedulingUsage {
+            payload_bytes: continuation_state.scheduling_payload_bytes(),
+            ..HostSchedulingUsage::default()
+        })?;
         let continuation = self.next_module_continuation;
         self.next_module_continuation = self
             .next_module_continuation
@@ -1796,20 +1800,16 @@ impl Vm {
             .insert(continuation, continuation_state);
         match status {
             PromiseAwaitStatus::Pending => self
-                .promises
-                .get_mut(&promise)
-                .expect("checked await Promise exists")
-                .reactions
-                .push(PromiseReaction::ModuleAwait { continuation }),
+                .enqueue_promise_reaction(promise, PromiseReaction::ModuleAwait { continuation }),
             PromiseAwaitStatus::Fulfilled(value) => {
-                self.promise_jobs.push_back(PromiseJob::ModuleAwait {
+                self.enqueue_promise_job(PromiseJob::ModuleAwait {
                     continuation,
                     value,
                     fulfilled: true,
                 });
             }
             PromiseAwaitStatus::Rejected(value) => {
-                self.promise_jobs.push_back(PromiseJob::ModuleAwait {
+                self.enqueue_promise_job(PromiseJob::ModuleAwait {
                     continuation,
                     value,
                     fulfilled: false,
@@ -1845,6 +1845,10 @@ impl Vm {
             .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
             .status
             .clone_for_await();
+        self.admit_scheduling_work(HostSchedulingUsage {
+            payload_bytes: continuation_state.scheduling_payload_bytes(),
+            ..HostSchedulingUsage::default()
+        })?;
         let continuation = self.next_async_continuation;
         self.next_async_continuation = self
             .next_async_continuation
@@ -1853,21 +1857,18 @@ impl Vm {
         self.async_continuations
             .insert(continuation, continuation_state);
         match status {
-            PromiseAwaitStatus::Pending => self
-                .promises
-                .get_mut(&promise)
-                .expect("checked await Promise exists")
-                .reactions
-                .push(PromiseReaction::AsyncAwait { continuation }),
+            PromiseAwaitStatus::Pending => {
+                self.enqueue_promise_reaction(promise, PromiseReaction::AsyncAwait { continuation })
+            }
             PromiseAwaitStatus::Fulfilled(value) => {
-                self.promise_jobs.push_back(PromiseJob::AsyncAwait {
+                self.enqueue_promise_job(PromiseJob::AsyncAwait {
                     continuation,
                     value,
                     fulfilled: true,
                 });
             }
             PromiseAwaitStatus::Rejected(value) => {
-                self.promise_jobs.push_back(PromiseJob::AsyncAwait {
+                self.enqueue_promise_job(PromiseJob::AsyncAwait {
                     continuation,
                     value,
                     fulfilled: false,

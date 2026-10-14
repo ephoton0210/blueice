@@ -32,8 +32,14 @@ mod functions;
 mod host_animation_frames;
 mod host_objects;
 mod host_registration;
+mod host_scheduling;
 mod host_timers;
 use host_registration::{host_function_index, host_registration_index};
+use host_scheduling::SchedulingScope;
+pub use host_scheduling::{
+    HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_HOST_MICROTASKS,
+    MAX_PENDING_HOST_REACTIONS,
+};
 mod interpreter;
 mod intl;
 mod intrinsics;
@@ -235,6 +241,8 @@ pub enum RuntimeError {
     Thrown(Value),
     Heap(HeapError),
     InstructionLimit,
+    /// An uncatchable page-host scheduling admission failure.
+    SchedulingLimit,
     StringLimit {
         limit: usize,
     },
@@ -256,6 +264,7 @@ impl fmt::Display for RuntimeError {
             Self::Thrown(value) => write!(f, "uncaught JavaScript value: {value:?}"),
             Self::Heap(error) => error.fmt(f),
             Self::InstructionLimit => f.write_str("BlueJS instruction budget exhausted"),
+            Self::SchedulingLimit => f.write_str("BlueJS page scheduling budget exhausted"),
             Self::StringLimit { limit } => write!(f, "BlueJS string exceeds {limit} bytes"),
             Self::Test262(message) => write!(f, "Test262Error: {message}"),
             Self::RegexTimeout => f.write_str("BlueJS regex deadline exceeded"),
@@ -1139,6 +1148,8 @@ pub struct Vm {
     promise_jobs: VecDeque<PromiseJob>,
     /// Page realms bound even the implicit drains used by module evaluation.
     bounded_host_microtask_checkpoints: bool,
+    host_scheduling: Option<SchedulingScope>,
+    active_scheduling_bytes: usize,
     browser_tasks: VecDeque<browser_tasks::BrowserTask>,
     /// Heap edges of displaced async frames and active iterator records that
     /// live outside the operand stack. Nested frames retain their own suffix
@@ -1376,6 +1387,7 @@ impl Vm {
 
 impl Vm {
     fn charge_step(&mut self) -> Result<(), RuntimeError> {
+        self.check_scheduling_failure()?;
         if self.remaining_instructions == 0 {
             return Err(RuntimeError::InstructionLimit);
         }

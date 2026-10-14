@@ -992,9 +992,20 @@ impl Vm {
     /// in the same checkpoint, so callers that need an await boundary can
     /// advance the queue one observable turn at a time.
     pub(in super::super) fn run_next_promise_job(&mut self) -> Result<bool, RuntimeError> {
+        self.check_scheduling_failure()?;
         let Some(job) = self.promise_jobs.pop_front() else {
             return Ok(false);
         };
+        if self.promise_jobs.is_empty() {
+            self.promise_jobs.shrink_to_fit();
+        }
+        let active_bytes = job.scheduling_payload_bytes();
+        self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
+        if let Err(error) = self.synchronize_scheduling_usage() {
+            self.active_scheduling_bytes =
+                self.active_scheduling_bytes.saturating_sub(active_bytes);
+            return Err(error);
+        }
         // Promise jobs always execute in a new ECMAScript execution context.
         // A preceding top-level-await continuation can leave the ambient
         // interpreter with no fuel, but that must not turn the next queued
@@ -1218,6 +1229,8 @@ impl Vm {
             Ok(())
         })();
         self.stack.truncate(root_base);
+        self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(active_bytes);
+        self.synchronize_scheduling_usage()?;
         result?;
         Ok(true)
     }

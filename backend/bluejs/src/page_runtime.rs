@@ -555,6 +555,20 @@ impl BlueJsPageRuntime {
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
+    /// Document-owned scheduling counts and payloads, including the realm's
+    /// ShadowRealms. Resource-failed documents require replacement/close.
+    pub fn host_scheduling_usage(
+        &mut self,
+        tab_id: u64,
+    ) -> Result<crate::HostSchedulingUsage, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .host_scheduling_usage()
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Whether this realm has runnable frame callbacks. Paused debugger
     /// continuations retain callbacks but suppress rendering wake-ups.
     pub fn animation_frame_pending(&self, tab_id: u64) -> Result<bool, BlueJsPageRuntimeError> {
