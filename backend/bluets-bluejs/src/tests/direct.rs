@@ -508,22 +508,16 @@ fn a_class_script_with_an_exported_class_needs_the_module_bridge() {
 }
 
 #[test]
-fn class_bodies_with_shapes_the_bridge_cannot_lower_are_refused() {
-    for source in [
-        // A destructured parameter has no name to lower.
-        "class A { m({ a }: { a: number }): number { return a; } }",
-        // A nested function declaration has no direct lowering yet.
-        "class A { m(): number { function f(): number { return 1; } return f(); } }",
-    ] {
-        let result = compile_direct_script(
-            ENTRY,
-            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
-            CompilerOptions {
-                ..CompilerOptions::default()
-            },
-        );
-        assert!(result.is_err(), "{source}");
-    }
+fn class_methods_with_destructured_parameters_are_refused() {
+    let source = "class A { m({ a }: { a: number }): number { return a; } }";
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(result.is_err(), "{source}");
 }
 
 #[test]

@@ -66,6 +66,40 @@ pub(super) fn weak_pair(actual: &[TypeField], expected: &[TypeField]) -> bool {
             .any(|field| expected.iter().any(|target| target.name == field.name))
 }
 
+/// Interface heritage is represented as record intersections. Weak-type
+/// overlap belongs to the complete target, including every inherited field.
+/// Retain duplicate property constraints so neither parent is overwritten.
+pub(super) fn intersection_record_fields(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> Option<Vec<TypeField>> {
+    match value {
+        Type::Record(fields) => Some(fields.clone()),
+        Type::Named { .. } => {
+            let expanded = instantiate_named(value, aliases, visited, budget, "record target")?;
+            intersection_record_fields(&expanded, aliases, visited, budget)
+        }
+        Type::Intersection(parts) => {
+            let mut fields = Vec::new();
+            for part in parts {
+                if !budget.consume() {
+                    return None;
+                }
+                fields.extend(intersection_record_fields(
+                    part,
+                    aliases,
+                    &mut visited.clone(),
+                    budget,
+                )?);
+            }
+            Some(fields)
+        }
+        _ => None,
+    }
+}
+
 pub(in crate::checker) fn record_fields_assignable(
     actual: &[TypeField],
     expected: &[TypeField],

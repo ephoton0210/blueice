@@ -96,6 +96,38 @@ impl Parser {
         if !self.simple_parameter_list(open, close) {
             return None;
         }
+        if self.nested_function_depth >= 64 {
+            let start = self.current().start;
+            self.error_at(
+                self.current().span(&self.id),
+                DiagnosticCode::ResourceLimit,
+                "nested function declarations exceed the 64-level limit",
+            );
+            // Recover iteratively, without parsing the over-budget subtree.
+            let mut braces = 0usize;
+            let mut entered = false;
+            while !self.at_eof() {
+                if self.peek("{") {
+                    braces += 1;
+                    entered = true;
+                } else if self.peek("}") {
+                    if !entered {
+                        break;
+                    }
+                    braces -= 1;
+                }
+                let end = (entered && braces == 0) || (!entered && self.peek(";"));
+                self.bump();
+                if end {
+                    break;
+                }
+            }
+            return Some(FunctionBodyItem::Opaque(SourceSpan::new(
+                &self.id,
+                start,
+                self.previous().end,
+            )));
+        }
         let type_parameters = if generic {
             let saved = self.index;
             self.index = name_at + 1;
@@ -105,13 +137,16 @@ impl Parser {
         } else {
             Vec::new()
         };
+        self.nested_function_depth += 1;
+        let parsed = self.parse_parameters_result_and_block(open);
+        self.nested_function_depth -= 1;
         let ParsedFunctionTail {
             parameters,
             return_type,
             body,
             body_end,
             next_index: next,
-        } = self.parse_parameters_result_and_block(open)?;
+        } = parsed?;
         let NestedFunctionBody::Block {
             items,
             returns,

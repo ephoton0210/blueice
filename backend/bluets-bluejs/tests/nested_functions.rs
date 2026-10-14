@@ -32,6 +32,9 @@ fn nested_functions_capture_outer_values_and_are_hoisted() {
     for source in [
         "function outer(value: number): number { function inner(delta: number): number { return value + delta; } return inner(2); } outer(5);",
         "function outer(): number { return inner(4); function inner(value: number): number { return value + 3; } } outer();",
+        "class A { run(value: number): number { function inner(delta: number): number { return value + delta; } return inner(2); } } new A().run(5);",
+        "function outer(value: number): number { try { function inner(delta: number): number { return value + delta; } return inner(2); } finally {} } outer(5);",
+        "function outer(value: number): number { while (value < 8) { function inner(delta: number): number { return value + delta; } return inner(2); } return 0; } outer(5);",
     ]{
         let script=compile(source).unwrap();
         assert_eq!(Vm::default().execute_script(&script.bytecode).unwrap(),Value::Number(7.0));
@@ -64,15 +67,22 @@ fn nested_event_callbacks_execute_with_their_real_lexical_state() {
 
 #[test]
 fn nested_function_depth_reports_a_resource_error_instead_of_recursing_unboundedly() {
-    let mut source = String::from("function outer(): number {");
-    for index in 0..70 {
-        source.push_str(&format!("function f{index}(): number {{"));
+    for depth in [63, 64, 65, 70] {
+        let mut source = String::from("function outer(): number {");
+        for index in 0..depth {
+            source.push_str(&format!("function f{index}(): number {{"));
+        }
+        source.push_str("return 1;");
+        for index in (0..depth).rev() {
+            source.push_str(&format!("}} return f{index}();"));
+        }
+        source.push_str("} outer();");
+        let result = compile(&source);
+        if depth <= 64 {
+            assert!(result.is_ok(), "depth {depth}: {:?}", result.err());
+        } else {
+            let error = result.err().expect("Depth must be rejected");
+            assert!(format!("{error:?}").contains("ResourceLimit"));
+        }
     }
-    source.push_str("return 1;");
-    for index in (0..70).rev() {
-        source.push_str(&format!("}} return f{index}();"));
-    }
-    source.push_str("} outer();");
-    let error = compile(&source).err().expect("Depth must be rejected");
-    assert!(format!("{error:?}").contains("ResourceLimit"));
 }

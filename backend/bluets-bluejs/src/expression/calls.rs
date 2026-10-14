@@ -157,10 +157,10 @@ impl<'a> ExpressionLowerer<'a> {
                 let Some(property) = self.tokens.get(self.index) else {
                     return Err(unsupported(dot_span, "expected a property name after `.`"));
                 };
-                if property.kind != TokenKind::Identifier {
+                if !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword) {
                     return Err(unsupported(
                         self.token_span(property),
-                        "only identifier dot property names are in the v1 direct bridge subset",
+                        "expected an IdentifierName after dot access",
                     ));
                 }
                 let name = property.text.clone();

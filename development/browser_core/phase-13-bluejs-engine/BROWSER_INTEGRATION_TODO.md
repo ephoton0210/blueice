@@ -241,6 +241,14 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
 
 ### BlueJS capabilities BlueTS should use or still needs
 
+- [x] **Merged host-profile compatibility (M0a).** Interface inheritance
+      compares complete method overload sets, preserving the generic fallback
+      alongside typed event overloads. Nested functions and keyword-named
+      members such as stream iterator `.return()` lower through the native
+      BlueJS AST again; the named-function parser retains its 64-level limit.
+      Acceptance: the unchanged live stream-profile preparation fixture,
+      native closure/event/iterator execution tests, and 17 cases recorded
+      with TypeScript 5.9.3. See the milestone record.
 - [ ] **Native decorators.** BlueJS implements Stage 3 decorators
       (`Symbol.metadata`, `addInitializer`, auto-accessors), which matches
       TypeScript 5.x standard decorators; J.5.3 should lower to them
@@ -326,8 +334,8 @@ the generated typings in the same change.
   is still section B work; the current hosts do not yet publish those counts.
 - Enabled bounded implicit Promise drains only in page realms, including
   replacement realms and their ShadowRealms. Standalone ECMAScript/Test262 VMs
-  retain their explicit drain behavior. Routed single page-module execution through the module-graph
-  evaluator so top-level await uses its continuation machinery rather than
+  retain their explicit drain behavior. Routed single page-module execution
+  through the module-graph evaluator so top-level await uses its continuation machinery rather than
   reaching the synchronous interpreter's `unreachable!` branch.
 - Acceptance regressions reproduced missing between-script cleanup in both
   hosts, throwing-job starvation, unbounded async-module graph draining, and
@@ -351,3 +359,49 @@ the generated typings in the same change.
   and prove the counter-page frame/Representation acceptance in section I.
   `requestAnimationFrame`, task-source ordering, queue/byte caps and Promise
   collectibility remain required work; M1 as a whole is not complete.
+
+### M0a — Restore merged host-profile compatibility (2026-10-14)
+
+- Fixed the Core transport fixture's stale 49-reply count: it now services
+  all 50 public debugger-wrapper requests, including the final pumped turn.
+- Compared each inherited interface property against the complete declared
+  overload set, once per property name. The fallback signature can satisfy
+  the parent while specialized callbacks remain available for call checking.
+  Lookup and relation checks retain their expansion budgets; incompatible
+  overloads, returns, callback parameters and optional overrides remain errors.
+- Recorded eight strict accept/reject cases from the locally available,
+  version-verified TypeScript 5.9.3 compiler, and checked the public BlueTS
+  compiler against those verdicts and TS2430 error codes.
+- Fixed weak-record compatibility across inherited option dictionaries:
+  overlap is tested against the complete record intersection rather than each
+  parent separately, retaining every duplicated property constraint. Nine
+  further TypeScript 5.9.3 verdict controls cover valid partial dictionaries,
+  empty dictionaries, incompatible fields and missing overlap. This restores
+  checked native `DragEvent` initialization without changing its declarations.
+- Restored rejection of prototype-only host values and their named/local
+  aliases used as constructors under the declared-global page-profile policy,
+  preserving checked real constructor aliases.
+  A heritage lookup that exceeds its expansion budget now reports a resource
+  error instead of silently accepting an unchecked override. Updated the old
+  overlapping event-tag refusal to TypeScript's confirmed compatible-callback
+  verdict, retaining all wrong-callback/tag/option rejection controls.
+- Restored product-line direct lowering that the BlueTS merge had dropped:
+  nested function declarations (including method/try/while bodies), keyword
+  property names after `.`, and the parser's 64-level named-function cap.
+  Existing regressions prove hoisting, closure capture, lexical isolation,
+  event callback execution and native stream iterator cancellation. The depth
+  regression accepts 63/64 and rejects 65/70 nested declarations with a
+  resource diagnostic. Generated host declaration bytes and inventories keep
+  their existing versions and supported bindings.
+- The two M1a host-suite failures are now resolved: Core's 809 library tests
+  and launcher's 305 library tests passed (one launcher test ignored), as did
+  252 BlueTS and 164 bridge library tests and the focused host-profile cohort.
+  This proves the integration regressions fixed here; session-driven timers,
+  frame acceptance and the remaining items in this TODO are still required.
+- Final complete BlueTS/bridge library and integration run: 1,222 passed,
+  zero failed, 224 optional oracle cases ignored, across 158 test targets.
+  Clippy for BlueTS, bridge, core and launcher library/test targets passed
+  with `-D warnings`; formatting and `git diff --check` passed. The locally
+  recorded 17 native controls ran against version-verified TypeScript 5.9.3;
+  ignored external-oracle suites and the full workspace/Test262 gates are not
+  claimed by this increment.

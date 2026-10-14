@@ -1,0 +1,95 @@
+{
+  "version": "5.9.3",
+  "options": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": [
+      "ES2022"
+    ]
+  },
+  "cases": [
+    {
+      "name": "fresh-own-field",
+      "source": "interface UI { view?: null; } interface Mouse extends UI { x?: number; } function consume(input: Mouse): void {} consume({x:1});",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "variable-own-field",
+      "source": "interface UI { view?: null; } interface Mouse extends UI { x?: number; } function consume(input: Mouse): void {} const options = {x:1}; consume(options);",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "inherited-field",
+      "source": "interface UI { view?: null; } interface Mouse extends UI { x?: number; } function consume(input: Mouse): void {} consume({view:null});",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "empty-options",
+      "source": "interface UI { view?: null; } interface Mouse extends UI { x?: number; } function consume(input: Mouse): void {} consume({});",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "deep-inheritance",
+      "source": "interface EventOptions { bubbles?: boolean; } interface UI extends EventOptions { detail?: number; } interface Mouse extends UI { x?: number; } interface Drag extends Mouse { data?: string; } function consume(input: Drag): void {} consume({x:1,data:'owned'});",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "wrong-own-field",
+      "source": "interface UI { view?: null; } interface Mouse extends UI { x?: number; } function consume(input: Mouse): void {} const options = {x:'bad'}; consume(options);",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "start": 148,
+          "length": 7,
+          "message": "Argument of type '{ x: string; }' is not assignable to parameter of type 'Mouse'.   Types of property 'x' are incompatible.     Type 'string' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "wrong-inherited-field",
+      "source": "interface UI { view?: null; } interface Mouse extends UI { x?: number; } function consume(input: Mouse): void {} const options = {view:1}; consume(options);",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "start": 147,
+          "length": 7,
+          "message": "Argument of type '{ view: number; }' is not assignable to parameter of type 'Mouse'.   Types of property 'view' are incompatible.     Type 'number' is not assignable to type 'null | undefined'."
+        }
+      ]
+    },
+    {
+      "name": "no-common-field",
+      "source": "interface UI { view?: null; } interface Mouse extends UI { x?: number; } function consume(input: Mouse): void {} const options = {unknown:true}; consume(options);",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2559,
+          "start": 153,
+          "length": 7,
+          "message": "Type '{ unknown: boolean; }' has no properties in common with type 'Mouse'."
+        }
+      ]
+    },
+    {
+      "name": "intersection-keeps-both-property-requirements",
+      "source": "interface Left { x?: number; } interface Right { x: string; } function consume(input: Left & Right): void {} const options = {x:'bad'}; consume(options);",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "start": 144,
+          "length": 7,
+          "message": "Argument of type '{ x: string; }' is not assignable to parameter of type 'Left & Right'.   Type '{ x: string; }' is not assignable to type 'Left'.     Types of property 'x' are incompatible.       Type 'string' is not assignable to type 'number'."
+        }
+      ]
+    }
+  ]
+}

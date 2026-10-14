@@ -827,7 +827,7 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
 
     let (core, mut child) = UnixStream::pair().unwrap();
     let canned = PageHostReply::ShutdownAck;
-    let expected_calls = 49;
+    let expected_calls = 50;
     let child_task = thread::spawn(move || {
         for _ in 0..expected_calls {
             page_host::read_page_host_request(&mut child).unwrap();

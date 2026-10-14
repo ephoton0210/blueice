@@ -871,7 +871,8 @@ mod tests {
         let prepared = prepare_bluets_module_graph(graph, PageDomProfile::File);
         assert!(
             prepared.is_ok(),
-            "current live profile must prepare the authorized module graph"
+            "current live profile must prepare the authorized module graph: {:?}",
+            prepared.err()
         );
     }
 

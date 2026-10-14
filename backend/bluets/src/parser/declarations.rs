@@ -32,6 +32,7 @@ impl Parser {
             edits: Vec::new(),
             generic_call_type_arguments: BTreeMap::new(),
             nested_functions: BTreeMap::new(),
+            nested_function_depth: 0,
             class_expressions: BTreeMap::new(),
             type_references: Vec::new(),
             expression_variable_types: BTreeMap::new(),

@@ -670,22 +670,58 @@ impl<'a> ModuleChecker<'a> {
         fields: &[TypeField],
         span: &SourceSpan,
     ) {
+        let declared_record = Type::Record(fields.to_vec());
+        let mut checked_names = HashSet::new();
         for field in fields {
+            // An overload group is one property. Compare its complete set,
+            // so any compatible signature can satisfy each inherited one.
+            if !checked_names.insert(&field.name) {
+                continue;
+            }
             let inherited = {
                 let mut visited = HashSet::new();
                 let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
                 property_type(parent, &field.name, &self.types, &mut visited, &mut budget)
             };
-            let PropertyType::Found {
-                value: inherited, ..
-            } = inherited
-            else {
-                continue;
+            let inherited = match inherited {
+                PropertyType::Found { value, .. } => value,
+                PropertyType::Exhausted => {
+                    self.type_error(
+                        span,
+                        format!(
+                            "interface heritage lookup exceeds the {} type-expansion limit",
+                            self.max_type_expansions
+                        ),
+                        DiagnosticCode::ResourceLimit,
+                    );
+                    continue;
+                }
+                PropertyType::Missing | PropertyType::Indeterminate => continue,
             };
-            let declared = if field.optional {
-                Type::Union(vec![field.value.clone(), Type::Undefined])
-            } else {
-                field.value.clone()
+            let declared = {
+                let mut visited = HashSet::new();
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                property_type(
+                    &declared_record,
+                    &field.name,
+                    &self.types,
+                    &mut visited,
+                    &mut budget,
+                )
+            };
+            let PropertyType::Found {
+                value: declared, ..
+            } = declared
+            else {
+                self.type_error(
+                    span,
+                    format!(
+                        "interface overload lookup exceeds the {} type-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                );
+                continue;
             };
             if !self.is_assignable_bounded(&declared, &inherited, span) {
                 self.type_error(

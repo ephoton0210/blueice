@@ -336,6 +336,17 @@ pub(super) fn is_assignable(
             .any(|option| is_assignable(actual, option, aliases, &mut visited.clone(), budget));
     }
     if let Type::Intersection(parts) = expected {
+        if let Some(fields) = compatibility::intersection_record_fields(
+            expected,
+            aliases,
+            &mut visited.clone(),
+            budget,
+        ) {
+            return is_assignable(actual, &Type::Record(fields), aliases, visited, budget);
+        }
+        if budget.exhausted {
+            return false;
+        }
         return parts
             .iter()
             .all(|part| is_assignable(actual, part, aliases, &mut visited.clone(), budget));

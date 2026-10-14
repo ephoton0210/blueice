@@ -363,6 +363,10 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   signature selection for callbacks, ambiguity and no-match diagnostics with the right code, implementation
   signature compatibility (TS2394).
   - *Evidence:* 3 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-08).
+  - *Browser integration follow-up (2026-10-14):* complete declared method sets
+    now satisfy inherited overloads without rejecting the specialized entries;
+    eight TypeScript 5.9.3 controls and native host-profile tests cover acceptance
+    and rejection. See [M0a](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
 - [x] **K.4.5 Type operators (XL).** `keyof`, `typeof`, indexed access, conditional types (distributive),
   `infer`, mapped types with `readonly`/`?` modifiers and `as` clauses, template-literal types, recursive
   aliases within a depth budget; each operator needs the assignability relation extended.

@@ -1,0 +1,86 @@
+{
+  "version": "5.9.3",
+  "options": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2022"
+  },
+  "cases": [
+    {
+      "name": "fallback-last",
+      "source": "interface Base { visit(kind: string, callback: (value: string) => void): void; } interface Child extends Base { visit(kind: 'count', callback: (value: number) => void): void; visit(kind: string, callback: (value: string) => void): void; }",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "fallback-first",
+      "source": "interface Base { visit(kind: string, callback: (value: string) => void): void; } interface Child extends Base { visit(kind: string, callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; }",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "cover-inherited-overloads",
+      "source": "interface Base { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; } interface Child extends Base { visit(kind: 'flag', callback: (value: boolean) => void): void; visit(kind: 'count', callback: (value: number) => void): void; visit(kind: 'text', callback: (value: string) => void): void; }",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "specialized-parent",
+      "source": "interface Base<T> { visit(kind: string, callback: (value: T) => void): void; } interface Child extends Base<string> { visit(kind: 'count', callback: (value: number) => void): void; visit(kind: string, callback: (value: string) => void): void; }",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "name": "missing-inherited-signature",
+      "source": "interface Base { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; } interface Child extends Base { visit(kind: 'flag', callback: (value: boolean) => void): void; visit(kind: 'text', callback: (value: string) => void): void; }",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2430,
+          "start": 154,
+          "length": 5,
+          "message": "Interface 'Child' incorrectly extends interface 'Base'.   Types of property 'visit' are incompatible.     Type '{ (kind: \"flag\", callback: (value: boolean) => void): void; (kind: \"text\", callback: (value: string) => void): void; }' is not assignable to type '{ (kind: \"text\", callback: (value: string) => void): void; (kind: \"count\", callback: (value: number) => void): void; }'.       Types of parameters 'kind' and 'kind' are incompatible.         Type '\"count\"' is not assignable to type '\"flag\"'."
+        }
+      ]
+    },
+    {
+      "name": "incompatible-result",
+      "source": "interface Base { visit(kind: string): number; } interface Child extends Base { visit(kind: 'count'): boolean; visit(kind: string): string; }",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2430,
+          "start": 58,
+          "length": 5,
+          "message": "Interface 'Child' incorrectly extends interface 'Base'.   The types returned by 'visit(...)' are incompatible between these types.     Type 'boolean' is not assignable to type 'number'."
+        }
+      ]
+    },
+    {
+      "name": "incompatible-callback",
+      "source": "interface Base { visit(kind: 'text', callback: (value: string) => void): void; } interface Child extends Base { visit(kind: 'count', callback: (value: number) => void): void; }",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2430,
+          "start": 91,
+          "length": 5,
+          "message": "Interface 'Child' incorrectly extends interface 'Base'.   Types of property 'visit' are incompatible.     Type '(kind: \"count\", callback: (value: number) => void) => void' is not assignable to type '(kind: \"text\", callback: (value: string) => void) => void'.       Types of parameters 'kind' and 'kind' are incompatible.         Type '\"text\"' is not assignable to type '\"count\"'."
+        }
+      ]
+    },
+    {
+      "name": "optional-override",
+      "source": "interface Base { visit(kind: string): void; } interface Child extends Base { visit?(kind: string): void; }",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2430,
+          "start": 56,
+          "length": 5,
+          "message": "Interface 'Child' incorrectly extends interface 'Base'.   Types of property 'visit' are incompatible.     Type '((kind: string) => void) | undefined' is not assignable to type '(kind: string) => void'.       Type 'undefined' is not assignable to type '(kind: string) => void'."
+        }
+      ]
+    }
+  ]
+}

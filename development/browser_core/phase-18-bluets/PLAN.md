@@ -11,6 +11,18 @@ Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifa
 
 ## Standalone implementation and first BlueJS integration status
 
+**Host-profile integration correction (2026-10-14):** The merged browser
+branch restores complete-overload-set interface heritage checks, nested
+function direct lowering (including class method, try and while bodies),
+keyword-named dot members such as iterator `.return()`, and the 64-level
+named-function parser limit. Eight strict verdict/error-code controls were
+recorded with TypeScript 5.9.3, with nine further weak inherited option-record
+controls. Prototype-only host constructors are rejected, and inheritance
+lookup exhaustion reports a resource error. Existing native closure, drag
+constructor, event and iterator tests verify execution. See the
+[M0a evidence record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+Earlier subset summaries below retain their historical boundaries.
+
 The direct bridge lowers parenthesized `new Identifier(args)` expressions with normal or spread arguments. Member constructors and omitted parentheses remain excluded.
 
 The direct bridge lowers `delete` only for ordinary dot or bracket property references (without optional chaining). Identifier and non-reference operands remain outside the v1 subset.

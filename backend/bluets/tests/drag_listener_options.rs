@@ -51,7 +51,9 @@ fn additional_event_groups_do_not_bypass_callback_option_or_tag_validation() {
         assert!(!check(source, DECLARATIONS), "{source}");
     }
     let overlapping = DECLARATIONS.replace("kind: 'click'", "kind: 'click' | 'drop'");
-    assert!(!check(
+    // TypeScript 5.9.3 accepts the call through the compatible Drag overload;
+    // overlapping event tags do not make an incompatible callback applicable.
+    assert!(check(
         "function drag(event: Drag): void {} target.listen('drop', drag);",
         &overlapping,
     ));

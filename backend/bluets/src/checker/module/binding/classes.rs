@@ -756,10 +756,37 @@ impl ModuleChecker<'_> {
             return;
         }
         if !self.is_bound_class_constructor_value(&call.callee.text, scope) {
-            if self
+            let imported = self
                 .symbols
                 .iter()
-                .any(|symbol| symbol.kind == SymbolKind::Import && symbol.name == call.callee.text)
+                .any(|symbol| symbol.kind == SymbolKind::Import && symbol.name == call.callee.text);
+            let mut value = scope.get(&call.callee.text).cloned();
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            let mut visited = HashSet::new();
+            while let Some(expanded) = value.as_ref().and_then(|value| {
+                instantiate_named(value, &self.types, &mut visited, &mut budget, "constructor")
+            }) {
+                value = Some(expanded);
+            }
+            if budget.exhausted {
+                self.type_error(
+                    span,
+                    "host constructor lookup exceeds the type-expansion limit".into(),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            // A known record without construct signatures cannot become a
+            // constructor merely because it came from an ambient declaration
+            // or a local alias rather than an import.
+            let record_without_constructor = self.require_declared_global_calls
+                && value.as_ref().is_some_and(|value| {
+                    matches!(
+                        value.object_type(),
+                        Type::Record(_) | Type::CallableRecord { .. }
+                    )
+                });
+            if (imported || record_without_constructor)
                 && scope
                     .get(&call.callee.text)
                     .is_some_and(|value| !matches!(value, Type::Any | Type::Unknown))
@@ -769,7 +796,8 @@ impl ModuleChecker<'_> {
                 self.typescript_type_error(
                     &call.callee.span(&span.module),
                     format!(
-                        "imported value `{}` has no construct signature",
+                        "{} `{}` has no construct signature",
+                        if imported { "imported value" } else { "value" },
                         call.callee.text
                     ),
                     DiagnosticCode::TypeMismatch,

@@ -4,7 +4,7 @@
 
 use blueice_bluets::{compile, CompilerOptions, MapLoader, ModuleSource};
 
-const DECLARATIONS: &str = "interface Chosen { readonly kind: string; } interface Items { add(data: string, format: string): Chosen; add(file: Chosen): Chosen; } interface Transfer { readonly items: Items; setData(format: string, data: string): void; } declare const Transfer: { new(): Transfer; readonly prototype: Transfer; }; declare const Illegal: { readonly prototype: Transfer; }; declare const Chosen: { new(name: string): Chosen; readonly prototype: Chosen; };";
+const DECLARATIONS: &str = "interface Chosen { readonly kind: string; } interface Items { add(data: string, format: string): Chosen; add(file: Chosen): Chosen; } interface Transfer { readonly items: Items; setData(format: string, data: string): void; } declare const Transfer: { new(): Transfer; readonly prototype: Transfer; }; declare const Illegal: { readonly prototype: Transfer; }; interface PrototypeOnly { readonly prototype: Transfer; } declare const AliasIllegal: PrototypeOnly; declare const Chosen: { new(name: string): Chosen; readonly prototype: Chosen; };";
 
 fn check(source: &str) -> bool {
     !compile(
@@ -27,6 +27,7 @@ fn host_construct_signatures_infer_instances_and_select_plain_member_overloads()
     for source in [
         "const transfer = new Transfer(); transfer.setData('text', 'owned');",
         "new Transfer().setData('text', 'owned');",
+        "const Alias = Transfer; new Alias().setData('text', 'owned');",
         "const item: Chosen = new Transfer().items.add('owned', 'text');",
         "const item: Chosen = new Transfer().items.add(new Chosen('name'));",
         "const transfer: Transfer = new Transfer(); const item: Chosen = transfer.items.add('owned', 'text');",
@@ -39,6 +40,8 @@ fn host_construct_signatures_infer_instances_and_select_plain_member_overloads()
 fn host_constructors_do_not_erase_argument_checks_readonly_members_or_brands() {
     for source in [
         "new Illegal();",
+        "new AliasIllegal();",
+        "const Alias = Illegal; new Alias();",
         "new Transfer(1);",
         "new Chosen();",
         "new Chosen(1);",
