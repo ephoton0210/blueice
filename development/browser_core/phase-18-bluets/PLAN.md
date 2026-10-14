@@ -10497,3 +10497,30 @@ includes the A and B refusal regressions and C's complete frozen-matrix
 helper-frame check. The AC-K11.D conditions therefore hold, and K.11.4
 and AC-K11.D are checked together. This is a documentation-only tick;
 K.11.6's final-source, coverage and hosted gates remain open.
+
+### K.11.6 Windows frozen-fixture byte preservation (2026-10-15)
+
+The first final-source hosted run, [38622192828](https://github.com/ephoton0210/blueice/actions/runs/38622192828)
+on `290f002979f3d445ca1e1bc75551765c5fb02446`, found the same two
+`source_map_lookup` failures on all five Windows configurations (Server
+2022/2025 x86_64 and Windows 11 arm64, including both VS2026 variants).
+The decorator lookup rejected the map as `MalformedMap`; the System wrapper
+lookup incorrectly obtained an original position. The frozen K.11 fixture
+directory had no Git EOL attribute. A controlled `core.autocrlf=true`
+checkout changed the raw blob hashes of `decorated.ts` and
+`system_wrapper.ts`; after pinning the directory to `text eol=lf`, the
+checked-out hashes of those fixtures and
+`crlf_astral.ts` match their Git blobs exactly. The latter row deliberately
+synthesizes CRLF from its LF fixture in the oracle. This preserves the
+specified frozen inputs on Windows; it does not normalize arbitrary user
+source or widen the supported source-map profile.
+
+On the corrected tree, `cargo test -p blueice-bluets --test source_map_lookup`
+passes 4/4, and the pinned TypeScript 5.9.3
+`cargo test -p blueice-bluets --test source_map_tokens_oracle -- --include-ignored`
+passes 23/23. Workspace rustfmt, warnings-denied all-target Clippy for both
+BlueTS crates, and staged whitespace checks also pass. No production Rust
+source changed. This cross-platform repair is a prerequisite, not AC-K11.E
+completion: the final-source workspace,
+coverage, all-platform and aggregate CI gates must pass on the new committed
+hash before K.11.6 can be checked.

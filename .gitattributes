@@ -37,3 +37,7 @@ backend/bluets/tests/fixtures/source_extras/** text eol=lf
 backend/bluets/tests/fixtures/jsx_typing_extras/** text eol=lf
 backend/bluets/tests/fixtures/jsx_runtime_namespace/** text eol=lf
 backend/bluets/tests/fixtures/decorator_typing/** text eol=lf
+
+# K.11 freezes LF source-map fixtures; the CRLF+astral row is synthesized by
+# the oracle from its LF source so Windows checkout cannot change map positions.
+backend/bluets/tests/fixtures/k11_source_maps/** text eol=lf
