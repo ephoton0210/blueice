@@ -740,16 +740,23 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     generations at both resolution and arm without retaining a breakpoint.
     At a valid three-frame pause, require the old single-program generated
     location route to reject the foreign loader frame instead of relabeling it.
-  - [x] With the same frozen System emitted artifact and a throwing page
-    loader, pause at the mapped execute-body token, project the three exact
-    frames, and resume through a caught thrown completion. Verify the exact
-    thrown value and that register and console each run once; the BlueTS
+  - [x] With the same runtime-adapted artifact derived from the frozen System
+    row and a throwing page loader, pause at the mapped execute-body token,
+    project the three exact frames, and resume through a caught thrown
+    completion. Verify the exact thrown value and that register and console
+    each run once; the BlueTS
     script must report successful execution after the foreign caller catches.
-  - [ ] Prove a substituted cross-stream arm cannot consume the owner
-    stream's hold. The current core debugger listener serves one connection
-    to EOF before accepting the next, so concurrent real-process streams
-    need an explicit bounded multi-client design or an equivalent core-level
-    admission test.
+  - [x] At the core admission boundary, prove a substituted cross-stream
+    System arm cannot consume the owner stream's hold even when both sessions
+    independently negotiated the generated-breakpoint grant and receipted
+    both emitted and loader programs. Keep the current single-client listener
+    limitation explicit; this is an equivalent core-level admission test,
+    not a concurrent public-socket demonstration.
+  - [ ] Repeat the public System pause, source projection and continuation
+    with the unmodified frozen `system_wrapper.ts` source and its exact
+    BlueTSC-emitted artifact/map. Supply any ambient `console` declaration
+    separately rather than appending text to that source, and verify its
+    generation-bound installation before checking this parent System row.
   - [ ] Add independently default-denied, same-stream receipted public
     debugger operations for generated breakpoint resolution/arming and
     paused step/stack-location projection. Unmapped helper bodies and
@@ -1363,9 +1370,10 @@ before accepting another. A second public socket can connect but cannot
 complete `Hello` while the owner holds its stream. The remaining check needs
 bounded multi-client service or an equivalent core admission-stream test.
 
-The frozen System emitted JavaScript and map also pass a separate real-process
-thrown-completion regression with a page-supplied loader that throws from the
-mapped `console.log` call. The public debugger resolves and arms the same
+The runtime-adapted System JavaScript and map derived from the frozen source
+also pass a separate real-process thrown-completion regression with a
+page-supplied loader that throws from the mapped `console.log` call. The
+public debugger resolves and arms the same
 execute-body token, observes the exact emitted/loader/emitted pause and mapped
 original position, then resumes the nested frame. The foreign loader catches
 only the expected thrown value, rejects missing or wrong exceptions, and
@@ -1376,6 +1384,18 @@ cross-stream admission check or K.11.4 as a whole. The focused throwing
 System test passes 1/1 and the full real-process debugger suite passes 48/48;
 launcher debugger-test Clippy with warnings denied, workspace formatting and
 diff checks pass.
+
+The core admission dispatcher now has a two-session System arm regression:
+both sessions independently negotiate the generated-breakpoint grant and
+receive receipts for the same emitted and loader generations, then the owner holds
+the next document. A foreign stream's explicit System arm returns
+`InvalidTarget` before page-host routing, leaves the hold intact, and the
+owner can release it. The focused test and full engine library suite pass
+1/1 and 486/486; no production route or single-client listener behavior was
+changed. This is the checklist's equivalent core-level cross-stream proof,
+not a concurrent public-socket test. The parent System row remains unchecked
+until an unmodified frozen source and its exact generated artifact/map are
+installed and exercised without the appended ambient declaration.
 
 ### K.12 Projects — M10 — gap G-M2
 
