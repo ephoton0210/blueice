@@ -10486,3 +10486,14 @@ the 82-test TypeScript oracle and 23-test decoded source-map oracle. This is
 the AC-K11.C local gate, not K.11.6 workspace coverage or hosted CI.
 AC-K11.D and the K.11.4 parent remain unchecked until the tick rule is
 applied after this leaf is committed.
+
+### K.11.4 AC-K11.D — tick rule (2026-10-15)
+
+AC-K11.A (`f58adb107`), AC-K11.B (`2a843780e`) and AC-K11.C
+(`b01ad7f2a`) are committed. On the AC-K11.C source, the full public
+`out_of_process_debugger` target passed 55/55 tests; its prior count was
+54, so the new helper-matrix regression adds exactly one test. That run
+includes the A and B refusal regressions and C's complete frozen-matrix
+helper-frame check. The AC-K11.D conditions therefore hold, and K.11.4
+and AC-K11.D are checked together. This is a documentation-only tick;
+K.11.6's final-source, coverage and hosted gates remain open.

@@ -18,9 +18,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current status (2026-10-13):** Sections A–J and K.1–K.10 are complete within their measured subsets
+**Current status (2026-10-15):** Sections A–J, K.1–K.10 and K.11.1–K.11.5 are complete within their measured subsets
 (last hosted confirmation: run 38106557070 at `87ebda8c7`, 29/29 jobs; workspace lines 94.77%, BlueJS 99.30%).
-**Open work, in order:** K.11.4 (AC-K11.A–D) → K.11.6 (AC-K11.E) → K.12 → K.13 (independent) → K.14.
+**Open work, in order:** K.11.6 (AC-K11.E) → K.12 → K.13 (independent) → K.14.
 Dated evidence journals live in `PLAN_HISTORY.md`; this file keeps only checklists, acceptance criteria and
 one-line evidence pointers.
 
@@ -550,7 +550,7 @@ journal are in `PLAN_HISTORY.md` ("Archived from TODO.md: K.11"); only open work
 - [x] **K.11.3 Metadata and publication** — version/file/sourceRoot/sources/names/sourcesContent, external and
   inline, `inlineSources` on/off, UTF-16 columns, bounded failure.
 - [x] **K.11.5 Executable and regression behavior** — Node exit/stdout/stderr equality, stable repeated builds.
-- [ ] **K.11.4 Generated and relocated debugger positions.**
+- [x] **K.11.4 Generated and relocated debugger positions.**
   - Done: map bound to generation-bound page-host artifact; exact AST/bytecode safe points; decorator and
     three-frame System pauses; exact-source positive path (pause, step, stack, original location, resume,
     helper definitions unbound) for all 11 rows; default-denied same-stream receipted operations.
@@ -563,7 +563,7 @@ journal are in `PLAN_HISTORY.md` ("Archived from TODO.md: K.11"); only open work
     retains no breakpoint.
   - [x] **AC-K11.C Helper-frame non-disclosure.** *Pass when:* one test iterates all 11 rows and fails if
     any helper-body frame is labelled with a user-source coordinate.
-  - [ ] **AC-K11.D Tick rule.** Check K.11.4 only when A–C pass in `out_of_process_debugger` and the new
+  - [x] **AC-K11.D Tick rule.** Check K.11.4 only when A–C pass in `out_of_process_debugger` and the new
     test count is recorded.
 - [ ] **K.11.6 Final-source gate (AC-K11.E).** On one committed hash: fmt, warnings-denied all-target Clippy,
   workspace tests with ignored oracles, line coverage >= 90%, plus hosted build/test/lint,
