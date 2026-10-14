@@ -13,11 +13,7 @@ use super::*;
 impl Vm {
     pub(super) fn unbox_string(&self, value: &Value) -> Result<Value, RuntimeError> {
         if let Value::Object(id) = value {
-            if let Some(string) = self
-                .heap
-                .boxed_string(*id)
-                .expect("a value handed to a String operation is a live object")
-            {
+            if let Some(string) = self.heap.boxed_string(*id)? {
                 return Ok(Value::String(string.clone()));
             }
         }
@@ -162,9 +158,7 @@ impl Vm {
         let string = self.string_receiver(receiver)?;
         let search = self.coerce_string(native::argument(args, 0))?;
         let replace = native::argument(args, 1);
-        let callable = self
-            .is_callable(replace)
-            .expect("an argument value is a live value");
+        let callable = self.is_callable(replace)?;
         let template = if callable {
             JsString::default()
         } else {
@@ -498,12 +492,7 @@ impl Vm {
             ));
         };
         let key = self.coerce_property_key(key)?;
-        if self
-            .heap
-            .proxy(*object)
-            .expect("the right operand of `in` is a live object")
-            .is_some()
-        {
+        if self.heap.proxy(*object)?.is_some() {
             return self.proxy_has(*object, &key);
         }
         self.has_property(*object, &key)
@@ -697,6 +686,25 @@ impl Vm {
                 .eval_aware_binding_value(slot, &code.bindings[slot].name)
                 .expect("a binding slot of the running code is live")
                 .ok_or_else(|| RuntimeError::ReferenceError(code.bindings[slot].name.clone()))?,
+            WithReference::Global(name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                if self.global_bindings.contains_key(&name) {
+                    self.global_binding_value(&name)
+                        .expect("a published global binding retains its ordinary cell")
+                        .ok_or(RuntimeError::ReferenceError(name))?
+                } else {
+                    let global = self.global("globalThis").expect(
+                        "ResolveWithReference already materialized the permanent realm global",
+                    );
+                    self.object_environment_get(&global, &name)?
+                }
+            }
+            WithReference::Eval(name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                self.dynamic_eval_binding_value(&name)
+                    .expect("the active eval environments retain their ordinary binding cells")
+                    .ok_or(RuntimeError::ReferenceError(name))?
+            }
             WithReference::Unresolvable(name) => {
                 return Err(RuntimeError::ReferenceError(
                     name.to_utf8().expect("compiler emits a UTF-8 identifier"),
@@ -734,6 +742,25 @@ impl Vm {
             WithReference::Slot(slot) => {
                 self.assign_binding_slot(code, slot, value.clone(), false)?;
             }
+            WithReference::Global(name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                if !self.set_global_binding(&name, value.clone())? {
+                    let global = self.global("globalThis").expect(
+                        "ResolveWithReference already materialized the permanent realm global",
+                    );
+                    let object = global.object_id().expect("globalThis is an object");
+                    if code.strict && !self.has_property(object, &name.as_str().into())? {
+                        return Err(RuntimeError::ReferenceError(name));
+                    }
+                    self.set_property(&global, &name.into(), value)?;
+                }
+            }
+            WithReference::Eval(name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                if !self.set_dynamic_eval_binding(&name, value.clone())? {
+                    self.assign_unbound_name(&name, value.clone(), code.strict)?;
+                }
+            }
             WithReference::Unresolvable(name) => {
                 let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
                 // PutValue on an unresolvable Reference: a ReferenceError in
@@ -742,12 +769,13 @@ impl Vm {
                 if code.strict {
                     return Err(RuntimeError::ReferenceError(name));
                 }
-                if !self.set_dynamic_eval_binding(&name, value.clone())?
-                    && !self.set_global_binding(&name, value.clone())?
-                {
-                    let global = self.global("globalThis")?;
-                    self.set_property(&global, &name.into(), value)?;
-                }
+                // A saved unresolvable Reference always writes the global
+                // object, even if the RHS has since introduced a local eval
+                // binding. It must not resolve the name a second time.
+                let global = self
+                    .global("globalThis")
+                    .expect("ResolveWithReference already materialized the permanent realm global");
+                self.set_property(&global, &name.into(), value)?;
             }
         }
         Ok(())
@@ -795,6 +823,10 @@ enum WithReference<'a> {
     Object(ObjectId, &'a JsString),
     /// A binding slot of the running code.
     Slot(usize),
+    /// The realm's global Environment Record, independent of later evals.
+    Global(&'a JsString),
+    /// An eval-created binding in the running or captured variable environment.
+    Eval(&'a JsString),
     /// A name that no scope binds.
     Unresolvable(&'a JsString),
 }
@@ -813,6 +845,8 @@ impl<'a> WithReference<'a> {
                 Some(Self::Slot(*slot as usize))
             }
             (Value::Undefined, Value::String(name)) => Some(Self::Unresolvable(name)),
+            (Value::Bool(true), Value::String(name)) => Some(Self::Global(name)),
+            (Value::Bool(false), Value::String(name)) => Some(Self::Eval(name)),
             _ => None,
         }
     }
@@ -885,6 +919,8 @@ mod tests {
                 format!("object {}", name.to_utf8().unwrap())
             }
             Some(WithReference::Slot(slot)) => format!("slot {slot}"),
+            Some(WithReference::Global(name)) => format!("global {}", name.to_utf8().unwrap()),
+            Some(WithReference::Eval(name)) => format!("eval {}", name.to_utf8().unwrap()),
             Some(WithReference::Unresolvable(name)) => {
                 format!("unresolvable {}", name.to_utf8().unwrap())
             }
@@ -904,6 +940,8 @@ mod tests {
         };
         assert_eq!(classify(Value::Object(object), &name), "object x");
         assert_eq!(classify(Value::Undefined, &name), "unresolvable x");
+        assert_eq!(classify(Value::Bool(true), &name), "global x");
+        assert_eq!(classify(Value::Bool(false), &name), "eval x");
         assert_eq!(classify(Value::Number(0.0), &Value::Null), "slot 0");
         assert_eq!(
             classify(Value::Number((slots - 1) as f64), &Value::Null),

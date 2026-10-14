@@ -41,6 +41,7 @@ impl Vm {
             has_own_property_installed: false,
             property_is_enumerable_installed: false,
             string_intrinsics: None,
+            function_intrinsic_prototype: None,
             typed_array_intrinsics: None,
             regexp_legacy: crate::regexp::LegacyStatics::default(),
             result_root: None,
@@ -170,6 +171,7 @@ impl Vm {
             promises: HashMap::new(),
             promise_jobs: VecDeque::new(),
             browser_tasks: VecDeque::new(),
+            async_frame_roots: Vec::new(),
             test262_done: None,
             test262_agent_host: None,
             test262_agent_control: None,
@@ -187,6 +189,7 @@ impl Vm {
             throw_type_error: None,
             legacy_function_getters: None,
             call_stack: Vec::new(),
+            active_generator_delegations: HashSet::new(),
             inherited_with_depth: 0,
             joining: Vec::new(),
         })

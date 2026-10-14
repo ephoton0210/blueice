@@ -1,6 +1,6 @@
 # Test262 architecture-first implementation backlog
 
-Requested 2026-09-10. Status: **full inventory measured; full conformance remains open**. This is the implementation order for the [edition 17 track](ECMASCRIPT_2026.md). The [recorded analysis](TEST262_ANALYSIS_REPORT.md) includes all workstream counts, common diagnostics, representative cases and executable hashes. The existing `test262-summary.json` only groups outcomes by top-level directory and feature. It does not establish failure root causes or architectural priority.
+Requested 2026-09-10. Status: **full inventory measured; full conformance remains open**. This is the implementation order for the [edition 17 track](ECMASCRIPT_2026.md). The [recorded analysis](TEST262_ANALYSIS_REPORT.md) includes all workstream counts, common diagnostics, representative cases and executable hashes. The existing `test262-macos-summary.json` only groups outcomes by top-level directory and feature. It does not establish failure root causes or architectural priority.
 
 ## Platform provenance and current validation (updated 2026-09-22)
 
@@ -1234,4 +1234,4 @@ Measured the same way (modes passing, before -> after, no regressions): `languag
 
 **Remaining.** `language/import`: `import text` (5 modes) and `import bytes` (5 modes) are not implemented (`text` needs `type: "text"` attribute plumbing through the parser, compiler, VM and runner file classification; `bytes` also needs the immutable buffers above). `2nd-param-with-type-text.js` (2 modes) fails for the same reason, and `await-import-evaluation.js` needs a 100 ms busy wait that exceeds the 100,000-dispatch budget (its sloppy mode passes intermittently). Roots created by an `import()` that joins a still-running graph are never unrooted (a leak, not a correctness problem).
 
-The complete-inventory artifacts (`test262-summary.json` and the per-platform reports) were not regenerated for this work; they still describe the earlier full run.
+The complete-inventory artifacts (`test262-macos-summary.json` and the per-platform reports) were not regenerated for this work; they still describe the earlier full run.

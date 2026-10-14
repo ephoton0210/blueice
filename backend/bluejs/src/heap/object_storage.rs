@@ -6,6 +6,10 @@
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/heap_object_storage_boundaries.rs"]
+mod boundary_contracts;
+
 /// Apply OrdinaryOwnPropertyKeys ordering to stored keys, after any exotic
 /// virtual indices and strings have been supplied by the caller.
 pub(super) fn ordered_stored_property_keys(
@@ -68,13 +72,18 @@ impl Heap {
             }
             return Ok(None);
         }
-        if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
+        if let Some(cell) = self
+            .module_namespace_export_cell(object, &key)
+            .expect("the typed-array lookup validated the unchanged receiver")
+        {
             let value = self
                 .get_own(cell, "value")?
                 .ok_or(HeapError::UninitializedModuleExport)?;
             return Ok(Some(PropertyDescriptor::data(value, true, true, false)));
         }
-        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
+        let mapped_cell = self
+            .arguments_parameter_cell(object, &key)
+            .expect("the typed-array lookup validated the unchanged receiver");
         let obj = &self.objects[&object];
         if let Some(descriptor) = obj.attributes.get(&key) {
             let mut descriptor = descriptor.clone();
@@ -1322,7 +1331,8 @@ mod coverage_tests {
     #[test]
     fn a_parameter_cell_that_cannot_grow_reports_the_limit() {
         let mut failures = 0;
-        for extra in 0..600 {
+        let mut successes = 0;
+        for extra in 0..=1200 {
             let mut heap = heap();
             let (arguments, cell) = arguments_object(&mut heap);
             let value = Value::String("x".repeat(200).into());
@@ -1331,7 +1341,7 @@ mod coverage_tests {
             let define = heap.define_own_property_key(
                 arguments,
                 "0".into(),
-                PropertyDescriptor::data(value, true, true, true),
+                PropertyDescriptor::data(value.clone(), true, true, true),
             );
             failures += usize::from(write.is_err()) + usize::from(define.is_err());
             // A failed write never leaves the cell and the arguments disagreeing.
@@ -1340,9 +1350,16 @@ mod coverage_tests {
                     heap.get_own_key(cell, "value".into()),
                     Ok(Some(number(1.0)))
                 );
+            } else {
+                successes += 1;
+                assert_eq!(heap.get_own_key(cell, "value".into()), Ok(Some(value)));
             }
         }
         assert!(failures > 100, "{failures}");
+        assert!(
+            successes > 0,
+            "the sweep must also reach a successful write"
+        );
     }
 
     #[test]

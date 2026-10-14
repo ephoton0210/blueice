@@ -4,6 +4,8 @@
 
 **Status**: In progress — BlueIce has multi-tab/context IPC/MCP control, sealed compiler queries and a bounded owner-scoped BlueJS debugger endpoint with generation-fenced execution controls. Puppeteer still drives Chromium only in the differential-test harness. Complete native DevTools, Selenium/WebDriver/BiDi, Playwright/CDP adapters, API/SOAP workbench, `fetch`, `XMLHttpRequest` and the general page-originated request service remain open.
 
+> **Sequencing note (2026-10-13):** the first vertical slice of `fetch`/XHR, the page event loop, the DOM read/write surface and cookies is scheduled by [Phase 27](../phase-27-browsable-web-mvp/PLAN.md). Items it lands are checked off here, in the owning phase.
+
 ## Objective
 
 Give BlueIce the capabilities users expect from Chrome DevTools, Playwright and Selenium, plus a Postman-like HTTP/SOAP workbench and a page JavaScript debugger, while preserving its central invariant: every human, AI and automation client observes and acts on the same `core`, `Page`, script realm and render pass. Add complete standards-profiled AJAX (`fetch` and `XMLHttpRequest`), PJAX-compatible history/document-update semantics, and a declared complete SOAP interoperability profile so pages and API operators can dynamically receive, validate and send data without full-document navigation.

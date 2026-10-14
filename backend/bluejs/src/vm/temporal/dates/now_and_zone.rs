@@ -248,10 +248,10 @@ impl Vm {
 
     pub(in super::super::super) fn temporal_instant_to_zoned_date_time_iso(
         &mut self,
-        receiver: &Value,
+        receiver: &ValidatedTemporalReceiver,
         time_zone: &Value,
     ) -> Result<Value, RuntimeError> {
-        let epoch_nanoseconds = self.temporal_instant_epoch(receiver)?;
+        let epoch_nanoseconds = receiver.instant_epoch();
         let zone = self.temporal_time_zone(time_zone)?;
         let mut value = TemporalValue {
             kind: TemporalKind::ZonedDateTime,

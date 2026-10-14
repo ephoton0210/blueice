@@ -52,6 +52,52 @@ from run import (
 
 
 class RunnerTests(unittest.TestCase):
+    def test_atomic_coverage_deadline_is_scoped_to_the_fixed_dst_matrices(self):
+        for part in range(1, 9):
+            relative = f"staging/sm/Date/dst-offset-caching-{part}-of-8.js"
+            self.assertEqual(case_timeout({}, 2, relative), 70)
+            self.assertEqual(case_timeout({}, 2, relative, atomic_coverage=True), 180)
+            self.assertEqual(instruction_budget({}, 100_000, relative), 200_000_000)
+        for relative in ("built-ins/Date/basic.js", "staging/sm/Date/dst-offset-caching-0-of-8.js",
+                         "staging/sm/Date/dst-offset-caching-9-of-8.js",
+                         "staging/sm/Date/dst-offset-caching-1-of-8-extra.js"):
+            self.assertEqual(case_timeout({}, 2, relative, atomic_coverage=True), 2)
+            self.assertEqual(instruction_budget({}, 100_000, relative), 100_000)
+
+    def test_atomic_coverage_deadlines_preserve_finite_allocation_matrix_limits(self):
+        cases = {
+            "staging/sm/Array/toSpliced-dense.js": (20, 40, 80_000_000),
+            "staging/sm/regress/regress-1507322-deep-weakmap.js": (15, 30, 30_000_000),
+            "staging/sm/TypedArray/sort_large_countingsort.js": (60, 120, 100_000_000),
+        }
+        for relative, (ordinary, atomic, fuel) in cases.items():
+            data = {"includes": [run.SM_TYPED_ARRAY_HARNESS]} if "TypedArray/" in relative else {}
+            self.assertEqual(case_timeout(data, 2, relative), ordinary)
+            self.assertEqual(case_timeout(data, 2, relative, atomic_coverage=True), atomic)
+            self.assertEqual(case_timeout(data, 240, relative, atomic_coverage=True), 240)
+            self.assertEqual(instruction_budget(data, 100_000, relative), fuel)
+            sibling = relative.replace(".js", "-neighbor.js")
+            self.assertEqual(case_timeout({}, 2, sibling, atomic_coverage=True), 2)
+            elsewhere = "language/" + relative.rsplit("/", 1)[1]
+            self.assertEqual(case_timeout({}, 2, elsewhere, atomic_coverage=True), 2)
+
+    def test_heavy_scheduling_retains_every_fixture_and_its_resource_limits(self):
+        corpus = Path("corpus")
+        paths = [corpus / "test" / relative for relative in (
+            "built-ins/Date/basic.js", "staging/sm/Date/dst-offset-caching-2-of-8.js",
+            "staging/sm/expressions/destructuring-array-default-simple.js",
+            "staging/sm/Date/dst-offset-caching-8-of-8.js",
+        )]
+        groups = run.scheduling_groups(paths, corpus, 8)
+        self.assertEqual(groups[0], ("ordinary", [paths[0], paths[2]], 8))
+        self.assertEqual(groups[1], ("heavy", [paths[1], paths[3]], 2))
+        self.assertEqual(sorted(p for _, selected, _ in groups for p in selected), sorted(paths))
+        self.assertEqual(run.scheduling_groups(paths, corpus, 1)[1][2], 1)
+        for path in paths[1::2]:
+            relative = path.relative_to(corpus / "test").as_posix()
+            self.assertEqual(run.case_timeout({}, 2, relative), 70)
+            self.assertEqual(run.instruction_budget({}, 100_000, relative), 200_000_000)
+
     def test_default_jobs_never_oversubscribes_the_host_or_exceeds_the_ceiling(self):
         self.assertEqual(default_jobs(0), 1)
         self.assertEqual(default_jobs(1), 1)

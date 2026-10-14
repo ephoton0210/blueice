@@ -11,17 +11,21 @@ impl Vm {
         name: &str,
         allowed: &[&str],
     ) -> Result<Option<blueice_ecma402::DateTimeWidth>, RuntimeError> {
-        self.string_option(options, name, allowed)?
-            .map_or(Ok(None), |value| {
-                Ok(Some(match value.as_str() {
-                    "numeric" => blueice_ecma402::DateTimeWidth::Numeric,
-                    "2-digit" => blueice_ecma402::DateTimeWidth::TwoDigit,
-                    "short" => blueice_ecma402::DateTimeWidth::Short,
-                    "long" => blueice_ecma402::DateTimeWidth::Long,
-                    "narrow" => blueice_ecma402::DateTimeWidth::Narrow,
-                    _ => unreachable!("string_option validates date-time field widths"),
-                }))
-            })
+        use blueice_ecma402::DateTimeWidth::{Long, Narrow, Numeric, Short, TwoDigit};
+        const WIDTHS: [(&str, blueice_ecma402::DateTimeWidth); 5] = [
+            ("numeric", Numeric),
+            ("2-digit", TwoDigit),
+            ("short", Short),
+            ("long", Long),
+            ("narrow", Narrow),
+        ];
+        Ok(self.string_option(options, name, allowed)?.map(|value| {
+            WIDTHS
+                .iter()
+                .find(|(name, _)| *name == value)
+                .expect("string_option validates date-time field widths")
+                .1
+        }))
     }
 
     pub(in super::super) fn date_time_style(
@@ -29,16 +33,22 @@ impl Vm {
         options: &Value,
         name: &str,
     ) -> Result<Option<blueice_ecma402::DateTimeStyle>, RuntimeError> {
-        self.string_option(options, name, &["full", "long", "medium", "short"])?
-            .map_or(Ok(None), |value| {
-                Ok(Some(match value.as_str() {
-                    "full" => blueice_ecma402::DateTimeStyle::Full,
-                    "long" => blueice_ecma402::DateTimeStyle::Long,
-                    "medium" => blueice_ecma402::DateTimeStyle::Medium,
-                    "short" => blueice_ecma402::DateTimeStyle::Short,
-                    _ => unreachable!("string_option validates date-time styles"),
-                }))
-            })
+        use blueice_ecma402::DateTimeStyle::{Full, Long, Medium, Short};
+        const STYLES: [(&str, blueice_ecma402::DateTimeStyle); 4] = [
+            ("full", Full),
+            ("long", Long),
+            ("medium", Medium),
+            ("short", Short),
+        ];
+        Ok(self
+            .string_option(options, name, &["full", "long", "medium", "short"])?
+            .map(|value| {
+                STYLES
+                    .iter()
+                    .find(|(name, _)| *name == value)
+                    .expect("string_option validates date-time styles")
+                    .1
+            }))
     }
 
     pub(in super::super) fn date_time_fractional_second_digits(
@@ -84,7 +94,10 @@ impl Vm {
         let hour12 = if hour12 == Value::Undefined {
             None
         } else {
-            Some(self.to_boolean(&hour12)?)
+            Some(
+                self.to_boolean(&hour12)
+                    .expect("the options getter returned a live value in this realm"),
+            )
         };
         let hour_cycle =
             self.string_option(&options, "hourCycle", &["h11", "h12", "h23", "h24"])?;
@@ -116,15 +129,15 @@ impl Vm {
                 "longGeneric",
             ],
         )?;
-        let format_matcher =
-            match self.string_option(&options, "formatMatcher", &["basic", "best fit"])? {
-                Some(value) if value == "basic" => blueice_ecma402::DateTimeFormatMatcher::Basic,
-                Some(value) if value == "best fit" => {
-                    blueice_ecma402::DateTimeFormatMatcher::BestFit
-                }
-                None => blueice_ecma402::DateTimeFormatMatcher::BestFit,
-                Some(_) => unreachable!("string_option validates formatMatcher values"),
-            };
+        let format_matcher = if self
+            .string_option(&options, "formatMatcher", &["basic", "best fit"])?
+            .as_deref()
+            == Some("basic")
+        {
+            blueice_ecma402::DateTimeFormatMatcher::Basic
+        } else {
+            blueice_ecma402::DateTimeFormatMatcher::BestFit
+        };
         let date_style = self.date_time_style(&options, "dateStyle")?;
         let time_style = self.date_time_style(&options, "timeStyle")?;
         let has_components = weekday.is_some()
@@ -273,7 +286,8 @@ impl Vm {
         let constructor = self.globals["%Intl.DateTimeFormat%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("Intl construction roots its original constructor and immutable data prototype")
             .object_id()
             .expect("Intl.DateTimeFormat.prototype is an object");
         let legacy_receiver =
@@ -398,7 +412,8 @@ impl Vm {
             ));
         };
         self.heap
-            .date_time_format(id)?
+            .date_time_format(id)
+            .expect("the fallback getter returned a live local value or membrane facade")
             .is_some()
             .then_some(id)
             .ok_or_else(|| RuntimeError::TypeError("receiver is not an Intl.DateTimeFormat".into()))
@@ -412,8 +427,9 @@ impl Vm {
         if let Some(function) = self.heap.date_time_format_format(id) {
             return Ok(Value::Object(function));
         }
-        let constructor = self.string_intrinsics()?.0;
-        let prototype = self.heap.prototype(constructor)?.unwrap();
+        let prototype = self
+            .function_prototype()
+            .expect("a branded DateTimeFormat was built after the String intrinsics");
         let target = self.with_roots(|heap| {
             heap.alloc_native_function(NativeFunction::DateTimeFormatFormat, "", prototype)
         })?;
@@ -475,7 +491,6 @@ impl Vm {
     pub(in super::super) fn date_time_parts_to_value(
         &mut self,
         parts: Vec<blueice_ecma402::DateTimePart>,
-        source: Option<&str>,
     ) -> Result<Value, RuntimeError> {
         let prototype = self.object_prototype;
         let base = self.stack.len();
@@ -499,16 +514,6 @@ impl Vm {
                     true,
                     true,
                 )?;
-                if let Some(source) = source {
-                    self.define_data(
-                        object,
-                        "source",
-                        Value::String(source.into()),
-                        true,
-                        true,
-                        true,
-                    )?;
-                }
             }
             self.array_from(self.stack[base..].to_vec())
         })();
@@ -569,7 +574,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let data = self.date_time_format_data(receiver)?;
         let parts = self.date_time_format_parts(&data, value)?;
-        self.date_time_parts_to_value(parts, None)
+        self.date_time_parts_to_value(parts)
     }
 
     pub(in super::super) fn date_time_format_parts(
@@ -623,7 +628,8 @@ impl Vm {
                 }
                 Self::temporal_check_format_calendar(data, &temporal)?;
                 let options = self.temporal_format_options(data, temporal.kind)?;
-                self.temporal_date_time_format_input(temporal, options)
+                Ok(self.temporal_date_time_format_input(temporal, options)
+                    .expect("the accepted Temporal kind remains supported after calendar and option validation"))
             }
         }
     }
@@ -673,7 +679,7 @@ impl Vm {
             TemporalKind::Instant => {
                 let milliseconds = (&temporal.epoch_nanoseconds / 1_000_000u32)
                     .to_f64()
-                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
+                    .expect("BigInt conversion to f64 always returns a value");
                 Ok(blueice_ecma402::DateTimeFormatInput::TemporalInstant {
                     epoch_milliseconds: milliseconds,
                     options,
@@ -713,13 +719,8 @@ impl Vm {
         data: &blueice_ecma402::DateTimeFormat,
         kind: TemporalKind,
     ) -> Result<blueice_ecma402::DateTimeFormatOptions, RuntimeError> {
-        if kind == TemporalKind::Duration {
-            return Err(RuntimeError::TypeError(
-                "Intl.DateTimeFormat does not support Temporal.Duration".into(),
-            ));
-        }
+        let format_kind = DateTimeTemporalKind::from_temporal(kind)?;
         let original = data.options();
-        let has_date = temporal_has_date_components(original);
         let has_time = temporal_has_time_components(original);
         // `era` is an additive display field. It does not suppress the
         // type-specific default components selected by DateTimeFormat.
@@ -733,7 +734,7 @@ impl Vm {
         let mut options = original.clone();
         if kind == TemporalKind::Instant {
             if only_default_components {
-                temporal_default_components(&mut options, kind);
+                temporal_default_components(&mut options, format_kind);
             }
             return Ok(options);
         }
@@ -742,10 +743,10 @@ impl Vm {
         // formatter's requested IANA transition rules.
         options.time_zone = Some("UTC".into());
         options.time_zone_name = None;
-        match kind {
-            TemporalKind::PlainDate => clear_temporal_time_components(&mut options),
-            TemporalKind::PlainDateTime => {}
-            TemporalKind::PlainMonthDay => {
+        match format_kind {
+            DateTimeTemporalKind::Date => clear_temporal_time_components(&mut options),
+            DateTimeTemporalKind::DateTime | DateTimeTemporalKind::Instant => {}
+            DateTimeTemporalKind::MonthDay => {
                 clear_temporal_time_components(&mut options);
                 options.weekday = None;
                 options.era = None;
@@ -754,17 +755,14 @@ impl Vm {
                     apply_temporal_partial_date_style(&mut options, style, false);
                 }
             }
-            TemporalKind::PlainTime => clear_temporal_date_components(&mut options),
-            TemporalKind::PlainYearMonth => {
+            DateTimeTemporalKind::Time => clear_temporal_date_components(&mut options),
+            DateTimeTemporalKind::YearMonth => {
                 clear_temporal_time_components(&mut options);
                 options.weekday = None;
                 options.day = None;
                 if let Some(style) = original.date_style {
                     apply_temporal_partial_date_style(&mut options, style, true);
                 }
-            }
-            TemporalKind::Instant | TemporalKind::ZonedDateTime | TemporalKind::Duration => {
-                unreachable!()
             }
         }
         // `timeStyle: long/full` normally supplies a time-zone name. Plain
@@ -777,7 +775,7 @@ impl Vm {
             options.time_style = Some(blueice_ecma402::DateTimeStyle::Medium);
         }
         if only_default_components {
-            temporal_default_components(&mut options, kind);
+            temporal_default_components(&mut options, format_kind);
         }
         let visible = only_default_components
             || options.date_style.is_some()
@@ -789,42 +787,21 @@ impl Vm {
                 "DateTimeFormat options do not overlap the Temporal value".into(),
             ));
         }
-        // If a date/time style was present but it did not apply to this
-        // Temporal kind, the pruning above left no components. This is the
-        // same no-overlap TypeError, including dateStyle with PlainTime.
-        // This is a *value-side* check (it runs for every formatted value,
-        // including a plain `Intl.DateTimeFormat.prototype.format` call, not
-        // only `Temporal.PlainTime.prototype.toLocaleString`) and is
-        // deliberately narrower than `toLocaleString`'s own required=TIME
-        // check in `temporal_plain_time_to_locale_string`: a bare
-        // `{ dateStyle }` (no timeStyle, no time fields) has no overlap with
-        // a PlainTime under either rule, but `{ dateStyle, timeStyle }`
-        // together format the value fine here — dateStyle is simply ignored
-        // — per `intl402/DateTimeFormat/prototype/format/
-        // temporal-plaintime-formatting-datetime-style.js`, which is *not*
-        // going through `toLocaleString`.
-        if (kind == TemporalKind::PlainTime
-            && original.date_style.is_some()
-            && original.time_style.is_none()
-            && !has_time)
-            || (kind == TemporalKind::PlainDate
-                && original.time_style.is_some()
-                && original.date_style.is_none()
-                && !has_date)
-        {
-            return Err(RuntimeError::TypeError(
-                "DateTimeFormat options do not overlap the Temporal value".into(),
-            ));
-        }
         Ok(options)
     }
 
-    pub(in super::super) fn temporal_range_parts(
+    pub(in super::super) fn temporal_range_inputs(
         &self,
         data: &blueice_ecma402::DateTimeFormat,
         start: TemporalValue,
         end: TemporalValue,
-    ) -> Result<Vec<blueice_ecma402::DateTimeRangePart>, RuntimeError> {
+    ) -> Result<
+        (
+            blueice_ecma402::DateTimeFormatInput,
+            blueice_ecma402::DateTimeFormatInput,
+        ),
+        RuntimeError,
+    > {
         if start.kind != end.kind {
             return Err(RuntimeError::TypeError(
                 "date-time range endpoints have different Temporal types".into(),
@@ -845,10 +822,13 @@ impl Vm {
         // direct and range formatting.
         Self::temporal_check_format_calendar(data, &start)?;
         let options = self.temporal_format_options(data, start.kind)?;
-        let start = self.temporal_date_time_format_input(start, options.clone())?;
-        let end = self.temporal_date_time_format_input(end, options)?;
-        data.format_range_inputs_to_parts(start, end)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        let start = self
+            .temporal_date_time_format_input(start, options.clone())
+            .expect("the shared Temporal kind passed option validation");
+        let end = self
+            .temporal_date_time_format_input(end, options)
+            .expect("the second endpoint has the same accepted Temporal kind");
+        Ok((start, end))
     }
 
     pub(in super::super) fn date_time_range_parts(
@@ -857,20 +837,24 @@ impl Vm {
         start: DateTimeFormatValue,
         end: DateTimeFormatValue,
     ) -> Result<Vec<blueice_ecma402::DateTimeRangePart>, RuntimeError> {
-        match (start, end) {
-            (DateTimeFormatValue::Number(start), DateTimeFormatValue::Number(end)) => data
-                .format_range_inputs_to_parts(
-                    blueice_ecma402::DateTimeFormatInput::EpochMilliseconds(start),
-                    blueice_ecma402::DateTimeFormatInput::EpochMilliseconds(end),
-                )
-                .map_err(|error| RuntimeError::RangeError(error.to_string())),
+        let (start, end) = match (start, end) {
+            (DateTimeFormatValue::Number(start), DateTimeFormatValue::Number(end)) => (
+                blueice_ecma402::DateTimeFormatInput::EpochMilliseconds(start),
+                blueice_ecma402::DateTimeFormatInput::EpochMilliseconds(end),
+            ),
             (DateTimeFormatValue::Temporal(start), DateTimeFormatValue::Temporal(end)) => {
-                self.temporal_range_parts(data, start, end)
+                self.temporal_range_inputs(data, start, end)?
             }
-            _ => Err(RuntimeError::TypeError(
-                "date-time range endpoints have different kinds".into(),
-            )),
-        }
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "date-time range endpoints have different kinds".into(),
+                ))
+            }
+        };
+        // Both input families use the same provider error boundary, including
+        // invalid numeric dates and any Temporal formatter/provider refusal.
+        data.format_range_inputs_to_parts(start, end)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
     }
 
     pub(in super::super) fn date_time_format_format_range(
@@ -911,7 +895,8 @@ impl Vm {
         let id = self.unwrap_date_time_format(receiver)?;
         let data = self
             .heap
-            .date_time_format(id)?
+            .date_time_format(id)
+            .expect("UnwrapDateTimeFormat validated this live heap handle")
             .expect("UnwrapDateTimeFormat returns a branded object");
         let options = data.options();
         let prototype = self.object_prototype;

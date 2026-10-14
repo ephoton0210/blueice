@@ -35,22 +35,22 @@ impl Vm {
                 "debugger value target is not an active paused slot",
             ));
         }
-        let (bindings, cells) =
-            match frame.code_unit_ordinal {
-                0 => {
-                    if let Some(root) = &self.debugger_module_continuation {
-                        (&root.execution.bindings, &root.execution.cells)
-                    } else {
-                        (&self.bindings, &self.cells)
-                    }
+        let (bindings, cells) = match frame.code_unit_ordinal {
+            0 => {
+                if let Some(root) = &self.debugger_module_continuation {
+                    (&root.execution.bindings, &root.execution.cells)
+                } else {
+                    (&self.bindings, &self.cells)
                 }
-                _ => {
-                    let child = self.debugger_nested_continuation.as_ref().ok_or(
-                        RuntimeError::Unsupported("debugger nested value frame is unavailable"),
-                    )?;
-                    (&child.execution.bindings, &child.execution.cells)
-                }
-            };
+            }
+            _ => {
+                let child = self
+                    .debugger_nested_continuation
+                    .as_ref()
+                    .expect("the validated non-root stack frame retains its nested continuation");
+                (&child.execution.bindings, &child.execution.cells)
+            }
+        };
         self.debugger_binding_preview(bindings, cells, entry)
     }
 
@@ -81,9 +81,7 @@ impl Vm {
         let root = self
             .debugger_module_continuation
             .as_ref()
-            .ok_or(RuntimeError::Unsupported(
-                "debugger linked entry continuation is unavailable",
-            ))?;
+            .expect("the linked stack snapshot validated its retained module entry continuation");
         self.debugger_binding_preview(&root.execution.bindings, &root.execution.cells, entry)
     }
 
@@ -95,9 +93,14 @@ impl Vm {
     ) -> Result<VmDebuggerValuePreview, RuntimeError> {
         let slot = entry.slot_ordinal as usize;
         let value = if let Some(cell) = cells.get(&slot) {
-            self.heap.get_own(*cell, "value")?
+            self.heap
+                .get_own(*cell, "value")
+                .expect("paused execution retains its compiler-owned ordinary binding cells")
         } else {
-            bindings.get(slot).cloned().flatten()
+            // The selected entry came from this execution's active compiler
+            // scope, whose slots fit its allocated binding vector. A None
+            // binding still preserves the public TDZ refusal below.
+            bindings[slot].clone()
         }
         .ok_or(RuntimeError::Unsupported(
             "debugger value binding is uninitialized",
@@ -186,13 +189,10 @@ impl Vm {
         let mut frames = Vec::new();
         match (frame_serial, &self.debugger_nested_continuation) {
             (Some(serial), Some(child)) if child.frame_serial == serial => {
-                let child_generation =
-                    child
-                        .code
-                        .debugger_program_generation
-                        .ok_or(RuntimeError::Unsupported(
-                            "debugger-paused child has no installed program generation",
-                        ))?;
+                let child_generation = child
+                    .code
+                    .debugger_program_generation
+                    .expect("a nested pause targets the stamped immutable installed bytecode tree");
                 if child_generation != program_generation && !allow_linked {
                     return Err(RuntimeError::Unsupported(
                         "nested debugger frame belongs to another program generation",

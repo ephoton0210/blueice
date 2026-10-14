@@ -4,6 +4,9 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
+
 [dependencies]
 url = "=2.5.8"
 blueice-ecma402 = { path = "../ecma402" }

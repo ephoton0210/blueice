@@ -431,15 +431,59 @@ fn adapter_executes_relative_time_format_through_the_json_lines_interface() {
     assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
 }
 
-#[cfg(unix)]
-#[test]
-fn regex_protocol_faults_and_missing_helper_fail_closed() {
-    use std::os::unix::fs::PermissionsExt;
-    let directory = std::env::temp_dir().join(format!("bluejs-regex-fault-{}", std::process::id()));
-    std::fs::create_dir_all(&directory).unwrap();
+#[cfg(any(unix, windows))]
+fn fault_worker(directory: &std::path::Path) -> std::path::PathBuf {
     let script = directory.join("worker.py");
     std::fs::write(&script, include_bytes!("fixtures/regex_fault.py")).unwrap();
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        script
+    }
+    #[cfg(windows)]
+    {
+        let launcher = directory.join("worker.cmd");
+        std::fs::write(&launcher, b"@echo off\r\npython.exe \"%~dp0worker.py\"\r\n").unwrap();
+        launcher
+    }
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn regex_protocol_faults_and_missing_helper_fail_closed() {
+    let directory = std::env::temp_dir().join(format!("bluejs-regex-fault-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let script = fault_worker(&directory);
+    // The fault modes below fail closed even without an interpreter, so only
+    // prove the fixture itself speaks the protocol where Python exists.
+    let interpreter = if cfg!(windows) {
+        "python.exe"
+    } else {
+        "python3"
+    };
+    let python_available = Command::new(interpreter)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if python_available {
+        let ready = Command::new(&script)
+            .env("BLUEJS_FAULT_MODE", "after_ready_exit")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(
+            ready.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ready.stderr)
+        );
+        let payload = b"bluejs-regexp-worker/1";
+        assert_eq!(
+            ready.stdout,
+            [(payload.len() as u32).to_le_bytes().as_slice(), payload].concat()
+        );
+    }
     for mode in [
         "early_exit",
         "bad_ready",
@@ -477,26 +521,23 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn regex_helper_reports_closed_output_during_frame_header_and_body() {
-    use std::os::fd::OwnedFd;
-    use std::os::unix::net::UnixStream;
-
-    let (read, write) = UnixStream::pair().unwrap();
+    let (read, write) = std::io::pipe().unwrap();
     drop(read);
     let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
         .stdin(Stdio::null())
-        .stdout(Stdio::from(OwnedFd::from(write)))
+        .stdout(Stdio::from(write))
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
     assert!(!child.wait().unwrap().success());
 
-    let (mut output, write) = UnixStream::pair().unwrap();
+    let (mut output, write) = std::io::pipe().unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
         .stdin(Stdio::piped())
-        .stdout(Stdio::from(OwnedFd::from(write)))
+        .stdout(Stdio::from(write))
         .stderr(Stdio::null())
         .spawn()
         .unwrap();

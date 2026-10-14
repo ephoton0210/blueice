@@ -33,19 +33,15 @@ impl Parser {
                 if f.name.is_none() {
                     return Err(self.syntax_error("function declarations require a name"));
                 }
-                if self.static_block_function_depths.last() == Some(&self.function_depth)
-                    && f.name.as_deref() == Some("await")
-                {
-                    return Err(self.syntax_error(
-                        "await cannot be bound by a function declaration in a class static block",
-                    ));
-                }
+                // parse_function_declaration validates the name in the
+                // enclosing context, including class static blocks.
                 Ok(Stmt::FunctionDecl(f))
             }
             Token::Identifier(name) if name == "async" && self.async_function_follows() => {
                 self.require_unescaped_async()?;
                 self.advance();
-                self.expect_keyword(Keyword::Function)?;
+                // async_function_follows already checked this token.
+                self.advance();
                 let f = self.parse_function_declaration(true)?;
                 if f.name.is_none() {
                     return Err(self.syntax_error("function declarations require a name"));
@@ -136,7 +132,8 @@ impl Parser {
             })
         {
             self.advance();
-            self.consume_semicolon()?;
+            // The lookahead already established an ASI boundary.
+            self.eat_punct(Punct::Semicolon);
             return Ok(Stmt::Expr(Expr::Identifier("let".to_string())));
         }
         self.parse_statement()
@@ -169,34 +166,15 @@ impl Parser {
     }
 
     pub(super) fn parse_labelled_stmt(&mut self) -> Result<Stmt, ParseError> {
-        let identifier_escaped = self.current_identifier_escaped();
-        let label = self.expect_identifier_name()?;
-        self.expect_punct(Punct::Colon)?;
+        // Both dispatch arms checked an IdentifierName followed by a colon.
+        let label = self
+            .expect_identifier_name()
+            .expect("label lookahead checked an IdentifierName");
+        self.advance(); // ':'
+                        // This includes await/yield restrictions in async functions,
+                        // generators, modules and class static blocks, escaped or otherwise.
         if !self.identifier_reference_name_is_valid(&label) {
             return Err(self.syntax_error("a reserved word cannot be used as a label"));
-        }
-        if label == "await" && (self.async_depth != 0 || self.module_await || self.module) {
-            let detail = if identifier_escaped {
-                "the await keyword cannot contain an escape"
-            } else {
-                "await cannot be used as a label in an async function or module"
-            };
-            return Err(self.syntax_error(detail));
-        }
-        if label == "await"
-            && self.static_block_function_depths.last() == Some(&self.function_depth)
-        {
-            return Err(
-                self.syntax_error("await cannot be used as a label in a class static block")
-            );
-        }
-        if label == "yield" && self.generator_depth != 0 {
-            let detail = if identifier_escaped {
-                "the yield keyword cannot contain an escape"
-            } else {
-                "yield cannot be used as a label in a generator function"
-            };
-            return Err(self.syntax_error(detail));
         }
 
         // In sloppy code, `let` may begin the labelled expression statement
@@ -212,7 +190,8 @@ impl Parser {
             if self.check_punct(Punct::LBracket) {
                 return Err(self.syntax_error("a labelled expression cannot begin with 'let ['"));
             }
-            self.consume_semicolon()?;
+            // The token after let has a line terminator, so ASI is valid.
+            self.eat_punct(Punct::Semicolon);
             Stmt::Expr(Expr::Identifier("let".to_string()))
         } else {
             self.parse_statement()?
@@ -249,7 +228,8 @@ impl Parser {
     }
 
     pub(super) fn parse_block(&mut self) -> Result<Vec<Stmt>, ParseError> {
-        self.expect_punct(Punct::LBrace)?;
+        // Every caller checked the opening brace before selecting a block.
+        self.advance(); // '{'
         let mut stmts = Vec::new();
         while !self.check_punct(Punct::RBrace) {
             if self.at_eof() {
@@ -257,7 +237,8 @@ impl Parser {
             }
             stmts.push(unlabel_function_declaration(self.parse_statement()?));
         }
-        self.expect_punct(Punct::RBrace)?;
+        // The loop ends only at the closing brace.
+        self.advance();
         Ok(stmts)
     }
 
@@ -366,11 +347,8 @@ impl Parser {
                 DeclKind::AwaitUsing
             };
             let pattern = self.parse_binding_pattern()?;
-            if !matches!(pattern, Pattern::Identifier(_)) {
-                return Err(
-                    self.syntax_error("a using declaration cannot use a destructuring pattern")
-                );
-            }
+            // Both using lookaheads require a BindingIdentifier here.
+            // Later comma-separated bindings still need a pattern check.
             if self.check_keyword(Keyword::In) {
                 // "It is a Syntax Error if IsUsingDeclaration of ForBinding is
                 // true and IsDestructuring of ForBinding is false" is not the
@@ -457,28 +435,29 @@ impl Parser {
 
             let initializer = self.parse_optional_for_init_value()?;
             if self.check_keyword(Keyword::In) {
-                if let Some(initializer) = initializer {
-                    if decl_kind == DeclKind::Var && matches!(pattern, Pattern::Identifier(_)) {
-                        // The Annex B `var x = init in ...` for-in shape has
-                        // no `for await` counterpart -- `for await` only
-                        // ever accepts an `of` clause.
-                        if is_await {
-                            return Err(self.syntax_error("for await requires an of clause"));
-                        }
-                        self.advance();
-                        let right = self.parse_expression()?;
-                        self.expect_punct(Punct::RParen).map_err(known_syntax)?;
-                        let body = Box::new(self.parse_embedded_statement()?);
-                        return Ok(Stmt::ForIn {
-                            left: ForHead::AnnexBVarInit(pattern, initializer),
-                            right,
-                            body,
-                        });
+                // An uninitialized in head returned above. Reaching in
+                // after parse_optional_for_init_value requires an initializer.
+                let initializer = initializer.expect("an initialized for-in head");
+                if decl_kind == DeclKind::Var && matches!(pattern, Pattern::Identifier(_)) {
+                    // The Annex B `var x = init in ...` for-in shape has
+                    // no `for await` counterpart -- `for await` only
+                    // ever accepts an `of` clause.
+                    if is_await {
+                        return Err(self.syntax_error("for await requires an of clause"));
                     }
-                    return Err(known_syntax(self.syntax_error(
-                        "for-in/of declaration heads cannot have initializers",
-                    )));
+                    self.advance();
+                    let right = self.parse_expression()?;
+                    self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+                    let body = Box::new(self.parse_embedded_statement()?);
+                    return Ok(Stmt::ForIn {
+                        left: ForHead::AnnexBVarInit(pattern, initializer),
+                        right,
+                        body,
+                    });
                 }
+                return Err(known_syntax(self.syntax_error(
+                    "for-in/of declaration heads cannot have initializers",
+                )));
             }
             let mut declarators = vec![VarDeclarator {
                 pattern,
@@ -551,10 +530,11 @@ impl Parser {
             if is_await {
                 return Err(self.syntax_error("for await requires an of clause"));
             }
-            let left = match (pattern, expr) {
-                (Some(pattern), None) => ForHead::Assignment(pattern),
-                (None, Some(expr)) => expr_to_for_head(expr).map_err(known_syntax)?,
-                _ => unreachable!("for head is parsed as exactly one form"),
+            let left = match pattern {
+                Some(pattern) => ForHead::Assignment(pattern),
+                None => {
+                    expr_to_for_head(expr.expect("an expression for head")).map_err(known_syntax)?
+                }
             };
             let right = self.parse_expression()?;
             self.expect_punct(Punct::RParen).map_err(known_syntax)?;
@@ -563,10 +543,11 @@ impl Parser {
         }
         if self.is_contextual_of() {
             self.advance();
-            let left = match (pattern, expr) {
-                (Some(pattern), None) => ForHead::Assignment(pattern),
-                (None, Some(expr)) => expr_to_for_head(expr).map_err(known_syntax)?,
-                _ => unreachable!("for head is parsed as exactly one form"),
+            let left = match pattern {
+                Some(pattern) => ForHead::Assignment(pattern),
+                None => {
+                    expr_to_for_head(expr.expect("an expression for head")).map_err(known_syntax)?
+                }
             };
             let right = self.parse_assignment()?;
             self.expect_punct(Punct::RParen).map_err(known_syntax)?;
@@ -697,7 +678,8 @@ impl Parser {
             }
             cases.push(SwitchCase { test, consequent });
         }
-        self.expect_punct(Punct::RBrace)?;
+        // The loop ends only at the closing brace.
+        self.advance();
         Ok(Stmt::Switch {
             discriminant,
             cases,
@@ -714,7 +696,8 @@ impl Parser {
             || self.at_eof()
             || self.newline_before()
         {
-            self.consume_semicolon()?;
+            // Every condition above is a semicolon or an ASI boundary.
+            self.eat_punct(Punct::Semicolon);
             return Ok(Stmt::Return(None));
         }
         let expr = self.parse_expression()?;
@@ -742,13 +725,8 @@ impl Parser {
             let param = if self.eat_punct(Punct::LParen) {
                 let p = self.parse_binding_pattern().map_err(known_syntax)?;
                 self.expect_punct(Punct::RParen).map_err(known_syntax)?;
-                if self.static_block_function_depths.last() == Some(&self.function_depth)
-                    && matches!(&p, Pattern::Identifier(name) if name == "await")
-                {
-                    return Err(
-                        self.syntax_error("await cannot be bound directly in a class static block")
-                    );
-                }
+                // parse_binding_pattern validates static-block bindings,
+                // including identifiers nested in destructuring patterns.
                 Some(p)
             } else {
                 None

@@ -53,6 +53,17 @@ fn complete_core_harness_helpers_are_available() {
     }
 }
 
+#[test]
+fn assertion_formatters_preserve_live_objects_returned_by_replaced_globals() {
+    assert_native_matches_upstream(&[
+        "(() => {const old = JSON; try {JSON = {stringify() {return {toString() {return 'json result';}};}}; return formatSimpleValue('text');} finally {JSON = old;}})()",
+        "(() => {const old = JSON; try {JSON = function() {}; JSON.stringify = () => ''; return formatSimpleValue('text');} finally {JSON = old;}})()",
+        "(() => {const old = JSON; try {JSON = null; return formatIdentityFreeValue('text');} finally {JSON = old;}})()",
+        "(() => {const old = JSON; try {JSON = undefined; return formatIdentityFreeValue('text');} finally {JSON = old;}})()",
+        "(() => {function E() {} const error = {constructor: E}; assert.throws(E, () => {throw error;}); return 'matched';})()",
+    ]);
+}
+
 /// The corpus's own `sta.js` and `assert.js`, executed unchanged in a VM that
 /// has no native harness. This is the oracle the native `assert` family is
 /// measured against: the two must agree on every outcome and every message.

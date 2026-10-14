@@ -62,6 +62,12 @@ pub(super) fn register_active(vm: &mut Vm) -> ActiveGuard {
     ActiveGuard { tag }
 }
 
+/// Whether this call is nested inside a different Realm's suspended call.
+/// Only inspect heap tags; no registered VM pointer is dereferenced.
+pub(super) fn has_foreign_caller(tag: u64) -> bool {
+    ACTIVE.with(|active| active.borrow().iter().any(|(caller, _)| *caller != tag))
+}
+
 /// Finds the most recently registered `Vm` for `tag`, if one is currently
 /// mid-call on this thread's synchronous cross-realm call chain. See
 /// `ACTIVE`'s own documentation for the safety argument governing every

@@ -329,6 +329,67 @@ impl Vm {
         }))
     }
 
+    /// `[[DefineOwnProperty]]` changes the real parent object immediately.
+    /// Descriptor values and accessors are imported before invoking its
+    /// internal method, using the same active-parent discipline as Get.
+    pub(in super::super) fn test262_reverse_define_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: PropertyName,
+        mut descriptor: PropertyDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        let (home_heap, target, _, _) = self
+            .test262_reverse_reference(wrapper)
+            .expect("reverse defineOwnProperty has a membrane record");
+        let self_heap = self.object_prototype.heap;
+        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let _guard = register_active(self);
+        // SAFETY: the child is suspended before borrowing its active parent;
+        // no access to self occurs below. See this module's Soundness note.
+        let parent = unsafe { &mut *ptr };
+        let child_realm_id = reverse_child_realm_id(parent, self_heap);
+        let base = parent.stack.len();
+        let result = (|| {
+            for field in [
+                &mut descriptor.value,
+                &mut descriptor.get,
+                &mut descriptor.set,
+            ] {
+                if let Some(value) = field.take() {
+                    let value = parent.test262_import_foreign_value(child_realm_id, value)?;
+                    parent.stack.push(value.clone());
+                    *field = Some(value);
+                }
+            }
+            parent.remaining_instructions = parent.config.instruction_budget;
+            parent.object_define_own_property(target, key, descriptor)
+        })();
+        parent.stack.truncate(base);
+        result.map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+    }
+
+    /// `[[Delete]]` likewise delegates to the original object's internal
+    /// method, preserving Proxy traps, descriptor constraints and errors.
+    pub(in super::super) fn test262_reverse_delete(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<bool, RuntimeError> {
+        let (home_heap, target, _, _) = self
+            .test262_reverse_reference(wrapper)
+            .expect("reverse delete has a membrane record");
+        let self_heap = self.object_prototype.heap;
+        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let _guard = register_active(self);
+        // SAFETY: no child access overlaps this nested active-parent call.
+        let parent = unsafe { &mut *ptr };
+        let child_realm_id = reverse_child_realm_id(parent, self_heap);
+        parent.remaining_instructions = parent.config.instruction_budget;
+        parent
+            .object_delete(target, key)
+            .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+    }
+
     /// `[[Set]]` on a reverse facade with an explicit receiver, mirroring
     /// `test262_foreign_set_with_receiver`.
     pub(in super::super) fn test262_reverse_set_with_receiver(
@@ -671,25 +732,44 @@ mod tests {
         assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
     }
 
-    /// A child-realm getter whose body performs `operation` on a facade of
-    /// the parent's `target` (and `fn`), read through the forward membrane.
-    /// The parent is not registered active for that read, so the operation
-    /// must fail with a catchable TypeError instead of dereferencing a
-    /// dangling parent.
-    fn operation_without_a_live_parent(operation: &str) -> String {
-        // The operation sits inside a single-quoted string of the child script.
-        let operation = operation.replace('\'', "\"");
-        format!(
-            "(() => {{
-               var other = $262.createRealm();
-               var target = {{ x: 1, get y() {{ return 2 }} }};
-               function fn() {{ return 1 }}
-               other.global.target = target;
-               other.global.fn = fn;
-               other.evalScript('Object.defineProperty(globalThis, \"probe\", {{ get: function () {{ return ({operation}) }} }});');
-               try {{ other.global.probe; return false }} catch (e) {{ return e.constructor.name === 'TypeError' && e.message.includes('no longer reachable') }}
-             }})()"
+    /// Enters the child directly, after the parent's export call returned.
+    /// A forward getter keeps its parent active; bypass that boundary here
+    /// to verify a facade really refuses an absent parent instead of using
+    /// a stale pointer.
+    fn operation_without_a_live_parent(operation: &str) -> Result<Value, RuntimeError> {
+        let mut parent = Vm::default();
+        parent.install_test262_harness().unwrap();
+        parent
+            .execute(
+                &compile(
+                    &parse(
+                        "var other = $262.createRealm();
+             var target = { x: 1, get y() { return 2 } };
+             function fn() { return 1 }
+             other.global.target = target; other.global.fn = fn;",
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let code = compile(
+            &parse(&format!(
+                "var caught = false;
+             try {{ ({operation}); }} catch (e) {{
+               caught = e instanceof TypeError && e.message.includes('no longer reachable');
+             }} caught"
+            ))
+            .unwrap(),
         )
+        .unwrap();
+        parent
+            .test262_realms
+            .values_mut()
+            .next()
+            .unwrap()
+            .vm
+            .execute(&code)
     }
 
     #[test]
@@ -711,7 +791,7 @@ mod tests {
             "fn.call({}, 1, 2)",
         ] {
             assert_eq!(
-                evaluate(&operation_without_a_live_parent(operation)),
+                operation_without_a_live_parent(operation),
                 Ok(Value::Bool(true)),
                 "{operation}"
             );

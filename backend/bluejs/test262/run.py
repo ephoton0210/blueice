@@ -960,6 +960,16 @@ def selected_files(all_files, corpus, pattern, excluded=""):
     return files
 
 
+def scheduling_groups(files, corpus, jobs):
+    """Isolate explicitly budgeted long fixtures without extending deadlines."""
+    ordinary, heavy = [], []
+    for path in files:
+        relative = path.relative_to(corpus / "test").as_posix()
+        group = heavy if LARGE_FIXTURE_RESOURCES.get(relative, {}).get("timeout", 0) >= 60 else ordinary
+        group.append(path)
+    return [("ordinary", ordinary, jobs), ("heavy", heavy, min(jobs, 2))]
+
+
 def execution_source(relative, source):
     """Return semantic native adapters for bounded, pinned stress fixtures."""
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
@@ -1165,6 +1175,18 @@ LARGE_FIXTURE_RESOURCES = {
 }
 
 
+ATOMIC_COVERAGE_FIXTURE_TIMEOUTS = {
+    **{f"staging/sm/Date/dst-offset-caching-{part}-of-8.js": 180 for part in range(1, 9)},
+    # Native Windows measurements (ordinary / atomic seconds):
+    # toSpliced 15.9-16.3 / 24.4-24.7, deep WeakMap 12.2-12.4 / 15.5-15.6,
+    # counting sort 36.3-36.4 / 60.8-60.9. Preserve every matrix assertion,
+    # the ordinary wall guards and all original dispatch/heap bounds.
+    "staging/sm/Array/toSpliced-dense.js": 40,
+    "staging/sm/regress/regress-1507322-deep-weakmap.js": 30,
+    "staging/sm/TypedArray/sort_large_countingsort.js": 120,
+}
+
+
 def large_fixture_limits(relative):
     """The adapter request's `string_limit`/`heap_limit` for an exact path."""
     large = LARGE_FIXTURE_RESOURCES.get(relative, {})
@@ -1221,8 +1243,10 @@ def instruction_budget(data, default, relative=None, source=""):
     return default
 
 
-def case_timeout(data, default, relative=None, source=""):
+def case_timeout(data, default, relative=None, source="", *, atomic_coverage=False):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
+    if atomic_coverage and relative in ATOMIC_COVERAGE_FIXTURE_TIMEOUTS:
+        return max(default, ATOMIC_COVERAGE_FIXTURE_TIMEOUTS[relative])
     large = LARGE_FIXTURE_RESOURCES.get(relative, {})
     if "timeout" in large:
         return max(default, large["timeout"])
@@ -1448,6 +1472,11 @@ def main():
         help="let adapters exit normally so LLVM coverage profiles are written",
     )
     args = parser.parse_args()
+    atomic_coverage = (
+        os.environ.get("CARGO_LLVM_COV") == "1"
+        and "-instrprof-atomic-counter-update-all"
+        in os.environ.get("CARGO_ENCODED_RUSTFLAGS", "")
+    )
     if args.fetch:
         fetch(args.corpus)
     marker = args.corpus / ".bluejs-snapshot.json"
@@ -1616,8 +1645,12 @@ def main():
                     request["module_text_sources"] = text_sources
                     request["module_bytes_sources"] = bytes_sources
                     request["module_source_requests"] = module_source_requests(sources)
-                reply = local.worker.run(request, case_timeout(data, args.timeout, relative, source_for_execution))
-                results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
+                mode_started = time.monotonic()
+                reply = local.worker.run(request, case_timeout(
+                    data, args.timeout, relative, source_for_execution,
+                    atomic_coverage=atomic_coverage,
+                ))
+                results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest, "elapsed_seconds": round(time.monotonic() - mode_started, 6)})
             return results
         finally:
             with lock:
@@ -1641,20 +1674,26 @@ def main():
         reporter = threading.Thread(target=report_progress, name="test262-progress", daemon=True)
         reporter.start()
 
+    scheduling = scheduling_groups(files, args.corpus, args.jobs)
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool, (args.output / "results.jsonl").open("w") as output:
-            for index, results in enumerate(pool.map(run_file, files), 1):
-                with lock:
-                    for result in results:
-                        output.write(json.dumps(result, ensure_ascii=True) + "\n")
-                        counters[result["status"]] += 1
-                        for feature in result.get("features", []):
-                            features[feature][result["status"]] += 1
-                        groups[result["path"].split("/")[0]][result["status"]] += 1
-                    completed_files = index
-                if index % 1000 == 0:
-                    output.flush()
-                    print(progress_line(time.monotonic(), checkpoint=True), flush=True)
+        with (args.output / "results.jsonl").open("w") as output:
+            for _, selected, concurrency in scheduling:
+                if not selected:
+                    continue
+                with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+                    for results in pool.map(run_file, selected):
+                        with lock:
+                            for result in results:
+                                output.write(json.dumps(result, ensure_ascii=True) + "\n")
+                                counters[result["status"]] += 1
+                                for feature in result.get("features", []):
+                                    features[feature][result["status"]] += 1
+                                groups[result["path"].split("/")[0]][result["status"]] += 1
+                            completed_files += 1
+                        if completed_files % 1000 == 0:
+                            output.flush()
+                            print(progress_line(time.monotonic(), checkpoint=True), flush=True)
+                output.flush()
     finally:
         stop_progress.set()
         if reporter:
@@ -1677,7 +1716,10 @@ def main():
         "groups": groups,
         "features": features,
         "elapsed_seconds": round(time.monotonic() - start, 3),
+        "scheduling": [{"group": name, "test_files": len(selected), "jobs": concurrency}
+                       for name, selected, concurrency in scheduling],
         "timeout_seconds": args.timeout,
+        "atomic_coverage": atomic_coverage,
         "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT,
         "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET,
         "sm_typed_array_harness_timeout_seconds": SM_TYPED_ARRAY_HARNESS_TIMEOUT,

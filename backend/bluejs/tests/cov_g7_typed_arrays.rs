@@ -302,8 +302,14 @@ function speciesFrom(source) {
 speciesFrom('(function (n) { var r = new Uint8Array(n); Object.defineProperty(r, "buffer", { value: 1 }); return r })');
 th('foreign buffer not an object', function () { t.slice(1) }, TypeError);
 speciesFrom('(function (n) { return { get length() { throw 7 } } })');
-eq('foreign length getter throws', (function () { try { t.slice(1) } catch (e) { return e } })(), 7);
+th('foreign ordinary result skips length getter', function () { t.slice(1) }, TypeError);
 speciesFrom('(function (n) { return { length: { valueOf() { throw 8 } } } })');
+th('foreign ordinary result skips length coercion', function () { t.slice(1) }, TypeError);
+// Observable construction still propagates getters and coercions. Result
+// validation itself reads TypedArray internal slots, never these properties.
+speciesFrom('(function (n) { var r = new Uint8Array(n); Object.defineProperty(r, "length", { get() { throw 7 } }); r.length; return r })');
+eq('foreign length getter throws', (function () { try { t.slice(1) } catch (e) { return e } })(), 7);
+speciesFrom('(function (n) { var r = new Uint8Array(n); Object.defineProperty(r, "length", { value: { valueOf() { throw 8 } } }); Number(r.length); return r })');
 eq('foreign length coercion throws', (function () { try { t.slice(1) } catch (e) { return e } })(), 8);
 speciesFrom('(function (n) { return { length: 0 } })');
 th('foreign result too short', function () { t.slice(1) }, TypeError);

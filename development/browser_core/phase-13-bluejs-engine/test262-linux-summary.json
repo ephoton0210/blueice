@@ -1,8 +1,9 @@
 {
-  "adapter_sha256": "b43a180b6fd9e8816b05bc4397febd1c9539bfbdb5ae1ec7d7db453fb047464e",
+  "adapter_sha256": "f8c5c2a8b44f2decbb50bed45538eb83f5acc6306a48920fdcad5b4e0542fae8",
+  "atomic_coverage": true,
   "complete_inventory": true,
   "discovered_js": 53876,
-  "elapsed_seconds": 972.944,
+  "elapsed_seconds": 2037.104,
   "exclude": "",
   "features": {
     "AggregateError": {
@@ -631,7 +632,7 @@
   "instruction_budget": 100000,
   "iterator_zip_basic_matrix_instruction_budget": 10000000,
   "iterator_zip_basic_matrix_timeout_seconds": 15,
-  "jobs": 4,
+  "jobs": 2,
   "limitations": [
     "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
     "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
@@ -639,14 +640,26 @@
     "native overrides for sta.js and assert.js (propertyHelper.js and isConstructor.js run their upstream source), the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
     "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets"
   ],
-  "regex_worker_sha256": "151faa2fdf8c5686b7e87044f02cf0b8207fdb49e1f79d36c8fa4301b222e0ae",
+  "regex_worker_sha256": "fbf39c2233be5f3e04bf5b047463771b47967fd506ea87ef810f1bee3f665cdc",
   "results": {
     "excluded": 4,
     "pass": 102921,
     "stale_corpus": 1
   },
-  "runner_sha256": "d56c75f03b0422f20fea1dcd8a10be3ea81905f4a79d7fead0abb1ca6986d0ba",
+  "runner_sha256": "5093745b7ad3b33341825e0d524891efb2c65857b7ee033eae134114ed92ca22",
   "scheduled_modes": 102926,
+  "scheduling": [
+    {
+      "group": "ordinary",
+      "jobs": 2,
+      "test_files": 53573
+    },
+    {
+      "group": "heavy",
+      "jobs": 2,
+      "test_files": 9
+    }
+  ],
   "sm_typed_array_harness_instruction_budget": 100000000,
   "sm_typed_array_harness_timeout_seconds": 60,
   "snapshot": {

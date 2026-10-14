@@ -5,6 +5,28 @@
 use super::*;
 
 #[test]
+fn iteration_cover_lookahead_handles_nested_and_truncated_token_streams() {
+    for source in [
+        "[value = call({nested: []})] in source",
+        "{value} of source",
+    ] {
+        assert!(
+            Parser::new(source).destructuring_for_head_ahead(),
+            "{source}"
+        );
+    }
+    for source in ["value", "[value]", "{value};", "[", "{"] {
+        assert!(
+            !Parser::new(source).destructuring_for_head_ahead(),
+            "{source}"
+        );
+    }
+    let mut truncated = Parser::new("[");
+    truncated.tokens.pop();
+    assert!(!truncated.destructuring_for_head_ahead());
+}
+
+#[test]
 fn assignment_cover_lookahead_stops_at_the_matching_delimiter() {
     assert!(Parser::new("[value].property").cover_assignment_target_has_lhs_suffix());
     assert!(!Parser::new("{value}").cover_assignment_target_has_lhs_suffix());

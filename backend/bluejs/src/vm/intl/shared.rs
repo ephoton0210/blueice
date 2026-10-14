@@ -16,27 +16,27 @@ impl Vm {
         }
         // A segmenter (and so `Intl` and the String intrinsics its installers
         // need) exists by the time its segments are asked for.
-        let string = self
-            .string_intrinsics()
-            .expect("the String intrinsics exist")
-            .0;
         let function_prototype = self
-            .heap
-            .prototype(string)
-            .expect("the String constructor is live")
-            .unwrap();
+            .function_prototype()
+            .expect("the String intrinsics exist");
+        let iterator_base = self.base_iterator_prototype()?;
         let object_prototype = self.object_prototype;
         let segments = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let segments_root = self
-            .heap
-            .root(segments)
-            .expect("the prototype was just allocated");
-        let iterator_base = self.base_iterator_prototype()?;
-        let iterator = self.with_roots(|heap| heap.alloc_object(Some(iterator_base)))?;
-        let iterator_root = self
-            .heap
-            .root(iterator)
-            .expect("the prototype was just allocated");
+        let segments_root = self.heap.root(segments)?;
+        let iterator = match self.with_roots(|heap| heap.alloc_object(Some(iterator_base))) {
+            Ok(iterator) => iterator,
+            Err(error) => {
+                self.release_root(segments_root);
+                return Err(error);
+            }
+        };
+        let iterator_root = match self.heap.root(iterator) {
+            Ok(root) => root,
+            Err(error) => {
+                self.release_root(segments_root);
+                return Err(error.into());
+            }
+        };
         let result = (|| {
             self.install_native(
                 segments,

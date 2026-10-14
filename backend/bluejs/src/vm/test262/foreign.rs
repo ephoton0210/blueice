@@ -78,7 +78,8 @@ impl Vm {
         Ok(realm
             .vm
             .heap
-            .regexp(target)?
+            .regexp(target)
+            .expect("the membrane owns a root for its live foreign target")
             .map(|regexp| (regexp.source.clone(), regexp.flags.clone())))
     }
 
@@ -138,7 +139,10 @@ impl Vm {
             })?;
             let value = Value::Object(target);
             let callable = realm.vm.is_callable(&value)?;
-            let constructible = realm.vm.is_constructor(&value)?;
+            let constructible = realm
+                .vm
+                .is_constructor(&value)
+                .expect("the preceding callability check validated this live child-heap value");
             // A live foreign Proxy needs a local exotic facade, rather than
             // the ordinary wrapper used for other foreign values. Its
             // internal methods create argument and descriptor objects in the
@@ -176,7 +180,8 @@ impl Vm {
                     .expect("foreign realm remains live")
                     .vm
                     .heap
-                    .unroot(target_root)?;
+                    .unroot(target_root)
+                    .expect("this failed membrane construction still owns its target root");
                 return Err(error);
             }
         };
@@ -188,7 +193,8 @@ impl Vm {
                     .expect("foreign realm remains live")
                     .vm
                     .heap
-                    .unroot(target_root)?;
+                    .unroot(target_root)
+                    .expect("this failed membrane construction still owns its target root");
                 return Err(error.into());
             }
         };
@@ -269,9 +275,13 @@ impl Vm {
                 .expect("foreign realm remains live");
             realm.vm.intrinsic_prototype(intrinsic)?
         };
-        self.test262_import_foreign_value(realm_id, prototype)?
+        // Callers name a standard intrinsic. Its cached constructor identity
+        // survives replacement of the corresponding global property, and its
+        // own prototype property is a non-writable, non-configurable object.
+        Ok(self
+            .test262_import_foreign_value(realm_id, prototype)?
             .object_id()
-            .ok_or_else(|| RuntimeError::TypeError("intrinsic prototype must be an object".into()))
+            .expect("a standard intrinsic prototype remains an object across the membrane"))
     }
 
     pub(in super::super) fn test262_set_foreign_prototype_override(
@@ -403,52 +413,100 @@ impl Vm {
         } else {
             None
         };
-        let typed_array_values = if self.heap.is_typed_array(source)? {
-            let (buffer, _, length, kind) = self.heap.typed_array_info(source)?;
-            if self.heap.buffer_is_detached(buffer)?
-                || self.heap.typed_array_is_out_of_bounds(source)?
+        let typed_array_values =
+            if self
+                .heap
+                .is_typed_array(source)
+                .expect("the source was validated before the array snapshot")
             {
-                return Err(RuntimeError::TypeError(
-                    "TypedArray source is detached or out of bounds".into(),
-                ));
-            }
-            let values = (0..length)
-                .map(|index| {
-                    self.heap
-                        .typed_array_index_value(source, index)?
-                        .ok_or_else(|| {
-                            RuntimeError::TypeError("TypedArray source is out of bounds".into())
-                        })
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            Some((kind, values))
-        } else {
-            None
-        };
+                let (buffer, _, length, kind) = self.heap.typed_array_info(source).expect(
+                    "validated transport metadata is read without JavaScript or collection",
+                );
+                if self
+                    .heap
+                    .buffer_is_detached(buffer)
+                    .expect("validated transport metadata is read without JavaScript or collection")
+                    || self.heap.typed_array_is_out_of_bounds(source).expect(
+                        "validated transport metadata is read without JavaScript or collection",
+                    )
+                {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray source is detached or out of bounds".into(),
+                    ));
+                }
+                let values = (0..length)
+                    .map(|index| {
+                        // This snapshot runs no JavaScript and does not collect.
+                        // The validated buffer cannot shrink between these reads;
+                        // a shared backing may only grow on another agent.
+                        self.heap
+                            .typed_array_index_value(source, index)
+                            .expect("the validated TypedArray remains live during its snapshot")
+                            .expect("each snapshot index is below the validated array length")
+                    })
+                    .collect::<Vec<_>>();
+                Some((kind, values))
+            } else {
+                None
+            };
         // A child heap cannot retain a parent ArrayBuffer object identity.
         // Allocate an equivalent child buffer and remember the pair so
         // direct indexed writes and host detachment remain observable in
         // both realms. Shared buffers may retain their Arc backing directly;
         // ordinary buffers use a synchronized byte mirror.
-        let buffer_transport = if self.heap.is_buffer(source)? {
-            let shared = self.heap.buffer_is_shared(source)?;
-            let detached = self.heap.buffer_is_detached(source)?;
-            let byte_length = self.heap.buffer_byte_length(source)?;
-            let maximum = self.heap.buffer_max_byte_length(source)?;
-            let bytes = (!shared && !detached)
-                .then(|| self.heap.array_buffer_copy(source, 0, byte_length))
-                .transpose()?;
-            let backing = shared
-                .then(|| self.heap.shared_buffer_backing(source))
-                .transpose()?;
-            Some((shared, detached, byte_length, maximum, bytes, backing))
-        } else {
-            None
-        };
+        let buffer_transport =
+            if self
+                .heap
+                .is_buffer(source)
+                .expect("the source kind cannot change during membrane transport")
+            {
+                let shared = self.heap.buffer_is_shared(source).expect(
+                    "validated transport metadata is read without JavaScript or collection",
+                );
+                let detached = self.heap.buffer_is_detached(source).expect(
+                    "validated transport metadata is read without JavaScript or collection",
+                );
+                let byte_length = self.heap.buffer_byte_length(source).expect(
+                    "validated transport metadata is read without JavaScript or collection",
+                );
+                let maximum = self.heap.buffer_max_byte_length(source).expect(
+                    "validated transport metadata is read without JavaScript or collection",
+                );
+                let flexible = self.heap.buffer_resizable(source).expect(
+                    "validated transport metadata is read without JavaScript or collection",
+                ) || self.heap.buffer_growable(source).expect(
+                    "validated transport metadata is read without JavaScript or collection",
+                );
+                let bytes = (!shared && !detached).then(|| {
+                    self.heap.array_buffer_copy(source, 0, byte_length).expect(
+                        "the snapshot copies the validated live buffer within its current length",
+                    )
+                });
+                let backing = shared.then(|| {
+                    self.heap
+                        .shared_buffer_backing(source)
+                        .expect("the validated shared buffer retains its backing")
+                });
+                Some((
+                    shared,
+                    detached,
+                    byte_length,
+                    maximum,
+                    flexible,
+                    bytes,
+                    backing,
+                ))
+            } else {
+                None
+            };
         let ordinary_buffer = buffer_transport
             .as_ref()
             .is_some_and(|(shared, ..)| !shared);
-        let immutable_buffer = ordinary_buffer && self.heap.buffer_is_immutable(source)?;
+        let immutable_buffer = ordinary_buffer
+            && self
+                .heap
+                .buffer_is_immutable(source)
+                .expect("validated transport metadata is read without JavaScript or collection");
         // Only opaque ordinary objects receive write-back support. Arrays,
         // TypedArrays, and buffers have purpose-built transport snapshots or
         // backing-store mirrors, whose indexed state must not be mistaken for
@@ -460,12 +518,16 @@ impl Vm {
         // %Function.prototype%.  The Test262 membrane keeps the object
         // opaque, but it must retain this one observable capability locally
         // or ShadowRealm rejects it before it can create that wrapper.
-        let callable = self.is_callable(&Value::Object(source))?;
+        let callable = self
+            .is_callable(&Value::Object(source))
+            .expect("the transport source was validated without running JavaScript");
         // The reverse-membrane facade this function may allocate below (the
         // opaque, property-forwarding case) needs its own constructible bit,
         // exactly like the forward direction's `test262_import_foreign_value`
         // already computes for its own facades.
-        let constructible = self.is_constructor(&Value::Object(source))?;
+        let constructible = self
+            .is_constructor(&Value::Object(source))
+            .expect("the transport source was validated without running JavaScript");
         let home_heap = self.object_prototype.heap;
         let source_root = self.heap.root(source)?;
         // A second, independent root for the same `source` object, held by
@@ -478,14 +540,25 @@ impl Vm {
         // second `self.heap.root` call impossible.
         let reverse_target_root = property_forwarding
             .then(|| self.heap.root(source))
-            .transpose()?;
+            .transpose()
+            .map_err(|error| {
+                self.release_root(source_root);
+                RuntimeError::from(error)
+            })?;
         let result = (|| {
             let realm = self
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            let target = if let Some((shared, detached, byte_length, maximum, bytes, backing)) =
-                &buffer_transport
+            let target = if let Some((
+                shared,
+                detached,
+                byte_length,
+                maximum,
+                flexible,
+                bytes,
+                backing,
+            )) = &buffer_transport
             {
                 let prototype = if *shared {
                     realm.vm.buffer_prototype("SharedArrayBuffer")?
@@ -496,7 +569,7 @@ impl Vm {
                     realm.vm.with_roots(|heap| {
                         heap.alloc_shared_array_buffer_backing(
                             backing,
-                            (*maximum != *byte_length).then_some(*maximum),
+                            flexible.then_some(*maximum),
                             Some(prototype),
                         )
                     })?
@@ -507,7 +580,7 @@ impl Vm {
                     realm.vm.with_roots(|heap| {
                         heap.alloc_immutable_array_buffer(bytes, Some(prototype))
                     })?
-                } else if *maximum != *byte_length {
+                } else if *flexible {
                     realm.vm.with_roots(|heap| {
                         heap.alloc_resizable_array_buffer(*byte_length, *maximum, Some(prototype))
                     })?
@@ -519,11 +592,15 @@ impl Vm {
                 if *detached {
                     realm
                         .vm
-                        .with_roots(|heap| heap.detach_array_buffer(buffer))?;
+                        .heap
+                        .detach_array_buffer(buffer)
+                        .expect("the fresh ordinary snapshot has not been exposed to JavaScript");
                 } else if let (Some(bytes), false) = (bytes, immutable_buffer) {
                     realm
                         .vm
-                        .with_roots(|heap| heap.array_buffer_write(buffer, 0, bytes))?;
+                        .heap
+                        .array_buffer_write(buffer, 0, bytes)
+                        .expect("the fresh writable snapshot has exactly the copied byte length");
                 }
                 buffer
             } else if let Some(values) = array_values {
@@ -546,8 +623,8 @@ impl Vm {
                     .expect("TypedArray construction returns an object");
                 for (index, value) in values.iter().enumerate() {
                     realm
-                        .vm
-                        .with_roots(|heap| heap.typed_array_set_index(target, index, value))?;
+                            .vm
+                            .heap.typed_array_set_index(target, index, value).expect("the original intrinsic allocated the exact snapshot kind and length from a primitive length");
                 }
                 target
             } else {
@@ -566,7 +643,10 @@ impl Vm {
                 // realm's own code dispatch back to the real `source`
                 // object in the parent -- see `test262::reverse` for the
                 // forwarding functions this makes reachable.
-                let wrapper_root = realm.vm.heap.root(target)?;
+                let wrapper_root = realm.vm.heap.root(target).map_err(|error| {
+                    realm.vm.release_root(target_root);
+                    RuntimeError::from(error)
+                })?;
                 realm.vm.test262_reverse_values.insert(
                     target,
                     Test262ReverseValue {
@@ -587,7 +667,6 @@ impl Vm {
                 target,
                 Test262ImportedValue {
                     value,
-                    property_forwarding,
                     _source_root: source_root,
                     _target_root: target_root,
                 },
@@ -596,7 +675,7 @@ impl Vm {
         })();
         match result.as_ref() {
             Err(_) => {
-                self.heap.unroot(source_root)?;
+                self.release_root(source_root);
                 // `reverse_target_root` is `Copy` (`RootId` is `Copy`), so
                 // capturing it into the now-finished closure above did not
                 // move it away from this binding; if the closure never
@@ -604,7 +683,7 @@ impl Vm {
                 // it, it is still exactly this root and must be released
                 // here like `source_root` above.
                 if let Some(root) = reverse_target_root {
-                    self.heap.unroot(root)?;
+                    self.release_root(root);
                 }
             }
             Ok(value) if ordinary_buffer => {
@@ -636,12 +715,9 @@ impl Vm {
             .test262_foreign_reference(wrapper)
             .expect("foreign get has a membrane record");
         let receiver = self.test262_export_foreign_value(realm_id, receiver)?;
-        let realm = self
-            .test262_realms
-            .get_mut(&realm_id)
-            .expect("foreign realm remains live");
-        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        let result = realm.vm.get_object_property(target, &receiver, key);
+        let result = self.test262_with_foreign_vm(realm_id, |vm| {
+            vm.get_object_property(target, &receiver, key)
+        });
         let value = self.test262_foreign_completion(realm_id, result)?;
         self.test262_import_foreign_value(realm_id, value)
     }
@@ -666,7 +742,7 @@ impl Vm {
             .and_then(|realm| realm.vm.heap.typed_array_info(target).ok())
             .map(|(buffer, _, _, _)| buffer);
         if typed_buffer.is_some() {
-            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+            self.test262_sync_foreign_buffer_mirrors(realm_id);
         }
         for field in [
             &mut descriptor.value,
@@ -677,14 +753,9 @@ impl Vm {
                 *field = Some(self.test262_export_foreign_value(realm_id, &value)?);
             }
         }
-        let result = {
-            let realm = self
-                .test262_realms
-                .get_mut(&realm_id)
-                .expect("foreign realm remains live");
-            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-            realm.vm.object_define_own_property(target, key, descriptor)
-        };
+        let result = self.test262_with_foreign_vm(realm_id, |vm| {
+            vm.object_define_own_property(target, key, descriptor)
+        });
         if let Some(buffer) = typed_buffer {
             self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
         }
@@ -701,12 +772,8 @@ impl Vm {
         let (realm_id, target, _, _) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign ownKeys has a membrane record");
-        let realm = self
-            .test262_realms
-            .get_mut(&realm_id)
-            .expect("foreign realm remains live");
-        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        let result = realm.vm.object_own_property_keys(target);
+        let result =
+            self.test262_with_foreign_vm(realm_id, |vm| vm.object_own_property_keys(target));
         self.test262_foreign_completion(realm_id, result)
     }
 
@@ -758,18 +825,38 @@ impl Vm {
         ))
     }
 
-    /// The Realm and target behind `wrapper`, with a fresh instruction budget
-    /// for the operation about to run there.
-    fn test262_foreign_target(&mut self, wrapper: ObjectId) -> (ObjectId, ObjectId, &mut Vm) {
+    /// Internal methods can execute accessors, coercions and Proxy traps.
+    /// Keep the parent reachable through the reverse membrane for their
+    /// complete dynamic extent, without retaining a borrow of the realm map.
+    fn test262_with_foreign_vm<T>(
+        &mut self,
+        realm_id: ObjectId,
+        operation: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        let child: *mut Vm = &mut *self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live")
+            .vm;
+        let guard = register_active(self);
+        // SAFETY: the map borrow ended when `child` was obtained. The boxed
+        // VM remains live during the call; parent callbacks are nested inside
+        // it, following test262_foreign_call's reentrancy discipline. Nothing
+        // here accesses the parent again until the operation returns.
+        let result = unsafe {
+            (*child).remaining_instructions = (*child).config.instruction_budget;
+            operation(&mut *child)
+        };
+        drop(guard);
+        result
+    }
+
+    /// The owning Realm and target behind an internal-method facade.
+    fn test262_foreign_target(&self, wrapper: ObjectId) -> (ObjectId, ObjectId) {
         let (realm_id, target, _, _) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign internal method has a membrane record");
-        let realm = self
-            .test262_realms
-            .get_mut(&realm_id)
-            .expect("foreign realm remains live");
-        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        (realm_id, target, &mut realm.vm)
+        (realm_id, target)
     }
 
     /// [[Delete]] of a foreign facade, performed in its Realm.
@@ -778,8 +865,8 @@ impl Vm {
         wrapper: ObjectId,
         key: &PropertyName,
     ) -> Result<bool, RuntimeError> {
-        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
-        let result = vm.object_delete(target, key);
+        let (realm_id, target) = self.test262_foreign_target(wrapper);
+        let result = self.test262_with_foreign_vm(realm_id, |vm| vm.object_delete(target, key));
         self.test262_foreign_completion(realm_id, result)
     }
 
@@ -788,8 +875,8 @@ impl Vm {
         &mut self,
         wrapper: ObjectId,
     ) -> Result<bool, RuntimeError> {
-        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
-        let result = vm.object_is_extensible(target);
+        let (realm_id, target) = self.test262_foreign_target(wrapper);
+        let result = self.test262_with_foreign_vm(realm_id, |vm| vm.object_is_extensible(target));
         self.test262_foreign_completion(realm_id, result)
     }
 
@@ -798,8 +885,9 @@ impl Vm {
         &mut self,
         wrapper: ObjectId,
     ) -> Result<bool, RuntimeError> {
-        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
-        let result = vm.object_prevent_extensions(target);
+        let (realm_id, target) = self.test262_foreign_target(wrapper);
+        let result =
+            self.test262_with_foreign_vm(realm_id, |vm| vm.object_prevent_extensions(target));
         self.test262_foreign_completion(realm_id, result)
     }
 
@@ -811,7 +899,7 @@ impl Vm {
         wrapper: ObjectId,
         prototype: Option<ObjectId>,
     ) -> Result<bool, RuntimeError> {
-        let (realm_id, _, _) = self.test262_foreign_target(wrapper);
+        let (realm_id, _) = self.test262_foreign_target(wrapper);
         let prototype = prototype
             .map(|prototype| {
                 self.test262_export_foreign_value(realm_id, &Value::Object(prototype))
@@ -822,8 +910,9 @@ impl Vm {
                     })
             })
             .transpose()?;
-        let (_, target, vm) = self.test262_foreign_target(wrapper);
-        let result = vm.object_set_prototype(target, prototype);
+        let (_, target) = self.test262_foreign_target(wrapper);
+        let result =
+            self.test262_with_foreign_vm(realm_id, |vm| vm.object_set_prototype(target, prototype));
         let succeeded = self.test262_foreign_completion(realm_id, result)?;
         if succeeded {
             self.test262_foreign_values
@@ -848,14 +937,9 @@ impl Vm {
         let (realm_id, target, _, _) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign own-property has a membrane record");
-        let descriptor = {
-            let realm = self
-                .test262_realms
-                .get_mut(&realm_id)
-                .expect("foreign realm remains live");
-            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-            realm.vm.object_get_own_property(target, key)?
-        };
+        let result =
+            self.test262_with_foreign_vm(realm_id, |vm| vm.object_get_own_property(target, key));
+        let descriptor = self.test262_foreign_completion(realm_id, result)?;
         let Some(descriptor) = descriptor else {
             return Ok(None);
         };
@@ -894,14 +978,9 @@ impl Vm {
             .expect("foreign set has a membrane record");
         let receiver = self.test262_export_foreign_value(realm_id, receiver)?;
         let value = self.test262_export_foreign_value(realm_id, value)?;
-        let realm = self
-            .test262_realms
-            .get_mut(&realm_id)
-            .expect("foreign realm remains live");
-        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        let result = realm
-            .vm
-            .ordinary_set_with_receiver(target, &receiver, key, &value);
+        let result = self.test262_with_foreign_vm(realm_id, |vm| {
+            vm.ordinary_set_with_receiver(target, &receiver, key, &value)
+        });
         self.test262_foreign_completion(realm_id, result)
     }
 
@@ -920,7 +999,7 @@ impl Vm {
             .and_then(|realm| realm.vm.heap.typed_array_info(target).ok())
             .map(|(buffer, _, _, _)| buffer);
         if typed_buffer.is_some() {
-            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+            self.test262_sync_foreign_buffer_mirrors(realm_id);
         }
         // Test262 harness helpers are installed independently in every
         // Realm. A fixture may explicitly copy (for example)
@@ -937,20 +1016,14 @@ impl Vm {
             .flatten()
             .filter(|native| matches!(native, NativeFunction::Test262(_)));
         let equivalent_native = if let Some(native) = native {
-            let realm = self
-                .test262_realms
-                .get_mut(&realm_id)
-                .expect("foreign realm remains live");
-            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-            let current = realm
-                .vm
-                .get_object_property(target, &Value::Object(target), key)?;
-            current
-                .object_id()
-                .filter(|current| {
-                    realm.vm.heap.native_function(*current).ok() == Some(Some(native))
-                })
-                .map(Value::Object)
+            let result = self.test262_with_foreign_vm(realm_id, |vm| {
+                let current = vm.get_object_property(target, &Value::Object(target), key)?;
+                Ok(current
+                    .object_id()
+                    .filter(|current| vm.heap.native_function(*current).ok() == Some(Some(native)))
+                    .map(Value::Object))
+            });
+            self.test262_foreign_completion(realm_id, result)?
         } else {
             None
         };
@@ -958,14 +1031,9 @@ impl Vm {
             Some(value) => value,
             None => self.test262_export_foreign_value(realm_id, value)?,
         };
-        let result = {
-            let realm = self
-                .test262_realms
-                .get_mut(&realm_id)
-                .expect("foreign realm remains live");
-            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-            realm.vm.set_property(&Value::Object(target), key, &value)
-        };
+        let result = self.test262_with_foreign_vm(realm_id, |vm| {
+            vm.set_property(&Value::Object(target), key, &value)
+        });
         if let Some(buffer) = typed_buffer {
             self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
         }
@@ -999,7 +1067,7 @@ impl Vm {
             .heap
             .typed_array_info(target)?
             .0;
-        self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        self.test262_sync_foreign_buffer_mirrors(realm_id);
         let args = args
             .iter()
             .map(|value| self.test262_export_foreign_value(realm_id, value))
@@ -1073,7 +1141,7 @@ impl Vm {
         // bytes written through it before `slice` reads from the owning
         // Realm's real target, exactly as the TypedArray-method path above
         // does before re-entering that Realm.
-        self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        self.test262_sync_foreign_buffer_mirrors(realm_id);
         let args = args
             .iter()
             .map(|value| self.test262_export_foreign_value(realm_id, value))
@@ -1141,10 +1209,16 @@ impl Vm {
                 .expect("foreign realm remains live")
                 .vm
                 .heap;
-            if !heap.is_typed_array(target)? {
+            if !heap.is_typed_array(target).expect(
+                "the retained membrane record owns this live target and its immutable brand",
+            ) {
                 return Ok(None);
             }
-            heap.typed_array_info(target)?.0
+            heap.typed_array_info(target)
+                .expect(
+                    "the retained membrane record owns this live target and its immutable brand",
+                )
+                .0
         };
         // The index, value and timeout arguments are always converted with
         // ToPrimitive(number) (via ToIndex, ToNumber or ToBigInt), which runs
@@ -1156,11 +1230,12 @@ impl Vm {
         for value in &args[1..] {
             converted.push(self.coerce_primitive(value, "number")?);
         }
-        self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        self.test262_sync_foreign_buffer_mirrors(realm_id);
         let args = converted
             .iter()
             .map(|value| self.test262_export_foreign_value(realm_id, value))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()
+            .expect("the first argument already belongs to this realm; coercion made every other argument primitive");
         let result = {
             let realm = self
                 .test262_realms
@@ -1171,7 +1246,10 @@ impl Vm {
                 .vm
                 .native_call(function, Value::Undefined, args, false)
         };
-        self.test262_refresh_foreign_buffer_mirrors(realm_id, source_buffer)?;
+        self.test262_refresh_foreign_buffer_mirrors(realm_id, source_buffer)
+            .expect(
+                "Atomics retains a validated shared backing, which has no mutable ordinary mirrors",
+            );
         self.test262_import_foreign_result(realm_id, result)
             .map(Some)
     }
@@ -1191,28 +1269,42 @@ impl Vm {
             .test262_realms
             .get_mut(&realm_id)
             .expect("foreign realm remains live");
-        if !realm.vm.heap.is_typed_array(target)? {
+        if !realm
+            .vm
+            .heap
+            .is_typed_array(target)
+            .expect("the retained membrane record owns this live target and its immutable brand")
+        {
             return Ok(None);
         }
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        if realm.vm.heap.typed_array_is_out_of_bounds(target)? {
+        if realm
+            .vm
+            .heap
+            .typed_array_is_out_of_bounds(target)
+            .expect("the foreign TypedArray brand was checked without allocation")
+        {
             return Err(RuntimeError::TypeError(
                 "foreign TypedArray is detached or out of bounds".into(),
             ));
         }
-        let (_, _, length, _) = realm.vm.heap.typed_array_info(target)?;
-        (0..length)
-            .map(|index| {
-                realm
-                    .vm
-                    .heap
-                    .typed_array_index_value(target, index)?
-                    .ok_or_else(|| {
-                        RuntimeError::TypeError("foreign TypedArray is out of bounds".into())
-                    })
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map(Some)
+        let (_, _, length, _) = realm
+            .vm
+            .heap
+            .typed_array_info(target)
+            .expect("the foreign TypedArray remains live during this pure snapshot");
+        Ok(Some(
+            (0..length)
+                .map(|index| {
+                    realm
+                        .vm
+                        .heap
+                        .typed_array_index_value(target, index)
+                        .expect("the validated foreign TypedArray remains live during its snapshot")
+                        .expect("a snapshot without JavaScript cannot invalidate a checked index")
+                })
+                .collect::<Vec<_>>(),
+        ))
     }
 
     /// Creates a local backing buffer for a foreign ArrayBuffer supplied to a
@@ -1227,25 +1319,69 @@ impl Vm {
         let Some((realm_id, target, _, _)) = self.test262_foreign_reference(wrapper) else {
             return Ok(None);
         };
-        let (shared, detached, byte_length, maximum, bytes, backing) = {
+        // Views over the same foreign buffer must share one local backing
+        // store. Independent snapshots would overwrite one another when
+        // flushed and would hide writes made through a sibling view.
+        if let Some(buffer) =
+            self.test262_foreign_buffer_mirrors
+                .iter()
+                .find_map(|((buffer, _), mirror)| {
+                    (mirror.realm == realm_id && mirror.target == target && mirror.facade.is_some())
+                        .then_some(*buffer)
+                })
+        {
+            return Ok(Some(buffer));
+        }
+        let (shared, detached, byte_length, maximum, flexible, bytes, backing) = {
             let realm = self
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            if !realm.vm.heap.is_buffer(target)? {
+            if !realm.vm.heap.is_buffer(target).expect(
+                "the retained membrane record owns this live target and its immutable brand",
+            ) {
                 return Ok(None);
             }
-            let shared = realm.vm.heap.buffer_is_shared(target)?;
-            let detached = realm.vm.heap.buffer_is_detached(target)?;
-            let byte_length = realm.vm.heap.buffer_byte_length(target)?;
-            let maximum = realm.vm.heap.buffer_max_byte_length(target)?;
-            let bytes = (!shared && !detached)
-                .then(|| realm.vm.heap.array_buffer_copy(target, 0, byte_length))
-                .transpose()?;
-            let backing = shared
-                .then(|| realm.vm.heap.shared_buffer_backing(target))
-                .transpose()?;
-            (shared, detached, byte_length, maximum, bytes, backing)
+            let shared = realm.vm.heap.buffer_is_shared(target).expect(
+                "the retained membrane record owns this live target and its immutable brand",
+            );
+            let detached = realm.vm.heap.buffer_is_detached(target).expect(
+                "the retained membrane record owns this live target and its immutable brand",
+            );
+            let byte_length = realm.vm.heap.buffer_byte_length(target).expect(
+                "the retained membrane record owns this live target and its immutable brand",
+            );
+            let maximum = realm.vm.heap.buffer_max_byte_length(target).expect(
+                "the retained membrane record owns this live target and its immutable brand",
+            );
+            let flexible = realm.vm.heap.buffer_resizable(target).expect(
+                "the retained membrane record owns this live target and its immutable brand",
+            ) || realm.vm.heap.buffer_growable(target).expect(
+                "the retained membrane record owns this live target and its immutable brand",
+            );
+            let bytes = (!shared && !detached).then(|| {
+                realm
+                    .vm
+                    .heap
+                    .array_buffer_copy(target, 0, byte_length)
+                    .expect(
+                        "the rooted buffer snapshot uses the checked byte range without JavaScript",
+                    )
+            });
+            let backing = shared.then(|| {
+                realm.vm.heap.shared_buffer_backing(target).expect(
+                    "the rooted buffer snapshot uses the checked byte range without JavaScript",
+                )
+            });
+            (
+                shared,
+                detached,
+                byte_length,
+                maximum,
+                flexible,
+                bytes,
+                backing,
+            )
         };
         let immutable = !shared
             && self
@@ -1254,7 +1390,10 @@ impl Vm {
                 .expect("foreign realm remains live")
                 .vm
                 .heap
-                .buffer_is_immutable(target)?;
+                .buffer_is_immutable(target)
+                .expect(
+                    "the retained membrane record owns this live target and its immutable brand",
+                );
         let prototype = if shared {
             self.buffer_prototype("SharedArrayBuffer")?
         } else {
@@ -1264,14 +1403,14 @@ impl Vm {
             self.with_roots(|heap| {
                 heap.alloc_shared_array_buffer_backing(
                     backing,
-                    (maximum != byte_length).then_some(maximum),
+                    flexible.then_some(maximum),
                     Some(prototype),
                 )
             })?
         } else if immutable {
             let bytes = bytes.clone().unwrap_or_default();
             self.with_roots(|heap| heap.alloc_immutable_array_buffer(bytes, Some(prototype)))?
-        } else if maximum != byte_length {
+        } else if flexible {
             self.with_roots(|heap| {
                 heap.alloc_resizable_array_buffer(byte_length, maximum, Some(prototype))
             })?
@@ -1279,11 +1418,15 @@ impl Vm {
             self.with_roots(|heap| heap.alloc_array_buffer(byte_length, Some(prototype)))?
         };
         if detached {
-            self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
+            self.heap
+                .detach_array_buffer(buffer)
+                .expect("the newly allocated local mirror is an ordinary buffer");
         }
         if let Some(bytes) = bytes {
             if !immutable {
-                self.with_roots(|heap| heap.array_buffer_write(buffer, 0, &bytes))?;
+                self.heap
+                    .array_buffer_write(buffer, 0, &bytes)
+                    .expect("the fresh mutable mirror has the exact snapshotted byte length");
             }
             let buffer_root = self.heap.root(buffer)?;
             self.test262_foreign_buffer_mirrors.insert(
@@ -1320,10 +1463,7 @@ impl Vm {
     /// TypedArray operation re-enters the owner Realm. This keeps direct
     /// indexed writes through a locally-created cross-Realm view observable
     /// to the next operation on the foreign TypedArray.
-    pub(in super::super) fn test262_sync_foreign_buffer_mirrors(
-        &mut self,
-        realm_id: ObjectId,
-    ) -> Result<(), RuntimeError> {
+    pub(in super::super) fn test262_sync_foreign_buffer_mirrors(&mut self, realm_id: ObjectId) {
         let mirrors = self
             .test262_foreign_buffer_mirrors
             .iter()
@@ -1332,26 +1472,45 @@ impl Vm {
             })
             .collect::<Vec<_>>();
         for (buffer, target) in mirrors {
-            if !self.heap.is_buffer(buffer)?
-                || self.heap.buffer_is_detached(buffer)?
-                || self.heap.buffer_is_immutable(buffer)?
+            // Imported transport records retain the parent source and child
+            // target; child-to-parent mirrors retain their local buffer root.
+            if self
+                .heap
+                .buffer_is_detached(buffer)
+                .expect("the retained membrane mirror owns this live buffer and checked byte range")
+                || self.heap.buffer_is_immutable(buffer).expect(
+                    "the retained membrane mirror owns this live buffer and checked byte range",
+                )
             {
                 continue;
             }
-            let byte_length = self.heap.buffer_byte_length(buffer)?;
-            let bytes = self.heap.array_buffer_copy(buffer, 0, byte_length)?;
+            let byte_length = self.heap.buffer_byte_length(buffer).expect(
+                "the retained membrane mirror owns this live buffer and checked byte range",
+            );
+            let bytes = self.heap.array_buffer_copy(buffer, 0, byte_length).expect(
+                "the retained membrane mirror owns this live buffer and checked byte range",
+            );
             let realm = self
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            if !realm.vm.heap.buffer_is_detached(target)?
-                && !realm.vm.heap.buffer_is_immutable(target)?
-                && realm.vm.heap.buffer_byte_length(target)? == byte_length
+            if !realm
+                .vm
+                .heap
+                .buffer_is_detached(target)
+                .expect("the retained membrane mirror owns this live buffer and checked byte range")
+                && !realm.vm.heap.buffer_is_immutable(target).expect(
+                    "the retained membrane mirror owns this live buffer and checked byte range",
+                )
+                && realm.vm.heap.buffer_byte_length(target).expect(
+                    "the retained membrane mirror owns this live buffer and checked byte range",
+                ) == byte_length
             {
-                realm.vm.heap.array_buffer_write(target, 0, &bytes)?;
+                realm.vm.heap.array_buffer_write(target, 0, &bytes).expect(
+                    "the retained membrane mirror owns this live buffer and checked byte range",
+                );
             }
         }
-        Ok(())
     }
 
     /// Reads a foreign TypedArray's unobservable shape from its owning heap.
@@ -1368,16 +1527,30 @@ impl Vm {
             .test262_realms
             .get_mut(&realm_id)
             .expect("foreign realm remains live");
-        if !realm.vm.heap.is_typed_array(target)? {
+        if !realm
+            .vm
+            .heap
+            .is_typed_array(target)
+            .expect("the retained membrane record owns this live target and its immutable brand")
+        {
             return Ok(None);
         }
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        if realm.vm.heap.typed_array_is_out_of_bounds(target)? {
+        if realm
+            .vm
+            .heap
+            .typed_array_is_out_of_bounds(target)
+            .expect("the foreign TypedArray brand was checked without allocation")
+        {
             return Err(RuntimeError::TypeError(
                 "foreign TypedArray is detached or out of bounds".into(),
             ));
         }
-        let (_, _, length, kind) = realm.vm.heap.typed_array_info(target)?;
+        let (_, _, length, kind) = realm
+            .vm
+            .heap
+            .typed_array_info(target)
+            .expect("the foreign TypedArray remains live during this pure snapshot");
         Ok(Some((length, kind)))
     }
 
@@ -1394,12 +1567,21 @@ impl Vm {
             })
             .collect::<Vec<_>>();
         for buffer in mirrors {
-            match self.heap.is_buffer(buffer) {
-                Ok(true) if !self.heap.buffer_is_detached(buffer)? => {
-                    self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
-                }
-                Ok(_) | Err(HeapError::InvalidObject(_)) => {}
-                Err(error) => return Err(error.into()),
+            // Weak mirror metadata may outlive a collected local object.
+            // Validate membership first; all following queries are pure.
+            if self.heap.contains(buffer)
+                && self
+                    .heap
+                    .is_buffer(buffer)
+                    .expect("membership was checked without collection")
+                && !self
+                    .heap
+                    .buffer_is_detached(buffer)
+                    .expect("the live mirror was checked to be a buffer")
+            {
+                self.heap
+                    .detach_array_buffer(buffer)
+                    .expect("ordinary buffer mirrors support detachment without allocation");
             }
         }
         Ok(())
@@ -1425,7 +1607,17 @@ impl Vm {
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            if realm.vm.heap.is_buffer(target)? && !realm.vm.heap.buffer_is_detached(target)? {
+            if realm
+                .vm
+                .heap
+                .is_buffer(target)
+                .expect("the retained membrane mirror owns this live buffer and checked byte range")
+                && !realm.vm.heap.buffer_is_detached(target).expect(
+                    "the retained membrane mirror owns this live buffer and checked byte range",
+                )
+            {
+                // Host detachment also reaches immutable buffers. Liveness
+                // and brand do not make their legitimate refusal infallible.
                 realm.vm.heap.detach_array_buffer(target)?;
             }
         }
@@ -1440,20 +1632,41 @@ impl Vm {
         realm_id: ObjectId,
         target: ObjectId,
     ) -> Result<(), RuntimeError> {
-        let (byte_length, bytes) = {
-            let realm = self
-                .test262_realms
-                .get_mut(&realm_id)
-                .expect("foreign realm remains live");
-            if realm.vm.heap.buffer_is_detached(target)?
-                || realm.vm.heap.buffer_is_immutable(target)?
+        let detached = self
+            .test262_realms
+            .get(&realm_id)
+            .expect("foreign realm remains live")
+            .vm
+            .heap
+            // Direct native callers can supply a non-buffer receiver. Keep
+            // its brand failure catchable rather than turning it into panic.
+            .buffer_is_detached(target)?;
+        if detached {
+            return self.test262_detach_foreign_buffer_mirrors(realm_id, target);
+        }
+        let (byte_length, bytes) =
             {
-                return Ok(());
-            }
-            let byte_length = realm.vm.heap.buffer_byte_length(target)?;
-            let bytes = realm.vm.heap.array_buffer_copy(target, 0, byte_length)?;
-            (byte_length, bytes)
-        };
+                let realm = self
+                    .test262_realms
+                    .get_mut(&realm_id)
+                    .expect("foreign realm remains live");
+                if realm.vm.heap.buffer_is_immutable(target).expect(
+                    "the retained membrane mirror owns this live buffer and checked byte range",
+                ) {
+                    return Ok(());
+                }
+                let byte_length = realm.vm.heap.buffer_byte_length(target).expect(
+                    "the retained membrane mirror owns this live buffer and checked byte range",
+                );
+                let bytes = realm
+                    .vm
+                    .heap
+                    .array_buffer_copy(target, 0, byte_length)
+                    .expect(
+                        "the retained membrane mirror owns this live buffer and checked byte range",
+                    );
+                (byte_length, bytes)
+            };
         let mirrors = self
             .test262_foreign_buffer_mirrors
             .iter()
@@ -1462,63 +1675,28 @@ impl Vm {
             })
             .collect::<Vec<_>>();
         for buffer in mirrors {
-            if self.heap.is_buffer(buffer)?
-                && !self.heap.buffer_is_detached(buffer)?
-                && self.heap.buffer_byte_length(buffer)? == byte_length
+            if !self
+                .heap
+                .buffer_is_detached(buffer)
+                .expect("the retained membrane mirror owns this live buffer and checked byte range")
             {
-                self.with_roots(|heap| heap.array_buffer_write(buffer, 0, &bytes))?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Synchronizes data properties created on opaque ordinary-object
-    /// transports while executing a foreign call. The child heap never holds
-    /// a parent object ID; this explicit boundary operation re-imports every
-    /// value before using the parent's ordinary [[Set]] semantics.
-    fn test262_sync_imported_data_properties(
-        &mut self,
-        realm_id: ObjectId,
-    ) -> Result<(), RuntimeError> {
-        let writes = {
-            let realm = self
-                .test262_realms
-                .get_mut(&realm_id)
-                .expect("foreign realm remains live");
-            let imports = realm
-                .imported_values
-                .iter()
-                .filter(|(target, imported)| {
-                    // A reverse-membrane facade (see `test262_transport_
-                    // value`/`Test262ReverseValue`) forwards every [[Set]]
-                    // live, directly onto the real parent object, the
-                    // moment it happens -- there is nothing left for this
-                    // manual sync-back pass to do, and running it anyway
-                    // would call back into the parent *outside* the
-                    // `register_active` window `test262_foreign_call`
-                    // establishes only for its own direct child call.
-                    imported.property_forwarding
-                        && !realm.vm.test262_reverse_values.contains_key(target)
-                })
-                .map(|(target, imported)| (*target, imported.value.clone()))
-                .collect::<Vec<_>>();
-            let mut writes = Vec::new();
-            for (target, parent) in imports {
-                for key in realm.vm.object_own_property_keys(target)? {
-                    let Some(PropertyDescriptor {
-                        value: Some(value), ..
-                    }) = realm.vm.object_get_own_property(target, &key)?
-                    else {
-                        continue;
-                    };
-                    writes.push((parent.clone(), key, value));
+                if self.heap.buffer_byte_length(buffer).expect(
+                    "the retained membrane mirror owns this live buffer and checked byte range",
+                ) != byte_length
+                    && self.heap.buffer_resizable(buffer).expect(
+                        "the retained membrane mirror owns this live buffer and checked byte range",
+                    )
+                {
+                    self.with_roots(|heap| heap.resize_array_buffer(buffer, byte_length))?;
                 }
+                // Both mirror producers preserve resizability and the source
+                // length. A fixed source cannot change length; a resizable
+                // mirror either resized above or returned its refusal. No
+                // JavaScript runs between that resize and this byte copy.
+                self.heap
+                    .array_buffer_write(buffer, 0, &bytes)
+                    .expect("the mutable mirror has the checked matching byte length");
             }
-            writes
-        };
-        for (parent, key, value) in writes {
-            let value = self.test262_import_foreign_value(realm_id, value)?;
-            self.set_property(&parent, &key, &value)?;
         }
         Ok(())
     }
@@ -1551,7 +1729,8 @@ impl Vm {
             .expect("foreign realm remains live")
             .vm
             .heap
-            .native_function(target)?;
+            .native_function(target)
+            .expect("the retained membrane record owns this live target and its immutable brand");
         if matches!(
             foreign_native,
             Some(
@@ -1567,7 +1746,7 @@ impl Vm {
                     | NativeFunction::TypedArrayMethod(_)
             )
         ) {
-            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+            self.test262_sync_foreign_buffer_mirrors(realm_id);
         }
         // `%ArrayIteratorPrototype%.next` is generic across Realms: the
         // function's Realm must not decide where the receiver's
@@ -1593,15 +1772,16 @@ impl Vm {
                 .and_then(Value::object_id)
                 .and_then(|buffer| self.test262_foreign_reference(buffer))
             {
-                if buffer_realm == realm_id {
-                    let realm = self
-                        .test262_realms
-                        .get_mut(&realm_id)
-                        .expect("foreign realm remains live");
-                    realm.vm.heap.detach_array_buffer(buffer_target)?;
-                    self.test262_detach_foreign_buffer_mirrors(realm_id, buffer_target)?;
-                    return Ok(Value::Undefined);
-                }
+                // The host hook accepts a buffer from any live Realm. Its
+                // function's Realm does not own the receiver's buffer slots.
+                let realm = self
+                    .test262_realms
+                    .get_mut(&buffer_realm)
+                    .expect("a foreign buffer facade retains its owning realm");
+                realm.vm.heap.detach_array_buffer(buffer_target)?;
+                self.test262_detach_foreign_buffer_mirrors(buffer_realm, buffer_target)
+                    .expect("detaching foreign buffer mirrors checks weak membership and cannot allocate");
+                return Ok(Value::Undefined);
             }
             if let Some(buffer) = args.first().and_then(Value::object_id).filter(|buffer| {
                 self.test262_foreign_buffer_mirrors
@@ -1612,7 +1792,8 @@ impl Vm {
                 // and its parent identity together, exactly as a shared
                 // cross-Realm ArrayBuffer reference would behave.
                 self.test262_detach_local_buffer_mirrors(buffer)?;
-                self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
+                self.with_roots(|heap| heap.detach_array_buffer(buffer))
+                    .expect("the retained local mirror has the same buffer mutability as its successfully detached child");
                 return Ok(Value::Undefined);
             }
         }
@@ -1644,6 +1825,19 @@ impl Vm {
         // behalf of the callee's Realm. `method.call(receiver, ...)` reaches
         // the membrane as a foreign `Call`, so look through it.
         if !construct {
+            // Materialize an Atomics apply argument list in its caller once.
+            // Its eventual native call chooses the TypedArray's owning VM;
+            // transporting the list first would snapshot that array's bytes.
+            if foreign_native == Some(NativeFunction::Apply)
+                && matches!(call_target_native, Some(NativeFunction::Atomics(_)))
+            {
+                return self.test262_run_native_for_realm(
+                    realm_id,
+                    NativeFunction::Apply,
+                    receiver,
+                    args,
+                );
+            }
             let method_call = if foreign_native == Some(NativeFunction::Call) {
                 call_target_native.map(|method| {
                     (
@@ -1665,6 +1859,9 @@ impl Vm {
                 let runs_here = match runs_where_its_operands_live(method) {
                     None => false,
                     Some(OperandPolicy::Receiver) => foreign_to_callee(self, &this_value),
+                    Some(OperandPolicy::FirstArgument) => arguments
+                        .first()
+                        .is_some_and(|value| foreign_to_callee(self, value)),
                     Some(OperandPolicy::AnyOperand) => {
                         foreign_to_callee(self, &this_value)
                             || arguments.iter().any(|value| foreign_to_callee(self, value))
@@ -1858,6 +2055,10 @@ impl Vm {
                 self.test262_import_foreign_value(realm_id, error)?,
             ));
         }
+        // Any foreign function can mutate or transfer a mirrored buffer,
+        // including closures and Function.prototype.call/apply. Flush before
+        // entry rather than relying on the outer function's native identity.
+        self.test262_sync_foreign_buffer_mirrors(realm_id);
         let receiver = self.test262_export_foreign_value(realm_id, &receiver)?;
         let args = args
             .iter()
@@ -1928,7 +2129,15 @@ impl Vm {
             },
         };
         drop(_guard);
-        self.test262_sync_imported_data_properties(realm_id)?;
+        let buffers = self
+            .test262_foreign_buffer_mirrors
+            .values()
+            .filter(|mirror| mirror.realm == realm_id)
+            .map(|mirror| mirror.target)
+            .collect::<HashSet<_>>();
+        for buffer in buffers {
+            self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
+        }
         let result = self.test262_import_foreign_result(realm_id, result)?;
         // OrdinaryCreateFromConstructor consulted `newTarget` only through
         // its `prototype`, and the child ran with the callee itself as
@@ -1994,11 +2203,11 @@ impl Vm {
         property: &str,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(wrapper) = receiver else {
-            unreachable!("foreign next receiver is an object")
-        };
+        let wrapper = receiver
+            .object_id()
+            .expect("native dispatch selects a live foreign object receiver");
         let (realm_id, target, _, _) = self
-            .test262_foreign_reference(*wrapper)
+            .test262_foreign_reference(wrapper)
             .expect("foreign next has a membrane record");
         let args = args
             .iter()
@@ -2055,16 +2264,23 @@ impl Vm {
         realm.install_test262_harness()?;
         let prototype = self.object_prototype;
         let base = self.stack.len();
+        let mut published_realm = None;
         let result = (|| {
             let global = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
             self.stack.push(Value::Object(global));
-            let foreign_global = realm.global("globalThis")?.object_id().unwrap();
-            let target_root = realm.heap.root(foreign_global)?;
-            let wrapper_root = self.heap.root(global)?;
+            let foreign_global = *realm.globals.get("globalThis").expect(
+                "install_test262_harness initialized and retained this fresh realm's global",
+            );
+            let target_root = realm.heap.root(foreign_global).expect(
+                "the unexposed fresh realm has consumed only the finite harness root registrations",
+            );
 
             let record = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
             self.stack.push(Value::Object(record));
             self.define_data(record, "global", Value::Object(global), true, true, true)?;
+            // Acquire the parent root immediately before publication. Earlier
+            // allocations can fail while both objects are still stack roots.
+            let wrapper_root = self.heap.root(global)?;
             self.test262_realms.insert(
                 global,
                 Test262Realm {
@@ -2075,6 +2291,7 @@ impl Vm {
                     shadow_realm_reexports: HashMap::new(),
                 },
             );
+            published_realm = Some(global);
             self.test262_foreign_values.insert(
                 global,
                 Test262ForeignValue {
@@ -2092,6 +2309,25 @@ impl Vm {
             self.define_data(record, "evalScript", eval_script, true, true, true)?;
             Ok(Value::Object(record))
         })();
+        if result.is_err() {
+            if let Some(realm_id) = published_realm {
+                let wrappers: Vec<_> = self
+                    .test262_foreign_values
+                    .iter()
+                    .filter_map(|(wrapper, value)| (value.realm == realm_id).then_some(*wrapper))
+                    .collect();
+                for wrapper in wrappers {
+                    let value = self
+                        .test262_foreign_values
+                        .remove(&wrapper)
+                        .expect("the new realm owns this unpublished facade");
+                    self.release_root(value._wrapper_root);
+                }
+                // Every child root belongs to this private heap. No user code
+                // has received the failed realm or one of its facades.
+                self.test262_realms.remove(&realm_id);
+            }
+        }
         self.stack.truncate(base);
         result
     }
@@ -2105,6 +2341,7 @@ impl Vm {
 fn foreign_constructor_intrinsic(function: NativeFunction) -> Option<&'static str> {
     Some(match function {
         NativeFunction::Function => "Function",
+        NativeFunction::String => "String",
         NativeFunction::AsyncFunction => "AsyncFunction",
         NativeFunction::GeneratorFunction => "GeneratorFunction",
         NativeFunction::AsyncGeneratorFunction => "AsyncGeneratorFunction",
@@ -2122,6 +2359,31 @@ fn foreign_constructor_intrinsic(function: NativeFunction) -> Option<&'static st
         NativeFunction::DataView => "DataView",
         NativeFunction::TypedArray(kind) => kind.name(),
         NativeFunction::Error(name) => name,
+        NativeFunction::DisposableStack { is_async: false } => "DisposableStack",
+        NativeFunction::DisposableStack { is_async: true } => "AsyncDisposableStack",
+        NativeFunction::ShadowRealm => "ShadowRealm",
+        NativeFunction::Collator => "Intl.Collator",
+        NativeFunction::Locale => "Intl.Locale",
+        NativeFunction::IntlService(service) => match service {
+            native::IntlService::Number => "Intl.NumberFormat",
+            native::IntlService::DateTime => "Intl.DateTimeFormat",
+            native::IntlService::DisplayNames => "Intl.DisplayNames",
+            native::IntlService::Duration => "Intl.DurationFormat",
+            native::IntlService::List => "Intl.ListFormat",
+            native::IntlService::Plural => "Intl.PluralRules",
+            native::IntlService::RelativeTime => "Intl.RelativeTimeFormat",
+            native::IntlService::Segmenter => "Intl.Segmenter",
+        },
+        NativeFunction::TemporalConstructor(kind) => match kind {
+            crate::heap::TemporalKind::Duration => "Temporal.Duration",
+            crate::heap::TemporalKind::Instant => "Temporal.Instant",
+            crate::heap::TemporalKind::PlainDate => "Temporal.PlainDate",
+            crate::heap::TemporalKind::PlainDateTime => "Temporal.PlainDateTime",
+            crate::heap::TemporalKind::PlainMonthDay => "Temporal.PlainMonthDay",
+            crate::heap::TemporalKind::PlainTime => "Temporal.PlainTime",
+            crate::heap::TemporalKind::PlainYearMonth => "Temporal.PlainYearMonth",
+            crate::heap::TemporalKind::ZonedDateTime => "Temporal.ZonedDateTime",
+        },
         _ => return None,
     })
 }
@@ -2132,6 +2394,9 @@ enum OperandPolicy {
     /// The function checks its receiver's internal slots or accessors, so it
     /// runs here only when the receiver is not the callee Realm's own.
     Receiver,
+    /// Atomics arithmetic accesses the first argument's backing storage and
+    /// returns a primitive; the receiver does not select that storage.
+    FirstArgument,
     /// The function is generic over everything it is given (and may call
     /// callbacks), so it runs here when the receiver or any argument object
     /// is not the callee Realm's own.
@@ -2145,6 +2410,7 @@ enum OperandPolicy {
 /// to the callee's Realm.
 fn runs_where_its_operands_live(function: NativeFunction) -> Option<OperandPolicy> {
     Some(match function {
+        NativeFunction::Atomics(_) => OperandPolicy::FirstArgument,
         NativeFunction::ArrayAt
         | NativeFunction::ArrayFill
         | NativeFunction::ArrayCopyWithin
@@ -2196,3 +2462,7 @@ fn runs_where_its_operands_live(function: NativeFunction) -> Option<OperandPolic
         _ => return None,
     })
 }
+
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/foreign_realm_boundaries.rs"]
+mod boundary_contracts;

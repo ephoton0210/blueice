@@ -308,10 +308,6 @@ pub(crate) enum NativeFunction {
         action: u8,
         rejected: bool,
     },
-    AsyncIteratorCloseResult {
-        preserve_throw: bool,
-        rejected: bool,
-    },
     StreamReaction {
         stream: ObjectId,
         action: u8,

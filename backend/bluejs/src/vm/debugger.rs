@@ -200,6 +200,92 @@ enum DebuggerRunOutcome {
     Completed(Result<Value, RuntimeError>),
 }
 
+/// A thrown completion either enters a handler or fails. It cannot return
+/// normally or initiate a tail call; validate that protocol once for both
+/// classic and module callers of a paused child.
+enum NestedThrowAction {
+    Handler(usize),
+    Failed(RuntimeError),
+}
+
+impl NestedThrowAction {
+    fn classify(action: Result<CompletionAction, RuntimeError>) -> Self {
+        match action {
+            Ok(CompletionAction::Jump(pc)) => Self::Handler(pc),
+            Ok(CompletionAction::Throw(error)) | Err(error) => Self::Failed(error),
+            Ok(
+                CompletionAction::Continue
+                | CompletionAction::Return(_)
+                | CompletionAction::TailRecur(_)
+                | CompletionAction::TailCall(_),
+            ) => Self::Failed(RuntimeError::Unsupported(
+                "nested throw did not produce a handler successor",
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum DebuggerFrameKind {
+    Root,
+    NestedEntry,
+    NestedResume,
+}
+
+/// A synchronous debugger frame has only two resumable outcomes. Keep the
+/// interpreter exit validation in one adapter shared by entry and stepping.
+pub(super) enum DebuggerInterpreterExit {
+    Completed(Result<Value, RuntimeError>),
+    Suspended {
+        pc: usize,
+        iterators: Vec<Value>,
+        handlers: Vec<HandlerFrame>,
+    },
+}
+
+impl DebuggerInterpreterExit {
+    pub(super) fn classify(
+        result: Result<InterpreterExit, RuntimeError>,
+        frame: DebuggerFrameKind,
+    ) -> Self {
+        match result {
+            Ok(InterpreterExit::Return(value)) => Self::Completed(Ok(value)),
+            Ok(InterpreterExit::Suspend {
+                pc,
+                iterators,
+                handlers,
+            }) => Self::Suspended {
+                pc,
+                iterators,
+                handlers,
+            },
+            Err(error) => Self::Completed(Err(error)),
+            Ok(InterpreterExit::Yield { .. }) => Self::Completed(Err(match frame {
+                DebuggerFrameKind::Root => {
+                    RuntimeError::TypeError("yield requires a generator function".into())
+                }
+                DebuggerFrameKind::NestedEntry => {
+                    RuntimeError::Unsupported("nested debugger target cannot yield or await")
+                }
+                DebuggerFrameKind::NestedResume => {
+                    RuntimeError::Unsupported("nested debugger frame yielded or awaited")
+                }
+            })),
+            Ok(InterpreterExit::Await { .. }) => Self::Completed(Err(match frame {
+                DebuggerFrameKind::Root => RuntimeError::Unsupported(
+                    "root debugger continuation cannot suspend for module await",
+                ),
+                DebuggerFrameKind::NestedEntry => {
+                    RuntimeError::Unsupported("nested debugger target cannot yield or await")
+                }
+                DebuggerFrameKind::NestedResume => {
+                    RuntimeError::Unsupported("nested debugger frame yielded or awaited")
+                }
+            })),
+        }
+    }
+}
+
 mod inspection;
 
 impl Vm {
@@ -217,7 +303,7 @@ impl Vm {
             "debugger module entry is absent from the graph",
         ))?;
         let target = usize::try_from(bytecode_offset)
-            .map_err(|_| RuntimeError::Unsupported("debugger safe-point offset is too large"))?;
+            .expect("the debugger's u32 wire offset fits the supported 32/64-bit hosts");
         let evaluate_entry = code.module_evaluate_entry.ok_or(RuntimeError::Unsupported(
             "debugger module entry has no evaluation body",
         ))? as usize;
@@ -298,14 +384,10 @@ impl Vm {
         ))?;
         let generation = code
             .debugger_program_generation
-            .ok_or(RuntimeError::Unsupported(
-                "nested debugger root has no installed program generation",
-            ))?;
-        if target.debugger_program_generation != Some(generation) {
-            return Err(RuntimeError::Unsupported(
-                "nested debugger code unit belongs to another program generation",
-            ));
-        }
+            .expect("a code unit ordinal is installed with its root program generation");
+        // Program installation stamps this entire immutable bytecode tree
+        // in collect_code_units; finding a child cannot cross a generation.
+        debug_assert_eq!(target.debugger_program_generation, Some(generation));
         if code_unit_ordinal == 0
             || !target
                 .instructions()
@@ -342,9 +424,9 @@ impl Vm {
             Self::nested_debugger_target_generation(code, code_unit_ordinal, bytecode_offset)?;
         self.prepare_root_execution(code, false)?;
         if let Err(error) = self.prepare_global_declarations(code) {
-            return self.finish_root_execution(Err(error)).map(|_| {
-                unreachable!("an abrupt debugger setup cannot produce a completion value")
-            });
+            return Err(self
+                .finish_root_execution(Err(error))
+                .expect_err("root cleanup preserves an abrupt completion"));
         }
         self.debugger_nested_pause_request = Some(NestedDebuggerPauseRequest {
             program_generation: generation,
@@ -464,11 +546,9 @@ impl Vm {
             target.code_unit_ordinal,
             target.bytecode_offset,
         )?;
-        if generation != target.dependency_generation {
-            return Err(RuntimeError::Unsupported(
-                "linked debugger target belongs to another installed generation",
-            ));
-        }
+        // The live dependency generation was checked above, and the helper
+        // returns that same root generation without running user code.
+        debug_assert_eq!(generation, target.dependency_generation);
         Ok(())
     }
 
@@ -501,11 +581,11 @@ impl Vm {
         self.debugger_nested_pause_request = None;
         result?;
         if let Some(child) = &self.debugger_nested_continuation {
-            if self.debugger_module_continuation.is_none() || self.module_graph.is_none() {
-                return Err(RuntimeError::Unsupported(
-                    "nested debugger module did not retain its entry graph",
-                ));
-            }
+            // evaluate_module_record captures the caller when the child
+            // suspends; execute_module_graph_inner stores its linked graph
+            // before returning here. Neither can be removed by JavaScript.
+            debug_assert!(self.debugger_module_continuation.is_some());
+            debug_assert!(self.module_graph.is_some());
             return Ok(VmDebuggerNestedExecutionState::Paused {
                 frame_serial: child.frame_serial,
                 code_unit_ordinal: child.code_unit_ordinal,
@@ -571,18 +651,15 @@ impl Vm {
                 "debugger nested frame invocation is stale",
             ));
         }
-        if matches!(
+        // Entry validation rejects these opcodes throughout the selected
+        // immutable code unit before a continuation can be captured.
+        debug_assert!(!matches!(
             continuation.code.instruction(continuation.pc),
             Some(crate::bytecode::Instruction {
                 opcode: Opcode::TailCall | Opcode::DirectEval | Opcode::DirectEvalSpread,
                 ..
             })
-        ) {
-            self.debugger_nested_continuation = Some(continuation);
-            return Err(RuntimeError::Unsupported(
-                "nested debugger cannot step a tail call or direct eval",
-            ));
-        }
+        ));
         let NestedDebuggerContinuation {
             frame_serial,
             code_unit_ordinal,
@@ -614,12 +691,12 @@ impl Vm {
             .debugger_nested_parent_execution
             .take()
             .expect("nested instruction step retains its caller execution");
-        match result {
-            Ok(InterpreterExit::Suspend {
+        match DebuggerInterpreterExit::classify(result, DebuggerFrameKind::NestedResume) {
+            DebuggerInterpreterExit::Suspended {
                 pc,
                 iterators,
                 handlers,
-            }) => {
+            } => {
                 let execution = self.suspend_module_execution();
                 self.restore_module_execution(parent);
                 self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
@@ -638,27 +715,9 @@ impl Vm {
                         .expect("verified bytecode offsets fit the debugger wire range"),
                 })
             }
-            result => {
-                let completion = match result {
-                    Ok(InterpreterExit::Return(value)) => {
-                        self.finish_debugger_interpret_result(Ok(value), &mut iterators, 0, 0)
-                    }
-                    Ok(InterpreterExit::Yield { .. } | InterpreterExit::Await { .. }) => self
-                        .finish_debugger_interpret_result(
-                            Err(RuntimeError::Unsupported(
-                                "nested debugger frame yielded or awaited",
-                            )),
-                            &mut iterators,
-                            0,
-                            0,
-                        ),
-                    Err(error) => {
-                        self.finish_debugger_interpret_result(Err(error), &mut iterators, 0, 0)
-                    }
-                    Ok(InterpreterExit::Suspend { .. }) => {
-                        unreachable!("nested suspend is handled above")
-                    }
-                };
+            DebuggerInterpreterExit::Completed(result) => {
+                let completion =
+                    self.finish_debugger_interpret_result(result, &mut iterators, 0, 0);
                 self.restore_module_execution(parent);
                 self.remaining_instructions = child_remaining_instructions;
                 match completion {
@@ -668,9 +727,9 @@ impl Vm {
                                 return self.abort_nested_module_execution(error);
                             }
                             self.debugger_continuation = None;
-                            return self.finish_root_execution(Err(error)).map(|_| {
-                                unreachable!("failed nested completion cannot finish the root")
-                            });
+                            return Err(self
+                                .finish_root_execution(Err(error))
+                                .expect_err("root cleanup preserves an abrupt completion"));
                         }
                         if let Some(root) = self.debugger_module_continuation.as_mut() {
                             let call = root
@@ -713,21 +772,21 @@ impl Vm {
                         }
                         if !error.is_catchable() {
                             self.debugger_continuation = None;
-                            return self.finish_root_execution(Err(error)).map(|_| {
-                                unreachable!("uncatchable nested failure cannot finish the root")
-                            });
+                            return Err(self
+                                .finish_root_execution(Err(error))
+                                .expect_err("root cleanup preserves an abrupt completion"));
                         }
                         let mut root = self
                             .debugger_continuation
                             .take()
                             .expect("nested child retains a waiting root frame");
-                        match self.resolve_completion(
+                        match NestedThrowAction::classify(self.resolve_completion(
                             &root.code,
                             &mut root.handlers,
                             &mut root.iterators,
                             Completion::Throw(error),
-                        ) {
-                            Ok(CompletionAction::Jump(pc)) => {
+                        )) {
+                            NestedThrowAction::Handler(pc) => {
                                 root.pc = pc;
                                 self.debugger_continuation = Some(root);
                                 Ok(VmDebuggerNestedExecutionState::FrameReturned {
@@ -736,17 +795,9 @@ impl Vm {
                                     ),
                                 })
                             }
-                            Ok(CompletionAction::Return(value)) => self
-                                .finish_root_execution(Ok(value))
-                                .map(|_| VmDebuggerNestedExecutionState::Completed),
-                            Ok(CompletionAction::Throw(error)) | Err(error) => self
+                            NestedThrowAction::Failed(error) => Err(self
                                 .finish_root_execution(Err(error))
-                                .map(|_| unreachable!("failed nested step cannot finish the root")),
-                            Ok(
-                                CompletionAction::Continue
-                                | CompletionAction::TailRecur(_)
-                                | CompletionAction::TailCall(_),
-                            ) => unreachable!("throw cannot continue or become a tail call"),
+                                .expect_err("root cleanup preserves an abrupt completion")),
                         }
                     }
                 }
@@ -789,20 +840,12 @@ impl Vm {
         record.cells = root.execution.cells.clone();
         record.suspended = true;
         self.active_module_name = root.previous_module.clone();
-        let outcome = match action {
-            Ok(CompletionAction::Jump(pc)) => {
+        let outcome = match NestedThrowAction::classify(action) {
+            NestedThrowAction::Handler(pc) => {
                 root.pc = pc;
                 Ok(pc)
             }
-            Ok(CompletionAction::Throw(error)) | Err(error) => Err(error),
-            Ok(
-                CompletionAction::Continue
-                | CompletionAction::Return(_)
-                | CompletionAction::TailRecur(_)
-                | CompletionAction::TailCall(_),
-            ) => Err(RuntimeError::Unsupported(
-                "nested module throw did not produce a handler successor",
-            )),
+            NestedThrowAction::Failed(error) => Err(error),
         };
         self.debugger_module_continuation = Some(root);
         self.store_module_graph(graph, false);
@@ -865,9 +908,12 @@ impl Vm {
             record.evaluated = true;
             record.error = Some(value.clone());
         }
-        let error = result.unwrap_or_else(|error| error);
-        self.finish_module_graph_execution(Err(error))
-            .map(|_| unreachable!("failed nested module cannot complete successfully"))
+        let error = match result {
+            Ok(error) | Err(error) => error,
+        };
+        Err(self
+            .finish_module_graph_execution(Err(error))
+            .expect_err("module cleanup preserves an abrupt completion"))
     }
 
     /// Runs a classic script until the exact compiler-provided root code-unit
@@ -885,7 +931,7 @@ impl Vm {
         bytecode_offset: u32,
     ) -> Result<VmDebuggerExecutionState, RuntimeError> {
         let target = usize::try_from(bytecode_offset)
-            .map_err(|_| RuntimeError::Unsupported("debugger safe-point offset is too large"))?;
+            .expect("the debugger's u32 wire offset fits the supported 32/64-bit hosts");
         // `Bytecode::instruction` deliberately decodes at an arbitrary byte
         // offset for internal compiler diagnostics; an operand byte can have
         // the numeric shape of another opcode. A debugger target must instead
@@ -901,9 +947,9 @@ impl Vm {
 
         self.prepare_root_execution(code, false)?;
         if let Err(error) = self.prepare_global_declarations(code) {
-            return self.finish_root_execution(Err(error)).map(|_| {
-                unreachable!("an abrupt debugger setup cannot produce a completion value")
-            });
+            return Err(self
+                .finish_root_execution(Err(error))
+                .expect_err("root cleanup preserves an abrupt completion"));
         }
 
         match self.run_debugger_script(code, Some(InterpreterSuspensionPoint::Offset(target))) {
@@ -952,19 +998,22 @@ impl Vm {
             mut iterators,
             handlers,
         } = continuation;
-        let result = match self.interpret(
-            &code,
-            &mut iterators,
-            pc,
-            None,
-            suspension_point,
-            Some((handlers, 0)),
+        let result = match DebuggerInterpreterExit::classify(
+            self.interpret(
+                &code,
+                &mut iterators,
+                pc,
+                None,
+                suspension_point,
+                Some((handlers, 0)),
+            ),
+            DebuggerFrameKind::Root,
         ) {
-            Ok(InterpreterExit::Suspend {
+            DebuggerInterpreterExit::Suspended {
                 pc,
                 iterators,
                 handlers,
-            }) => {
+            } => {
                 self.debugger_continuation = Some(DebuggerContinuation {
                     code,
                     pc,
@@ -976,14 +1025,7 @@ impl Vm {
                         .expect("verified BlueJS bytecode offsets fit the debugger wire range"),
                 });
             }
-            Ok(InterpreterExit::Return(value)) => Ok(value),
-            Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
-                "yield requires a generator function".into(),
-            )),
-            Ok(InterpreterExit::Await { .. }) => Err(RuntimeError::Unsupported(
-                "root debugger continuation cannot suspend for module await",
-            )),
-            Err(error) => Err(error),
+            DebuggerInterpreterExit::Completed(result) => result,
         };
         let result = self.finish_debugger_interpret_result(result, &mut iterators, 0, 0);
         self.finish_root_execution(result)
@@ -1019,51 +1061,28 @@ impl Vm {
         let pending_base = self.pending_completions.len();
         let save_base = self.completion_saves.len();
         let mut iterators = Vec::new();
-        match self.interpret(code, &mut iterators, 0, None, suspension_point, None) {
-            Ok(InterpreterExit::Suspend {
+        match DebuggerInterpreterExit::classify(
+            self.interpret(code, &mut iterators, 0, None, suspension_point, None),
+            DebuggerFrameKind::Root,
+        ) {
+            DebuggerInterpreterExit::Suspended {
                 pc,
                 iterators,
                 handlers,
-            }) => DebuggerRunOutcome::Paused(Box::new(DebuggerContinuation {
+            } => DebuggerRunOutcome::Paused(Box::new(DebuggerContinuation {
                 code: code.clone(),
                 pc,
                 iterators,
                 handlers,
             })),
-            Ok(InterpreterExit::Return(value)) => {
+            DebuggerInterpreterExit::Completed(result) => {
                 DebuggerRunOutcome::Completed(self.finish_debugger_interpret_result(
-                    Ok(value),
+                    result,
                     &mut iterators,
                     pending_base,
                     save_base,
                 ))
             }
-            Ok(InterpreterExit::Yield { .. }) => {
-                DebuggerRunOutcome::Completed(self.finish_debugger_interpret_result(
-                    Err(RuntimeError::TypeError(
-                        "yield requires a generator function".into(),
-                    )),
-                    &mut iterators,
-                    pending_base,
-                    save_base,
-                ))
-            }
-            Ok(InterpreterExit::Await { .. }) => {
-                DebuggerRunOutcome::Completed(self.finish_debugger_interpret_result(
-                    Err(RuntimeError::Unsupported(
-                        "root debugger continuation cannot suspend for module await",
-                    )),
-                    &mut iterators,
-                    pending_base,
-                    save_base,
-                ))
-            }
-            Err(error) => DebuggerRunOutcome::Completed(self.finish_debugger_interpret_result(
-                Err(error),
-                &mut iterators,
-                pending_base,
-                save_base,
-            )),
         }
     }
 
@@ -1077,15 +1096,14 @@ impl Vm {
         save_base: usize,
     ) -> Result<Value, RuntimeError> {
         if result.is_err() {
+            let base = self.stack.len();
             if let Err(RuntimeError::Thrown(value)) = &result {
                 self.stack.push(value.clone());
             }
-            self.stack.extend(iterators.iter().cloned());
-            for record in std::mem::take(iterators).into_iter().rev() {
-                // IteratorClose preserves an existing throw even when return
-                // throws too. Resource exhaustion retains the original limit.
-                let _ = self.iterator_close(&record);
-            }
+            // The common cleanup retains every pending record through
+            // callbacks and preserves this pre-existing abrupt completion.
+            self.close_iterators_to(iterators, 0);
+            self.stack.truncate(base);
         }
         self.pending_completions.truncate(pending_base);
         self.completion_saves.truncate(save_base);
@@ -1121,6 +1139,6 @@ impl Vm {
     }
 }
 
-#[cfg(test)]
-#[path = "debugger/tests.rs"]
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/debugger_internal.rs"]
 mod tests;

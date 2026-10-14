@@ -22,122 +22,63 @@
 
 use super::*;
 
-impl NativeFunction {
-    /// The Temporal type a prototype member's `this` must be, or `None` for a
-    /// native that has no such receiver: constructors, the static
-    /// `from`/`compare`/`fromEpoch*` functions, `Temporal.Now`'s members, and
-    /// every `valueOf` (which throws `TypeError` for any receiver at all).
-    pub(in super::super) fn temporal_receiver_kind(self) -> Option<TemporalKind> {
-        Some(match self {
-            Self::TemporalGetter(kind, _)
-            | Self::TemporalWithCalendar(kind)
-            | Self::TemporalPlainToZonedDateTime(kind)
-            | Self::TemporalDateWith(kind)
-            | Self::TemporalDateAdd(kind)
-            | Self::TemporalDateSubtract(kind)
-            | Self::TemporalDateUntil(kind)
-            | Self::TemporalDateSince(kind)
-            | Self::TemporalDateEquals(kind)
-            | Self::TemporalDateToString(kind)
-            | Self::TemporalDateToJson(kind)
-            | Self::TemporalDateToLocaleString(kind) => kind,
-            Self::TemporalInstantToZonedDateTimeIso
-            | Self::TemporalInstantAdd
-            | Self::TemporalInstantSubtract
-            | Self::TemporalInstantRound
-            | Self::TemporalInstantUntil
-            | Self::TemporalInstantSince
-            | Self::TemporalInstantEquals
-            | Self::TemporalInstantToString
-            | Self::TemporalInstantToLocaleString
-            | Self::TemporalInstantToJson => TemporalKind::Instant,
-            Self::TemporalPlainTimeAdd
-            | Self::TemporalPlainTimeSubtract
-            | Self::TemporalPlainTimeRound
-            | Self::TemporalPlainTimeUntil
-            | Self::TemporalPlainTimeSince
-            | Self::TemporalPlainTimeEquals
-            | Self::TemporalPlainTimeWith
-            | Self::TemporalPlainTimeToString
-            | Self::TemporalPlainTimeToJson
-            | Self::TemporalPlainTimeToLocaleString => TemporalKind::PlainTime,
-            Self::TemporalDurationWith
-            | Self::TemporalDurationNegated
-            | Self::TemporalDurationAbs
-            | Self::TemporalDurationAdd
-            | Self::TemporalDurationSubtract
-            | Self::TemporalDurationRound
-            | Self::TemporalDurationTotal
-            | Self::TemporalDurationToString
-            | Self::TemporalDurationToJson
-            | Self::TemporalDurationToLocaleString => TemporalKind::Duration,
-            Self::TemporalPlainDateToPlainDateTime
-            | Self::TemporalPlainDateToPlainYearMonth
-            | Self::TemporalPlainDateToPlainMonthDay => TemporalKind::PlainDate,
-            Self::TemporalPlainDateTimeToPlainDate
-            | Self::TemporalPlainDateTimeToPlainTime
-            | Self::TemporalPlainDateTimeWithPlainTime
-            | Self::TemporalPlainDateTimeRound => TemporalKind::PlainDateTime,
-            Self::TemporalYearMonthWith
-            | Self::TemporalYearMonthAdd
-            | Self::TemporalYearMonthSubtract
-            | Self::TemporalYearMonthUntil
-            | Self::TemporalYearMonthSince
-            | Self::TemporalYearMonthEquals
-            | Self::TemporalYearMonthToString
-            | Self::TemporalYearMonthToJson
-            | Self::TemporalYearMonthToLocaleString
-            | Self::TemporalYearMonthToPlainDate => TemporalKind::PlainYearMonth,
-            Self::TemporalMonthDayWith
-            | Self::TemporalMonthDayEquals
-            | Self::TemporalMonthDayToString
-            | Self::TemporalMonthDayToJson
-            | Self::TemporalMonthDayToLocaleString
-            | Self::TemporalMonthDayToPlainDate => TemporalKind::PlainMonthDay,
-            Self::TemporalZonedDateTimeToLocaleString
-            | Self::TemporalZonedDateTimeWith
-            | Self::TemporalZonedDateTimeWithTimeZone
-            | Self::TemporalZonedDateTimeWithPlainTime
-            | Self::TemporalZonedDateTimeAdd
-            | Self::TemporalZonedDateTimeSubtract
-            | Self::TemporalZonedDateTimeRound
-            | Self::TemporalZonedDateTimeUntil
-            | Self::TemporalZonedDateTimeSince
-            | Self::TemporalZonedDateTimeEquals
-            | Self::TemporalZonedDateTimeToString
-            | Self::TemporalZonedDateTimeToJson
-            | Self::TemporalZonedDateTimeToInstant
-            | Self::TemporalZonedDateTimeToPlainDate
-            | Self::TemporalZonedDateTimeToPlainTime
-            | Self::TemporalZonedDateTimeToPlainDateTime
-            | Self::TemporalZonedDateTimeStartOfDay
-            | Self::TemporalZonedDateTimeGetTimeZoneTransition => TemporalKind::ZonedDateTime,
-            _ => return None,
-        })
+/// Owned receiver data captured before any observable argument access. The
+/// native frame retains `value` through callbacks; the snapshot itself neither
+/// dereferences an ObjectId nor registers an independent GC root.
+pub(in super::super) struct ValidatedTemporalReceiver {
+    value: Value,
+    data: TemporalValue,
+}
+
+impl ValidatedTemporalReceiver {
+    pub(in super::super) fn value(&self) -> &Value {
+        &self.value
+    }
+    pub(in super::super) fn data(&self) -> &TemporalValue {
+        &self.data
+    }
+    pub(in super::super) fn instant_epoch(&self) -> BigInt {
+        self.data.epoch_nanoseconds.clone()
+    }
+    pub(in super::super) fn time_fields(&self) -> epoch::CivilTime {
+        (
+            self.data.hour,
+            self.data.minute,
+            self.data.second,
+            self.data.millisecond,
+            self.data.microsecond,
+            self.data.nanosecond,
+        )
     }
 }
 
 impl Vm {
-    /// `RequireInternalSlot(receiver, [[InitializedTemporal<kind>]])`: the
-    /// receiver must be an object carrying a Temporal value of exactly `kind`.
-    pub(in super::super) fn require_temporal_receiver(
+    /// Validate the exact native receiver kind and capture its immutable slots.
+    pub(in super::super) fn validate_temporal_receiver(
         &self,
         receiver: &Value,
         kind: TemporalKind,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<ValidatedTemporalReceiver, RuntimeError> {
         let actual = match receiver.object_id() {
-            Some(object) => self.heap.temporal_kind(object),
-            None => Ok(None),
+            Some(object) => self.heap.temporal_kind(object)?,
+            None => None,
         };
-        actual.map_err(RuntimeError::from).and_then(|actual| {
-            if actual == Some(kind) {
-                Ok(())
-            } else {
-                Err(RuntimeError::TypeError(format!(
-                    "receiver is not a Temporal.{}",
-                    kind.name()
-                )))
-            }
+        if actual != Some(kind) {
+            return Err(RuntimeError::TypeError(format!(
+                "receiver is not a Temporal.{}",
+                kind.name()
+            )));
+        }
+        // The immutable kind lookup validated this exact object. These reads
+        // execute neither JavaScript nor a managed-heap collection.
+        let data = self
+            .heap
+            .temporal_value(receiver.object_id().unwrap())
+            .expect("the validated Temporal object remains live during immutable slot capture")
+            .expect("the validated Temporal kind owns its value slot");
+        Ok(ValidatedTemporalReceiver {
+            value: receiver.clone(),
+            data,
         })
     }
 }

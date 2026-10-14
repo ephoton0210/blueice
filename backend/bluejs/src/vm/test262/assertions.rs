@@ -14,6 +14,10 @@
 use super::*;
 use std::cmp::Ordering;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/test262_assertion_boundaries.rs"]
+mod boundary_contracts;
+
 impl Vm {
     /// Dispatches the natives that replace `assert.js`; `None` means `name`
     /// belongs to another Test262 native.
@@ -22,47 +26,58 @@ impl Vm {
         name: &str,
         args: &[Value],
     ) -> Option<Result<Value, RuntimeError>> {
-        if !matches!(
-            name,
-            "assert"
-                | "sameValue"
-                | "notSameValue"
-                | "_isSameValue"
-                | "throws"
-                | "compareArray"
-                | "arrayEqual"
-                | "formatArray"
-                | "isPrimitive"
-                | "isNegativeZero"
-                | "formatIdentityFreeValue"
-                | "formatSimpleValue"
-        ) {
-            return None;
+        enum Assertion {
+            Assert,
+            SameValue,
+            NotSameValue,
+            IsSameValue,
+            Throws,
+            CompareArray,
+            ArrayEqual,
+            FormatArray,
+            IsPrimitive,
+            IsNegativeZero,
+            FormatIdentityFreeValue,
+            FormatSimpleValue,
         }
+        let assertion = match name {
+            "assert" => Assertion::Assert,
+            "sameValue" => Assertion::SameValue,
+            "notSameValue" => Assertion::NotSameValue,
+            "_isSameValue" => Assertion::IsSameValue,
+            "throws" => Assertion::Throws,
+            "compareArray" => Assertion::CompareArray,
+            "arrayEqual" => Assertion::ArrayEqual,
+            "formatArray" => Assertion::FormatArray,
+            "isPrimitive" => Assertion::IsPrimitive,
+            "isNegativeZero" => Assertion::IsNegativeZero,
+            "formatIdentityFreeValue" => Assertion::FormatIdentityFreeValue,
+            "formatSimpleValue" => Assertion::FormatSimpleValue,
+            _ => return None,
+        };
         let first = native::argument(args, 0);
         let second = native::argument(args, 1);
         // Every value a helper holds across a call that can run user code
         // must stay reachable, so root the arguments for the whole call.
         let base = self.stack.len();
         self.stack.extend(args.iter().cloned());
-        let result = match name {
-            "assert" => self.test262_assert(first, second),
-            "sameValue" => self.test262_assert_same_value(args, true),
-            "notSameValue" => self.test262_assert_same_value(args, false),
-            "_isSameValue" => Ok(Value::Bool(crate::heap::same_value(first, second))),
-            "throws" => self.test262_assert_throws(args),
-            "compareArray" => self.test262_assert_compare_array(args),
-            "arrayEqual" => self
+        let result = match assertion {
+            Assertion::Assert => self.test262_assert(first, second),
+            Assertion::SameValue => self.test262_assert_same_value(args, true),
+            Assertion::NotSameValue => self.test262_assert_same_value(args, false),
+            Assertion::IsSameValue => Ok(Value::Bool(crate::heap::same_value(first, second))),
+            Assertion::Throws => self.test262_assert_throws(args),
+            Assertion::CompareArray => self.test262_assert_compare_array(args),
+            Assertion::ArrayEqual => self
                 .test262_compare_array_values(first, second)
                 .map(Value::Bool),
-            "formatArray" => self.test262_format_array(first),
-            "isPrimitive" => self.test262_is_primitive(first).map(Value::Bool),
-            "isNegativeZero" => Ok(Value::Bool(
+            Assertion::FormatArray => self.test262_format_array(first),
+            Assertion::IsPrimitive => self.test262_is_primitive(first).map(Value::Bool),
+            Assertion::IsNegativeZero => Ok(Value::Bool(
                 matches!(first, Value::Number(n) if *n == 0.0 && n.is_sign_negative()),
             )),
-            "formatIdentityFreeValue" => self.test262_format_identity_free_value(first),
-            "formatSimpleValue" => self.test262_format_simple_value(first),
-            _ => unreachable!("the name filter above admits only the arms listed here"),
+            Assertion::FormatIdentityFreeValue => self.test262_format_identity_free_value(first),
+            Assertion::FormatSimpleValue => self.test262_format_simple_value(first),
         };
         self.stack.truncate(base);
         Some(result)
@@ -123,7 +138,11 @@ impl Vm {
         if !self.to_boolean(value)? {
             return Ok(true);
         }
-        Ok(!matches!(self.typeof_value(value)?, "object" | "function"))
+        Ok(!matches!(
+            self.typeof_value(value)
+                .expect("ToBoolean validated the unchanged value without calling user code"),
+            "object" | "function"
+        ))
     }
 
     fn test262_format_identity_free_value(&mut self, value: &Value) -> Result<Value, RuntimeError> {
@@ -136,7 +155,12 @@ impl Vm {
             "string" => {
                 let json = self.lookup_global_name("JSON")?;
                 match json {
-                    Some(json) if self.typeof_value(&json)? != "undefined" => {
+                    Some(json)
+                        if self
+                            .typeof_value(&json)
+                            .expect("global lookup returns a live value")
+                            != "undefined" =>
+                    {
                         let stringify = self.get_property(&json, &"stringify".into())?;
                         self.call_native(stringify, json, vec![value.clone()], false)
                     }
@@ -162,7 +186,10 @@ impl Vm {
 
     fn test262_format_simple_value(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let basic = self.test262_format_identity_free_value(value)?;
-        if self.to_boolean(&basic)? {
+        if self
+            .to_boolean(&basic)
+            .expect("the formatter returns a live value without an intervening allocation")
+        {
             return Ok(basic);
         }
         let error = match self.test262_string(value) {
@@ -265,7 +292,12 @@ impl Vm {
         // else (an exhausted budget, say) must never satisfy the assertion.
         let thrown = self.error_value(error)?;
         self.stack.push(thrown.clone());
-        if self.typeof_value(&thrown)? != "object" || thrown == Value::Null {
+        if self
+            .typeof_value(&thrown)
+            .expect("observable exceptions retain their object handles")
+            != "object"
+            || thrown == Value::Null
+        {
             let message = self.add(
                 message,
                 Value::String("Thrown value was not an object!".into()),

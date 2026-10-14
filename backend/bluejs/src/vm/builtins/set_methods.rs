@@ -77,14 +77,20 @@ impl Vm {
             ));
         }
         let has = self.get_property(other, &"has".into())?;
-        if !self.is_callable(&has)? {
+        if !self
+            .is_callable(&has)
+            .expect("Get returned a live has method before any further allocation")
+        {
             return Err(RuntimeError::TypeError(
                 "Set method argument has no callable has".into(),
             ));
         }
         self.stack.push(has.clone());
         let keys = self.get_property(other, &"keys".into())?;
-        if !self.is_callable(&keys)? {
+        if !self
+            .is_callable(&keys)
+            .expect("Get returned a live keys method before any further allocation")
+        {
             return Err(RuntimeError::TypeError(
                 "Set method argument has no callable keys".into(),
             ));

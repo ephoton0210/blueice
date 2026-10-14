@@ -156,6 +156,42 @@ fn format_helpers_render_arrays_strings_and_negative_zero() {
 }
 
 #[test]
+fn assertion_formatters_keep_objects_returned_by_replaced_string() {
+    expect_true(
+        "(() => { const old = String; \
+            try { String = function() { return {toString() {return 'string result';}}; }; \
+                const result = formatSimpleValue(7); \
+                return typeof result === 'object' && result.toString() === 'string result'; \
+            } finally { String = old; } })()",
+    );
+}
+
+#[test]
+fn assertion_helpers_preserve_html_dda_classification() {
+    let mut vm = harness_vm();
+    vm.install_test262_is_html_dda().unwrap();
+    assert_eq!(
+        run(
+            &mut vm,
+            "isPrimitive($262.IsHTMLDDA) && \
+         formatIdentityFreeValue($262.IsHTMLDDA) === String($262.IsHTMLDDA) && \
+         (() => { const old = JSON.stringify; \
+             try { JSON.stringify = () => $262.IsHTMLDDA; \
+                 return formatSimpleValue('text') === 'text'; \
+             } finally { JSON.stringify = old; } })()",
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert!(matches!(
+        run(
+            &mut vm,
+            "assert.throws(TypeError, () => { throw $262.IsHTMLDDA; })"
+        ),
+        Err(RuntimeError::Test262(_))
+    ));
+}
+
+#[test]
 fn format_helpers_respect_the_string_limit() {
     let mut vm = Vm::new(VmConfig {
         max_string_bytes: 8,

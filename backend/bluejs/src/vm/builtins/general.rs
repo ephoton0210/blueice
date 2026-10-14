@@ -7,36 +7,14 @@ use super::*;
 impl Vm {
     pub fn install_test262_done(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
-        let prototype = self.function_prototype()?;
+        let prototype = self
+            .function_prototype()
+            .expect("materializing globalThis initialized Function intrinsics");
         self.install_native(global, prototype, "$DONE", 1, NativeFunction::Test262Done)
     }
 
     pub fn take_test262_done(&mut self) -> Option<Result<(), Value>> {
         self.test262_done.take()
-    }
-
-    pub(in super::super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
-        Ok(if let Value::Object(id) = value {
-            if let Some((_, _, callable, _)) = self.test262_foreign_reference(*id) {
-                callable
-            } else if let Some((_, _, callable, _)) = self.test262_reverse_reference(*id) {
-                // `$262.createRealm()` transports an object owned by a
-                // parent Test262 realm as a reverse-membrane facade in this
-                // realm. Its owner retains the forwarding record, while this
-                // realm retains the callable/constructible bits (and now, a
-                // live dispatch path back to the original) so `ShadowRealm`
-                // and ordinary call dispatch alike can treat it correctly.
-                callable
-            } else if let Some((callable, _)) = self.heap.proxy_capabilities(*id)? {
-                callable
-            } else {
-                self.heap.native_function(*id)?.is_some()
-                    || self.heap.closure(*id)?.is_some()
-                    || self.heap.bound_function(*id)?.is_some()
-            }
-        } else {
-            false
-        })
     }
 
     pub(in super::super) fn coerce_primitive(
@@ -71,7 +49,10 @@ impl Vm {
         };
         for name in names {
             let method = self.get_property(value, &name.into())?;
-            if self.is_callable(&method)? {
+            if self
+                .is_callable(&method)
+                .expect("Get returned a live local value or an imported facade")
+            {
                 let result = self.call_native(method, value.clone(), Vec::new(), false)?;
                 if !matches!(result, Value::Object(_)) {
                     return Ok(result);
@@ -339,7 +320,9 @@ impl Vm {
         let value = self.coerce_primitive(value, "string")?;
         Ok(match value {
             Value::Symbol(symbol) => symbol.into(),
-            value => primitive::string(&value)?.into(),
+            value => primitive::string(&value)
+                .expect("ToPrimitive produced a non-Symbol primitive property key")
+                .into(),
         })
     }
 
@@ -365,25 +348,28 @@ impl Vm {
         if matches!(method, Value::Undefined | Value::Null) {
             return Ok(Value::Undefined);
         }
-        if !self.is_callable(&method)? {
+        if !self
+            .is_callable(&method)
+            .expect("Get returned a live local value or an imported facade")
+        {
             return Err(RuntimeError::TypeError("property is not callable".into()));
         }
         Ok(method)
     }
 
     pub(in super::super) fn is_regexp(&mut self, value: &Value) -> Result<bool, RuntimeError> {
-        if !matches!(value, Value::Object(_)) {
+        let Value::Object(id) = value else {
             return Ok(false);
-        }
+        };
         let matcher = self.get_property(value, &JsSymbol::well_known("match").into())?;
         if !matches!(matcher, Value::Undefined) {
             return self.to_boolean(&matcher);
         }
-        Ok(if let Value::Object(id) = value {
-            self.heap.regexp(*id)?.is_some()
-        } else {
-            false
-        })
+        Ok(self
+            .heap
+            .regexp(*id)
+            .expect("Get of @@match validated this retained receiver")
+            .is_some())
     }
 
     pub(in super::super) fn dispatch_string_method(
@@ -532,13 +518,16 @@ impl Vm {
         done: bool,
     ) -> Result<Value, RuntimeError> {
         let prototype = self.object_prototype;
+        let base = self.stack.len();
         self.stack.push(value.clone());
-        let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        self.stack.push(Value::Object(result));
-        self.with_roots(|heap| heap.set(result, "value", value))?;
-        self.with_roots(|heap| heap.set(result, "done", Value::Bool(done)))?;
-        self.stack.pop();
-        self.stack.pop();
-        Ok(Value::Object(result))
+        let outcome = (|| {
+            let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            self.stack.push(Value::Object(result));
+            self.with_roots(|heap| heap.set(result, "value", value))?;
+            self.with_roots(|heap| heap.set(result, "done", Value::Bool(done)))?;
+            Ok(Value::Object(result))
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 }

@@ -450,6 +450,11 @@ impl Heap {
         }
         let growth = byte_length.saturating_sub(current);
         if growth > available {
+            // Resize checks its budget directly rather than entering ensure_room.
+            // Allocation sweeps still need the actual refused byte requirement.
+            #[cfg(any(test, coverage))]
+            self.first_failed_allocation
+                .get_or_insert(self.managed_bytes.saturating_add(growth));
             return Err(HeapError::HeapLimitExceeded { limit });
         }
         // Another agent may already have grown the shared backing. This

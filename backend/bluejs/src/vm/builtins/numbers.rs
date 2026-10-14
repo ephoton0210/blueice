@@ -203,6 +203,14 @@ fn number_format_error(error: blueice_ecma402::NumberFormatError) -> RuntimeErro
 }
 
 impl Vm {
+    /// The pinned num-bigint conversion returns Some for every magnitude,
+    /// including signed infinity when the magnitude exceeds the f64 range.
+    pub(in super::super) fn number_from_bigint(value: &BigInt) -> f64 {
+        value
+            .to_f64()
+            .expect("the pinned BigInt float conversion returns a value")
+    }
+
     pub(in super::super) fn number_receiver(
         &mut self,
         receiver: &Value,
@@ -281,17 +289,18 @@ impl Vm {
         if number == 0.0 {
             number = 0.0;
         }
-        let source_string = || primitive::string(&Value::Number(number));
+        let source_string = || {
+            primitive::string(&Value::Number(number))
+                .expect("primitive Number formatting cannot fail")
+        };
         match method {
-            NumberMethod::ToString => unreachable!("handled before numeric string methods"),
-            NumberMethod::LocaleString => unreachable!("handled before numeric string methods"),
             NumberMethod::Fixed => {
                 // toFixed range-checks the digits before it looks at the
                 // receiver (unlike toExponential and toPrecision).
                 let digits = self.number_digits_argument(native::argument(args, 0))?;
                 let digits = Self::number_digits_in_range(digits, 0.0, "toFixed")?;
                 if !number.is_finite() || number.abs() >= 1e21 {
-                    return Ok(Value::String(source_string()?));
+                    return Ok(Value::String(source_string()));
                 }
                 Ok(Value::String(fixed_string(number, digits).into()))
             }
@@ -303,7 +312,7 @@ impl Vm {
                     Some(self.number_digits_argument(requested)?)
                 };
                 if !number.is_finite() {
-                    return Ok(Value::String(source_string()?));
+                    return Ok(Value::String(source_string()));
                 }
                 match digits {
                     None => Ok(Value::String(normalized_exponential(number, None).into())),
@@ -313,13 +322,14 @@ impl Vm {
                     }
                 }
             }
-            NumberMethod::Precision => {
+            // ToString and LocaleString returned above; the remaining method is Precision.
+            _ => {
                 if native::argument(args, 0) == &Value::Undefined {
-                    return Ok(Value::String(source_string()?));
+                    return Ok(Value::String(source_string()));
                 }
                 let precision = self.number_digits_argument(native::argument(args, 0))?;
                 if !number.is_finite() {
-                    return Ok(Value::String(source_string()?));
+                    return Ok(Value::String(source_string()));
                 }
                 let precision = Self::number_digits_in_range(precision, 1.0, "toPrecision")?;
                 Ok(Value::String(precision_string(number, precision).into()))

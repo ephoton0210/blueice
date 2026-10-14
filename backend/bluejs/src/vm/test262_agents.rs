@@ -49,7 +49,6 @@ pub(super) struct Test262AsyncWaits {
 enum AsyncHostEvent {
     Wait {
         promise: ObjectId,
-        root: RootId,
         result: crate::heap::SharedWaitResult,
     },
     Timer {
@@ -253,13 +252,12 @@ impl Test262AgentHost {
     }
 
     fn shutdown(&self) -> Result<(), RuntimeError> {
-        let (controls, handles, errors) = {
+        let (controls, handles) = {
             let mut state = self.state.lock().expect("Test262 agent host lock poisoned");
             state.shutting_down = true;
             let controls = state.controls.clone();
             let handles = std::mem::take(&mut state.handles);
-            let errors = std::mem::take(&mut state.errors);
-            (controls, handles, errors)
+            (controls, handles)
         };
         for control in controls {
             control.broadcast_ready.notify_all();
@@ -267,6 +265,15 @@ impl Test262AgentHost {
         for handle in handles {
             let _ = handle.join();
         }
+        // A worker may report its final failure while shutdown is joining it.
+        // Drain only after every registered worker has finished reporting.
+        let errors = std::mem::take(
+            &mut self
+                .state
+                .lock()
+                .expect("Test262 agent host lock poisoned")
+                .errors,
+        );
         if let Some(error) = errors.into_iter().next() {
             return Err(RuntimeError::Test262(format!("agent failed: {error}")));
         }
@@ -415,8 +422,14 @@ impl Vm {
             RuntimeError::TypeError("agent.broadcast requires a SharedArrayBuffer".into())
         })?;
         let backing = self.heap.shared_buffer_backing(buffer)?;
-        let maximum = self.heap.buffer_max_byte_length(buffer)?;
-        let byte_length = self.heap.buffer_byte_length(buffer)?;
+        let maximum = self
+            .heap
+            .buffer_max_byte_length(buffer)
+            .expect("the preceding shared-backing lookup validated this buffer");
+        let byte_length = self
+            .heap
+            .buffer_byte_length(buffer)
+            .expect("the shared backing remains valid without intervening user code");
         self.agent_host().broadcast(Broadcast {
             backing,
             max_byte_length: (maximum != byte_length).then_some(maximum),
@@ -441,11 +454,10 @@ impl Vm {
         };
         let constructor = self.global("SharedArrayBuffer")?;
         let prototype = self
-            .get_property(&constructor, &"prototype".into())?
+            .get_property(&constructor, &"prototype".into())
+            .expect("the native constructor has an immutable own prototype data property")
             .object_id()
-            .ok_or_else(|| {
-                RuntimeError::TypeError("SharedArrayBuffer prototype is unavailable".into())
-            })?;
+            .expect("the native constructor initialized its prototype as an object");
         let buffer = self.with_roots(|heap| {
             heap.alloc_shared_array_buffer_backing(
                 broadcast.backing,
@@ -501,28 +513,19 @@ impl Vm {
     /// spawned thread owns only the SharedArrayBuffer waiter and that queue;
     /// it never dereferences a Value, Heap, or VM from another thread.
     pub(in crate::vm) fn schedule_test262_async_wait(
-        &mut self,
+        &self,
         backing: Arc<SharedBuffer>,
         byte_offset: usize,
         timeout: Option<Duration>,
         promise: ObjectId,
-    ) -> Result<(), RuntimeError> {
-        // The host waiter remains responsible for settling this Promise even
-        // when JavaScript retains only its reactions. The token is opaque to
-        // the host thread and is released by the owning VM after completion.
-        let root = self.heap.root(promise)?;
+    ) {
         let waiter = backing.register_waiter(byte_offset);
         let queue = Arc::clone(&self.test262_async_waits);
         queue.register_pending();
         thread::spawn(move || {
             let result = backing.wait_for(waiter, timeout);
-            queue.push(AsyncHostEvent::Wait {
-                promise,
-                root,
-                result,
-            });
+            queue.push(AsyncHostEvent::Wait { promise, result });
         });
-        Ok(())
     }
 
     /// Schedule a Test262 harness callback on the VM's event queue. This is
@@ -553,42 +556,31 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         let events = self.test262_async_waits.take_all();
         let woke = !events.is_empty();
-        let outcome = (|| {
-            for event in &events {
-                match event {
-                    AsyncHostEvent::Wait {
-                        promise, result, ..
-                    } => {
-                        let value = match result {
-                            crate::heap::SharedWaitResult::Ok => "ok",
-                            crate::heap::SharedWaitResult::TimedOut => "timed-out",
-                        };
-                        self.settle_promise(
-                            *promise,
-                            PromiseStatus::Fulfilled(Value::String(value.into())),
-                        )?;
-                    }
-                    AsyncHostEvent::Timer { callback, .. } => {
-                        self.call_native(
-                            Value::Object(*callback),
-                            Value::Undefined,
-                            Vec::new(),
-                            false,
-                        )?;
-                    }
+        for event in events {
+            match event {
+                AsyncHostEvent::Wait { promise, result } => {
+                    let value = match result {
+                        crate::heap::SharedWaitResult::Ok => "ok",
+                        crate::heap::SharedWaitResult::TimedOut => "timed-out",
+                    };
+                    self.settle_tracked_promise(
+                        promise,
+                        PromiseStatus::Fulfilled(Value::String(value.into())),
+                    );
+                }
+                AsyncHostEvent::Timer { callback, root } => {
+                    let result = self.call_native(
+                        Value::Object(callback),
+                        Value::Undefined,
+                        Vec::new(),
+                        false,
+                    );
+                    self.release_root(root);
+                    result?;
                 }
             }
-            Ok(woke)
-        })();
-        // Keep every dequeued event rooted across earlier callbacks, and
-        // release the whole batch even if one callback or settlement fails.
-        for event in events {
-            let root = match event {
-                AsyncHostEvent::Wait { root, .. } | AsyncHostEvent::Timer { root, .. } => root,
-            };
-            self.heap.unroot(root)?;
         }
-        outcome
+        Ok(woke)
     }
 
     /// Drive Test262's asynchronous host work until `$DONE` settles. A
@@ -621,6 +613,10 @@ impl Vm {
         host.shutdown()
     }
 }
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/agent_host_boundaries.rs"]
+mod boundary_tests;
 
 #[cfg(test)]
 mod tests {

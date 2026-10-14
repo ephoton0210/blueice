@@ -510,14 +510,23 @@ fn with_worker<T>(
     {
         worker.failed = true;
     } else {
-        let mut idle = IDLE.lock().unwrap_or_else(PoisonError::into_inner);
-        if idle.len() < MAX_IDLE_WORKERS {
-            idle.push(worker);
-            return result;
-        }
+        recycle_worker(worker, &IDLE);
+        return result;
     }
     drop(worker);
     result
+}
+
+/// Retire an excess healthy helper outside the pool lock: its shutdown joins
+/// the transport thread and waits for the owned child process.
+fn recycle_worker(worker: Worker, pool: &Mutex<Vec<Worker>>) {
+    let mut idle = pool.lock().unwrap_or_else(PoisonError::into_inner);
+    if idle.len() < MAX_IDLE_WORKERS {
+        idle.push(worker);
+        return;
+    }
+    drop(idle);
+    drop(worker);
 }
 
 /// Patterns the helper has already accepted. A regular expression literal in a
@@ -598,12 +607,18 @@ impl FindMemo {
             return;
         }
         while self.results.len() >= MEMO_ENTRIES || self.units + size > MEMO_UNITS {
-            let Some(oldest) = self.order.pop_front() else {
-                break;
-            };
-            if self.results.remove(&oldest).is_some() {
-                self.units -= oldest.source.len() + oldest.input.len();
-            }
+            // Only remember mutates this private queue/map pair. Each admitted
+            // key occurs once in both, and units is the sum of their sizes.
+            // An empty memo plus an admitted key cannot exceed MEMO_UNITS.
+            let oldest = self
+                .order
+                .pop_front()
+                .expect("a full memo has an oldest key");
+            let _ = self
+                .results
+                .remove(&oldest)
+                .expect("the oldest memo key retains its cached result, including a miss");
+            self.units -= oldest.source.len() + oldest.input.len();
         }
         self.units += size;
         self.order.push_back(key.clone());
@@ -767,6 +782,14 @@ fn serve_on(stream_in: &mut dyn Read, stream_out: &mut dyn Write) -> io::Result<
 #[cfg(test)]
 #[path = "../tests/fixtures/regex_framing.rs"]
 mod tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../tests/fixtures/regex_pool_boundaries.rs"]
+mod pool_boundary_contracts;
+
+#[cfg(coverage)]
+#[doc(hidden)]
+pub use pool_boundary_contracts::verify_regex_pool_boundary_contracts;
 
 #[cfg(test)]
 mod transport_failure_tests {

@@ -29,6 +29,8 @@ mod plain_date_time_difference;
 mod plain_month_day;
 mod plain_year_month;
 mod receiver;
+mod receiver_kind;
+pub(super) use receiver::ValidatedTemporalReceiver;
 mod rounding;
 mod time_zone;
 mod time_zone_id;
@@ -229,12 +231,12 @@ impl Vm {
         if let Some(&id) = self.globals.get("Temporal") {
             return Ok(Value::Object(id));
         }
-        let string = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(string)?.unwrap();
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let namespace = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(namespace)?;
         let base = self.stack.len();
+        let mut constructors = Vec::new();
         let result = (|| {
             self.define_data(
                 namespace,
@@ -274,7 +276,12 @@ impl Vm {
                     },
                     NativeFunction::TemporalConstructor(kind),
                 )?;
-                let constructor = self.heap.get(namespace, kind.name())?.object_id().unwrap();
+                let constructor = self
+                    .heap
+                    .get(namespace, kind.name())
+                    .expect("the rooted fresh namespace retains the installed constructor")
+                    .object_id()
+                    .unwrap();
                 let prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
                 self.stack.push(Value::Object(prototype));
@@ -770,8 +777,7 @@ impl Vm {
                         NativeFunction::TemporalPlainTimeCompare,
                     )?;
                 }
-                self.globals
-                    .insert(format!("%Temporal.{}%", kind.name()), constructor);
+                constructors.push((format!("%Temporal.{}%", kind.name()), constructor));
                 self.stack.pop();
             }
             // `Temporal.Now` is a plain namespace object, not a constructor:
@@ -807,7 +813,6 @@ impl Vm {
             }
             self.define_data(namespace, "Now", Value::Object(now), true, false, true)?;
             self.stack.pop();
-            self.globals.insert("Temporal".into(), namespace);
             if let Some(&global) = self.globals.get("globalThis") {
                 self.define_data(
                     global,
@@ -818,10 +823,20 @@ impl Vm {
                     true,
                 )?;
             }
+            // Publish the complete graph together. A failed initialization
+            // must leave no cached constructor pointing at a reclaimed object.
+            self.globals.extend(constructors);
+            self.globals.insert("Temporal".into(), namespace);
             Ok(Value::Object(namespace))
         })();
         self.stack.truncate(base);
-        self.heap.unroot(root)?;
+        if result.is_err() {
+            self.heap
+                .unroot(root)
+                .expect("failed initialization still owns its namespace root");
+        }
+        // Success transfers the root to the realm's intrinsic cache, including
+        // when no globalThis object has been materialized yet.
         result
     }
 }

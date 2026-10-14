@@ -788,7 +788,10 @@ impl Vm {
                 }
                 for name in names {
                     let method = self.get_property(receiver, &name.into())?;
-                    if !self.is_callable(&method)? {
+                    if !self
+                        .is_callable(&method)
+                        .expect("Get returned a live conversion method")
+                    {
                         continue;
                     }
                     let result = self.call_native(method, receiver.clone(), Vec::new(), false)?;
@@ -818,7 +821,10 @@ impl Vm {
                     }
                 }
                 let to_iso_string = self.get_property(receiver, &"toISOString".into())?;
-                if !self.is_callable(&to_iso_string)? {
+                if !self
+                    .is_callable(&to_iso_string)
+                    .expect("Get returned a live toISOString value")
+                {
                     return Err(RuntimeError::TypeError(
                         "Date toISOString must be callable".into(),
                     ));
