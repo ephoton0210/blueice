@@ -1128,6 +1128,8 @@ pub struct Vm {
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
     promise_jobs: VecDeque<PromiseJob>,
+    /// Page realms bound even the implicit drains used by module evaluation.
+    bounded_host_microtask_checkpoints: bool,
     browser_tasks: VecDeque<browser_tasks::BrowserTask>,
     /// Heap edges of displaced async frames and active iterator records that
     /// live outside the operand stack. Nested frames retain their own suffix

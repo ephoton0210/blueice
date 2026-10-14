@@ -5,6 +5,20 @@
 use super::*;
 
 impl BlueJsChildHost {
+    /// Finish a completed script turn before starting another declaration.
+    /// Cleanup also runs after a throw, while preserving the script's error.
+    pub(super) fn finish_script_task(
+        &mut self,
+        tab_id: u64,
+        outcome: PageHostScriptOutcome,
+    ) -> PageHostScriptOutcome {
+        let checkpoint = self.runtime.run_microtask_checkpoint(tab_id);
+        match (outcome, checkpoint) {
+            (PageHostScriptOutcome::Executed, Err(error)) => rejected(page_runtime_category(error)),
+            (outcome, _) => outcome,
+        }
+    }
+
     /// Creates an empty, isolated page host with the public BlueJS runtime's
     /// default fixed realm/program/bytecode bounds.
     pub fn new() -> Result<Self, BlueJsPageRuntimeError> {
@@ -861,6 +875,7 @@ impl BlueJsChildHost {
                     )
                 }
             };
+            let outcome = self.finish_script_task(document.tab_id, outcome);
             reports.push(PageHostScriptReport {
                 tab_id: document.tab_id,
                 document_generation: document.document_generation,

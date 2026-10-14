@@ -955,6 +955,9 @@ impl Vm {
     }
 
     pub fn run_promise_jobs(&mut self) -> Result<(), RuntimeError> {
+        if self.bounded_host_microtask_checkpoints {
+            return self.run_host_microtask_checkpoint().map(|_| ());
+        }
         self.ensure_no_debugger_continuation()?;
         while !self.promise_jobs.is_empty() {
             // Each queued Promise reaction has its own execution context and

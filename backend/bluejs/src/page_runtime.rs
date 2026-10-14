@@ -429,7 +429,8 @@ impl BlueJsPageRuntime {
                 limit: self.config.max_realms,
             });
         }
-        let vm = Vm::new(self.config.vm).map_err(BlueJsPageRuntimeError::VmInitialization)?;
+        let mut vm = Vm::new(self.config.vm).map_err(BlueJsPageRuntimeError::VmInitialization)?;
+        vm.use_bounded_host_microtask_checkpoints();
         self.realms.insert(
             tab_id,
             PageRealm {
@@ -458,7 +459,8 @@ impl BlueJsPageRuntime {
             return Err(BlueJsPageRuntimeError::UnknownRealm(tab_id));
         }
         // The configuration already created this tab's realm, so it is valid.
-        let vm = Vm::new(self.config.vm).expect("the realm's own VM configuration is valid");
+        let mut vm = Vm::new(self.config.vm).expect("the realm's own VM configuration is valid");
+        vm.use_bounded_host_microtask_checkpoints();
         let previous = self
             .realms
             .insert(
@@ -661,6 +663,10 @@ impl BlueJsPageRuntime {
     /// Executes one retained script or module in its owning tab realm. The
     /// program's structured root selects classic-script or module evaluation;
     /// a handle from another tab can never be executed here.
+    /// The embedding host must finish script cleanup with a bounded microtask
+    /// checkpoint, including when the program throws. Raw program execution
+    /// leaves classic-script jobs pending for debugger and event-loop owners;
+    /// module evaluation may advance top-level-await jobs within the same cap.
     pub fn execute_program(
         &mut self,
         tab_id: u64,
@@ -685,26 +691,17 @@ impl BlueJsPageRuntime {
                 .expect("a program has a root node");
             (root, compiled.bytecode().clone())
         };
-        let realm = self
-            .realms
+        if root == BlueJsAstNodeKind::Module {
+            // The graph evaluator owns top-level-await continuations; the
+            // synchronous bytecode entrypoint cannot suspend at `await`.
+            return self.execute_module_graph(tab_id, handle, [handle]);
+        }
+        self.realms
             .get_mut(&tab_id)
-            .expect("realm ownership was checked before the registry lookup");
-        // An installed program's root is a script or a module.
-        let result = if root == BlueJsAstNodeKind::Module {
-            realm.vm.execute_module(&bytecode)
-        } else {
-            realm.vm.execute_script(&bytecode)
-        };
-        // HTML "clean up after running script": a microtask checkpoint
-        // follows the script whether or not it threw, so Promise reactions
-        // and `queueMicrotask` callbacks it queued run before the host
-        // regains control. A page exception inside such a job ends only
-        // that job; a resource failure is reported when the script itself
-        // succeeded.
-        let checkpoint = realm.vm.run_host_microtask_checkpoint();
-        let value = result.map_err(BlueJsPageRuntimeError::Runtime)?;
-        checkpoint.map_err(BlueJsPageRuntimeError::Runtime)?;
-        Ok(value)
+            .expect("realm ownership was checked before the registry lookup")
+            .vm
+            .execute_script(&bytecode)
+            .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
     /// Executes one exact classic page program until a verified instruction
@@ -1277,6 +1274,20 @@ impl BlueJsPageRuntime {
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
+    /// Performs bounded HTML script cleanup in one exact live realm. Hosts
+    /// call this after a script completes or throws, before starting the next
+    /// declaration. Page exceptions end only the offending job; the return
+    /// value counts them for the host's error sink. A resource failure stops
+    /// the checkpoint. A debugger-paused script must first resume.
+    pub fn run_microtask_checkpoint(&mut self, tab_id: u64) -> Result<u32, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .run_host_microtask_checkpoint()
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Completes the same bounded checkpoint for a click in a realm with no
     /// event bindings. Pending jobs from its preceding script turn cannot be
     /// deferred past a core default action merely because it has no listener.
@@ -1289,7 +1300,7 @@ impl BlueJsPageRuntime {
             .get_mut(&tab_id)
             .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
             .vm
-            .run_promise_jobs_bounded(MAX_CLICK_MICROTASK_JOBS)
+            .run_host_microtask_checkpoint_bounded(MAX_CLICK_MICROTASK_JOBS)
             .map_err(BlueJsPageRuntimeError::Runtime)?;
         Ok(())
     }

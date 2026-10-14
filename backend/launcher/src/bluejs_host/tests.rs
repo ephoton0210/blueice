@@ -17,6 +17,54 @@ mod resource_accounting;
 mod source_spans;
 mod static_scope_values;
 
+#[test]
+fn script_cleanup_runs_jobs_before_the_next_child_declaration_even_after_a_throw() {
+    for debugger in [false, true] {
+        for throws in [false, true] {
+            let mut host = BlueJsChildHost::default();
+            let first = format!(
+                "var checkpoint = 0; Promise.resolve().then(function () {{ checkpoint = 1; }}); {}",
+                if throws { "throw 'script';" } else { "" },
+            );
+            let mut document = document(
+                1,
+                vec![
+                    classic(0, &first),
+                    classic(
+                        1,
+                        "if (checkpoint !== 1) { throw 'missing script cleanup'; }",
+                    ),
+                ],
+            );
+            document.debugger_execution_control = debugger;
+            let PageHostReply::Synchronized { mut reports, .. } =
+                host.handle_request(PageHostRequest::SynchronizeDocument { document })
+            else {
+                panic!("document must synchronize");
+            };
+            if debugger {
+                assert!(reports.is_empty());
+                let PageHostReply::DebuggerExecutionAdvanced {
+                    reports: advanced, ..
+                } = host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                })
+                else {
+                    panic!("debugger declarations must advance");
+                };
+                reports = advanced;
+            }
+            assert_eq!(reports.len(), 2);
+            assert_eq!(reports[1].outcome, PageHostScriptOutcome::Executed);
+            assert_eq!(
+                matches!(reports[0].outcome, PageHostScriptOutcome::Rejected { .. }),
+                throws
+            );
+        }
+    }
+}
+
 fn graph(entry: &str, modules: Vec<PageHostSource>) -> PageHostModuleGraph {
     PageHostModuleGraph {
         entry: entry.to_string(),

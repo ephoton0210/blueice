@@ -40,6 +40,7 @@ impl Vm {
         let prototype = self.constructor_prototype(default)?;
         let mut child = Vm::new(self.config)
             .map_err(|_| RuntimeError::RangeError("could not create a ShadowRealm".into()))?;
+        child.bounded_host_microtask_checkpoints = self.bounded_host_microtask_checkpoints;
         // Realms created within one ShadowRealm agent share the
         // GlobalSymbolRegistry, matching `$262.createRealm()`'s identical
         // choice for the same spec-mandated reason (`Symbol.for` is

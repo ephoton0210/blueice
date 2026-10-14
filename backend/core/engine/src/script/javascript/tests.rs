@@ -54,6 +54,39 @@ fn executes_inline_classic_and_module_declarations_in_one_realm() {
 }
 
 #[test]
+fn script_cleanup_runs_promise_jobs_before_the_next_declaration_even_after_a_throw() {
+    for debugger in [false, true] {
+        for throws in [false, true] {
+            let html = format!(
+            "<script>var checkpoint = 0; Promise.resolve().then(function () {{ checkpoint = 1; }}); {}</script>\
+             <script>if (checkpoint !== 1) {{ throw 'missing script cleanup'; }}</script>",
+            if throws { "throw 'script';" } else { "" },
+        );
+            let (tabs, tab_id) = loaded_tabs(&html, "https://example.test/checkpoint");
+            let config = JavaScriptPageExecutorConfig {
+                native_debugger_execution_control: debugger,
+                ..JavaScriptPageExecutorConfig::default()
+            };
+            let mut executor = JavaScriptPageExecutor::with_config(config).unwrap();
+            executor.synchronize_and_execute(&tabs).unwrap();
+            if debugger {
+                executor.synchronize_and_execute(&tabs).unwrap();
+            }
+            let reports = reports(&mut executor, tab_id);
+            assert_eq!(reports.len(), 2);
+            assert!(matches!(
+                reports[1],
+                JavaScriptPageExecutionReport::Executed { .. }
+            ));
+            assert_eq!(
+                matches!(reports[0], JavaScriptPageExecutionReport::Rejected { .. }),
+                throws
+            );
+        }
+    }
+}
+
+#[test]
 fn rejected_declaration_does_not_block_a_later_script() {
     let (tabs, tab_id) = loaded_tabs(
         concat!(

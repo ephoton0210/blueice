@@ -175,6 +175,7 @@ impl Vm {
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
             promise_jobs: VecDeque::new(),
+            bounded_host_microtask_checkpoints: false,
             browser_tasks: VecDeque::new(),
             async_frame_roots: Vec::new(),
             test262_done: None,

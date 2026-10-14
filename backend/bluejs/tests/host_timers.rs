@@ -7,8 +7,9 @@
 //! callback.
 
 use blueice_bluejs::{
-    parse, BlueJsPageOrigin, BlueJsPageRuntime, BlueJsPageRuntimeError, BlueJsProgramV1,
-    BlueJsSourceIdentity, BlueJsTimerRun, RuntimeError, Value, MAX_HOST_TIMERS_PER_REALM,
+    compile_module, parse, parse_module, BlueJsPageOrigin, BlueJsPageRuntime,
+    BlueJsPageRuntimeError, BlueJsProgramV1, BlueJsSourceIdentity, BlueJsTimerRun, RuntimeError,
+    Value, Vm, MAX_HOST_TIMERS_PER_REALM,
 };
 
 const TAB: u64 = 1;
@@ -38,6 +39,15 @@ impl Page {
     }
 
     fn run(&mut self, source: &str) -> Result<Value, BlueJsPageRuntimeError> {
+        let result = self.execute(source);
+        // HTML script cleanup also checkpoints a script that threw.
+        let checkpoint = self.runtime.run_click_microtask_checkpoint(TAB);
+        let value = result?;
+        checkpoint?;
+        Ok(value)
+    }
+
+    fn execute(&mut self, source: &str) -> Result<Value, BlueJsPageRuntimeError> {
         self.scripts += 1;
         let identity = BlueJsSourceIdentity::new(
             format!("page:///script-{}.js", self.scripts),
@@ -210,6 +220,213 @@ fn queue_microtask_calls_its_callback_without_arguments() {
     page.run("queueMicrotask(function () { log.push(arguments.length); });")
         .unwrap();
     assert_eq!(page.log(), "0");
+}
+
+#[test]
+fn a_throwing_microtask_does_not_skip_later_jobs_at_the_host_checkpoint() {
+    let mut page = Page::new();
+    page.run(
+        "queueMicrotask(function () { throw new Error('job'); });
+         Promise.resolve().then(function () { log.push('promise'); });
+         queueMicrotask(function () { log.push('after'); });",
+    )
+    .unwrap();
+    assert_eq!(page.log(), "promise,after");
+}
+
+#[test]
+fn a_throwing_script_still_reaches_its_host_checkpoint() {
+    let mut page = Page::new();
+    assert!(matches!(
+        page.run("queueMicrotask(function () { log.push('cleanup'); }); throw 42;"),
+        Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Thrown(_)))
+    ));
+    assert_eq!(
+        page.execute("log.join(',')").unwrap(),
+        Value::String("cleanup".into())
+    );
+}
+
+#[test]
+fn self_rearming_microtasks_cannot_hold_a_timer_pass_forever() {
+    let mut page = Page::new();
+    page.run(
+        "setTimeout(function () {
+             queueMicrotask(function again() { queueMicrotask(again); });
+         }, 1);",
+    )
+    .unwrap();
+    assert_eq!(
+        page.runtime.run_due_timers(TAB, 1),
+        Err(BlueJsPageRuntimeError::Runtime(
+            RuntimeError::InstructionLimit
+        ))
+    );
+    // Navigation discards the runaway queue and the new realm remains usable.
+    page.runtime.navigate(TAB, origin()).unwrap();
+    assert_eq!(page.run("1 + 2").unwrap(), Value::Number(3.0));
+}
+
+#[test]
+fn the_script_checkpoint_also_bounds_self_rearming_jobs() {
+    let mut page = Page::new();
+    assert_eq!(
+        page.run("queueMicrotask(function again() { queueMicrotask(again); });"),
+        Err(BlueJsPageRuntimeError::Runtime(
+            RuntimeError::InstructionLimit
+        ))
+    );
+}
+
+#[test]
+fn a_throwing_timer_microtask_is_counted_before_the_next_timer() {
+    let mut page = Page::new();
+    page.run(
+        "setTimeout(function () {
+             queueMicrotask(function () { throw 42; });
+             queueMicrotask(function () { log.push('cleanup'); });
+         }, 1);
+         setTimeout(function () { log.push('next'); }, 1);",
+    )
+    .unwrap();
+    assert_eq!(
+        page.tick(1),
+        BlueJsTimerRun {
+            tasks_run: 2,
+            uncaught_errors: 1
+        }
+    );
+    assert_eq!(page.log(), "cleanup,next");
+}
+
+#[test]
+fn the_browser_turn_checkpoints_past_a_throwing_microtask() {
+    let mut page = Page::new();
+    page.execute(
+        "queueMicrotask(function () { throw 42; });
+         queueMicrotask(function () { log.push('after'); });",
+    )
+    .unwrap();
+    page.runtime.flush_drag_tasks(TAB).unwrap();
+    assert_eq!(
+        page.execute("log.join(',')").unwrap(),
+        Value::String("after".into())
+    );
+}
+
+#[test]
+fn the_public_script_checkpoint_reports_job_exceptions_and_preserves_raw_execution() {
+    let mut page = Page::new();
+    page.execute(
+        "queueMicrotask(function () { throw 42; });
+         queueMicrotask(function () { log.push('after'); });",
+    )
+    .unwrap();
+    // Raw execution deliberately leaves script cleanup to its host.
+    assert_eq!(page.execute("log.length").unwrap(), Value::Number(0.0));
+    assert_eq!(page.runtime.run_microtask_checkpoint(TAB).unwrap(), 1);
+    assert_eq!(
+        page.execute("log.join(',')").unwrap(),
+        Value::String("after".into())
+    );
+    assert_eq!(page.runtime.run_microtask_checkpoint(TAB).unwrap(), 0);
+    assert_eq!(
+        page.runtime.run_microtask_checkpoint(9),
+        Err(BlueJsPageRuntimeError::UnknownRealm(9))
+    );
+}
+
+#[test]
+fn top_level_await_cannot_bypass_the_page_job_budget() {
+    let mut page = Page::new();
+    // A finite queue makes the regression fail promptly even on the old,
+    // unbounded module drain. An endlessly rearming job would hang that VM.
+    let source = "for (let i = 0; i < 1100; i++) { Promise.resolve().then(() => {}); } await 0;";
+    let module = parse_module(source).unwrap();
+    let handle = page
+        .runtime
+        .install_program(
+            TAB,
+            &origin(),
+            BlueJsSourceIdentity::new("page:///await.js", "sha256:await").unwrap(),
+            &BlueJsProgramV1::Module(module.clone()),
+        )
+        .unwrap();
+    assert_eq!(
+        page.runtime.execute_program(TAB, handle),
+        Err(BlueJsPageRuntimeError::Runtime(
+            RuntimeError::InstructionLimit
+        ))
+    );
+
+    // The standalone ECMAScript/Test262 VM retains its explicit job-drain API.
+    let mut vm = Vm::default();
+    vm.execute_module_graph(
+        "entry",
+        &std::collections::HashMap::from([("entry".to_string(), compile_module(&module).unwrap())]),
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+}
+
+#[test]
+fn a_single_page_module_resumes_top_level_await_before_host_cleanup() {
+    let mut page = Page::new();
+    let handle = page
+        .runtime
+        .install_program(
+            TAB,
+            &origin(),
+            BlueJsSourceIdentity::new("page:///answer.js", "sha256:answer").unwrap(),
+            &BlueJsProgramV1::Module(
+                parse_module("globalThis.answer = await Promise.resolve(42);").unwrap(),
+            ),
+        )
+        .unwrap();
+    page.runtime.execute_program(TAB, handle).unwrap();
+    page.runtime.run_microtask_checkpoint(TAB).unwrap();
+    assert_eq!(page.execute("answer").unwrap(), Value::Number(42.0));
+}
+
+#[test]
+fn an_async_module_graph_cannot_bypass_the_page_job_budget() {
+    let mut page = Page::new();
+    let handle = page
+        .runtime
+        .install_program(
+            TAB,
+            &origin(),
+            BlueJsSourceIdentity::new("page:///graph.js", "sha256:graph").unwrap(),
+            &BlueJsProgramV1::Module(
+                parse_module(
+                    "for (let i = 0; i < 1100; i++) { Promise.resolve().then(() => {}); } await 0;",
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+    assert_eq!(
+        page.runtime.execute_module_graph(TAB, handle, [handle]),
+        Err(BlueJsPageRuntimeError::Runtime(
+            RuntimeError::InstructionLimit
+        ))
+    );
+}
+
+#[test]
+fn a_page_shadow_realm_inherits_bounded_job_draining() {
+    let mut page = Page::new();
+    assert_eq!(
+        page.run(
+            "var limited = false;
+             try {
+                 new ShadowRealm().evaluate('for (var i = 0; i < 1100; i++) { Promise.resolve().then(() => {}); } 0;');
+             } catch (error) { limited = error instanceof TypeError; }
+             limited;",
+        ).unwrap(),
+        // ShadowRealm intentionally masks the child's exception as TypeError.
+        Value::Bool(true)
+    );
 }
 
 #[test]

@@ -172,12 +172,14 @@ impl JavaScriptPageExecutor {
                                     .get_mut(&tab_id)
                                     .expect("a queued debugger execution has state")
                                     .insert(pending.program, DebuggerExecutionStatus::Completed);
-                                self.push_report(JavaScriptPageExecutionReport::Executed {
-                                    tab_id: tab_id.as_u64(),
-                                    document_generation: pending.document_generation,
-                                    ordinal: pending.ordinal,
-                                    kind: pending.kind,
-                                });
+                                self.push_script_execution_report(
+                                    JavaScriptPageExecutionReport::Executed {
+                                        tab_id: tab_id.as_u64(),
+                                        document_generation: pending.document_generation,
+                                        ordinal: pending.ordinal,
+                                        kind: pending.kind,
+                                    },
+                                );
                             }
                             Err(category) => {
                                 let pending = self
@@ -255,14 +257,14 @@ impl JavaScriptPageExecutor {
                                     .expect("a queued debugger execution has state")
                                     .insert(pending.program, DebuggerExecutionStatus::Completed);
                                 match result {
-                                    Ok(_) => {
-                                        self.push_report(JavaScriptPageExecutionReport::Executed {
+                                    Ok(_) => self.push_script_execution_report(
+                                        JavaScriptPageExecutionReport::Executed {
                                             tab_id: tab_id.as_u64(),
                                             document_generation: pending.document_generation,
                                             ordinal: pending.ordinal,
                                             kind: pending.kind,
-                                        })
-                                    }
+                                        },
+                                    ),
                                     Err(category) => {
                                         self.push_deferred_rejection(tab_id, &pending, category)
                                     }
@@ -288,12 +290,14 @@ impl JavaScriptPageExecutor {
                             .expect("a queued debugger execution has state")
                             .insert(pending.program, DebuggerExecutionStatus::Completed);
                         match result {
-                            Ok(()) => self.push_report(JavaScriptPageExecutionReport::Executed {
-                                tab_id: tab_id.as_u64(),
-                                document_generation: pending.document_generation,
-                                ordinal: pending.ordinal,
-                                kind: pending.kind,
-                            }),
+                            Ok(()) => self.push_script_execution_report(
+                                JavaScriptPageExecutionReport::Executed {
+                                    tab_id: tab_id.as_u64(),
+                                    document_generation: pending.document_generation,
+                                    ordinal: pending.ordinal,
+                                    kind: pending.kind,
+                                },
+                            ),
                             Err(category) => {
                                 self.push_deferred_rejection(tab_id, &pending, category)
                             }
@@ -322,12 +326,14 @@ impl JavaScriptPageExecutor {
                             .expect("a queued debugger execution has state")
                             .insert(pending.program, DebuggerExecutionStatus::Completed);
                         match result {
-                            Ok(()) => self.push_report(JavaScriptPageExecutionReport::Executed {
-                                tab_id: tab_id.as_u64(),
-                                document_generation: pending.document_generation,
-                                ordinal: pending.ordinal,
-                                kind: pending.kind,
-                            }),
+                            Ok(()) => self.push_script_execution_report(
+                                JavaScriptPageExecutionReport::Executed {
+                                    tab_id: tab_id.as_u64(),
+                                    document_generation: pending.document_generation,
+                                    ordinal: pending.ordinal,
+                                    kind: pending.kind,
+                                },
+                            ),
                             Err(category) => {
                                 self.push_deferred_rejection(tab_id, &pending, category)
                             }

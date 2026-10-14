@@ -937,7 +937,7 @@ impl JavaScriptPageExecutor {
         pending: &PendingDebuggerExecution,
         category: &'static str,
     ) {
-        self.push_report(JavaScriptPageExecutionReport::Rejected {
+        self.push_script_execution_report(JavaScriptPageExecutionReport::Rejected {
             tab_id: tab_id.as_u64(),
             document_generation: pending.document_generation,
             ordinal: pending.ordinal,

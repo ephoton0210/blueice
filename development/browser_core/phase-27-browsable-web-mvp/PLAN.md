@@ -88,6 +88,14 @@ does not run is empty.
 Each milestone is test-first, ends with a passing real-interface test
 (not only unit tests) and a dated entry in the owning phase's plan.
 
+**M1 progress (2026-10-14):** The integrated BlueJS branch now provides bounded
+host-owned microtask checkpoints between script declarations, including throws
+and completed debugger turns. Browser-task and native-event checkpoints
+continue after job exceptions; page top-level-await drains obey the limit.
+See [M1a results](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+Session-driven timers, animation frames, wake-up propagation and the counter
+page's frame/Representation acceptance are still open, so M1 remains in progress.
+
 - **M0 — Integration.** Merge PR #25's BlueJS line; re-verify. (Done for the
   merge; verification is the open part — see below.)
 - **M1 — Event loop and timers.** *(Engine side moved: timers, Promise

@@ -30,6 +30,11 @@ a task queue, rooting). *Host* = policy owned by `backend/core` / launcher
 (origin, gatekeeper, cookies, which profile installs it). A global existing in
 the engine never makes it visible to a page: the owner-selected profile does.
 
+**Integration progress (2026-10-14).** This checkout has merged the product
+and BlueTS lines. The baseline descriptions below remain the original gap
+inventory; the dated milestone records identify what has actually been
+implemented and verified on `feature/bluejs-browser-integration-gaps`.
+
 ## A. Event loop and scheduling (P0)
 
 The engine has Promise jobs (`run_promise_jobs`, `run_promise_jobs_bounded`)
@@ -37,6 +42,14 @@ but no host event loop.
 
 - [ ] Macrotask queue that drains microtasks after every task (per
       `research/js-bytecode-eventloop.md`)
+- [x] **M1a: bounded host microtask checkpoints.** Both page executors finish
+      each completed script turn, including throws and completed debugger
+      declarations, before executing the next declaration. A throwing job
+      does not skip later jobs. Script/browser/timer checkpoints stop after
+      1,024 jobs; the existing native-event checkpoint keeps its 256-job cap.
+      Page-module top-level-await and page-created ShadowRealm drains also
+      obey the bound. See the
+      milestone record below; timer delivery and render scheduling remain open.
 - [ ] `setTimeout` / `clearTimeout` / `setInterval` / `clearInterval`
       (today only a Test262-harness stub in `vm/test262/harness.rs`)
 - [ ] `queueMicrotask`
@@ -286,6 +299,7 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
 
 | Area | Layer | Acceptance (must fail today, through the real interface) |
 |---|---|---|
+| Host microtask checkpoints | Engine mechanism, host script cleanup | Two page script declarations observe the first declaration's Promise work before the second starts, including after a throw and with debugger scheduling; runaway jobs return a resource failure through the public page runtime |
 | Timers, `queueMicrotask`, `requestAnimationFrame` | Engine mechanism, host clock | A counter page updating by `setInterval` yields N frames with strictly increasing `generation`, and each matching `Representation` agrees |
 | Promise collectibility | Engine | Bounded managed heap over a long poll loop; `promise_gc_lifecycle`; full Test262 inventory unchanged |
 | Platform globals | Engine, installed by profile | The global-inventory test in C |
@@ -298,3 +312,42 @@ M1 is sections A and B here, M2 is D, M3 is E, M4 is E's cookie jar and F's
 default-on decision, M5 is the acceptance fixture above. Section H is
 unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
+
+## Milestone record
+
+### M1a — Host microtask checkpoint ownership and bounds (2026-10-14)
+
+- Kept raw classic `execute_program` separate from host script cleanup. This
+  preserves pending jobs and debugger ownership while the in-process and
+  isolated page executors checkpoint between declarations, even after throws.
+- Added public `run_microtask_checkpoint`, returning the count of uncaught
+  job exceptions. All host checkpoints continue after page exceptions and
+  return resource failures for unfinished chains. Error-event/console delivery
+  is still section B work; the current hosts do not yet publish those counts.
+- Enabled bounded implicit Promise drains only in page realms, including
+  replacement realms and their ShadowRealms. Standalone ECMAScript/Test262 VMs
+  retain their explicit drain behavior. Routed single page-module execution through the module-graph
+  evaluator so top-level await uses its continuation machinery rather than
+  reaching the synchronous interpreter's `unreachable!` branch.
+- Acceptance regressions reproduced missing between-script cleanup in both
+  hosts, throwing-job starvation, unbounded async-module graph draining, and
+  the single-module top-level-await panic before the fixes.
+- Verification: 29 `host_timers`, seven `page_runtime_coverage`, 25
+  `web_file_api`, ten `web_node_events`, and 1,191 BlueJS library tests passed;
+  both host cleanup regressions pass for normal/debugger scheduling and
+  success/throw cases. Core's full library run passed 808 cases and failed its
+  unchanged transport fixture (49 mocked replies for 50 requests). Launcher's
+  run passed 304 cases, ignored one, and failed its unchanged BlueTS stream
+  profile preparation fixture. These two integration-verification gaps remain
+  open; this is not a green workspace-suite claim. Local socket tests require
+  an environment that permits TCP/Unix socket bind.
+- Final focused reruns passed all 29 host checkpoint/timer cases, 14
+  ShadowRealm library cases and both host script-cleanup regressions.
+  `cargo fmt --all -- --check` and Clippy for the affected crates' library/test
+  targets with `-D warnings` passed.
+- Next: reconcile the parked timer implementation's argument/nesting limits,
+  install timers with a versioned generated typing profile, deliver them on
+  the core session tick across the child boundary, propagate the next wake-up,
+  and prove the counter-page frame/Representation acceptance in section I.
+  `requestAnimationFrame`, task-source ordering, queue/byte caps and Promise
+  collectibility remain required work; M1 as a whole is not complete.

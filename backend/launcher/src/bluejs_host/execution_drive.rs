@@ -879,6 +879,7 @@ impl BlueJsChildHost {
                 DeferredChildExecution::JavaScriptClassic { .. }
                 | DeferredChildExecution::JavaScriptModule { .. } => {}
             }
+            let outcome = self.finish_script_task(tab_id, outcome);
             reports.push(script_report(
                 tab_id,
                 document_generation,

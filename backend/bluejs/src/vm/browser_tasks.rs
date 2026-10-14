@@ -77,7 +77,7 @@ impl Vm {
         if self.ensure_no_debugger_continuation().is_err() {
             return Ok(false);
         }
-        self.run_promise_jobs_bounded(1024)?;
+        self.run_host_microtask_checkpoint()?;
         for _ in 0..max_tasks {
             let Some(task) = self.browser_tasks.pop_front() else {
                 return Ok(true);
@@ -148,7 +148,7 @@ impl Vm {
                     return Err(error);
                 }
             }
-            self.run_promise_jobs_bounded(1024)?;
+            self.run_host_microtask_checkpoint()?;
         }
         Ok(self.browser_tasks.is_empty())
     }

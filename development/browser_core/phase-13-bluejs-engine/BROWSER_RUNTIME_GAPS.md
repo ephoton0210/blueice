@@ -6,6 +6,13 @@
 PR #25 (`feature/test262-remaining-failures`) merges. Nothing here is
 implemented on `feature/browsable-web-mvp`.
 
+**2026-10-14 integration update:** `feature/bluejs-browser-integration-gaps`
+has merged the product and BlueTS lines and completed the host-owned bounded
+microtask checkpoint increment. See the
+[`browser-integration milestone record`](BROWSER_INTEGRATION_TODO.md#milestone-record)
+for current evidence and remaining timer/session work; the tables below are
+the original analysis baseline.
+
 BlueJS is measured against ECMA-262/402 (Test262 99.995%). That says the
 *language* is nearly complete; it says nothing about whether the engine is a
 usable *page runtime*. This document is the inventory of what a script-driven

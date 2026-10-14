@@ -21,6 +21,9 @@ use super::*;
 /// calls throw a `RangeError` until a timer fires or is cleared.
 pub const MAX_HOST_TIMERS_PER_REALM: usize = 1_024;
 
+/// Jobs one host microtask checkpoint may run before it reports a limit.
+const MAX_HOST_CHECKPOINT_JOBS: usize = 1_024;
+
 /// Largest delay in milliseconds, matching the 2^31-1 limit browsers apply.
 const MAX_HOST_TIMER_DELAY_MS: f64 = 2_147_483_647.0;
 
@@ -67,6 +70,10 @@ fn is_page_exception(error: &RuntimeError) -> bool {
 }
 
 impl Vm {
+    pub(crate) fn use_bounded_host_microtask_checkpoints(&mut self) {
+        self.bounded_host_microtask_checkpoints = true;
+    }
+
     /// Installs `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`
     /// and `queueMicrotask` as globals. Installation is all-or-nothing and is
     /// refused when any of those names already exists.
@@ -224,10 +231,21 @@ impl Vm {
     /// A job that throws a page exception is counted and the checkpoint
     /// continues with the next job; a resource failure stops it. Returns the
     /// number of uncaught page exceptions.
+    ///
+    /// The checkpoint is bounded like the host's click checkpoint: a chain
+    /// longer than [`MAX_HOST_CHECKPOINT_JOBS`] stops the pass with
+    /// `InstructionLimit` instead of holding the host indefinitely.
     pub fn run_host_microtask_checkpoint(&mut self) -> Result<u32, RuntimeError> {
+        self.run_host_microtask_checkpoint_bounded(MAX_HOST_CHECKPOINT_JOBS)
+    }
+
+    pub(crate) fn run_host_microtask_checkpoint_bounded(
+        &mut self,
+        max_jobs: usize,
+    ) -> Result<u32, RuntimeError> {
         self.ensure_no_debugger_continuation()?;
         let mut uncaught = 0;
-        loop {
+        for _ in 0..max_jobs {
             self.remaining_instructions = self.config.instruction_budget;
             match self.run_next_promise_job() {
                 Ok(true) => {}
@@ -235,6 +253,11 @@ impl Vm {
                 Err(error) if is_page_exception(&error) => uncaught += 1,
                 Err(error) => return Err(error),
             }
+        }
+        if self.promise_jobs.is_empty() {
+            Ok(uncaught)
+        } else {
+            Err(RuntimeError::InstructionLimit)
         }
     }
 

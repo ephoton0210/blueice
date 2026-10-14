@@ -58,7 +58,7 @@ impl JavaScriptPageExecutor {
         };
         match result {
             Ok(DeclarationExecution::Executed) => {
-                self.push_report(JavaScriptPageExecutionReport::Executed {
+                self.push_script_execution_report(JavaScriptPageExecutionReport::Executed {
                     tab_id: tab_id.as_u64(),
                     document_generation,
                     ordinal,
@@ -82,14 +82,43 @@ impl JavaScriptPageExecutor {
                     });
                 }
             }
-            Err(category) => self.push_report(JavaScriptPageExecutionReport::Rejected {
-                tab_id: tab_id.as_u64(),
+            Err(category) => {
+                self.push_script_execution_report(JavaScriptPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation,
+                    ordinal,
+                    kind,
+                    category,
+                })
+            }
+        }
+    }
+
+    /// Script cleanup belongs to the host, including after an uncaught throw.
+    /// Keep the original script failure when both execution and cleanup fail.
+    pub(super) fn push_script_execution_report(&mut self, report: JavaScriptPageExecutionReport) {
+        let checkpoint = self
+            .runtime
+            .run_microtask_checkpoint(report_tab_id(&report));
+        let report = match (report, checkpoint) {
+            (
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id,
+                    document_generation,
+                    ordinal,
+                    kind,
+                },
+                Err(error),
+            ) => JavaScriptPageExecutionReport::Rejected {
+                tab_id,
                 document_generation,
                 ordinal,
                 kind,
-                category,
-            }),
-        }
+                category: page_runtime_category(error),
+            },
+            (report, _) => report,
+        };
+        self.push_report(report);
     }
 
     fn execute_inline(
