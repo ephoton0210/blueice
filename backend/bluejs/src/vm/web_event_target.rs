@@ -243,6 +243,10 @@ impl Vm {
         event: ObjectId,
         trusted: bool,
     ) -> Result<Value, RuntimeError> {
+        if self.starts_host_event_turn() {
+            return self
+                .run_host_event_turn(|vm| vm.dispatch_web_target_event(target, event, trusted));
+        }
         let state = self.heap.drag_event(event)?;
         if state.phase != 0 {
             return self.drag_named_error("InvalidStateError", "Event is already dispatching");
@@ -324,6 +328,7 @@ impl Vm {
                         };
                         self.call_native(function, receiver, vec![Value::Object(event)], false)
                     })();
+                    let called = self.cleanup_host_event_callback(called);
                     self.stack.truncate(callback_base);
                     if listener.handler
                         && called

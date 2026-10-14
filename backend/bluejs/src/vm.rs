@@ -30,6 +30,7 @@ mod execution;
 mod for_in;
 mod functions;
 mod host_animation_frames;
+mod host_event_checkpoints;
 mod host_finalization;
 mod host_objects;
 mod host_registration;
@@ -1150,6 +1151,8 @@ pub struct Vm {
     promise_jobs: VecDeque<PromiseJob>,
     /// Page realms bound even the implicit drains used by module evaluation.
     bounded_host_microtask_checkpoints: bool,
+    /// All callback cleanups in one native dispatch share this job budget.
+    host_event_microtask_jobs: Option<usize>,
     host_scheduling: Option<SchedulingScope>,
     active_scheduling_bytes: usize,
     browser_tasks: VecDeque<browser_tasks::BrowserTask>,

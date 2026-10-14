@@ -14,7 +14,11 @@ and awaited for-await cleanup with bounded timer-poll regressions. M1g adds
 document-owned finalization tasks, automatic checkpoint discovery and shared
 browser-task admission across ShadowRealms. M1 remains
 in progress for task-source ordering and broader host-buffer/aggregate
-accounting.
+accounting. M1h adds native DOM callback cleanup with a shared 256-job budget,
+preserved dispatch fuel and rooted frames during module jobs; script-driven
+dispatch retains its enclosing JavaScript ordering. The
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record)
+tracks its acceptance without closing M1 as a whole.
 
 ## Objective
 

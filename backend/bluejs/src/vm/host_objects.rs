@@ -712,6 +712,7 @@ impl Vm {
                 self.call_native(function, callback, vec![Value::Object(event)], false)
             }
         })();
+        let result = self.cleanup_host_event_callback(result);
         if self.heap.drag_event(event).is_ok() {
             let mut state = self.heap.drag_event(event)?.clone();
             state.passive = false;

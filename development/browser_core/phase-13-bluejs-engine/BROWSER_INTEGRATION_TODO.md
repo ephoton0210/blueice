@@ -110,8 +110,13 @@ work and exposes its retained payload ledger.
       M1c adds frame wake-ups to that deadline selection; repeated task polls
       preserve an already requested frame's deadline, and paused/empty frame
       queues clear it.
-- [ ] Microtask checkpoint also runs after every DOM event dispatch, not only
-      after browser-task turns (*verify*)
+- [x] **M1h: native DOM callback cleanup.** Native click, selection, drag and
+      asynchronous EventTarget callbacks checkpoint before the next listener,
+      while dispatch state remains active. Synchronous script dispatch waits
+      for its calling JavaScript to return. All callback cleanups in a native
+      dispatch share the existing 256-job cap and retain its instruction fuel.
+      Acceptance includes public ordering/resource regressions, dynamic-import
+      GC pressure, checked BlueTS callbacks and the real Core selection path.
 - [x] **M1b: reconcile the parked timer slice.** Retained the public
       page-runtime host-supplied clock mechanism, including explicit manual
       time for deterministic tests. Adopted the parked slice's 32-argument
@@ -372,6 +377,56 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1h — Native DOM callback microtask cleanup (2026-10-15)
+
+- Public red-first tests exposed whole-dispatch cleanup: a first listener's
+  jobs ran after the next listener and could not remove it, stop bubbling or
+  cancel the native default action while dispatch was still active. Nine of
+  the first eleven cases failed, including FileReader abort timing and passive
+  callback state. A separate dynamic-import/major-GC case then exposed a stale
+  event handle when module execution replaced the dispatch's operand stack.
+- Page native click, selection and drag entries now own one cleanup scope.
+  Native FileReader and timeout-driven EventTarget dispatch use the same
+  mechanism. Each callback cleans up after its JavaScript stack is empty,
+  before resetting passive state or selecting the next listener; script-driven
+  dispatch remains synchronous within its enclosing native call. Throwing
+  callbacks and jobs do not skip ordinary cleanup or later listeners. Resource
+  failure stops immediately, before later jobs/listeners or a default action.
+- All callback checkpoints and the native dispatch exit share the existing
+  256-job budget. Empty checkpoints consume no jobs, an exact 256-job drain
+  succeeds, and cleanup cannot refill the dispatch's instruction fuel. The
+  displaced execution frame and callback completion keep independent GC roots
+  during import/module work; normal and failed checkpoints restore that frame
+  and release temporary ownership. Cleanup only queues registry tasks for a
+  later browser turn.
+- References: [Web IDL callback operations](https://webidl.spec.whatwg.org/#call-a-user-objects-operation),
+  [HTML script cleanup](https://html.spec.whatwg.org/multipage/webappapis.html#clean-up-after-running-script),
+  [DOM listener invocation](https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke).
+  Standalone language VMs retain their existing manual host policy. The v12
+  installed globals/typings and private v59 wire schema remain unchanged.
+- Final macOS gates: **3,022 related tests passed**: 2,740 across the five
+  affected libraries, 274 public runtime/DOM/allocation cases and eight rebuilt
+  real Core/child fixtures; one existing launcher case remains ignored. This
+  includes 20 new public event cases and checked BlueTS callback ordering.
+  Corrected the transport fixture's old whole-dispatch expectation: its first
+  callback's microtask cannot see a later listener in that click; the second
+  click removes the canceler and the third is uncanceled. The fresh launcher
+  test binary passed all 306 cases after that correction. The real selection
+  fixture exposes the first callback's microtask state from the next listener.
+  All-target Clippy for the five affected crates and workspace formatting pass.
+- An initial full Test262 run overlapping compiler/allocation work hit two
+  Date wall deadlines. The same binary hashes and per-case limits passed the
+  four affected modes in 51.740 seconds. The subsequent unfiltered four-worker
+  run completed in **455.744 seconds: 102,921 / 102,926 modes**, one existing
+  stale-corpus entry, four exclusions and **zero failures/timeouts**. All
+  102,926 mode paths, source hashes and dispositions, plus runner/corpus,
+  per-case budgets and group/feature results, match M1g. Frozen adapter/regex
+  worker bytes were verified before and after the run. See the raw
+  [machine summary](test262-browser-event-checkpoints-macos-summary.json).
+- General task-source ordering, broader host-buffer accounting and unhandled
+  rejection/error reporting remain open; M1 as a whole is not complete. Full
+  workspace and coverage gates are not claimed by M1h.
 
 ### M1g — Document-owned FinalizationRegistry tasks (2026-10-15)
 

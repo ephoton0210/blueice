@@ -509,9 +509,22 @@ fn event_profile_dispatches_only_live_unremoved_exact_document_listeners() {
             default_prevented: true,
         }
     );
-    // The first callback threw after canceling, but the next callback
-    // still ran. Its state is visible to the microtask checkpoint, which
-    // removes the canceler before core can apply a default action.
+    // Callback cleanup precedes the next listener. On the first click its
+    // microtask cannot see ranLater yet. On the second it sees the preceding
+    // click's state and removes the canceler, after that click was canceled.
+    assert_eq!(
+        host.handle_request(PageHostRequest::DispatchClick {
+            tab_id: 7,
+            document_generation: 1,
+            node_id: 11,
+        }),
+        PageHostReply::ClickDispatched {
+            tab_id: 7,
+            document_generation: 1,
+            default_prevented: true,
+        }
+    );
+    // Removal during the second click takes effect on subsequent dispatch.
     assert_eq!(
         host.handle_request(PageHostRequest::DispatchClick {
             tab_id: 7,

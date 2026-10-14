@@ -84,6 +84,14 @@ the installed profile or private wire fields.
 BlueTS's separate standard-library identity advances to v3 for edition-selected
 WeakRef/FinalizationRegistry types; this does not change the generated v12
 host declaration artifact or its 47 installed entries.
+M1h adds callback cleanup within native click, selection, drag and asynchronous
+EventTarget dispatch: microtasks finish before the next listener while the
+event's current target, phase and passive state remain active. Script-driven
+dispatch defers cleanup until its calling JavaScript returns. The native
+dispatch shares one 256-job cap, preserves instruction fuel and roots its
+displaced execution frame during import/module jobs. Resource failure stops
+delivery before default action. See the
+[M1h record](BROWSER_INTEGRATION_TODO.md#milestone-record) for verification.
 See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).

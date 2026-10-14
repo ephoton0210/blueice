@@ -1276,11 +1276,8 @@ impl BlueJsPageRuntime {
             .get_mut(&tab_id)
             .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
             .vm;
-        let default_prevented = vm
-            .dispatch_host_click(family, key)
-            .map_err(BlueJsPageRuntimeError::Runtime)?;
-        self.run_click_microtask_checkpoint(tab_id)?;
-        Ok(default_prevented)
+        vm.run_host_event_turn(|vm| vm.dispatch_host_click(family, key))
+            .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
     pub fn dispatch_host_file_selection_event(
@@ -1294,9 +1291,8 @@ impl BlueJsPageRuntime {
             .get_mut(&tab_id)
             .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
             .vm
-            .dispatch_host_file_selection_event(family, path, kind)
-            .map_err(BlueJsPageRuntimeError::Runtime)?;
-        self.run_click_microtask_checkpoint(tab_id)
+            .run_host_event_turn(|vm| vm.dispatch_host_file_selection_event(family, path, kind))
+            .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
     pub fn dispatch_host_drag_event(
@@ -1306,15 +1302,12 @@ impl BlueJsPageRuntime {
         path: &[HostObjectKey],
         event: &crate::HostDragEventData,
     ) -> Result<crate::HostDragEventOutcome, BlueJsPageRuntimeError> {
-        let result = self
-            .realms
+        self.realms
             .get_mut(&tab_id)
             .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
             .vm
-            .dispatch_host_drag_event(family, path, event)
-            .map_err(BlueJsPageRuntimeError::Runtime)?;
-        self.run_click_microtask_checkpoint(tab_id)?;
-        Ok(result)
+            .run_host_event_turn(|vm| vm.dispatch_host_drag_event(family, path, event))
+            .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
     /// One browser turn, after document scripts or the enclosing native default
@@ -1351,12 +1344,11 @@ impl BlueJsPageRuntime {
         &mut self,
         tab_id: u64,
     ) -> Result<(), BlueJsPageRuntimeError> {
-        const MAX_CLICK_MICROTASK_JOBS: usize = 256;
         self.realms
             .get_mut(&tab_id)
             .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
             .vm
-            .run_host_microtask_checkpoint_bounded(MAX_CLICK_MICROTASK_JOBS)
+            .run_host_microtask_checkpoint_bounded(Vm::MAX_HOST_EVENT_MICROTASK_JOBS)
             .map_err(BlueJsPageRuntimeError::Runtime)?;
         Ok(())
     }

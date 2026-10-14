@@ -56,6 +56,57 @@ fn checked_finalization_registry_callbacks_run_in_page_browser_turns() {
     assert_eq!(*log.borrow(), [bluejs::HostValue::String("cleanup".into())]);
 }
 
+#[test]
+fn checked_native_event_callbacks_finish_microtasks_before_the_next_listener() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, "let ready: boolean = false; function publish(): void { ready = true; record('micro'); } function first(): void { record('first'); queueMicrotask(publish); } function second(): void { record(ready ? 'second:ready' : 'second:early'); } node().addEventListener('click', first); node().addEventListener('click', second);")]),
+        CompilerOptions {
+            require_declared_global_calls: true,
+            ambient_declaration_modules: vec![ModuleSource::new("memory:///owner.d.ts", "declare function node(): { addEventListener(type: string, callback: () => void): void }; declare function queueMicrotask(callback: () => void): void; declare function record(value: string): void;")],
+            ..CompilerOptions::default()
+        },
+    ).unwrap();
+    let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let output = log.clone();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let key = bluejs::HostObjectKey::new(7, 1, 2);
+    let mut family = None;
+    runtime
+        .configure_realm_bindings(7, |host| {
+            host.install_web_file_api()?;
+            host.install_host_timers()?;
+            let nodes = host.create_host_object_family()?;
+            host.install_host_node_event_methods(nodes, |key| Ok(vec![key]))?;
+            host.install_global_object_factory(
+                "node",
+                0,
+                nodes,
+                move |_: &[bluejs::HostValue]| Ok(Some(key)),
+            )?;
+            host.install_global_function("record", 1, move |args: &[bluejs::HostValue]| {
+                output.borrow_mut().push(args[0].clone());
+                Ok(bluejs::HostValue::Undefined)
+            })?;
+            family = Some(nodes);
+            Ok(())
+        })
+        .unwrap();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    runtime.execute_program(7, attachment.handle).unwrap();
+    runtime
+        .dispatch_host_click(7, family.unwrap(), key)
+        .unwrap();
+    assert_eq!(
+        *log.borrow(),
+        ["first", "micro", "second:ready"].map(|value| bluejs::HostValue::String(value.into()))
+    );
+}
+
 fn origin() -> bluejs::BlueJsPageOrigin {
     bluejs::BlueJsPageOrigin::new("https://example.test").unwrap()
 }

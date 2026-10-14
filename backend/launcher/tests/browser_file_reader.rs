@@ -93,7 +93,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
             "<div id=tee>pending</div>",
             "<div id=iterated>pending</div>",
             "<section id=event-parent><span id=event-child>event</span><input id=synthetic-file type=file></section>",
-            "<div id=node-events>pending</div><div id=synthetic-grant>pending</div><div id=native-capture>pending</div>",
+            "<div id=node-events>pending</div><div id=synthetic-grant>pending</div><div id=native-capture>pending</div><div id=native-microtasks>pending</div>",
             "<script>",
             "let lateReady=false, lateObserved=false; const initial=new FileReader();",
             "initial.onload=()=>{if(!lateReady) throw 'task ran before later scripts';};",
@@ -125,6 +125,8 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
             "syntheticFile.dispatchEvent(new Event('click',{bubbles:true}));",
             "document.getElementById('synthetic-grant').textContent='grant:'+syntheticClicks+':'+syntheticFile.files.length;",
             "document.addEventListener('input',e=>{document.getElementById('native-capture').textContent='native:'+e.isTrusted+':'+(e instanceof Event)+':'+e.eventPhase;},true);",
+            "let nativeMicrotask=false;upload.addEventListener('input',()=>queueMicrotask(()=>{nativeMicrotask=true;}));",
+            "upload.addEventListener('input',()=>{document.getElementById('native-microtasks').textContent='micro-before-next:'+nativeMicrotask;});",
             "upload.addEventListener('input', ()=>{events.push('input');const reader=new FileReader();",
             "for(const type of ['loadstart','progress','load','loadend']) reader.addEventListener(type, ()=>events.push(type));",
             "reader.onload=()=>{selected=Array.from(new Uint8Array(reader.result));};",
@@ -231,6 +233,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
     );
     assert!(dom.contains("\"cancelled:0:0:removed\""), "{dom}");
     assert!(dom.contains("\"native:true:true:1\""), "{dom}");
+    assert!(dom.contains("\"micro-before-next:true\""), "{dom}");
     assert_eq!(
         http_requests.load(Ordering::Acquire),
         1,

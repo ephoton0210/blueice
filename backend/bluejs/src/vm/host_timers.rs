@@ -326,21 +326,31 @@ impl Vm {
 
     pub(crate) fn run_host_microtask_checkpoint_bounded(
         &mut self,
-        max_jobs: usize,
+        mut max_jobs: usize,
+    ) -> Result<u32, RuntimeError> {
+        self.run_host_microtask_checkpoint_with_budget(&mut max_jobs)
+    }
+
+    pub(super) fn run_host_microtask_checkpoint_with_budget(
+        &mut self,
+        remaining_jobs: &mut usize,
     ) -> Result<u32, RuntimeError> {
         self.check_scheduling_failure()?;
         self.ensure_no_debugger_continuation()?;
         self.enqueue_finalization_cleanup_jobs()?;
         let mut uncaught = 0;
-        for _ in 0..max_jobs {
+        while *remaining_jobs > 0 {
             self.remaining_instructions = self.config.instruction_budget;
             match self.run_next_promise_job() {
-                Ok(true) => {}
+                Ok(true) => *remaining_jobs -= 1,
                 Ok(false) => {
                     self.finish_host_checkpoint()?;
                     return Ok(uncaught);
                 }
-                Err(error) if is_page_exception(&error) => uncaught += 1,
+                Err(error) if is_page_exception(&error) => {
+                    *remaining_jobs -= 1;
+                    uncaught += 1;
+                }
                 Err(error) => return Err(error),
             }
             self.enqueue_finalization_cleanup_jobs()?;

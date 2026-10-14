@@ -29,7 +29,10 @@ for live async/host work and bounded page polling acceptance. M1g routes page
 FinalizationRegistry cleanup through the host browser turn, preserves
 unregister until delivery and shares document task admission with
 ShadowRealms. Task-source ordering and broader host-buffer/aggregate resource
-accounting remain open.
+accounting remain open. M1h adds callback cleanup during native DOM dispatch,
+sharing its job budget and preserving fuel/frame roots while script-driven
+dispatch waits for the enclosing JavaScript. Acceptance is tracked in the
+[integration record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
 
 ## Objective
 
