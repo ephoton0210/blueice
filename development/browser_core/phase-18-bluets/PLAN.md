@@ -10444,3 +10444,18 @@ Acorn 8.15.0 and `FORCE_COLOR=0`, the two BlueTS crates' full
 `--include-ignored` test run exits 0, including the 82-test TypeScript oracle
 and 23-test decoded source-map oracle. Formatting and whitespace checks pass.
 This is a local leaf gate, not the K.11.6 workspace coverage or hosted gate.
+
+### K.11.4 source-size split after AC-K11.B (2026-10-14)
+
+`backend/launcher/src/bluejs_host.rs` was 1,594 lines after the verified
+AC-K11.B commit, above the K.0 review threshold. The fixed document-origin
+validation, snapshot typing/binding installer, and its local DOM argument
+helpers moved unchanged into `bluejs_host/document_bindings.rs`; the parent
+imports that module privately. The parent is now 1,271 lines and the focused
+module is 333 lines. No protocol, callback, policy or runtime behavior changed.
+The complete `cargo test -p blueice-launcher` suite passes after the move,
+including 201 library tests, 54 public out-of-process debugger tests and all
+seven `spawn_core` DOM callback cases. Launcher all-target Clippy with denied
+warnings, workspace rustfmt and whitespace checks pass. This is the K.0
+source-size maintenance step, not a new K.11 acceptance item; AC-K11.C/D
+remain open.
