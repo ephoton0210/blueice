@@ -4,6 +4,7 @@
 
 """Public contracts for selecting and executing tests without a full engine run."""
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -25,6 +26,19 @@ from backend.bluejs.selftest.shared_functions import body_contract, shared_funct
 from backend.bluejs.selftest.partitions import (case_partitions, changed_opcodes, changed_symbols, latest_rust_anchor,
                                               partition_plan, passed_partition, public_reference_cases, selection_identity)
 from backend.bluejs.selftest.server import Application, make_server
+
+
+def executable_fixture(path, program):
+    """Use a real child process for the same fixture on every host."""
+    if os.name == "nt":
+        script = path.with_suffix(".py")
+        script.write_text(program, encoding="utf-8", newline="\n")
+        command = path.with_suffix(".cmd")
+        command.write_text(f'@"{sys.executable}" "{script}" %*\n', encoding="utf-8")
+        return command
+    path.write_text(f"#!{sys.executable}\n" + program, encoding="utf-8")
+    path.chmod(0o755)
+    return path
 
 
 class ImpactContracts(unittest.TestCase):
@@ -553,7 +567,7 @@ class ExecutionContracts(unittest.TestCase):
         directory = self.manager.state / "runs/20261006-120000-abcdef12"
         directory.mkdir(parents=True)
         (directory / "source-state.json").write_text(json.dumps(frozen))
-        (directory / "frozen-rust-sources.json").write_text(json.dumps({name: (self.root / name).read_text()
+        (directory / "frozen-rust-sources.json").write_text(json.dumps({name: (self.root / name).read_bytes().decode("utf-8")
             for name in frozen["files"] if name.endswith(".rs")}))
         (directory / "run.json").write_text(json.dumps({"id": directory.name, "status": "passed", "mode": "full",
             "snapshot": frozen["identity"], "tasks": [{"id": "full:" + key, "status": "passed", "counts": [[1, 0, 0]]}
@@ -792,13 +806,11 @@ class ExecutionContracts(unittest.TestCase):
         directory = self.manager.state / "runs" / run_id
         directory.mkdir(parents=True)
         self.manager.active = {"id": run_id, "status": "running", "tasks": [], "message": ""}
-        failed_binary = self.root / "failed-rust"
-        failed_binary.write_text("#!/bin/sh\necho 'test result: FAILED. 0 passed; 1 failed; 0 ignored'\nexit 1\n")
-        failed_binary.chmod(0o755)
+        failed_binary = executable_fixture(self.root / "failed-rust",
+            "print('test result: FAILED. 0 passed; 1 failed; 0 ignored')\nraise SystemExit(1)\n")
         forbidden = self.root / "must-not-run"
-        next_binary = self.root / "next-rust"
-        next_binary.write_text("#!/bin/sh\ntouch must-not-run\necho 'test result: ok. 1 passed; 0 failed; 0 ignored'\n")
-        next_binary.chmod(0o755)
+        next_binary = executable_fixture(self.root / "next-rust",
+            "from pathlib import Path\nPath('must-not-run').touch()\nprint('test result: ok. 1 passed; 0 failed; 0 ignored')\n")
         tests = [
             {"id": "test262:all", "label": "conformance", "kind": "test262"},
             {"id": "rust:test:other", "label": "other", "kind": "rust"},
@@ -841,7 +853,7 @@ class ExecutionContracts(unittest.TestCase):
         anchor = self.manager.state / "runs/20261006-120000-abcdef12"
         anchor.mkdir(parents=True)
         (anchor / "source-state.json").write_text(json.dumps(frozen))
-        (anchor / "frozen-rust-sources.json").write_text(json.dumps({name: (self.root / name).read_text()
+        (anchor / "frozen-rust-sources.json").write_text(json.dumps({name: (self.root / name).read_bytes().decode("utf-8")
             for name in frozen["files"] if name.endswith(".rs")}))
         targets = inventory(self.root)
         (anchor / "run.json").write_text(json.dumps({"id": anchor.name, "status": "failed", "mode": "pipeline",
@@ -952,18 +964,17 @@ class ExecutionContracts(unittest.TestCase):
         directory = self.manager.state / "runs" / run_id
         directory.mkdir(parents=True)
         self.manager.active = {"id": run_id, "status": "running", "tasks": [], "message": ""}
-        binary = self.root / "native-partition"
-        binary.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\necho 'test result: ok. 2 passed; 0 failed; 0 ignored'\n")
-        binary.chmod(0o755)
+        binary = executable_fixture(self.root / "native-partition",
+            "import sys\nprint('\\n'.join(sys.argv[1:]))\nprint('test result: ok. 2 passed; 0 failed; 0 ignored')\n")
         case = {"id": "rust:lib:partition:vm::scope", "target_id": "rust:lib", "case": "vm::scope", "partition": True,
                 "case_names": ["vm::scope::first", "vm::scope::second"], "kind": "rust", "label": "scope"}
         self.assertTrue(self.manager.run_tests([case], "partition", artifacts={"rust:lib": str(binary)}))
         task = self.manager.active["tasks"][0]
         self.assertIn("--exact\nvm::scope::first\nvm::scope::second", (directory / task["log"]).read_text())
-        self.assertIn("/partition/profiles/", task["profile_directory"])
+        self.assertIn("/partition/profiles/", Path(task["profile_directory"]).as_posix())
         self.assertFalse((directory / "full/profiles").exists())
         self.assertNotIn(case["id"], self.manager.graph()["tests"])
-        binary.write_text("#!/bin/sh\necho 'test result: ok. 1 passed; 0 failed; 0 ignored'\n")
+        binary = executable_fixture(binary.with_suffix(""), "print('test result: ok. 1 passed; 0 failed; 0 ignored')\n")
         self.assertFalse(self.manager.run_tests([case], "partition", artifacts={"rust:lib": str(binary)}))
         self.assertEqual(task["status"], "failed")
 
@@ -1073,14 +1084,13 @@ class ExecutionContracts(unittest.TestCase):
         directory = self.manager.state / "runs" / run_id
         directory.mkdir(parents=True)
         self.manager.active = {"id": run_id, "status": "running", "tasks": [], "message": ""}
-        binary = self.root / "fake-case"
-        binary.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\necho 'test result: ok. 1 passed; 0 failed; 0 ignored'\n")
-        binary.chmod(0o755)
+        binary = executable_fixture(self.root / "fake-case",
+            "import sys\nprint('\\n'.join(sys.argv[1:]))\nprint('test result: ok. 1 passed; 0 failed; 0 ignored')\n")
         case = {"id": "rust:lib:case:vm::boundary", "target_id": "rust:lib", "case": "vm::boundary", "label": "case", "kind": "rust"}
         self.assertTrue(self.manager.run_tests([case], "recheck", artifacts={"rust:lib": str(binary)}))
         task = self.manager.active["tasks"][0]
         self.assertIn("--exact\nvm::boundary", (directory / task["log"]).read_text())
-        self.assertIn("/recheck/profiles/", task["profile_directory"])
+        self.assertIn("/recheck/profiles/", Path(task["profile_directory"]).as_posix())
         self.assertFalse((directory / "full/profiles").exists())
         self.assertNotIn(case["id"], self.manager.graph()["tests"])
         self.assertIn(case["id"], self.manager.graph()["case_history"])
@@ -1170,9 +1180,8 @@ class ExecutionContracts(unittest.TestCase):
             directory = self.manager.state / "runs" / run_id
             directory.mkdir(parents=True)
             self.manager.active = {"id": run_id, "status": "running", "tasks": [], "message": ""}
-            binary = self.root / "fake-case"
-            binary.write_text(f"#!/bin/sh\necho 'test result: ok. 0 passed; 0 failed; {ignored} ignored'\n")
-            binary.chmod(0o755)
+            binary = executable_fixture(self.root / "fake-case",
+                f"print('test result: ok. 0 passed; 0 failed; {ignored} ignored')\n")
             case = {"id": "rust:lib:case:vm::boundary", "target_id": "rust:lib", "case": "vm::boundary", "label": "case", "kind": "rust"}
             self.assertEqual(self.manager.run_tests([case], "recheck", artifacts={"rust:lib": str(binary)}), expected)
             self.assertEqual(self.manager.active["tasks"][0]["status"], "failed" if ignored else "skipped")
@@ -1230,9 +1239,9 @@ class ExecutionContracts(unittest.TestCase):
         run_id = "20261006-120000-abcdef12"
         (self.manager.state / "runs" / run_id).mkdir(parents=True)
         self.manager.active = {"id": run_id, "status": "running", "tasks": [], "message": ""}
-        worker = self.root / "worker"
-        worker.write_text("#!/bin/sh\nread input && exit 2\nprintf '\\026\\000\\000\\000bluejs-regexp-worker/1'\n")
-        worker.chmod(0o755)
+        worker = executable_fixture(self.root / "worker",
+            "import sys\nif sys.stdin.buffer.read(): raise SystemExit(2)\n"
+            "payload=b'bluejs-regexp-worker/1'\nsys.stdout.buffer.write(len(payload).to_bytes(4,'little')+payload)\n")
         self.assertTrue(self.manager.worker_ready({"bluejs-regexp-worker": str(worker)}, None, "impact"))
         task = self.manager.active["tasks"][0]
         row = json.loads((self.manager.state / "runs" / run_id / task["log"]).read_text())
@@ -1241,9 +1250,7 @@ class ExecutionContracts(unittest.TestCase):
         self.assertFalse((self.manager.state / "runs" / run_id / "impact/profiles").exists())
 
     def test_invalid_worker_frame_stops_pipeline_before_any_test(self):
-        worker = self.root / "bad-worker"
-        worker.write_text("#!/bin/sh\nprintf 'unframed worker output'\n")
-        worker.chmod(0o755)
+        worker = executable_fixture(self.root / "bad-worker", "print('unframed worker output')\n")
         self.manager.environment = lambda: {}
         self.manager.build = lambda *args: ({}, {"bluejs-regexp-worker": str(worker)})
         with patch.object(self.manager, "run_tests") as run_tests:

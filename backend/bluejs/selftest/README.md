@@ -254,6 +254,12 @@ different directory. Existing complete measurement artifacts remain available.
 Restarting the dashboard restores the latest retained progress and logs. An
 unfinished run whose owner has stopped is displayed as interrupted.
 
+Publication selects `TEST262_MACOS_REPORT.md`, `TEST262_LINUX_REPORT.md` or
+`TEST262_WINDOWS_REPORT.md` for the current host. Windows LLVM exports retain
+all measured objects and sources in response files to stay within the native
+command-line limit. Frozen Rust inputs preserve their exact UTF-8 bytes,
+including CRLF line endings, for subsequent source comparisons.
+
 The report uses raw LLVM line/function/region counts. It compares Test262
 outcome contracts and preserves the cumulative modified-file acceptance scope
 across commits. The checked-in `acceptance-scope.json` retains the selected

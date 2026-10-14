@@ -74,7 +74,20 @@ dispatches, 750,000 allowed), `staging/sm/JSON/parse-reviver-array-delete.js`
 slow for the wall deadline even with unlimited fuel (for example
 `staging/sm/Array/toSpliced-dense.js`, `staging/sm/Date/two-digit-years.js`
 under load, and every `staging/sm/Date/dst-offset-caching-N-of-8.js` part)
-is deliberately absent and stays a reported failure.
+uses the separately bounded allowances under "Large finite fixtures" below.
+The eight fixed DST caching matrices retain a 70-second ordinary limit and
+200 million dispatches. Atomic LLVM coverage uses a 180-second wall limit
+for these exact paths: on the native six-core Linux host, the same first
+segment takes 51.1 seconds normally and 79.1–79.3 seconds with atomic counters.
+The runner records this coverage mode; every matrix assertion still executes,
+and ordinary fixtures retain their two-second deadline.
+Three additional exact finite matrices use atomic-only deadlines: `toSpliced-dense.js`
+uses 40 seconds (ordinary 20), `regress-1507322-deep-weakmap.js` uses 30 (ordinary 15),
+and `sort_large_countingsort.js` uses 120 (ordinary TypedArray harness 60).
+Native Windows ordinary/atomic comparisons measured 15.9–16.3/24.4–24.7 seconds,
+12.2–12.4/15.5–15.6 seconds, and 36.3–36.4/60.8–60.9 seconds respectively.
+All original fuel, heap limits and matrix assertions remain in force;
+neighboring paths retain their ordinary deadline classifications.
 `staging/sm/String/unicode-braced.js` is a resource-size case rather than a
 dispatch one: it evaluates a source string built from 2**24 zeros (32 MiB of
 UTF-16), so it needs a string limit of at least 33,558,528 bytes against the
@@ -143,7 +156,7 @@ array-storage change, not a limit.
 
 Each supervising worker owns a process group. A whole-case timeout or adapter crash kills and reaps that group, including a regex child, before the next case creates a replacement. Regex operations additionally have their own engine-level deadline. Transport uses nonblocking bounded IO, so a blocked pipe does not disable the case deadline.
 
-The checked-in [summary](../../../development/browser_core/phase-13-bluejs-engine/test262-summary.json) records the current complete macOS inventory. All 102,921 dispatched modes passed; the 1 stale corpus mode and 4 host-capability exclusions remain visible and count as non-pass in the raw 102,926-mode inventory. Passing this finite snapshot is not a general conformance guarantee.
+The checked-in [summary](../../../development/browser_core/phase-13-bluejs-engine/test262-macos-summary.json) records the current complete macOS inventory. All 102,921 dispatched modes passed; the 1 stale corpus mode and 4 host-capability exclusions remain visible and count as non-pass in the raw 102,926-mode inventory. Passing this finite snapshot is not a general conformance guarantee.
 
 ## Architecture-first triage
 

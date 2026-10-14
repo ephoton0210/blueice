@@ -4,12 +4,18 @@
 
 import json
 import os
+import sys
 import re
 from datetime import datetime
 from pathlib import Path
 
 from .common import METRICS, complete, digest, load, now, save, snapshot
 from .coverage import export_profiles
+
+
+def platform_report_path(root):
+    platform = "MACOS" if sys.platform == "darwin" else "WINDOWS" if sys.platform == "win32" else "LINUX"
+    return Path(root) / f"development/browser_core/phase-13-bluejs-engine/TEST262_{platform}_REPORT.md"
 
 
 def outcome_contract(row):
@@ -73,7 +79,7 @@ def render_report(data, root, report_path):
     root, report_path = Path(root), Path(report_path)
     summary, raw, totals = data["test262"], data["files"], data["totals"]
     def link(path):
-        return os.path.relpath(root / path, report_path.parent)
+        return Path(os.path.relpath(root / path, report_path.parent)).as_posix()
     def source(name):
         return f"[`{name}`]({link('backend/bluejs/src/' + name)})"
     def format_percentage(covered, total):
@@ -115,7 +121,8 @@ def render_report(data, root, report_path):
                         if name not in raw and name in data.get("no_counters", {})}
     modified = [name for name in data["modified"] if name not in audited_modified]
     complete_count = sum(complete(v) for v in raw.values())
-    out = ["# macOS Test262 Report" if os.uname().sysname == "Darwin" else "# BlueJS Test Report", "",
+    title = "macOS" if sys.platform == "darwin" else "Windows" if sys.platform == "win32" else "Linux"
+    out = [f"# {title} Test262 Report", "",
            f"**Measurement: {data['measured_at']}. All numbers use this one verified source snapshot.**", "",
            "## Current complete inventory", "",
            f"Source fingerprint: `{data['snapshot']}`. Adapter SHA-256: `{summary['adapter_sha256']}`. "
@@ -219,7 +226,8 @@ def render_report(data, root, report_path):
               [[i, f"D{ranking[name]}" if name in ranking else "Unranked", source(name), *[raw[name][key]["count"] - raw[name][key]["covered"] for key in METRICS]] for i, name in enumerate(missing, 1)])
     else:
         out.extend([f"None. All {len(raw)} instrumented files have 100% raw line, function and region coverage.", ""])
-    out.extend(["## Reproduce the current inventory", "", "```sh", "python3 -m backend.bluejs.selftest run --mode pipeline --workspace", "```", "",
+    shell, python = ("powershell", "python") if sys.platform == "win32" else ("sh", "python3")
+    out.extend(["## Reproduce the current inventory", "", "```" + shell, python + " -m backend.bluejs.selftest run --mode pipeline --workspace", "```", "",
                 "The pipeline runs affected tests first, then the full current inventory and fresh coverage. "
                 "A partial or stale run cannot publish this report.", ""])
     return "\n".join(out)
@@ -318,7 +326,8 @@ def publish_report(manager, run_id):
     directory = manager.state / "runs" / run_id
     data = load(directory / "report-data.json")
     data["outcomes"] = [json.loads(line) for line in (directory / "full/test262/results.jsonl").read_text().splitlines()]
-    target = manager.root / "development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md"
+    target = platform_report_path(manager.root)
     target.write_text(render_report(data, manager.root, target))
-    save(target.with_name("test262-summary.json"), data["test262"])
+    platform = "macos" if sys.platform == "darwin" else "windows" if sys.platform == "win32" else "linux"
+    save(target.with_name(f"test262-{platform}-summary.json"), data["test262"])
     return target

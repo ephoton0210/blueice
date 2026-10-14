@@ -201,7 +201,9 @@ def partition_plan(manager, files=None, base=None):
         if not path.is_file() or not anchor:
             unknown.append(name)
             continue
-        after = path.read_text()
+        # Compare the same exact UTF-8 bytes retained in the frozen anchor.
+        # Universal-newline reads would make unchanged CRLF bodies differ.
+        after = path.read_bytes().decode("utf-8")
         symbols = changed_symbols(frozen.get(name, ""), after)
         body_only = outside_functions(frozen.get(name, "")) == outside_functions(after)
         opcodes = changed_opcodes(frozen.get(name, ""), after) if name.endswith("/interpreter.rs") else []

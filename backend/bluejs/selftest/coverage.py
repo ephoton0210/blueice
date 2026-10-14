@@ -8,6 +8,8 @@ import json
 import re
 import shutil
 import os
+import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,6 +80,13 @@ def export_profiles(binary, profiles, destination, root=ROOT, objects=(), summar
         command.append("--summary-only")
     scope = Path(root) / ("backend/bluejs" if summary_only else "backend/bluejs/src")
     command.extend(["--sources", *[str(p) for p in sorted(scope.rglob("*.rs"))]])
+    if sys.platform == "win32":
+        # Keep all objects and sources within Windows' CreateProcess limit.
+        # llvm-cov dispatches its subcommand before expanding response files.
+        response = destination / "llvm-cov-export.rsp"
+        response.write_text(subprocess.list2cmdline(command[2:]), encoding="utf-8")
+        save(destination / "llvm-cov-export-command.json", command)
+        command = [command[0], command[1], "@" + str(response)]
     payload = json.loads(checked(command, root))
     save(destination / "coverage.json", payload)
     return payload

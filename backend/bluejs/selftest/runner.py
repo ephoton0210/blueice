@@ -240,7 +240,11 @@ class Manager:
         for process in processes:
             if process.poll() is None:
                 try:
-                    os.killpg(process.pid, signal.SIGTERM)
+                    if sys.platform == "win32":
+                        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    else:
+                        os.killpg(process.pid, signal.SIGTERM)
                 except ProcessLookupError:
                     pass
         def force():
@@ -249,7 +253,11 @@ class Manager:
                     process.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     try:
-                        os.killpg(process.pid, signal.SIGKILL)
+                        if sys.platform == "win32":
+                            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        else:
+                            os.killpg(process.pid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
         threading.Thread(target=force, daemon=True).start()
