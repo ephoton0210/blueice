@@ -680,7 +680,7 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
   positions through compaction and erasure. Exercise the public debugger's
   breakpoint/step and stack-location lookup at mapped, relocated and unmapped
   sites; no synthetic helper body may be reported as user source.
-  - [ ] Install the exact BlueTSC-emitted JavaScript and its validated map as
+  - [x] Install the exact BlueTSC-emitted JavaScript and its validated map as
     one generation-bound page-host debugger artifact; retain the generated
     source hash and reject stale, substituted or externally asserted maps.
   - [ ] Bind generated token positions to exact BlueJS AST/bytecode safe
@@ -1410,7 +1410,20 @@ separately installed loader with no replay. Launcher library tests pass 196/196,
 real-process debugger tests pass 48/48, launcher all-target Clippy with denied
 warnings and workspace format check pass. The System row and its exact-source
 subcheck are complete; K.11.4 remains open for the broader generated/relocated
-matrix and malformed-map public fault paths, and K.11.6 remains open.
+matrix, and K.11.6 remains open. The public malformed-map fault path was
+already closed by the child/core/subprocess proxy regressions recorded above.
+
+An audit of the general K.11.4 artifact-admission subcheck confirms that the
+child compiles the emitted JavaScript and map together, validates the complete
+map before attaching it to a live opaque program generation, and compares its
+retained source hash with the installed runtime program. Existing admission
+regressions reject substituted maps, tampered hashes and stale generations,
+then clear the map on realm replacement; the page-host request accepts source
+graphs, not client-asserted maps. The exact frozen System case above also
+compares the installed JavaScript, map and hash with independent BlueTSC output.
+The 196/196 launcher library and 48/48 real-process debugger suites on this
+source cover those controls. This checks the artifact-admission subitem, not
+the remaining matrix-wide AST/bytecode binding or public-site acceptance.
 
 ### K.12 Projects — M10 — gap G-M2
 
