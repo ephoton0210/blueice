@@ -8,8 +8,57 @@ on:
   workflow_dispatch:
 
 jobs:
+  # A change that touches only Markdown cannot alter any build, test or
+  # coverage result, so the heavy jobs below are skipped for it. The workflow
+  # itself must still run: the branch's required "CI gate" check has to
+  # report, and a workflow-level paths-ignore would leave it pending forever.
+  #
+  # Markdown under the test fixtures or the pinned reference corpora is read
+  # by tests, so it still counts as a code change. Anything unknown (a
+  # manual dispatch, a missing base commit) is treated as a code change.
+  changes:
+    name: Detect documentation-only change
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Classify the changed files
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          docs_only=false
+          base=""
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+          esac
+          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            files=$(git diff --name-only "$base" "$GITHUB_SHA")
+            if [ -n "$files" ]; then
+              docs_only=true
+              while IFS= read -r file; do
+                case "$file" in
+                  development/browser_core/testing/fixtures/*|development/browser_core/reference/*) docs_only=false ;;
+                  *.md) ;;
+                  *) docs_only=false ;;
+                esac
+              done <<< "$files"
+            fi
+          fi
+          echo "Changed files:"; git diff --name-only "${base:-HEAD}" "$GITHUB_SHA" 2>/dev/null || true
+          echo "docs_only=$docs_only"
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
   build-test:
     name: Build, test, lint (${{ matrix.label }})
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ${{ matrix.os }}
     # Empty for a native runner; otherwise the job's steps run inside this
     # image on the (Ubuntu) runner host.
@@ -182,6 +231,8 @@ jobs:
 
   coverage:
     name: Coverage
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -252,6 +303,8 @@ jobs:
 
   typescript-oracle:
     name: BlueTSC TypeScript compatibility oracle
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -276,14 +329,18 @@ jobs:
   ci-gate:
     name: CI gate
     if: always()
-    needs: [build-test, coverage, typescript-oracle]
+    needs: [changes, build-test, coverage, typescript-oracle]
     runs-on: ubuntu-latest
     steps:
       - name: Require every CI job to have succeeded
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
         run: |
-          echo "Job results: $RESULTS"
+          echo "Job results: $RESULTS (docs_only=$DOCS_ONLY)"
           for result in $RESULTS; do
-            [ "$result" = success ] || { echo "::error::A required CI job did not succeed ($result)"; exit 1; }
+            if [ "$result" = success ]; then continue; fi
+            # Jobs are skipped only for a documentation-only change.
+            if [ "$result" = skipped ] && [ "$DOCS_ONLY" = true ]; then continue; fi
+            echo "::error::A required CI job did not succeed ($result)"; exit 1
           done
