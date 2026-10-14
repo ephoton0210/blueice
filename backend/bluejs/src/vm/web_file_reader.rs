@@ -228,12 +228,14 @@ impl Vm {
                 state.loaded = 0;
                 state.total = self.heap.web_blob(blob)?.bytes.len();
                 let epoch = state.epoch;
+                let serial = self.next_host_task_serial()?;
                 let root = self.heap.root(reader)?;
                 if let Err(error) = self.with_roots(|heap| heap.set_file_reader(reader, state)) {
                     self.heap.unroot(root)?;
                     return Err(error);
                 }
                 self.browser_tasks.push_back(BrowserTask::FileRead {
+                    serial,
                     reader,
                     epoch,
                     stage: 0,

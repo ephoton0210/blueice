@@ -98,6 +98,11 @@ service frontend work. The separate render entry remains. Ready browser work
 and future abort deadlines now participate in the existing relative wake
 reply; large deadlines use bounded wake chunks without changing v59 fields or
 the generated v12 declarations. Full logical source ordering remains open.
+M1j replaces storage-group arbitration with logical cleanup, file-reading,
+timer and drag-callback sources. Callback timers and abort timeouts share
+deadline/registration order and the document clock. Cross-source selection
+rotates, while real networking/UI source ingress remains open; see
+[the task-source policy](HOST_TASK_SOURCES.md).
 See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).

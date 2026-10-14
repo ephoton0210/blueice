@@ -24,7 +24,7 @@ registry cleanup tasks, automatic GC notifications at host checkpoints and a
 shared 64-task browser/cleanup cap; the milestone record tracks final gates. See the
 [`browser-integration milestone record`](BROWSER_INTEGRATION_TODO.md#milestone-record)
 for current evidence and remaining task-ordering/resource work. The tables
-below retain the original analysis baseline except for the dated M1f/M1h/M1i rows.
+below retain the original analysis baseline except for the dated M1f/M1h/M1i/M1j rows.
 
 BlueJS is measured against ECMA-262/402 (Test262 99.995%). That says the
 *language* is nearly complete; it says nothing about whether the engine is a
@@ -74,7 +74,7 @@ bounded pending count, argument forwarding, nested-timer clamping, a host
 | `setTimeout` family, `queueMicrotask` | Implemented on the WIP branch; absent on `main`. |
 | `requestAnimationFrame` / `cancelAnimationFrame` | Absent. Needs a frame-tick source from the session, not wall time. |
 | `requestIdleCallback` | Absent; low priority, may be a fixed-budget stub. |
-| Task sources / ordering across timers, network, UI events | M1i fairly arbitrates existing timer/browser groups within one bounded turn, and Core offers rendering after each selected task. Full logical source associations and network/UI ordering remain open before Fetch. |
+| Task sources / ordering across timers, network, UI events | M1j assigns cleanup, file reading, timer/abort and drag callbacks to logical document sources with shared enqueue order and timeout clocks. Core offers rendering after each selected task. Real network/UI source ingress remains open before Fetch; see `HOST_TASK_SOURCES.md`. |
 | Microtask checkpoint owned by the host | M1h adds per-callback cleanup during native DOM dispatch, with one 256-job budget and preserved dispatch fuel/frame roots. Script-driven dispatch waits for its enclosing JavaScript; see the dated milestone record for acceptance. |
 | Host wake-up (`next_due`) | Only on the WIP branch; the launcher's `DragTasksFlushed` reply needs a matching field. |
 

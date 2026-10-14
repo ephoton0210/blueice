@@ -1160,9 +1160,8 @@ pub struct Vm {
     browser_tasks: VecDeque<browser_tasks::BrowserTask>,
     host_finalization_tasks: VecDeque<host_finalization::HostFinalizationTask>,
     active_finalization_registry: Option<ObjectId>,
-    next_browser_task_is_finalization: bool,
-    browser_task_realm_cursor: usize,
-    next_task_is_timer: bool,
+    next_host_task_source: usize,
+    next_standalone_task_serial: u64,
     /// Heap edges of displaced async frames and active iterator records that
     /// live outside the operand stack. Nested frames retain their own suffix
     /// until they return, fail, or hand ownership to a suspended frame.

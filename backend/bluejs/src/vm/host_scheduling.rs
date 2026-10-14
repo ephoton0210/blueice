@@ -66,7 +66,8 @@ impl HostSchedulingUsage {
 struct Account {
     usage: HostSchedulingUsage,
     failed: bool,
-    next_cleanup_task_serial: u64,
+    next_task_serial: u64,
+    clock_ms: u64,
 }
 
 pub(super) struct SchedulingScope {
@@ -79,14 +80,20 @@ impl SchedulingScope {
         Rc::ptr_eq(&self.account, &other.account)
     }
 
-    pub(super) fn next_cleanup_task_serial(&self) -> Result<u64, RuntimeError> {
+    pub(super) fn advance_clock(&self, now_ms: u64) -> u64 {
         let mut account = self.account.borrow_mut();
-        let serial = account.next_cleanup_task_serial;
+        account.clock_ms = account.clock_ms.max(now_ms);
+        account.clock_ms
+    }
+
+    pub(super) fn next_task_serial(&self) -> Result<u64, RuntimeError> {
+        let mut account = self.account.borrow_mut();
+        let serial = account.next_task_serial;
         let Some(next) = serial.checked_add(1) else {
             account.failed = true;
             return Err(RuntimeError::SchedulingLimit);
         };
-        account.next_cleanup_task_serial = next;
+        account.next_task_serial = next;
         Ok(serial)
     }
     pub(super) fn new() -> Self {

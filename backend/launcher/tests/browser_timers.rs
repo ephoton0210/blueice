@@ -285,6 +285,26 @@ fn javascript_and_bluets_ready_timers_offer_a_frame_between_tasks() {
 }
 
 #[test]
+fn javascript_and_bluets_abort_timeouts_share_timer_source_order_and_frames() {
+    counter_frames("let count: number = 0;
+        function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
+        function tick(expected: number): void {
+            if (count !== expected) { throw 'timer source reordered'; }
+            count += 1; queueMicrotask(publish);
+        }
+        function first(): void { tick(0); }
+        function middle(): void { tick(1); }
+        function last(): void { tick(2); }
+        function arm(): void {
+            setTimeout(first, 0);
+            const signal = AbortSignal.timeout(0);
+            signal.onabort = middle;
+            setTimeout(last, 0);
+        }
+        setTimeout(arm, 500);", true);
+}
+
+#[test]
 fn javascript_and_bluets_intervals_publish_matching_frames_and_representations() {
     counter_frames("let count: number = 0; let timer: number = 0;
         function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }

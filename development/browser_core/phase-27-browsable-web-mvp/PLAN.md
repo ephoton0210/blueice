@@ -26,6 +26,12 @@ abort deadlines participate in wake scheduling. The existing render entry
 stays separate. General logical source associations, network/UI ordering and
 broader host-buffer policy keep M1 in progress.
 
+M1j replaces storage-group scheduling with logical document task sources and
+one page timeout clock. Same-source order spans same-document realms; source
+selection rotates before returning to Core. Real network/UI ingress, broader
+host buffers and error/rejection reporting keep M1 in progress; see
+[the policy](../phase-13-bluejs-engine/HOST_TASK_SOURCES.md).
+
 ## Objective
 
 Let an ordinary script-driven page work end to end in the one `core`: HTML

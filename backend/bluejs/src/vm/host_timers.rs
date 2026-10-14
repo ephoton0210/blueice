@@ -48,10 +48,11 @@ pub struct BlueJsTimerRun {
 }
 
 pub(super) struct HostTimer {
-    id: u32,
+    pub(super) id: u32,
     callback: ObjectId,
     arguments: Vec<Value>,
-    due_ms: u64,
+    pub(super) due_ms: u64,
+    pub(super) serial: u64,
     interval_ms: Option<u64>,
     nesting: u32,
     /// One registration for the callback and one per object argument.
@@ -161,6 +162,9 @@ impl Vm {
         if let Some(clock) = &self.host_timer_clock {
             self.host_timer_clock_ms = self.host_timer_clock_ms.max(clock());
         }
+        if let Some(scope) = &self.host_scheduling {
+            self.host_timer_clock_ms = scope.advance_clock(self.host_timer_clock_ms);
+        }
         self.host_timer_clock_ms
     }
 
@@ -208,10 +212,6 @@ impl Vm {
             .collect();
         due.sort_unstable();
         due.into_iter().map(|(_, id)| id).collect()
-    }
-
-    pub(super) fn has_host_timer(&self, id: u32) -> bool {
-        self.host_timers.iter().any(|timer| timer.id == id)
     }
 
     pub(super) fn run_host_timer_entry(
@@ -267,7 +267,9 @@ impl Vm {
         if let Some(interval) = interval {
             let now = self.sample_host_timer_clock();
             // A callback or its checkpoint can clear its own interval.
+            let serial = self.next_host_task_serial()?;
             if let Some(timer) = self.host_timers.iter_mut().find(|timer| timer.id == id) {
+                timer.serial = serial;
                 timer.due_ms = now.saturating_add(nested_delay(interval, nesting));
                 timer.nesting = nesting.saturating_add(1);
             }
@@ -470,6 +472,7 @@ impl Vm {
                 ),
             ..HostSchedulingUsage::default()
         })?;
+        let serial = self.next_host_task_serial()?;
         let arguments = args.iter().skip(2).cloned().collect::<Vec<_>>();
         let roots = self.root_timer_task(callback, &arguments)?;
         let now = self.sample_host_timer_clock();
@@ -479,6 +482,7 @@ impl Vm {
             callback,
             arguments,
             due_ms: now.saturating_add(nested_delay(delay_ms, self.host_timer_nesting)),
+            serial,
             interval_ms: repeat.then_some(delay_ms),
             nesting: self.host_timer_nesting.saturating_add(1),
             roots,

@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use crate::vm::browser_tasks::BrowserTask;
+use crate::vm::browser_tasks::{AbortTimeoutDeadline, BrowserTask};
 use std::time::{Duration, Instant};
 
 impl Vm {
@@ -33,11 +33,20 @@ impl Vm {
             payload_bytes: 4 * std::mem::size_of::<BrowserTask>(),
             ..HostSchedulingUsage::default()
         })?;
+        let serial = self.next_host_task_serial()?;
+        let deadline = if self.host_scheduling.is_some() {
+            AbortTimeoutDeadline::Host(self.sample_host_timer_clock().saturating_add(number as u64))
+        } else {
+            AbortTimeoutDeadline::Monotonic {
+                started: Instant::now(),
+                delay: Duration::from_millis(number as u64),
+            }
+        };
         let signal = self.fresh_abort_signal()?;
         self.browser_tasks.push_back(BrowserTask::AbortTimeout {
             signal,
-            started: Instant::now(),
-            delay: Duration::from_millis(number as u64),
+            deadline,
+            serial,
             root: None,
         });
         self.synchronize_scheduling_usage()?;
@@ -90,8 +99,7 @@ impl Vm {
     pub(in crate::vm) fn abort_timeout_task(
         &mut self,
         signal: ObjectId,
-        started: Instant,
-        delay: Duration,
+        deadline: AbortTimeoutDeadline,
     ) -> Result<bool, RuntimeError> {
         let Ok(state) = self.heap.abort_signal(signal) else {
             return Ok(true);
@@ -99,7 +107,7 @@ impl Vm {
         if state.aborted() {
             return Ok(true);
         }
-        if started.elapsed() < delay {
+        if deadline.wake(self.sample_host_timer_clock()) > 0 {
             return Ok(false);
         }
         let base = self.stack.len();

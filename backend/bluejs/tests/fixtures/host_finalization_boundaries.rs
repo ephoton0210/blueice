@@ -46,7 +46,7 @@ fn document_task_delivery_does_not_enter_an_adopted_foreign_document() {
 }
 
 #[test]
-fn choosing_cleanup_does_not_advance_the_ready_browser_realm_cursor() {
+fn cleanup_file_reading_and_drag_sources_each_get_a_turn() {
     let mut owner = Vm::default();
     owner.use_bounded_host_microtask_checkpoints();
     let log = Rc::new(RefCell::new(Vec::new()));
@@ -73,9 +73,16 @@ fn choosing_cleanup_does_not_advance_the_ready_browser_realm_cursor() {
     child.bounded_host_microtask_checkpoints = true;
     child.host_scheduling = owner.host_scheduling.as_ref().map(SchedulingScope::child);
     child.install_web_file_api().unwrap();
+    let output = log.clone();
+    child
+        .install_host_function("record", 1, move |args: &[HostValue]| {
+            output.borrow_mut().push(args[0].clone());
+            Ok(HostValue::Undefined)
+        })
+        .unwrap();
     execute(
         &mut child,
-        "var reader=new FileReader();reader.readAsText(new Blob(['payload']));",
+        "var reader=new FileReader();reader.onloadstart=()=>record('file');reader.readAsText(new Blob(['payload']));",
     );
     owner.shadow_realms.insert(
         owner.object_prototype,
@@ -84,6 +91,14 @@ fn choosing_cleanup_does_not_advance_the_ready_browser_realm_cursor() {
         },
     );
     assert!(!owner.run_browser_task_turn(2).unwrap());
-    assert_eq!(*log.borrow(), [HostValue::String("root".into())]);
+    assert_eq!(*log.borrow(), [HostValue::String("file".into())]);
+    assert!(!owner.run_browser_task_turn(1).unwrap());
+    assert_eq!(
+        *log.borrow(),
+        [
+            HostValue::String("file".into()),
+            HostValue::String("root".into())
+        ]
+    );
     assert!(owner.run_browser_task_turn(64).unwrap());
 }

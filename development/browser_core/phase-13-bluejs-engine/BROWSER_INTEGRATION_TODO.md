@@ -43,13 +43,21 @@ File DOM profile. General task-source ordering and complete queue/byte
 accounting remain open; M1d now bounds the VM's document-owned scheduling
 work and exposes its retained payload ledger.
 
-- [ ] Macrotask queue that drains microtasks after every task (per
-      `research/js-bytecode-eventloop.md`)
+- [x] Macrotask queue that drains microtasks after every task (per
+      `research/js-bytecode-eventloop.md`). M1j selects existing logical
+      document task sources through one bounded scheduler; real networking/
+      UI source ingress remains in its separate ordering/hook items below.
 - [x] **M1i: bounded document task turns.** One host entry shares a task
       budget between the existing timer and browser-work groups, checkpoints
       each delivery and returns the next runnable/deadline wake. Core selects
       one task per poll before offering rendering. Full logical task-source
       associations and network/UI ordering remain in the open item below.
+- [x] **M1j: logical document task sources.** Callback timers and abort
+      timeouts share one source and host clock. File reading, drag string
+      callbacks and JavaScript engine cleanup have separate source identities,
+      document enqueue order and fair selection across same-document realms.
+      See [the source policy](HOST_TASK_SOURCES.md); real networking/UI ingress
+      and host-wait hooks remain in their open items below.
 - [x] **M1a: bounded host microtask checkpoints.** Both page executors finish
       each completed script turn, including throws and completed debugger
       declarations, before executing the next declaration. A throwing job
@@ -382,6 +390,46 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1j — Logical document task sources and shared timeout clocks (2026-10-15)
+
+- Red-first public tests exposed a later abort timeout overtaking an earlier
+  callback timer, and abort deadlines ignoring the page runtime's manual
+  clock. These were consequences of scheduling by storage group and keeping
+  page abort timeouts on an unrelated Instant clock.
+- One logical selector now covers JavaScript engine cleanup, file reading,
+  timers and drag string callbacks. Same-source ordering uses document-wide
+  enqueue serials across the root and its same-document ShadowRealms; timer
+  order uses deadline then serial. Cross-source rotation preserves the
+  64-delivery total cap and the production one-task Core boundary. Legacy
+  browser-only turns reuse the selector without running callback timers.
+- Callback timers and page abort timeouts share the sampled document clock.
+  Interval and file-stage continuations receive fresh serials. Timer-source
+  snapshots also defer callback-created abort timeouts until another turn.
+  Standalone abort embeddings retain their prior Instant clock policy.
+- [Source associations, clock behavior and future ingress requirements](HOST_TASK_SOURCES.md)
+  document the implementation policy and standards references. Real network/
+  UI source integration, Promise host-wait hooks, broader host-buffer policy
+  and error/rejection reporting remain open.
+- Combined macOS Rust gates: **3,056 related tests passed**: 2,744 across
+  the five affected libraries, 302 public runtime/DOM/allocation cases and ten
+  real Core/child fixtures. One existing launcher case remains ignored. The
+  initial broad batch used the pre-correction recorder helper and typed arrow
+  fixture; the three corrected realm cases and all ten final Core cases
+  passed separately. Five-crate all-target Clippy, final BlueJS test-target
+  Clippy, formatting and whitespace checks passed. The case-by-case accepted
+  Rust audit is `target/host-task-sources-rust-validation-20261015.json`.
+- The complete pinned Test262 inventory finished in **462.012 seconds**:
+  **102,921 / 102,926 pass**, one existing stale-corpus mode, four existing
+  exclusions and **zero failures/timeouts**. All source/mode hashes,
+  dispositions, expectations, feature flags, error kinds/phases and runner
+  settings match M1i; diagnostic text and elapsed time are not acceptance
+  keys. Both frozen executable hashes stayed intact. The
+  [unmodified machine summary](test262-browser-task-sources-macos-summary.json)
+  is committed; raw results and the comparison remain under
+  `target/test262-host-task-sources-full-20261015/`. This milestone adds no
+  fresh workspace-wide or coverage claim; M1 remains open for the ingress,
+  host-buffer and reporting requirements above.
 
 ### M1i — Bounded document task turns and render opportunities (2026-10-15)
 

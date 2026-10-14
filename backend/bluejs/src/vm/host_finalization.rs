@@ -15,7 +15,7 @@ mod boundary_tests;
 pub(super) struct HostFinalizationTask {
     registry: ObjectId,
     root: RootId,
-    serial: u64,
+    pub(super) serial: u64,
 }
 
 impl Vm {
@@ -38,7 +38,7 @@ impl Vm {
                 .host_scheduling
                 .as_ref()
                 .expect("page cleanup has an owner")
-                .next_cleanup_task_serial()?;
+                .next_task_serial()?;
             let root = self.heap.root(registry)?;
             self.host_finalization_tasks
                 .push_back(HostFinalizationTask {
@@ -51,7 +51,7 @@ impl Vm {
         Ok(())
     }
 
-    fn run_next_host_finalization_task(&mut self) -> Result<(), RuntimeError> {
+    pub(super) fn run_next_host_finalization_task(&mut self) -> Result<(), RuntimeError> {
         let Some(task) = self.host_finalization_tasks.pop_front() else {
             return Ok(());
         };
@@ -142,94 +142,11 @@ impl Vm {
         realms
     }
 
-    fn oldest_host_cleanup_owner(&self, realms: &[ShadowRealmRecord]) -> Option<usize> {
-        let mut oldest = self
-            .host_finalization_tasks
-            .front()
-            .map(|task| (task.serial, 0));
-        for (index, record) in realms.iter().enumerate() {
-            let Ok(vm) = record.vm.try_borrow() else {
-                continue;
-            };
-            if vm.ensure_no_debugger_continuation().is_err() {
-                continue;
-            }
-            if let Some(task) = vm.host_finalization_tasks.front() {
-                if oldest.is_none_or(|(serial, _)| task.serial < serial) {
-                    oldest = Some((task.serial, index + 1));
-                }
-            }
-        }
-        oldest.map(|(_, owner)| owner)
-    }
-
-    fn next_regular_task_owner(&self, realms: &[ShadowRealmRecord]) -> Option<usize> {
-        let count = realms.len() + 1;
-        for offset in 0..count {
-            let owner = (self.browser_task_realm_cursor.wrapping_add(offset)) % count;
-            let runnable = if owner == 0 {
-                self.has_runnable_browser_task()
-            } else {
-                realms[owner - 1].vm.try_borrow().is_ok_and(|vm| {
-                    vm.has_runnable_browser_task() && vm.ensure_no_debugger_continuation().is_ok()
-                })
-            };
-            if runnable {
-                return Some(owner);
-            }
-        }
-        None
-    }
-
     pub(super) fn run_document_browser_task_turn(
         &mut self,
         max_tasks: usize,
     ) -> Result<bool, RuntimeError> {
-        self.check_scheduling_failure()?;
-        if self.ensure_no_debugger_continuation().is_err() {
-            return Ok(false);
-        }
-        if self.shadow_realms.is_empty() && self.host_finalization_tasks.is_empty() {
-            let drained = self.run_own_browser_task_turn(max_tasks)?;
-            return Ok(drained && self.host_scheduling_snapshot().pending_browser_tasks == 0);
-        }
-        self.run_host_microtask_checkpoint()?;
-        for _ in 0..max_tasks {
-            // Refresh after every task: a callback can create another realm.
-            // Breadth-first traversal avoids recursive Rust stack growth.
-            let realms = self.host_shadow_realms();
-            for record in &realms {
-                let mut vm = record.vm.borrow_mut();
-                if vm.ensure_no_debugger_continuation().is_ok() {
-                    vm.run_host_microtask_checkpoint()?;
-                }
-            }
-            let cleanup = self.oldest_host_cleanup_owner(&realms);
-            let regular = self.next_regular_task_owner(&realms);
-            let finalization =
-                cleanup.is_some() && (self.next_browser_task_is_finalization || regular.is_none());
-            let Some(owner) = (if finalization { cleanup } else { regular }) else {
-                break;
-            };
-            self.next_browser_task_is_finalization = !finalization;
-            if !finalization {
-                self.browser_task_realm_cursor = owner + 1;
-            }
-            if owner == 0 {
-                if finalization {
-                    self.run_next_host_finalization_task()?;
-                } else {
-                    self.run_own_browser_task_turn(1)?;
-                }
-            } else {
-                let mut vm = realms[owner - 1].vm.borrow_mut();
-                if finalization {
-                    vm.run_next_host_finalization_task()?;
-                } else {
-                    vm.run_own_browser_task_turn(1)?;
-                }
-            }
-        }
+        self.run_host_task_turn_inner(self.host_timer_clock_ms, max_tasks, false)?;
         Ok(self.host_scheduling_snapshot().pending_browser_tasks == 0)
     }
 }

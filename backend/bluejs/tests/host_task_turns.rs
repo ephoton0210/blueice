@@ -8,7 +8,10 @@ use blueice_bluejs::{
     parse, BlueJsPageOrigin, BlueJsPageRuntime, BlueJsPageRuntimeError, BlueJsProgramV1,
     BlueJsSourceIdentity, HostValue, RuntimeError,
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 struct Page {
     runtime: BlueJsPageRuntime,
@@ -18,6 +21,10 @@ struct Page {
 
 impl Page {
     fn new() -> Self {
+        Self::with_clock(None)
+    }
+
+    fn with_clock(clock: Option<Rc<Cell<u64>>>) -> Self {
         let mut runtime = BlueJsPageRuntime::default();
         runtime.open_realm(1, origin()).unwrap();
         let log = Rc::new(RefCell::new(Vec::new()));
@@ -25,7 +32,11 @@ impl Page {
         runtime
             .configure_realm_bindings(1, |host| {
                 host.install_web_file_api()?;
-                host.install_host_timers()?;
+                if let Some(clock) = clock {
+                    host.install_host_timers_with_clock(move || clock.get())?;
+                } else {
+                    host.install_host_timers()?;
+                }
                 host.install_host_animation_frames()?;
                 host.install_global_function("record", 1, move |args: &[HostValue]| {
                     if let Some(HostValue::String(value)) = args.first() {
@@ -305,4 +316,112 @@ fn large_abort_deadlines_remain_pending_instead_of_becoming_ready() {
         .next_wake_in_ms
         .is_some_and(|delay| delay > i32::MAX as u64));
     page.expect(&[]);
+}
+
+#[test]
+fn timeout_callbacks_and_abort_timeouts_share_timer_source_order() {
+    let mut page = Page::new();
+    page.execute("setTimeout(()=>{record('timer');queueMicrotask(()=>record('timer-micro'));},0);var signal=AbortSignal.timeout(0);signal.onabort=()=>record('abort');");
+    assert_eq!(page.runtime.run_task_turn(1, 0, 2).unwrap().tasks_run, 2);
+    page.expect(&["timer", "timer-micro", "abort"]);
+}
+
+#[test]
+fn abort_timeouts_follow_the_page_hosts_monotonic_clock() {
+    let mut page = Page::new();
+    page.execute("var signal=AbortSignal.timeout(10);signal.onabort=()=>record('abort');");
+    assert_eq!(page.runtime.run_task_turn(1, 9, 64).unwrap().tasks_run, 0);
+    assert_eq!(page.runtime.next_task_wake_in_ms(1, 9).unwrap(), Some(1));
+    assert_eq!(page.runtime.run_task_turn(1, 10, 64).unwrap().tasks_run, 1);
+    page.expect(&["abort"]);
+}
+
+#[test]
+fn timer_source_orders_overdue_work_by_deadline_before_registration() {
+    let mut page = Page::new();
+    page.execute("var signal=AbortSignal.timeout(10);signal.onabort=()=>record('abort');setTimeout(()=>record('timer'),5);");
+    assert_eq!(page.runtime.run_task_turn(1, 20, 2).unwrap().tasks_run, 2);
+    page.expect(&["timer", "abort"]);
+}
+
+#[test]
+fn equal_deadline_abort_timeouts_keep_registration_order_across_polls() {
+    let mut page = Page::new();
+    page.execute("var first=AbortSignal.timeout(0);first.onabort=()=>{record('abort');queueMicrotask(()=>record('micro'));};setTimeout(()=>record('timer'),0);var last=AbortSignal.timeout(0);last.onabort=()=>record('last');");
+    for _ in 0..3 {
+        assert_eq!(page.runtime.run_task_turn(1, 0, 1).unwrap().tasks_run, 1);
+    }
+    page.expect(&["abort", "micro", "timer", "last"]);
+}
+
+#[test]
+fn an_abort_timeout_created_by_a_timer_waits_for_another_turn() {
+    let mut page = Page::new();
+    page.execute("setTimeout(()=>{record('timer');queueMicrotask(()=>{globalThis.signal=AbortSignal.timeout(0);signal.onabort=()=>record('abort');});},0);");
+    let first = page.runtime.run_task_turn(1, 0, 64).unwrap();
+    assert_eq!(first.tasks_run, 1);
+    assert_eq!(first.next_wake_in_ms, Some(0));
+    page.expect(&["timer"]);
+    assert_eq!(page.runtime.run_task_turn(1, 0, 64).unwrap().tasks_run, 1);
+    page.expect(&["timer", "abort"]);
+}
+
+#[test]
+fn timeout_registration_during_a_task_uses_the_current_document_time() {
+    let mut page = Page::new();
+    page.execute("setTimeout(()=>{globalThis.signal=AbortSignal.timeout(10);signal.onabort=()=>record('abort');},100);");
+    let first = page.runtime.run_task_turn(1, 100, 64).unwrap();
+    assert_eq!(first.tasks_run, 1);
+    assert_eq!(first.next_wake_in_ms, Some(10));
+    assert_eq!(page.runtime.run_task_turn(1, 109, 64).unwrap().tasks_run, 0);
+    assert_eq!(page.runtime.run_task_turn(1, 110, 64).unwrap().tasks_run, 1);
+    page.expect(&["abort"]);
+}
+
+#[test]
+fn abort_timeouts_sample_the_same_injected_clock_as_callback_timers() {
+    let clock = Rc::new(Cell::new(50));
+    let mut page = Page::with_clock(Some(clock.clone()));
+    page.execute("setTimeout(()=>record('timer'),5);var signal=AbortSignal.timeout(5);signal.onabort=()=>record('abort');");
+    assert_eq!(page.runtime.next_task_wake_in_ms(1, 0).unwrap(), Some(5));
+    clock.set(54);
+    assert_eq!(page.runtime.run_task_turn(1, 0, 64).unwrap().tasks_run, 0);
+    assert_eq!(page.runtime.next_task_wake_in_ms(1, 0).unwrap(), Some(1));
+    clock.set(55);
+    assert_eq!(page.runtime.run_task_turn(1, 0, 64).unwrap().tasks_run, 2);
+    page.expect(&["timer", "abort"]);
+}
+
+#[test]
+fn file_reading_and_dom_manipulation_sources_get_separate_turns() {
+    let mut page = Page::new();
+    page.execute("var transfer=new DataTransfer();var item=transfer.items.add('drag','text/plain');for(var i=0;i<20;i++)item.getAsString(record);var reader=new FileReader();reader.onloadstart=()=>record('read');reader.readAsText(new Blob(['x']));setTimeout(()=>record('timer'),0);");
+    assert_eq!(page.runtime.run_task_turn(1, 0, 3).unwrap().tasks_run, 3);
+    page.expect(&["read", "timer", "drag"]);
+}
+
+#[test]
+fn file_reading_fifo_follows_stage_enqueue_order() {
+    let mut page = Page::new();
+    page.execute("var first=new FileReader(), second=new FileReader();first.onloadstart=()=>{record('first-start');second.readAsText(new Blob(['b']));};second.onloadstart=()=>record('second-start');first.onprogress=()=>record('first-progress');second.onprogress=()=>record('second-progress');first.readAsText(new Blob(['a']));");
+    assert_eq!(page.runtime.run_task_turn(1, 0, 4).unwrap().tasks_run, 4);
+    page.expect(&[
+        "first-start",
+        "second-start",
+        "first-progress",
+        "second-progress",
+    ]);
+}
+
+#[test]
+fn a_rearmed_interval_joins_the_timer_source_after_existing_ready_work() {
+    let mut page = Page::new();
+    page.execute("var interval=setInterval(()=>record('interval'),0);var signal=AbortSignal.timeout(0);signal.onabort=()=>{record('abort');clearInterval(interval);};");
+    let first = page.runtime.run_task_turn(1, 0, 1).unwrap();
+    assert_eq!(first.tasks_run, 1);
+    page.expect(&["interval"]);
+    let second = page.runtime.run_task_turn(1, 0, 64).unwrap();
+    assert_eq!(second.tasks_run, 1);
+    assert_eq!(second.next_wake_in_ms, None);
+    page.expect(&["interval", "abort"]);
 }

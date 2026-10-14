@@ -39,6 +39,12 @@ one selected task and checkpoint. Task/frame wake replies cover ready browser
 work and future abort deadlines. This offers rendering between ready tasks;
 general logical source ordering and network/UI policy remain open before Fetch.
 
+M1j assigns existing cleanup, file-reading, timer/abort and drag callback work
+to logical document sources. The shared monotonic clock and enqueue order cover
+same-document realms. Networking and child-queued UI work must join this source
+model through real typed ingress; see
+[the policy](../phase-13-bluejs-engine/HOST_TASK_SOURCES.md).
+
 ## Objective
 
 Make BlueIce capable of running ordinary interactive websites on one coherent web-platform model before adding specialised graphics, background execution or browser chrome. The compatibility baseline is the relevant [HTML Standard](https://html.spec.whatwg.org/multipage/), DOM, URL, Encoding, Fetch and related W3C/WHATWG specifications, delivered through explicit feature profiles and conformance tests rather than a claim that every API happens to work.
