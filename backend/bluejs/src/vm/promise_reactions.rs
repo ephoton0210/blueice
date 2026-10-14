@@ -5,9 +5,9 @@
 //! Promise reaction registration and scheduling, independent of species and
 //! resolving functions. Installing a reaction never calls JavaScript or allocates
 //! in the managed heap; executing a queued handler remains a separate boundary.
-//! Tracked records are inserted with their promises, never removed during VM
-//! execution, and included in every VM allocation root batch. Callers that
-//! validate membership before species/allocation may rely on that membership;
+//! Tracked records are traced from their heap owners and swept after a
+//! collection. Callers retain a validated receiver across species/allocation
+//! before relying on its membership;
 //! this entry point keeps its own invalid-receiver check for other callers.
 
 use super::*;

@@ -363,6 +363,9 @@ opcodes! {
     // Drop a retained Reference beneath the assignment's expression value.
     // The operand gives the number of stack values encoding that Reference.
     DiscardReference: 5, 0;
+    // A for-await finalizer preserves its record beneath return()'s result.
+    AsyncIteratorClose: 1, 0;
+    AsyncIteratorCloseFinish: 1, 0;
 }
 
 /// The operand encoding shared by `DecorateElement` and `ReplaceClassElement`:

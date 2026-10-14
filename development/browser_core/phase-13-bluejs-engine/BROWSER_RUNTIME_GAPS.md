@@ -6,7 +6,7 @@
 PR #25 (`feature/test262-remaining-failures`) merges. Nothing here is
 implemented on `feature/browsable-web-mvp`.
 
-**2026-10-14 integration update:** `feature/bluejs-browser-integration-gaps`
+**2026-10-15 integration update:** `feature/bluejs-browser-integration-gaps`
 has merged the product and BlueTS lines and completed the host-owned bounded
 microtask checkpoint and session-driven timer increments. The owner-selected
 File DOM profile installs callable-only timers, `queueMicrotask` and animation
@@ -16,10 +16,13 @@ pages prove matching frame/Representation generations. M1d bounds page-owned
 jobs, waiting reactions/requests and retained scheduling payloads with an
 account shared by ShadowRealms. M1e charges that payload to the initiating
 Core tab and refreshes it after task/render entries; broader host-buffer and
-aggregate resource accounting remain open. See the
+aggregate resource accounting remain open. M1f replaces permanent Promise roots
+with live-owner tracing, roots work through publication and restores awaited
+for-await cleanup. The public page regressions cover bounded managed heap and
+native scheduling payload during repeated timer polls. See the
 [`browser-integration milestone record`](BROWSER_INTEGRATION_TODO.md#milestone-record)
-for current evidence and remaining task-ordering/resource work; the tables below are
-the original analysis baseline.
+for current evidence and remaining task-ordering/resource work. The tables
+below retain the original analysis baseline except for the dated M1f rows.
 
 BlueJS is measured against ECMA-262/402 (Test262 99.995%). That says the
 *language* is nearly complete; it says nothing about whether the engine is a
@@ -50,9 +53,9 @@ Two layers are deliberately kept apart, because the owner differs:
 
 | Item | State | Why it matters |
 |---|---|---|
-| Promise collectibility | Every Promise is a root for the life of the VM (Test262 line). `promise_gc_lifecycle` has 4 tests asserting collectibility that fail. | Long-lived pages that poll or stream grow until the heap limit. Acceptance test: bounded memory in a long-running poll loop. |
-| In-flight Promise registration | Not done. An `owned_edges` port was tried and reverted: it made the Test262 async/generator paths collect Promises that were still in flight (10 lib + several integration failures). | The prerequisite for the row above: every async/generator/host-wait path must register the Promise it is still using. |
-| `AsyncIteratorClose` opcode | Dropped in the merge; Test262 line closes async iterators another way. | Re-check the product tests that depended on it (stream tee, `for await` cleanup); adopt or document equivalence. |
+| Promise collectibility | M1f traces status/reaction edges through live heap owners and sweeps dead records/continuations. | Twelve lifecycle cases, 4,000 timer polls under a 1 MiB heap and 64 native-string payload polls cover bounded retention; the milestone records the full Test262 gate. |
+| In-flight Promise registration | M1f roots queued/running jobs, outstanding module work and host waits; fixes publication roots in async setup, AsyncFromSync and `Array.fromAsync`. | Retained async invocations keep their Await frames alive; orphaned cycles can die. Existing allocation-ceiling scans verify each failure path. |
+| `AsyncIteratorClose` opcode | M1f appends dedicated close/finish opcodes and uses awaited for-await loop finalizers. | Stream iteration/tee, pending cancellation under major GC and exact job ordering cover the behavior dropped in the merge. |
 | Module dependency error order | `vm/modules.rs` uses unordered sets, so which equally-valid `SyntaxError` a cyclic graph reports is nondeterministic. | Pages with module graphs get run-to-run differences. Fix with an ordered set. |
 | Per-document limits | Heap byte limit and fuel exist. No per-document cap on timers, pending tasks, queued microtasks, or host-held bytes. | A runaway page must degrade itself, never the session (Phase 27 decision 1). |
 

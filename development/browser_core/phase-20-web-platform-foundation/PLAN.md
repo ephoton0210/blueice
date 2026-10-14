@@ -23,9 +23,10 @@ M1d adds document-owned scheduling admission (1,024 jobs, 1,024 waiting
 reactions/requests and 8 MiB retained payload), shared with ShadowRealms.
 M1e's private v59 stats and task/render replies charge that payload to the
 initiating Core tab, refresh it after callbacks and release it on lifecycle
-changes or realm revocation. Task-source ordering, broader host-buffer and
-aggregate resource accounting, and Promise collectibility
-remain open.
+changes or realm revocation. M1f restores collectible Promise records and
+awaited for-await cleanup on the integrated Test262 line, with explicit roots
+for live async/host work and bounded page polling acceptance. Task-source
+ordering and broader host-buffer/aggregate resource accounting remain open.
 
 ## Objective
 

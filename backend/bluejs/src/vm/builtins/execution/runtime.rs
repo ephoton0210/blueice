@@ -1584,6 +1584,7 @@ impl Vm {
             .get_own(record, "next")
             .expect("the validated private iterator record remains live")
             .unwrap_or(Value::Undefined);
+        self.with_roots(|heap| heap.set(record, "asyncNextPending", Value::Bool(true)))?;
         let result = self.call_native(next, iterator, argument.into_iter().collect(), false);
         if !matches!(
             self.heap
@@ -1661,9 +1662,9 @@ impl Vm {
                     return Err(error);
                 }
             };
+            self.stack.push(value_wrapper.clone());
             let target = self.new_promise()?;
-            self.stack
-                .extend([value_wrapper.clone(), Value::Object(target)]);
+            self.stack.push(Value::Object(target));
             let fulfilled = self
                 .async_from_sync_handler(NativeFunction::AsyncFromSyncFulfill { target, done })?;
             // Each later allocation (the other handler, the derived
@@ -1762,6 +1763,16 @@ impl Vm {
                 .set(record, "done", Value::Bool(true))
                 .expect("the private iterator record owns its existing Boolean done field");
             self.stack.truncate(base);
+        }
+        if outcome.is_ok() {
+            let base = self.stack.len();
+            if let Ok(Some(value)) = &outcome {
+                self.stack.push(value.clone());
+            }
+            let updated =
+                self.with_roots(|heap| heap.set(record, "asyncNextPending", Value::Bool(false)));
+            self.stack.truncate(base);
+            updated?;
         }
         outcome
     }

@@ -71,6 +71,11 @@ carry only aggregate scheduling bytes, which Core charges to the exact live
 tab/document and refreshes after each successful turn. Replacement, close and
 invalid-reply revocation release the charge. This changes no installed globals
 or declaration inventory; the v12 artifact and older profiles stay exact.
+**2026-10-15 Promise/GC follow-up:** M1f traces Promise records through live
+owners and collects dead native
+scheduling payload under pressure at successful host checkpoints, so repeated
+page timers can release their charge without navigation. Awaited for-await
+cleanup retains pending stream cancellation across collection.
 See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).

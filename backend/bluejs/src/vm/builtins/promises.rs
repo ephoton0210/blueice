@@ -1015,69 +1015,11 @@ impl Vm {
         // heap edge in the active job visible to allocation safepoints until
         // it has either settled its target or scheduled its successor.
         let root_base = self.stack.len();
-        match &job {
-            PromiseJob::Reaction {
-                target,
-                handler,
-                value,
-                ..
-            } => {
-                match target {
-                    ReactionTarget::Native(promise) => self.stack.push(Value::Object(*promise)),
-                    ReactionTarget::Capability(capability) => self.stack.extend([
-                        capability.promise.clone(),
-                        capability.resolve.clone(),
-                        capability.reject.clone(),
-                    ]),
-                }
-                self.stack.push(handler.clone());
-                self.stack.push(value.clone());
-            }
-            PromiseJob::FinalizationCleanup { callback, holdings } => {
-                self.stack.push(callback.clone());
-                self.stack.push(holdings.clone());
-            }
-            PromiseJob::HostMicrotask { callback } => {
-                self.stack.push(callback.clone());
-            }
-            PromiseJob::Thenable {
-                target,
-                thenable,
-                then,
-            } => {
-                self.stack.push(Value::Object(*target));
-                self.stack.push(thenable.clone());
-                self.stack.push(then.clone());
-            }
-            PromiseJob::DynamicImport { target, .. } => {
-                self.stack.push(Value::Object(*target));
-            }
-            PromiseJob::ModuleAwait { value, .. } | PromiseJob::AsyncAwait { value, .. } => {
-                self.stack.push(value.clone());
-            }
-            PromiseJob::AsyncGeneratorYield {
-                generator,
-                target,
-                result,
-                value,
-                ..
-            } => {
-                self.stack.push(Value::Object(*generator));
-                self.stack.push(Value::Object(*target));
-                self.stack.push(Value::Object(*result));
-                self.stack.push(value.clone());
-            }
-            PromiseJob::AsyncGeneratorDelegate {
-                generator,
-                target,
-                value,
-                ..
-            } => {
-                self.stack.push(Value::Object(*generator));
-                self.stack.push(Value::Object(*target));
-                self.stack.push(value.clone());
-            }
-        }
+        // A dynamic import can reset the ordinary stack during module
+        // evaluation. Keep active job ownership in the separate frame roots.
+        let active_root_base = self.async_frame_roots.len();
+        self.async_frame_roots
+            .extend(self.promise_job_references(&job));
         let result: Result<(), RuntimeError> = (|| {
             match job {
                 PromiseJob::Reaction {
@@ -1229,6 +1171,7 @@ impl Vm {
             Ok(())
         })();
         self.stack.truncate(root_base);
+        self.async_frame_roots.truncate(active_root_base);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(active_bytes);
         self.synchronize_scheduling_usage()?;
         result?;

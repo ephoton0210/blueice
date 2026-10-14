@@ -1343,6 +1343,23 @@ impl Compiler {
             )?;
         }
         self.emit(Opcode::InitializeBinding, iterator)?;
+        let async_handler = if is_await {
+            let index = self.metadata_index(self.bytecode.handlers.len())?;
+            self.bytecode.handlers.push(Handler {
+                try_start: 0,
+                try_end: 0,
+                catch: None,
+                catch_end: None,
+                finally: None,
+                finally_end: None,
+            });
+            self.emit(Opcode::PushHandler, index)?;
+            self.bytecode.handlers[index as usize].try_start = self.offset();
+            self.tail_call_blockers += 1;
+            Some(index)
+        } else {
+            None
+        };
         let start = self.offset();
         self.emit(Opcode::GetBinding, iterator)?;
         let exit = if is_await {
@@ -1358,7 +1375,8 @@ impl Compiler {
             scope_depth: self.scopes.len(),
             breaks: Vec::new(),
             continues: Some(Vec::new()),
-            iterator: Some(iterator),
+            // The async loop's finalizer owns its awaited cleanup.
+            iterator: (!is_await).then_some(iterator),
         });
         if lexical {
             self.enter_scope(
@@ -1414,6 +1432,23 @@ impl Compiler {
         self.emit(Opcode::Jump, start)?;
         let end = self.offset();
         self.patch(exit, end);
+        let end = if let Some(index) = async_handler {
+            self.tail_call_blockers -= 1;
+            self.bytecode.handlers[index as usize].try_end = end;
+            self.emit(Opcode::EnterFinalizer, 0)?;
+            let normal = self.emit(Opcode::Jump, 0)?;
+            let finally = self.offset();
+            self.bytecode.handlers[index as usize].finally = Some(finally);
+            self.emit(Opcode::GetBinding, iterator)?;
+            self.emit(Opcode::AsyncIteratorClose, 0)?;
+            self.emit(Opcode::AsyncIteratorCloseFinish, 0)?;
+            self.emit(Opcode::ResumeCompletion, index)?;
+            self.bytecode.handlers[index as usize].finally_end = Some(self.offset());
+            self.patch(normal, finally);
+            self.offset()
+        } else {
+            end
+        };
         let context = self.loops.pop().unwrap();
         for (jump, control) in context.breaks {
             self.patch(jump, end);

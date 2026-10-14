@@ -30,7 +30,7 @@ a task queue, rooting). *Host* = policy owned by `backend/core` / launcher
 (origin, gatekeeper, cookies, which profile installs it). A global existing in
 the engine never makes it visible to a page: the owner-selected profile does.
 
-**Integration progress (2026-10-14).** This checkout has merged the product
+**Integration progress (2026-10-15).** This checkout has merged the product
 and BlueTS lines. The baseline descriptions below remain the original gap
 inventory; the dated milestone records identify what has actually been
 implemented and verified on `feature/bluejs-browser-integration-gaps`.
@@ -117,23 +117,23 @@ work and exposes its retained payload ledger.
 
 Spec shape is done: `PromiseCapability` records, `WeakRef`,
 `FinalizationRegistry` (cleanup runs as a queued job after collection).
-**Resource behavior is not.** On the Test262 line every Promise is a GC root
-for the life of the VM.
+M1f replaces permanent Promise roots with live-owner tracing and explicit
+ownership for queued/running jobs, module work and host waits.
 
-- [ ] **Promise collectibility (P1).** An unreachable settled Promise, or a
-      Promise/result cycle, must be collectible so a long-lived page that
-      polls or streams has bounded memory. Product-line tests
-      `promise_gc_lifecycle` (4 assertions) already express this and fail on
-      the Test262 rooting. Prerequisite: every async-function, generator,
-      `Array.fromAsync` and host-wait path registers the Promise it is still
-      using. A port of the product line's `owned_edges` onto the Test262
-      rooting was tried and reverted: it made 10 lib allocation-failure tests
-      and several integration targets fail (`invalid Promise receiver`,
-      `Heap(InvalidObject)`). Acceptance: a long-running poll loop's managed
-      heap stays bounded, plus the full Test262 inventory unchanged.
-- [ ] **`AsyncIteratorClose`** opcode was dropped in the merge in favor of the
-      Test262 line's closing; re-check stream tee and `for await` early-exit
-      cleanup against the product-line tests that depended on it.
+- [x] **M1f: Promise collectibility (P1).** Settled Promises, result/reaction
+      cycles and orphaned async invocations can be collected; a retained async
+      invocation keeps its suspended frame and awaited Promise alive. The
+      public page timer regression completes 4,000 polls with a 1 MiB heap.
+      Successful host checkpoints collect under scheduling-payload pressure
+      so dead native string payloads do not accumulate to the 8 MiB cap.
+      The 12 lifecycle cases and four public page/cleanup cases cover both
+      collectibility and live work. Acceptance also requires the unchanged
+      full Test262 inventory; see the milestone record for final gates.
+- [x] **M1f: awaited `AsyncIteratorClose`.** Dedicated loop-finalizer opcodes
+      await `return()` exactly once, validate its result and preserve the
+      incoming throw over a return failure. Stream cancellation remains
+      pending until its Promise settles, including major-GC pressure. Stream
+      iteration and tee regressions cover the previously dropped behavior.
 
 - [ ] Host unhandled-rejection tracking (`HostPromiseRejectionTracker`) and
       the `unhandledrejection` / `rejectionhandled` events
@@ -141,8 +141,11 @@ for the life of the VM.
       from a manual job drain (*verify*)
 - [ ] Error reporting for uncaught exceptions in tasks (`window.onerror`
       shape), without aborting `core`'s session loop
-- [ ] Heap/GC budget behavior for long-lived pages with timers (*verify*:
-      limits were designed for run-to-completion scripts)
+- [x] **M1f: long-lived timer GC behavior.** Public page-runtime fixtures
+      complete 4,000 Promise polls under a 1 MiB managed heap and 64 large
+      native-string polls under the existing scheduling cap. These verify
+      bounded retention between callbacks; broader host/RSS accounting remains
+      in A's open resource item.
 
 ## C. Web platform globals (P1)
 
@@ -359,6 +362,61 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1f — Collectible Promise state and awaited iterator cleanup (2026-10-15)
+
+- Red-first public evidence: four original Promise lifecycle cases failed
+  under permanent rooting, and a 1 MiB page timer failed at poll 743. A
+  stream's pending cancellation Promise also let `for await` leave early.
+  Added ownership tests for retained/orphaned async invocations, a 4,000-poll
+  page regression, native-string payload polling and exact one-job cleanup
+  ordering. The latter verifies that closing adds one Await continuation
+  without an extra `.then` reaction turn.
+- Promise status/reaction records now contribute edges only when their heap
+  owner is live. Suspended frames are traced through their awaited Promise;
+  retained invocation/generator owners keep that Await alive. Queued and
+  running jobs, outstanding module imports/evaluation and host async waits
+  retain their explicit roots. Collection sweeps dead records/continuations
+  and releases oversized Promise-map capacity. Active job roots survive
+  dynamic-import evaluation resetting the ordinary operand stack.
+- Allocation-pressure checks exposed missing prerequisite roots during
+  async-call binding setup, AsyncFromSync wrapper allocation, resolving
+  function creation and `Array.fromAsync` error/close processing. Added roots
+  through publication and release on each exit. A throwing host timer no
+  longer discards later wait completions or leaks their root registrations.
+- Successful outer host checkpoints clear WeakRef keep-alive state and run
+  major collection when this VM's scheduling payload reaches 2 MiB. This
+  supplies pressure for native Promise strings outside managed heap bytes;
+  the public payload fixture completes 64 polls of 400,000-character strings.
+  Nested module/call contexts retain their current-job WeakRef guarantee.
+  Existing 1,024-job/reaction and 8 MiB admission limits remain in force.
+- Appended `AsyncIteratorClose`/`AsyncIteratorCloseFinish` bytecodes without
+  changing existing opcode IDs. For-await loop finalizers retain the iterator
+  across suspension, handle AsyncFromSync return semantics and preserve the
+  incoming completion. A rejected `next()` does not spuriously call return;
+  an incoming throw wins over a failing return after its Await completes.
+  The v12 installed profile and private v59 protocol remain unchanged.
+- Final macOS gates: 2,732 affected library tests passed (one existing
+  launcher case ignored), 190 focused runtime/allocation regressions passed
+  and six rebuilt real Core/child timer/frame/FileReader fixtures passed.
+  All-target Clippy for the five affected crates and formatting passed.
+- The unfiltered pinned Test262 inventory completed in 468.631 seconds:
+  **102,921 passed / 102,926 scheduled**, with the same one `stale_corpus`
+  and four `excluded` modes as the baseline, and zero failures/timeouts.
+  Snapshot, group/feature counts and all path/mode/source hashes match the
+  pinned inventory. See the
+  [machine summary](test262-browser-integration-gc-macos-summary.json).
+  The runner retains exit 1 for those five declared non-passing modes.
+  The first run under concurrent compilation timed out in two `toSpliced`
+  modes; both passed in isolation and in the final full run with unchanged
+  deadlines, resource allowances, harnesses and fixture sources.
+- The broader BlueJS sweep completed all 353 targets: 4,392 passed, four
+  pre-fix allocation failures and four existing ignored cases. Those failures
+  are fixed; all 41 cases in the three affected targets pass on re-run, with
+  no additional failures in the completed sweep. The original sweep retains
+  exit 101 for its pre-fix results. Full workspace and coverage gates are not
+  claimed. Complete task-source/host-buffer accounting, rejection/error events
+  and broader browser compatibility remain open.
 
 ### M1e — Scheduling payload in Core's per-tab ledger (2026-10-14)
 

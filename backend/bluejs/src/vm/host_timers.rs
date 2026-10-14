@@ -335,12 +335,16 @@ impl Vm {
             self.remaining_instructions = self.config.instruction_budget;
             match self.run_next_promise_job() {
                 Ok(true) => {}
-                Ok(false) => return Ok(uncaught),
+                Ok(false) => {
+                    self.finish_host_checkpoint()?;
+                    return Ok(uncaught);
+                }
                 Err(error) if is_page_exception(&error) => uncaught += 1,
                 Err(error) => return Err(error),
             }
         }
         if self.promise_jobs.is_empty() {
+            self.finish_host_checkpoint()?;
             Ok(uncaught)
         } else {
             Err(RuntimeError::InstructionLimit)

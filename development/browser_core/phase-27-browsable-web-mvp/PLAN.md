@@ -9,9 +9,10 @@
 M0a compatibility, M1b session-driven timers and M1c's separate animation-frame
 render entry with real frame/Representation acceptance. M1d bounds document
 scheduling work and owned payloads, including ShadowRealms. M1e charges that
-payload to Core's live per-tab ledger. M1 remains in progress for task-source
-ordering, broader host-buffer/aggregate accounting and Promise
-collectibility.
+payload to Core's live per-tab ledger. M1f restores collectible Promise state
+and awaited for-await cleanup with bounded timer-poll regressions. M1 remains
+in progress for task-source ordering and broader host-buffer/aggregate
+accounting.
 
 ## Objective
 
@@ -112,8 +113,10 @@ timers/frontend work. M1d adds shared document admission for queued jobs,
 waiting reactions/requests and owned scheduling payloads.
 M1e propagates that payload through private v59 acknowledgements to the exact
 live Core tab, including post-turn refresh and lifecycle/revocation release.
-Task-source ordering, complete host-buffer/aggregate accounting and Promise
-collectibility remain open, so M1 remains in progress.
+M1f adds live-owner Promise tracing, explicit async/host roots and awaited
+for-await cleanup, with managed-heap/native-payload timer-poll acceptance.
+Task-source ordering and complete host-buffer/aggregate accounting remain
+open, so M1 remains in progress.
 
 - **M0 — Integration.** Merge PR #25's BlueJS line; re-verify. (Done for the
   merge; verification is the open part — see below.)
@@ -182,6 +185,12 @@ collectibility remain open, so M1 remains in progress.
   failure is confined to that document. A long-running-poll memory-growth
   test is the acceptance test for that branch and should be written before
   M5.
+
+**2026-10-15 follow-up:** M1f on `feature/bluejs-browser-integration-gaps`
+addresses the Promise lifetime and iterator cleanup differences described
+above. The merge record remains historical; current implementation and full
+Test262 acceptance are recorded in the
+[M1f milestone](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
 
 Verification gate before this branch is treated as integrated:
 `cargo test -p blueice-bluejs` (including the Test262-dependent integration

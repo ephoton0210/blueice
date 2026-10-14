@@ -49,6 +49,7 @@ pub(super) struct Test262AsyncWaits {
 enum AsyncHostEvent {
     Wait {
         promise: ObjectId,
+        root: RootId,
         result: crate::heap::SharedWaitResult,
     },
     Timer {
@@ -513,19 +514,25 @@ impl Vm {
     /// spawned thread owns only the SharedArrayBuffer waiter and that queue;
     /// it never dereferences a Value, Heap, or VM from another thread.
     pub(in crate::vm) fn schedule_test262_async_wait(
-        &self,
+        &mut self,
         backing: Arc<SharedBuffer>,
         byte_offset: usize,
         timeout: Option<Duration>,
         promise: ObjectId,
-    ) {
+    ) -> Result<(), RuntimeError> {
+        let root = self.heap.root(promise)?;
         let waiter = backing.register_waiter(byte_offset);
         let queue = Arc::clone(&self.test262_async_waits);
         queue.register_pending();
         thread::spawn(move || {
             let result = backing.wait_for(waiter, timeout);
-            queue.push(AsyncHostEvent::Wait { promise, result });
+            queue.push(AsyncHostEvent::Wait {
+                promise,
+                root,
+                result,
+            });
         });
+        Ok(())
     }
 
     /// Schedule a Test262 harness callback on the VM's event queue. This is
@@ -556,9 +563,15 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         let events = self.test262_async_waits.take_all();
         let woke = !events.is_empty();
+        let root_base = self.async_frame_roots.len();
+        let mut first_error = None;
         for event in events {
             match event {
-                AsyncHostEvent::Wait { promise, result } => {
+                AsyncHostEvent::Wait {
+                    promise,
+                    root,
+                    result,
+                } => {
                     let value = match result {
                         crate::heap::SharedWaitResult::Ok => "ok",
                         crate::heap::SharedWaitResult::TimedOut => "timed-out",
@@ -567,6 +580,7 @@ impl Vm {
                         promise,
                         PromiseStatus::Fulfilled(Value::String(value.into())),
                     );
+                    self.release_root(root);
                 }
                 AsyncHostEvent::Timer { callback, root } => {
                     let result = self.call_native(
@@ -576,9 +590,20 @@ impl Vm {
                         false,
                     );
                     self.release_root(root);
-                    result?;
+                    if let Err(error) = result {
+                        if first_error.is_none() {
+                            if let RuntimeError::Thrown(value) = &error {
+                                self.async_frame_roots.extend(value.object_id());
+                            }
+                            first_error = Some(error);
+                        }
+                    }
                 }
             }
+        }
+        self.async_frame_roots.truncate(root_base);
+        if let Some(error) = first_error {
+            return Err(error);
         }
         Ok(woke)
     }

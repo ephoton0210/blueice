@@ -63,6 +63,58 @@ fn unreachable_pending_promise_reaction_cycles_can_be_collected() {
 }
 
 #[test]
+fn unreachable_async_invocations_release_their_pending_await_frames() {
+    let mut vm = vm();
+    run(&mut vm, "var weakAwaited,weakInvocation,weakPayload;(()=>{async function wait(){const payload={value:7},pending=new Promise(()=>{});weakPayload=new WeakRef(payload);weakAwaited=new WeakRef(pending);await pending;return payload;}const invocation=wait();weakInvocation=new WeakRef(invocation);})();true");
+    collect(&mut vm);
+    assert_eq!(run(&mut vm, "weakAwaited.deref()===undefined && weakInvocation.deref()===undefined && weakPayload.deref()===undefined"), Value::Bool(true));
+}
+
+#[test]
+fn a_retained_async_invocation_preserves_its_frame_until_its_owner_is_dropped() {
+    let mut vm = vm();
+    run(&mut vm, "var liveInvocation,weakAwaited,weakPayload;async function wait(){const payload={value:7},pending=new Promise(()=>{});weakPayload=new WeakRef(payload);weakAwaited=new WeakRef(pending);await pending;return payload;}liveInvocation=wait();true");
+    collect(&mut vm);
+    assert_eq!(
+        run(
+            &mut vm,
+            "weakAwaited.deref()!==undefined && weakPayload.deref().value===7"
+        ),
+        Value::Bool(true)
+    );
+    run(&mut vm, "liveInvocation=undefined;true");
+    collect(&mut vm);
+    assert_eq!(
+        run(
+            &mut vm,
+            "weakAwaited.deref()===undefined && weakPayload.deref()===undefined"
+        ),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn retained_async_generator_or_request_owns_a_pending_delegate_await() {
+    for owner in ["generator", "request"] {
+        let mut vm = vm();
+        run(&mut vm, &format!("var liveOwner,weakAwaited;async function* producer(){{yield* {{[Symbol.asyncIterator](){{return this;}},next(){{const pending=new Promise(()=>{{}});weakAwaited=new WeakRef(pending);return pending;}}}};}}(()=>{{const generator=producer(),request=generator.next();liveOwner={owner};}})();true"));
+        collect(&mut vm);
+        assert_eq!(
+            run(&mut vm, "weakAwaited.deref() instanceof Promise"),
+            Value::Bool(true),
+            "retained {owner} must own its pending delegate Await"
+        );
+        run(&mut vm, "liveOwner=undefined;true");
+        collect(&mut vm);
+        assert_eq!(
+            run(&mut vm, "weakAwaited.deref()===undefined"),
+            Value::Bool(true),
+            "dropping {owner} must release the orphaned delegate Await"
+        );
+    }
+}
+
+#[test]
 fn an_old_promise_traces_new_reaction_targets_during_minor_collection() {
     let mut config = VmConfig::default();
     config.heap.nursery_capacity = 1;

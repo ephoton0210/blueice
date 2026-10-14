@@ -6,17 +6,6 @@
 
 use super::*;
 
-/// The heap values a reaction target keeps alive. A native target's promise is
-/// already rooted through `Vm::promises`, so only a capability adds any.
-fn reaction_target_values(target: &ReactionTarget) -> Vec<&Value> {
-    match target {
-        ReactionTarget::Native(_) => Vec::new(),
-        ReactionTarget::Capability(capability) => {
-            vec![&capability.promise, &capability.resolve, &capability.reject]
-        }
-    }
-}
-
 /// Appends the object ids among `values`, skipping every primitive.
 fn push_object_roots<'a>(roots: &mut Vec<ObjectId>, values: impl IntoIterator<Item = &'a Value>) {
     for value in values {
@@ -1445,69 +1434,12 @@ impl Vm {
                     roots.push(binding.cell);
                 }
             }
-            // A continuation lives in a Rust map while it waits for a Promise
-            // job.  Its frame has no ordinary heap owner, so root every edge
-            // before any allocation is allowed to trigger collection.
-            let continuation_references = self.continuation_references();
-            for id in continuation_references {
-                roots.push(id);
-            }
+            roots.extend(self.pending_module_and_import_roots());
             // A native-debugger pause keeps iterator records in a
             // Rust-owned root-frame continuation. They are not reachable from
             // the ordinary operand stack while paused, so make every object
             // edge visible to the heap before this allocation safepoint.
             roots.extend(self.debugger_continuation_references());
-            for (&promise, record) in &self.promises {
-                roots.push(promise);
-                if matches!(record.status, PromiseStatus::Pending) {
-                    for reaction in &record.reactions {
-                        if let PromiseReaction::AsyncGeneratorYield {
-                            generator,
-                            target,
-                            result,
-                        } = reaction
-                        {
-                            roots.push(*generator);
-                            roots.push(*target);
-                            roots.push(*result);
-                        }
-                        if let PromiseReaction::AsyncGeneratorDelegate {
-                            generator, target, ..
-                        } = reaction
-                        {
-                            roots.push(*generator);
-                            roots.push(*target);
-                        }
-                    }
-                }
-                let values: Vec<&Value> = match &record.status {
-                    PromiseStatus::Pending => record
-                        .reactions
-                        .iter()
-                        .filter_map(|reaction| match reaction {
-                            PromiseReaction::Then(reaction) => Some(
-                                [&reaction.on_fulfilled, &reaction.on_rejected]
-                                    .into_iter()
-                                    .chain(reaction_target_values(&reaction.target))
-                                    .collect::<Vec<_>>(),
-                            ),
-                            PromiseReaction::ModuleAwait { .. }
-                            | PromiseReaction::AsyncAwait { .. }
-                            | PromiseReaction::AsyncGeneratorYield { .. }
-                            | PromiseReaction::AsyncGeneratorDelegate { .. } => None,
-                        })
-                        .flatten()
-                        .collect(),
-                    PromiseStatus::Fulfilled(value) | PromiseStatus::Rejected(value) => {
-                        vec![value]
-                    }
-                };
-                for value in values {
-                    if let Value::Object(id) = value {
-                        roots.push(*id);
-                    }
-                }
-            }
             for resource in self
                 .disposable_stacks
                 .values()
@@ -1529,83 +1461,7 @@ impl Vm {
                 roots.push(*id);
             }
             for job in &self.promise_jobs {
-                match job {
-                    PromiseJob::Reaction {
-                        target,
-                        handler,
-                        value,
-                        ..
-                    } => {
-                        for value in [handler, value]
-                            .into_iter()
-                            .chain(reaction_target_values(target))
-                        {
-                            if let Value::Object(id) = value {
-                                roots.push(*id);
-                            }
-                        }
-                        if let ReactionTarget::Native(id) = target {
-                            roots.push(*id);
-                        }
-                    }
-                    PromiseJob::Thenable {
-                        target,
-                        thenable,
-                        then,
-                    } => {
-                        roots.push(*target);
-                        for value in [thenable, then] {
-                            roots.push(value.object_id().expect(
-                                "a thenable job is queued with an object and its callable then",
-                            ));
-                        }
-                    }
-                    PromiseJob::DynamicImport { target, .. } => roots.push(*target),
-                    PromiseJob::ModuleAwait { value, .. }
-                    | PromiseJob::AsyncAwait { value, .. } => {
-                        if let Value::Object(id) = value {
-                            roots.push(*id);
-                        }
-                    }
-                    PromiseJob::AsyncGeneratorYield {
-                        generator,
-                        target,
-                        result,
-                        value,
-                        ..
-                    } => {
-                        roots.push(*generator);
-                        roots.push(*target);
-                        roots.push(*result);
-                        if let Value::Object(id) = value {
-                            roots.push(*id);
-                        }
-                    }
-                    PromiseJob::AsyncGeneratorDelegate {
-                        generator,
-                        target,
-                        value,
-                        ..
-                    } => {
-                        roots.push(*generator);
-                        roots.push(*target);
-                        if let Value::Object(id) = value {
-                            roots.push(*id);
-                        }
-                    }
-                    PromiseJob::FinalizationCleanup { callback, holdings } => {
-                        for value in [callback, holdings] {
-                            if let Value::Object(id) = value {
-                                roots.push(*id);
-                            }
-                        }
-                    }
-                    PromiseJob::HostMicrotask { callback } => {
-                        if let Value::Object(id) = callback {
-                            roots.push(*id);
-                        }
-                    }
-                }
+                roots.extend(self.promise_job_references(job));
             }
             if let Some(Err(Value::Object(id))) = &self.test262_done {
                 roots.push(*id);
@@ -1619,9 +1475,17 @@ impl Vm {
         operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>,
     ) -> Result<T, RuntimeError> {
         let roots = self.execution_roots();
-        self.heap.push_scoped_roots(roots, Vec::new());
+        let edges = self.promise_owned_edges();
+        let before = self.heap.stats();
+        self.heap.push_scoped_roots(roots, edges);
         let result = operation(&mut self.heap);
         self.heap.pop_scoped_roots();
+        let after = self.heap.stats();
+        if before.minor_collections != after.minor_collections
+            || before.major_collections != after.major_collections
+        {
+            self.prune_collected_promise_state();
+        }
         result.map_err(RuntimeError::from)
     }
 

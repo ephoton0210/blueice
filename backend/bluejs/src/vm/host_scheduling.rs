@@ -411,6 +411,28 @@ fn owned_code_bytes(code: &Bytecode) -> usize {
 }
 
 impl Vm {
+    pub(super) fn finish_host_checkpoint(&mut self) -> Result<(), RuntimeError> {
+        // Implicit module drains can run inside an outer execution context;
+        // its WeakRef keep-alive guarantee has not ended at that point.
+        if self.call_depth != 0 || self.top_level_module || self.active_module_name.is_some() {
+            return Ok(());
+        }
+        self.kept_weak_objects.clear();
+        if self.host_scheduling.is_some()
+            && self.own_scheduling_usage().payload_bytes >= MAX_HOST_SCHEDULING_BYTES / 4
+        {
+            // Promise strings live outside managed heap byte pressure. Give
+            // dead owner records a collection opportunity between host tasks
+            // before they accumulate into a false scheduling admission limit.
+            self.with_roots(|heap| {
+                heap.collect_major();
+                Ok(())
+            })?;
+            self.synchronize_scheduling_usage()?;
+        }
+        Ok(())
+    }
+
     fn own_scheduling_usage(&self) -> HostSchedulingUsage {
         let mut usage = HostSchedulingUsage {
             pending_microtasks: self.promise_jobs.len(),

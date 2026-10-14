@@ -758,6 +758,41 @@ impl Vm {
                         self.iterator_close(&record)?;
                         self.pop();
                     }
+                    Opcode::AsyncIteratorClose => {
+                        let record = self.stack.last().expect("async close has a record").clone();
+                        let throwing = handlers
+                            .last()
+                            .and_then(|frame| frame.pending)
+                            .and_then(|pending| self.pending_completions.get(pending))
+                            .is_some_and(|completion| matches!(completion, Completion::Throw(_)));
+                        iterators.retain(|active| active != &record);
+                        let closed = self.async_iterator_close(&record, throwing)?;
+                        if let Some(promise) = closed {
+                            suspended_await =
+                                Some(promise.object_id().expect("async close returns a Promise"));
+                            return Ok(None);
+                        }
+                        self.stack.push(Value::Undefined);
+                    }
+                    Opcode::AsyncIteratorCloseFinish => {
+                        let value = self.pop();
+                        let record = self
+                            .pop()
+                            .object_id()
+                            .expect("async close retains its record");
+                        let pending = self.heap.get_own(record, "asyncClosePending")?
+                            == Some(Value::Bool(true));
+                        let throwing = handlers
+                            .last()
+                            .and_then(|frame| frame.pending)
+                            .and_then(|pending| self.pending_completions.get(pending))
+                            .is_some_and(|completion| matches!(completion, Completion::Throw(_)));
+                        if pending && !throwing && !matches!(value, Value::Object(_)) {
+                            return Err(RuntimeError::TypeError(
+                                "async iterator return must return an object".into(),
+                            ));
+                        }
+                    }
                     Opcode::CloseIteratorBinding => {
                         if let Some(record) = self.binding_value(operand).expect(
                             "the compiler's synthetic iterator slot is a retained local binding",

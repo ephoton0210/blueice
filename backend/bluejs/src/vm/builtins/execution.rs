@@ -5,5 +5,6 @@
 use super::*;
 
 mod closures;
+mod iterator_close;
 mod runtime;
 mod setup;

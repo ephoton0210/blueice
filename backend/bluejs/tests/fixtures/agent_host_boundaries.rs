@@ -42,6 +42,7 @@ fn idle_and_already_queued_completions_never_wait_for_another_wakeup() {
     vm.test262_async_waits.register_pending();
     vm.test262_async_waits.push(AsyncHostEvent::Wait {
         promise,
+        root: vm.heap.root(promise).unwrap(),
         result: crate::heap::SharedWaitResult::TimedOut,
     });
     vm.test262_async_waits.wait_for_event();
@@ -49,6 +50,41 @@ fn idle_and_already_queued_completions_never_wait_for_another_wakeup() {
     assert!(!vm.test262_async_waits.has_pending());
     assert_eq!(vm.run_test262_async_until_done(), Ok(None));
     assert_eq!(vm.process_test262_async_wait_events(), Ok(false));
+}
+
+#[cfg_attr(test, test)]
+fn a_throwing_host_timer_does_not_discard_wait_completions_or_their_roots() {
+    let mut vm = host_vm();
+    let callback = vm
+        .execute_script(&script("(() => {$262.gc(); throw 7;})"))
+        .unwrap()
+        .object_id()
+        .unwrap();
+    let callback_root = vm.heap.root(callback).unwrap();
+    let promise = vm.new_promise().unwrap();
+    let promise_root = vm.heap.root(promise).unwrap();
+    vm.test262_async_waits.register_pending();
+    vm.test262_async_waits.push(AsyncHostEvent::Timer {
+        callback,
+        root: callback_root,
+    });
+    vm.test262_async_waits.register_pending();
+    vm.test262_async_waits.push(AsyncHostEvent::Wait {
+        promise,
+        root: promise_root,
+        result: crate::heap::SharedWaitResult::TimedOut,
+    });
+    assert_eq!(
+        vm.process_test262_async_wait_events(),
+        Err(RuntimeError::Thrown(Value::Number(7.0)))
+    );
+    assert!(
+        matches!(&vm.promises[&promise].status, PromiseStatus::Fulfilled(Value::String(value)) if value == &JsString::from("timed-out"))
+    );
+    assert!(vm.heap.unroot(callback_root).is_err());
+    assert!(vm.heap.unroot(promise_root).is_err());
+    assert!(!vm.test262_async_waits.has_pending());
+    assert!(vm.async_frame_roots.is_empty());
 }
 
 #[cfg_attr(test, test)]

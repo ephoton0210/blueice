@@ -183,6 +183,10 @@ impl Vm {
         // the body.  If the body reaches await, that same promise owns the
         // saved continuation; otherwise its immediate completion settles it.
         let async_promise = async_function.then(|| self.new_promise()).transpose()?;
+        // The invocation owns its result capability before bindings and
+        // arguments are installed. enter_call releases this stack suffix on
+        // every exit; a suspended frame subsequently traces the same target.
+        self.stack.extend(async_promise.map(Value::Object));
         let receiver = if construct && code.derived_constructor {
             Value::Undefined
         } else if construct {

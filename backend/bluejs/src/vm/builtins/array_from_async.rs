@@ -99,13 +99,18 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.extend(args.iter().cloned());
         let outcome = self.array_from_async_start(promise, receiver, args);
+        // Materializing a startup error can collect. Keep the fresh return
+        // Promise live until its rejection is published, including failures
+        // before the first Await has registered an owning reaction.
+        let result = match outcome {
+            Ok(()) => Ok(Value::Object(promise)),
+            Err(error) => self.error_value(error).and_then(|error| {
+                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+                Ok(Value::Object(promise))
+            }),
+        };
         self.stack.truncate(base);
-        if let Err(error) = outcome {
-            let error = self.error_value(error)?;
-            self.settle_promise(promise, PromiseStatus::Rejected(error))
-                .expect("the fresh Promise remains registered and rejection cannot allocate");
-        }
-        Ok(Value::Object(promise))
+        result
     }
 
     /// Everything up to the first Await; an error here rejects the promise.
@@ -455,6 +460,7 @@ impl Vm {
             })();
             match closing {
                 Ok(Some(result)) => {
+                    self.stack.push(result.clone());
                     self.fa_set(state, "error", error)?;
                     self.fa_await(state, Phase::Closing, result)
                 }

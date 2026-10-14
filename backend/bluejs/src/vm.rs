@@ -48,6 +48,7 @@ mod lifecycle;
 mod modules;
 mod native_stack;
 mod operations;
+mod promise_gc;
 mod promise_reactions;
 mod properties;
 mod realm_reentrancy;

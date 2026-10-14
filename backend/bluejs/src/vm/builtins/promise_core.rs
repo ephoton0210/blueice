@@ -171,6 +171,7 @@ impl Vm {
         promise: ObjectId,
     ) -> Result<(Value, Value), RuntimeError> {
         let base = self.stack.len();
+        self.stack.push(Value::Object(promise));
         let result = (|| {
             let state = self.promise_state()?;
             self.stack.push(Value::Object(state));

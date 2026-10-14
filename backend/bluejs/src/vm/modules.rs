@@ -188,6 +188,26 @@ impl Vm {
         value: Value,
         tail_call_message: &'static str,
     ) -> Result<InterpreterExit, RuntimeError> {
+        if code
+            .instruction(pc)
+            .is_some_and(|instruction| instruction.opcode == Opcode::AsyncIteratorCloseFinish)
+            && handlers
+                .last()
+                .and_then(|frame| frame.pending)
+                .and_then(|pending| self.pending_completions.get(pending))
+                .is_some_and(|completion| matches!(completion, Completion::Throw(_)))
+        {
+            // AsyncIteratorClose awaits even with a pending throw, then
+            // restores that original throw ahead of the return rejection.
+            return self.interpret(
+                code,
+                iterators,
+                pc,
+                Some(Value::Undefined),
+                None,
+                Some((handlers, 0)),
+            );
+        }
         let action = self.resolve_completion(
             code,
             &mut handlers,
@@ -1434,25 +1454,6 @@ impl Vm {
         }
         references.extend(execution.templates.values().copied());
         references.extend(execution.home_object);
-        references
-    }
-
-    pub(super) fn continuation_references(&self) -> Vec<ObjectId> {
-        let mut references = Vec::new();
-        for continuation in self.module_continuations.values() {
-            references.extend(Self::suspended_execution_references(
-                &continuation.execution,
-            ));
-            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
-        }
-        for continuation in self.async_continuations.values() {
-            references.extend(continuation.generator);
-            references.push(continuation.target);
-            references.extend(Self::suspended_execution_references(
-                &continuation.execution,
-            ));
-            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
-        }
         references
     }
 
