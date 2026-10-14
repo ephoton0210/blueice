@@ -18,6 +18,16 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     let mut height = 600.0;
     let mut frame_dir = None;
     let mut gatekeeper_socket = None;
+    let mut downloads_socket = None;
+    let mut history_snapshots = false;
+    let mut extension_socket = None;
+    let mut extension_manifest = None;
+    let mut extension_host = None;
+    let mut permission_control_stdio = false;
+    let mut assistant_socket = None;
+    let mut translate_to = None;
+    let mut translate_deadline_ms = None;
+    let mut assistant_settings = None;
     let mut script_socket = None;
     let mut script_session_token = None;
     let mut debugger_socket = None;
@@ -70,6 +80,21 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             }
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
+            "--downloads-socket" => downloads_socket = Some(PathBuf::from(value()?)),
+            "--history-snapshots" => history_snapshots = true,
+            "--extension-socket" => extension_socket = Some(PathBuf::from(value()?)),
+            "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
+            "--extension-host" => extension_host = Some(PathBuf::from(value()?)),
+            "--permission-control-stdio" => permission_control_stdio = true,
+            "--assistant-socket" => assistant_socket = Some(PathBuf::from(value()?)),
+            "--assistant-settings" => assistant_settings = Some(PathBuf::from(value()?)),
+            "--translate-to" => translate_to = Some(value()?),
+            "--translate-deadline-ms" => {
+                translate_deadline_ms =
+                    Some(value()?.parse().ok().filter(|ms| *ms > 0).ok_or_else(|| {
+                        "--translate-deadline-ms must be a positive number".to_string()
+                    })?)
+            }
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
             "--script-session-token" => script_session_token = Some(value()?),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
@@ -145,6 +170,30 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
+    if extension_socket.is_some() != extension_manifest.is_some() {
+        return Err(
+            "--extension-socket and --extension-manifest must be supplied together".to_string(),
+        );
+    }
+    if extension_host.is_some() && extension_socket.is_none() {
+        return Err(
+            "--extension-host requires --extension-socket and --extension-manifest".to_string(),
+        );
+    }
+    if permission_control_stdio && extension_host.is_none() {
+        return Err(
+            "--permission-control-stdio requires an authenticated --extension-host".to_string(),
+        );
+    }
+    if translate_to.is_some() && assistant_socket.is_none() {
+        return Err("--translate-to requires --assistant-socket".to_string());
+    }
+    if let Some(tag) = &translate_to {
+        blueice_ipc::assistant::validate_language_tag(tag)?;
+    }
+    if translate_deadline_ms.is_some() && assistant_socket.is_none() {
+        return Err("--translate-deadline-ms requires --assistant-socket".to_string());
+    }
     if script_socket.is_some() != script_session_token.is_some() {
         return Err(
             "--script-socket and --script-session-token must be provided together".to_string(),
@@ -478,6 +527,16 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
         height,
         frame_dir,
         gatekeeper_socket,
+        downloads_socket,
+        history_snapshots,
+        extension_socket,
+        extension_manifest,
+        extension_host,
+        permission_control_stdio,
+        assistant_socket,
+        translate_to,
+        translate_deadline_ms,
+        assistant_settings,
         script_socket,
         script_session_token,
         debugger_socket,

@@ -357,7 +357,7 @@ fn compute_style_for(
 /// `table-cell` display value for them to use yet).
 pub const UA_STYLESHEET_SOURCE: &str = r#"
 html, body, div, p, ul, ol, li, section, article, header, footer, nav,
-main, aside, figure, figcaption, blockquote, pre, form, fieldset,
+main, aside, figure, figcaption, blockquote, pre, form, fieldset, legend,
 table, thead, tbody, tfoot, tr, td, th, caption, colgroup,
 h1, h2, h3, h4, h5, h6 {
   display: block;
@@ -365,6 +365,23 @@ h1, h2, h3, h4, h5, h6 {
 button, input, select, textarea {
   display: inline-block;
 }
+/* The MVP block algorithm deliberately treats inline-block as a block box.
+ * Give editable inputs a visible, stable control box within that model so a
+ * value written through the AI action path is observable in the same frame as
+ * the rest of the page. This is a narrow text-input default, not an attempt
+ * to reproduce platform-native form controls. */
+input, textarea, select {
+  box-sizing: border-box;
+  width: 20em;
+  height: 2em;
+  padding: 2px 4px;
+  border: 1px solid #767676;
+  background-color: #ffffff;
+}
+textarea { height: 6em; }
+input[type="checkbox"], input[type="radio"] { width: 1.5em; height: 1.5em; padding: 1px; }
+input[type="range"] { width: 12em; height: 1.5em; }
+[hidden], input[type="hidden"] { display: none; }
 head, title, style, script, link, meta, colgroup {
   display: none;
 }

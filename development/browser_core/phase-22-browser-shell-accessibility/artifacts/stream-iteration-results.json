@@ -1,0 +1,185 @@
+{
+  "scope": "Native readable-stream asynchronous iteration, serialized calls, actual Core for-await byte reads, awaited generic loop cleanup, keyword-method typing/lowering and consistent classic/module host declarations; focused increment, not complete cross-platform or Streams conformance.",
+  "recorded_local_date": "2026-10-13",
+  "recorded_utc": "2026-10-12T18:17:19.865712+00:00",
+  "base_commit": "aec87832e187c0f3a76081c10b950411e7dc06d5",
+  "source_sha256": {
+    "backend/bluejs/src/bytecode.rs": "944511d4984b89544d79d8df98e08fbb1c49ed20d59d9eea643ff862c7b0ea17",
+    "backend/bluejs/src/compiler/expressions.rs": "062155ea46a50e39b7ec501af2cf0d91aa4141795ed903acb503b9e5fd8ac387",
+    "backend/bluejs/src/heap/web_streams.rs": "d6a27e5057bf8484544483ddde4592b3f0cc0280139e0f1ba3632185a1cd511f",
+    "backend/bluejs/src/native.rs": "edb2e2af16ce7da0ff366a5498a11474a507ef8cb9fc5944710581a12557bac4",
+    "backend/bluejs/src/vm/builtins/execution/runtime.rs": "339d342b7d7ecf38a45abb91f47fde233822a5f14d2385a69602c01f897c8c57",
+    "backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs": "403cd5790eaef551121ba1102689209ce4ee17b862e68d3d2c58bf95046dd7c1",
+    "backend/bluejs/src/vm/interpreter.rs": "4f300390fb81236d198cfef959c28e40f0c23c267cac5d263e19f03132739570",
+    "backend/bluejs/src/vm/web_streams.rs": "450242da55b574f4e1150f40baa481f72ca93928ffccd2c0db78638f4907d809",
+    "backend/bluejs/src/vm/web_streams/iteration.rs": "78b0a88e9aeb24cae0a9d16ad5a1235cbf6dd6cd0d15f95ac10071c05b1f6e26",
+    "backend/bluejs/tests/web_stream_iteration.rs": "550e7ca1178dca5105e3f77ff0bf20ef21e6baa646b844a67f1088f4fb2e2c28",
+    "backend/bluets-bluejs/src/expression.rs": "0269532b22ae3176ff89d6a3b125d150a1bd6a27451ac74ea2205f00899b4027",
+    "backend/bluets-bluejs/src/page_host_typings.rs": "a6f5b29b355cd6ea13112a961501ebd3dc4709836d5ef9f521f076161f787b88",
+    "backend/bluets-bluejs/src/page_host_typings/iteration.rs": "cca078655201f3554c8e88b7280b6ca4ebb71b86581d589080a742ec43acd16b",
+    "backend/bluets-bluejs/tests/page_iteration_typings.rs": "b6ef08241e9fef3d0e8236677eaabba283e5af40915ac7c1e7fc8fbf0eaeac38",
+    "backend/bluets/src/checker.rs": "562621bf13a57510c1f1ffad325e9c8cc16387ebe8ca77b762cb282ca063ac0d",
+    "backend/bluets/src/checker/module/expressions/calls.rs": "07de56f5f7c50977ed6c13be60d4fa1853a7a2229e295a1be40f6e09e4bc15fd",
+    "backend/bluets/tests/keyword_methods.rs": "deebb9afea71162e8490cf8489576596f8c95e23fd93315005c2f909254a284c",
+    "backend/launcher/src/bluejs_host.rs": "3fca14bc256a83166c1b65a4d7d176d771110470a4a9f1602ed54ef775839726",
+    "backend/launcher/src/bluejs_host/script_execution.rs": "266fdc20392f74914885749738c034cccde749585cb9acc240e8be190a3e492d",
+    "backend/launcher/tests/browser_file_reader.rs": "02694b5e6de79fc3ce2e447d4553a224cd0754a6ae6fa837d861f12a31339879"
+  },
+  "source_unchanged_at_terminal_gates": true,
+  "typing_profile": "core-script-dom-stream-iteration-v10",
+  "typing_runtime_bindings": 40,
+  "private_script_protocol": 9,
+  "page_host_protocol": 49,
+  "prior_opcode_ordinals_preserved": true,
+  "gates": {
+    "bluejs_library_and_related": {
+      "passed": 1110,
+      "failed": 0,
+      "ignored": 0,
+      "groups": 19,
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-library-focused-third.log",
+      "log_sha256": "a863345debbdacaf12f5436b9bcadbdb87733df2d0967b122107c490912b807b"
+    },
+    "complete_bluets": {
+      "passed": 357,
+      "failed": 0,
+      "ignored": 60,
+      "groups": 14,
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-compiler-final.log",
+      "log_sha256": "538864b6546ec6a30c2a9ff5e44c4495dabf89e5a0a942b1a971b757d6c72934"
+    },
+    "complete_bridge": {
+      "passed": 148,
+      "failed": 0,
+      "ignored": 0,
+      "groups": 10,
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-bridge-third.log",
+      "log_sha256": "a808eda908a964223fd6528bc56dae3905bd49ef665cd7cc6e42e249923794f6"
+    },
+    "authorized_module_profile": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "groups": 1,
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-module-profile-final.log",
+      "log_sha256": "a730d52b60e4e378137568e48bf95df52ff5fd68a46883eac2b353e0e886c906"
+    },
+    "actual_core_child_browser": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "groups": 1,
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-browser-final.log",
+      "log_sha256": "6e1649ec67a73b680cfa972cdd4d7aa0862130fde9bcca07eb7eb48972f355a6"
+    }
+  },
+  "related_breakdown": {
+    "bluejs_library": 919,
+    "related_promise_async_module_gc_readable_tee": 174,
+    "new_iteration": 17,
+    "new_keyword_method_compiler": 3,
+    "new_iteration_bridge": 2
+  },
+  "checks": {
+    "browser_build": {
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-browser-build-final.log",
+      "log_sha256": "8c3e165fb82bb1c8351d66f0108d71cbe698a77eb0759e7b105d8c816d0637a2"
+    },
+    "clippy": {
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-clippy-final.log",
+      "log_sha256": "7274a40eb2440f00d93f132f4365e3fafac3534f26636f1e9e667cae3546ed12",
+      "crates": [
+        "blueice-bluejs",
+        "blueice-bluets",
+        "blueice-bluets-bluejs",
+        "blueice-launcher",
+        "blueice-engine"
+      ],
+      "all_targets": true,
+      "warnings_denied": true
+    },
+    "formatter": {
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-fmt-final.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "owned_cleanup": {
+    "private_core_or_bluejs_processes_remaining": 0,
+    "file_reader_fixture_directories_remaining": 0
+  },
+  "reference": {
+    "standard_urls": [
+      "https://streams.spec.whatwg.org/#rs-asynciterator",
+      "https://webidl.spec.whatwg.org/#es-asynchronous-iterable",
+      "https://tc39.es/ecma262/multipage/abstract-operations.html#sec-asynciteratorclose"
+    ],
+    "local_node": {
+      "node": "v26.7.0",
+      "promise_chunk_identity": true,
+      "return_argument_identity": true,
+      "cancel_reason_identity": true,
+      "returned_done": true,
+      "unlocked_after_return": true,
+      "scope": "Local runtime reference comparison, not browser acceptance"
+    },
+    "local_node_log": "/private/tmp/blueice-followup-20261012/stream-iteration-node-reference.json",
+    "local_node_log_sha256": "4c12f049ae3468659f446d5ccf9429159f74af0f2512a66c101a05b44e14d8b4"
+  },
+  "failed_attempts": [
+    {
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-red.log",
+      "log_sha256": "aa74c0d3098d5e6dcec36d099916757e7571fd5d28d480a6966ac296b3bcc630",
+      "finding": "All ten original cases fail before native iteration exists."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-first.log",
+      "log_sha256": "4c3560accb8856f0b657e2294eb00f61ce6a4bdf3e83aecd555078b8ad4a17ed",
+      "finding": "Nine iteration cases pass; for-await break exposes synchronous close without awaiting cancellation."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-library-focused-first.log",
+      "log_sha256": "d2c2b89f8da5e46b8a1aef680f7d82d22ec865586f6244457c711e17121efcd5",
+      "finding": "Compilation requires an explicit error type for the async close call closure."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-library-focused-second.log",
+      "log_sha256": "23b0632a2920d49e893a2ccb96b38bc097e1a0fbb69cf7c31e9ef564f3e7f792",
+      "finding": "All existing cases and 15 iteration cases pass; two local breaks reenter a completed finalizer because their target equals the try-region end."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-bridge-final.log",
+      "log_sha256": "2a77642087f3040fd057c97be94e4777eb88ec6a24ac6bf1969bad3bccc307ea",
+      "finding": "Keyword-named return method is inferred as the receiver type."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/stream-keyword-methods-red.log",
+      "log_sha256": "3a43b6e8ea7a3cc5b2bdd2a72a0a578f8dbff64a1d982a8b394a49eb7c8dd5b5",
+      "finding": "Two validation cases pass; a valid keyword-method chain is rejected with incorrect result types."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-compiler-bridge-final.log",
+      "log_sha256": "f8b013beb6b176ab58bd5011ae92c5bd743161a926316d390b89a16bec9569a7",
+      "finding": "Keyword result inference repair exposes missing keyword argument validation and direct dot-property lowering."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/stream-iteration-compiler-bridge-second.log",
+      "log_sha256": "9cd7ed1fe1ddf8bfd279447b23fcb6f0a36c7753ab4a5dd5ecdb76d95c33d9a4",
+      "finding": "Compiler and profile cases pass; the typed runtime fixture uses unsupported anonymous arrow syntax. The final fixture retains the same native return operation with a supported named callback."
+    }
+  ],
+  "known_language_limit": "Anonymous arrow syntax remains outside the current direct-bridge subset; typed runtime return acceptance uses a named callback. Actual JavaScript Core for-await acceptance remains a separate passed case.",
+  "remaining": [
+    "Integrate after the frozen main 88c1f1438 complete Rust gate reaches terminal status",
+    "Fresh complete current-source workspace/native/Windows acceptance",
+    "WritableStream, TransformStream and pipe APIs, wider conformance",
+    "Remaining physical Zhuyin/VoiceOver/monitor/printer and drag acceptance scope"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "scope": "Original nine-method attempt missing required build-time update fixture metadata; retained failed preparation, not complete drag acceptance",
+  "exit_code": 65,
+  "passed": 4,
+  "failed": 5,
+  "skipped": 0,
+  "failure_names": [
+    "BrowserUITests.BrowserUITests testNativeOSDocumentTextDragCopiesToTheCoreControlAndRefusesReadOnlyDrop",
+    "BrowserUITests.BrowserUITests testNativeOSHoverLeavesOnChromeTabSelectionAndWindowFocusChange",
+    "BrowserUITests.BrowserUITests testNativeOSPageDragCancellationKeepsTheActualCoreDestinationEmpty",
+    "BrowserUITests.BrowserUITests testNativeOSPageTextDragCopiesAcrossInactiveWindowsAndKeepsSourceAlive",
+    "BrowserUITests.BrowserUITests testNativeOSStationaryDragDispatchesSourceCancellationBeforeRelease"
+  ],
+  "fixture_error_lines": [
+    "/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/TestSupport/AutomaticUpdateFixture.swift:21: error: -[BrowserUITests.BrowserUITests testNativeOSDocumentTextDragCopiesToTheCoreControlAndRefusesReadOnlyDrop] : failed: caught error: \"Error Domain=AutomaticUpdateFixture Code=1 \"Run frontend/macos/test.sh to start the owned update fixture\" UserInfo={NSLocalizedDescription=Run frontend/macos/test.sh to start the owned update fixture}\"",
+    "/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/TestSupport/AutomaticUpdateFixture.swift:21: error: -[BrowserUITests.BrowserUITests testNativeOSHoverLeavesOnChromeTabSelectionAndWindowFocusChange] : failed: caught error: \"Error Domain=AutomaticUpdateFixture Code=1 \"Run frontend/macos/test.sh to start the owned update fixture\" UserInfo={NSLocalizedDescription=Run frontend/macos/test.sh to start the owned update fixture}\"",
+    "/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/TestSupport/AutomaticUpdateFixture.swift:21: error: -[BrowserUITests.BrowserUITests testNativeOSPageDragCancellationKeepsTheActualCoreDestinationEmpty] : failed: caught error: \"Error Domain=AutomaticUpdateFixture Code=1 \"Run frontend/macos/test.sh to start the owned update fixture\" UserInfo={NSLocalizedDescription=Run frontend/macos/test.sh to start the owned update fixture}\"",
+    "/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/TestSupport/AutomaticUpdateFixture.swift:21: error: -[BrowserUITests.BrowserUITests testNativeOSPageTextDragCopiesAcrossInactiveWindowsAndKeepsSourceAlive] : failed: caught error: \"Error Domain=AutomaticUpdateFixture Code=1 \"Run frontend/macos/test.sh to start the owned update fixture\" UserInfo={NSLocalizedDescription=Run frontend/macos/test.sh to start the owned update fixture}\"",
+    "/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/TestSupport/AutomaticUpdateFixture.swift:21: error: -[BrowserUITests.BrowserUITests testNativeOSStationaryDragDispatchesSourceCancellationBeforeRelease] : failed: caught error: \"Error Domain=AutomaticUpdateFixture Code=1 \"Run frontend/macos/test.sh to start the owned update fixture\" UserInfo={NSLocalizedDescription=Run frontend/macos/test.sh to start the owned update fixture}\""
+  ],
+  "source_inputs": {
+    "frontend/macos/Tests/NativeEditingTests.swift": "282b4269ee9c38901c79ba50e9f616086962f0f05c67bbd7f2613f01be6f4241",
+    "frontend/macos/Sources/PageViewport.swift": "d4340be9277bb5d417591f7b171fbb49d4eee52d72addb183bc055e96b4af85d",
+    "frontend/macos/UITests/BrowserUITests.swift": "d2171d5e42bf5fd964c71ae1dcdbabca8be3ce048129881857f6b7946d3cac21"
+  },
+  "owned_process_absence_verified": true,
+  "remaining_owned_processes": [],
+  "log_sha256": "67f4a0e52f2687ca3ab40c2819b7d2f89498f749262e399985aa6ccdcc2ed480",
+  "xcresult": "/private/tmp/blueice-followup-20261012/native-current-os-drag-nine.xcresult",
+  "correction": "Repeat unchanged source inside live owned SFTP/update wrappers so build metadata reaches the test bundles."
+}

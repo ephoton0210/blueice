@@ -29,17 +29,38 @@
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
+/// Largest accepted length-prefixed JSON control-plane message. Pixel data is
+/// deliberately on the shared-memory frame plane, so an IPC peer never needs
+/// to make us allocate an unbounded buffer for it.
+pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+
+pub mod accessibility;
 pub mod ai;
+pub mod assistant;
+pub mod assistant_page;
+pub mod browser_contexts;
 pub mod compiler;
 pub mod compiler_catalog;
 pub mod compiler_output;
+pub mod context_menu;
 pub mod debugger;
+pub mod display;
+pub mod downloads;
 pub mod extension;
+pub mod file_input;
+pub mod find;
 pub mod gatekeeper;
+pub mod input;
+pub mod local_socket;
+pub mod navigation_session;
 pub mod owner_bootstrap;
 pub mod page_host;
+pub mod permission_control;
+pub mod printing;
 pub mod script;
 pub mod shm;
+pub mod viewport;
+pub mod windows;
 
 pub use ai::{AiNode, AiSnapshot, Bounds, NameFrom, NodeAction, NodeState, Role};
 
@@ -70,6 +91,19 @@ pub enum ChromeCommand {
 /// Sent by a client (`frontend` today; `extension`/AI later) to `core`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClientMessage {
+    AccessibilityAcknowledge {
+        delivery: accessibility::AccessibilityDelivery,
+    },
+    AccessibilityReveal {
+        context: accessibility::AccessibilityContext,
+    },
+    AccessibilityText {
+        context: accessibility::AccessibilityTextContext,
+        action: accessibility::AccessibilityTextAction,
+    },
+    FileInput(file_input::FileInputAction),
+    /// Create, render, or release a core-owned frozen print document.
+    Print(printing::PrintAction),
     /// The protocol_version handshake (`phase-1-ai-representation-
     /// layer/PLAN.md` §3): every independent client sends this
     /// immediately after connecting, before anything else -- `core`
@@ -89,14 +123,129 @@ pub enum ClientMessage {
     Navigate {
         url: String,
     },
+    /// Complete an owned original-response offer after the native service is ready.
+    ContinueNavigationDownload {
+        navigation_id: u64,
+        accept: bool,
+    },
+    /// Restore the addressed tab's preceding session-history entry. This is
+    /// intentionally a tab-addressed page operation, never a global "active
+    /// tab" command: separate frontend and MCP observers may be working in
+    /// different tabs at the same time.
+    GoBack,
+    /// Restore the addressed tab's following session-history entry.
+    GoForward,
+    /// Reload the current entry. A retained POST requires an explicit confirmation.
+    Reload,
+    /// Resolve one tab/document-bound POST resubmission prompt. No form data crosses IPC.
+    ConfirmFormResubmission {
+        confirmation_id: u64,
+        accept: bool,
+    },
+    /// Requests whether the addressed tab can currently go backward and/or
+    /// forward, replied to with [`ServerMessage::HistoryState`]. Kept
+    /// separate from `ListTabs`: history availability can change without a
+    /// tab being opened, closed, or selected.
+    GetHistoryState,
+    /// Find in rendered page text using the addressed tab's live document context.
+    Find {
+        /// Must match the resolved envelope tab; contexts cannot cross tabs.
+        tab_id: u64,
+        frame_source: u64,
+        document_generation: u64,
+        action: find::FindAction,
+    },
+    GetFindState,
+    /// Hit-test the live frame and focus a native editor without activating it.
+    GetContextMenu {
+        tab_id: u64,
+        frame_source: u64,
+        frame_generation: u64,
+        x: f64,
+        y: f64,
+    },
+    /// Revalidate the exact menu frame and rederive its link before acting.
+    ContextMenuLink {
+        context: context_menu::ContextMenuContext,
+        action: context_menu::ContextMenuLinkAction,
+    },
+    /// Turns live translation of pages fetched *after* this message on (a
+    /// BCP 47 tag such as `zh-TW`) or off (`None`). The setting is core-wide;
+    /// which assistant serves it is fixed by `blueice-core`'s startup flags, so
+    /// a client can choose a language but never point `core` at a socket. An
+    /// error reply says translation is unavailable when core has no assistant.
+    /// Replied to with [`ServerMessage::TranslationState`].
+    SetTranslationLanguage {
+        target_language: Option<String>,
+    },
+    /// Shows the addressed tab's translation (`true`) or the page's original
+    /// text (`false`), replied to with [`ServerMessage::TranslationState`]
+    /// and, when the page changed, a fresh frame.
+    ShowTranslation {
+        shown: bool,
+    },
+    /// Requests the translation state, replied to with
+    /// [`ServerMessage::TranslationState`].
+    GetTranslationState,
+    /// Asks the local assistant to summarize the addressed tab's shown text.
+    /// The reply arrives when the task finishes -- a [`ServerMessage::
+    /// AssistantResult`] or an `Error` carrying the same `request_id` -- and
+    /// the result is also added to the `about:assistant` page. `core` keeps
+    /// answering other traffic meanwhile.
+    SummarizePage,
+    /// Asks the local assistant to reorganize the addressed tab's shown text
+    /// per `instruction` (for example "make a table of names and prices").
+    /// Completes like [`ClientMessage::SummarizePage`].
+    OrganizePage {
+        instruction: String,
+    },
+    /// Native UI operation on the exact displayed document. Legacy assistant
+    /// commands retain their shapes; this additive path rejects stale sources
+    /// before collecting text or toggling the page's translation.
+    AssistantPage {
+        context: assistant_page::AssistantDocument,
+        action: assistant_page::AssistantPageAction,
+    },
+    NavigationSession(navigation_session::NavigationSessionAction),
     /// The viewport size changed; `core` re-lays-out at the new width.
     Resize {
         width: u32,
         height: u32,
     },
+    /// Opt in to separate CSS layout and native backing-pixel dimensions.
+    SetViewport {
+        viewport: viewport::DisplayViewport,
+    },
+    SetPageZoom {
+        zoom: f64,
+    },
+    GetViewportState,
+    /// Opt in to core-owned window membership and independent viewports.
+    Window(windows::WindowAction),
+    /// Opt in to context ownership; scoped commands reject stale membership.
+    BrowserContext(browser_contexts::ContextAction),
+    SetDisplayPreferences {
+        preferences: display::DisplayPreferences,
+    },
+    GetDisplayPreferences,
     /// A click at a point in viewport coordinates (post-scroll, i.e.
     /// `(0,0)` is always the top-left of what's currently visible).
     Click {
+        x: f64,
+        y: f64,
+    },
+    /// Deferred native pointer activation with the same ownership fence as
+    /// native text input. Uses the ordinary reviewed click/default-action path.
+    NativeClick {
+        context: input::TextInputContext,
+        x: f64,
+        y: f64,
+    },
+    /// A native human gesture requests a correlated activation result. Only
+    /// this reply can offer a file control to the owning native gesture.
+    NativeActivate {
+        gesture: u64,
+        context: input::TextInputContext,
         x: f64,
         y: f64,
     },
@@ -111,9 +260,43 @@ pub enum ClientMessage {
         x: f64,
         y: f64,
     },
+    /// Native pointer movement fenced to the displayed document and frame.
+    /// `None` explicitly leaves the page; it is not an offscreen hit test.
+    /// Like Hover, success is silent and state is read via GetRepresentation.
+    NativeHover {
+        context: input::PointerContext,
+        frame_generation: u64,
+        point: Option<input::PointerPoint>,
+    },
+    NativeDrag {
+        context: input::PointerContext,
+        frame_generation: u64,
+        action: input::NativeDragAction,
+        #[serde(default)]
+        mouse: Option<input::NativeDragMouse>,
+    },
     /// Scroll the viewport by this many CSS pixels (positive = down).
     Scroll {
         delta_y: f64,
+    },
+    /// Inserts text at the end of the focused native text input. This is a
+    /// deliberately narrow human-input path: the core identifies the focused
+    /// input itself and refuses to turn keyboard events into arbitrary DOM
+    /// writes.
+    InsertText {
+        text: String,
+    },
+    /// Removes the final Unicode scalar from the focused native text input.
+    /// Like [`Self::InsertText`], this is a no-op unless the page has a
+    /// currently focused supported text input.
+    DeleteBackward,
+    /// Inspect the current document's native selection/composition geometry.
+    /// Protected control contents are redacted.
+    GetTextInputState,
+    /// Versioned, document-fenced native editing of the core's focused control.
+    TextInput {
+        context: input::TextInputContext,
+        action: input::TextInputAction,
     },
     /// Requests a fresh [`AiSnapshot`] of the current page, replied to
     /// with [`ServerMessage::Representation`].
@@ -173,6 +356,60 @@ pub enum ClientMessage {
     /// Requests the current tab list, replied to with
     /// [`ServerMessage::Tabs`].
     ListTabs,
+    /// Creates a named, colored tab group. Groups are core-owned session
+    /// state rather than window-local chrome: another observer (for example
+    /// an MCP client) must see the same organization as a human frontend.
+    CreateTabGroup {
+        name: String,
+        color: String,
+    },
+    /// Puts the addressed tab into `group_id`, or removes it from its group
+    /// when `group_id` is `None`. The tab itself is addressed by the
+    /// envelope, just like `CloseTab`.
+    SetTabGroup {
+        group_id: Option<u64>,
+    },
+    /// Changes one existing group's human-visible name.
+    RenameTabGroup {
+        group_id: u64,
+        name: String,
+    },
+    /// Changes one existing group's human-visible color. Colors are CSS
+    /// `#RRGGBB` strings, so native frontends can render the exact same
+    /// stable value without interpreting arbitrary CSS.
+    SetTabGroupColor {
+        group_id: u64,
+        color: String,
+    },
+    /// Collapses or expands one existing group. Collapse affects each
+    /// frontend's tab-strip presentation, not the group's member tabs'
+    /// independent navigable state.
+    SetTabGroupCollapsed {
+        group_id: u64,
+        collapsed: bool,
+    },
+    /// Removes a group but leaves its member tabs open and ungrouped.
+    CloseTabGroup {
+        group_id: u64,
+    },
+    /// Requests every tab group in creation order, replied to with
+    /// [`ServerMessage::TabGroups`].
+    ListTabGroups,
+    /// Query the currently published extension toolbar button, if any.
+    GetExtensionToolbar,
+    /// Activate the visible extension toolbar button for the addressed tab.
+    /// This is a UI action, not an authenticated user-gesture capability.
+    ActivateExtensionToolbar,
+    /// Query the current core-owned extension popup, if any.
+    GetExtensionPopup,
+    /// Dismiss a popup only when it belongs to the addressed live tab.
+    DismissExtensionPopup,
+    /// Activate the current popup's one native action button. The core checks
+    /// the popup ID so a stale click cannot activate a newer popup. As with
+    /// toolbar activation, this wire message is not proof of a human gesture.
+    ActivateExtensionPopupAction {
+        popup_id: u64,
+    },
     Chrome(ChromeCommand),
     Shutdown,
     /// Catch-all for a variant this build doesn't recognize (e.g. sent
@@ -186,9 +423,47 @@ pub enum ClientMessage {
     Unknown,
 }
 
+/// Which assistant task produced a [`ServerMessage::AssistantResult`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AssistantTaskKind {
+    Summary,
+    Organized,
+}
+
 /// Sent by `core` to a client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ServerMessage {
+    AccessibilityAcknowledged(accessibility::AccessibilityDelivery),
+    AccessibilityRevealed(accessibility::AccessibilityRevealReply),
+    AccessibilityTextState(accessibility::AccessibilityTextReply),
+    FileInputState(file_input::FileInputState),
+    NativeActivationCompleted {
+        gesture: u64,
+        file_input: Option<file_input::FileInputState>,
+    },
+    PrintState(printing::PrintReply),
+    /// A form request has started; carries no POST body or field metadata.
+    NavigationStarted {
+        url: String,
+        method: String,
+    },
+    /// The active document is retained while the native download service starts.
+    NavigationDownloadOffered {
+        navigation_id: u64,
+        current_url: Option<String>,
+    },
+    NavigationDownloadStarted {
+        transfer_id: u64,
+    },
+    /// Metadata-only POST resubmission prompt; the core retains bounded request data.
+    FormResubmission {
+        confirmation_id: u64,
+        url: String,
+    },
+    FormResubmissionResolved {
+        confirmation_id: u64,
+        accepted: bool,
+    },
     /// Reply to [`ClientMessage::Hello`]: `protocol_version` is this
     /// `core`'s own, echoed so the client can also self-check
     /// compatibility, not just rely on not having received an
@@ -198,7 +473,8 @@ pub enum ServerMessage {
     },
     /// A new frame is available. `shm_path` names a shared-memory-
     /// backed file the client maps read-only; `generation` increases on
-    /// every frame so a client can detect and drop stale
+    /// every frame within one core generation; it resets on a cutover.
+    /// Compare the frame directory source as well before dropping stale
     /// notifications (playing the role Chromium's `SyncToken`/Gecko's
     /// fence do for producer/consumer synchronization, per
     /// `research/frontend-ipc.md` §4) without needing its own clock.
@@ -208,10 +484,59 @@ pub enum ServerMessage {
         height: u32,
         generation: u64,
     },
+    /// Native text state for one live document and render generation.
+    TextInputState(input::TextInputState),
+    NativeDragState(input::NativeDragState),
+    FindState(find::FindState),
+    ContextMenu(context_menu::ContextMenuState),
+    /// Published with frames for clients that explicitly configured a viewport.
+    ViewportState(viewport::ViewportState),
+    /// Canonical native windows and ordered tab membership.
+    WindowState(windows::WindowState),
+    BrowserContextState(browser_contexts::ContextState),
+    DisplayPreferencesState(display::DisplayPreferencesState),
+    /// A correlated copy reply. The core never accesses the OS clipboard.
+    ContextMenuLink {
+        context: context_menu::ContextMenuContext,
+        url: String,
+    },
     /// Navigation finished (or failed) -- `url` is the final URL after
     /// following any redirects.
     Navigated {
         url: String,
+    },
+    /// Reply to [`ClientMessage::GetHistoryState`]. Like every page reply it
+    /// is envelope-addressed to a concrete tab, never a global active tab.
+    HistoryState {
+        can_go_back: bool,
+        can_go_forward: bool,
+    },
+    /// Reply to [`ClientMessage::SetTranslationLanguage`],
+    /// [`ClientMessage::ShowTranslation`], and
+    /// [`ClientMessage::GetTranslationState`]. `language` is the core-wide
+    /// target for later navigations (`None` = off); `available` says the
+    /// addressed page has translated text to toggle; `shown` says the
+    /// translation (rather than the original) is on screen.
+    TranslationState {
+        language: Option<String>,
+        available: bool,
+        shown: bool,
+    },
+    /// A finished [`ClientMessage::SummarizePage`] or
+    /// [`ClientMessage::OrganizePage`]. The text is model output derived from
+    /// untrusted page text and must be treated as such.
+    AssistantResult {
+        kind: AssistantTaskKind,
+        text: String,
+    },
+    AssistantPageResult {
+        context: assistant_page::AssistantDocument,
+        kind: AssistantTaskKind,
+        text: String,
+    },
+    NavigationSessionState {
+        context: navigation_session::SessionDocument,
+        history: navigation_session::NavigationHistory,
     },
     /// Reply to [`ClientMessage::GetRepresentation`].
     Representation(AiSnapshot),
@@ -246,6 +571,33 @@ pub enum ServerMessage {
     },
     /// Reply to [`ClientMessage::ListTabs`].
     Tabs(Vec<TabSummary>),
+    /// Reply to [`ClientMessage::CreateTabGroup`].
+    TabGroupCreated(TabGroupSummary),
+    /// Reply to any update to a group's own properties
+    /// (`RenameTabGroup`/`SetTabGroupColor`/`SetTabGroupCollapsed`).
+    TabGroupUpdated(TabGroupSummary),
+    /// Reply to [`ClientMessage::SetTabGroup`].
+    TabGroupAssigned {
+        tab_id: u64,
+        group_id: Option<u64>,
+    },
+    /// Reply to [`ClientMessage::CloseTabGroup`]. Its former member tabs
+    /// remain open and have `group_id: None`.
+    TabGroupClosed {
+        group_id: u64,
+    },
+    /// Reply to [`ClientMessage::ListTabGroups`].
+    TabGroups(Vec<TabGroupSummary>),
+    /// Current native toolbar label, returned for a query or broadcast when
+    /// the installed extension changes/disconnects. `None` removes it.
+    ExtensionToolbar {
+        label: Option<String>,
+    },
+    /// A native, non-interactive extension message associated with a tab.
+    /// Frontends must distinguish it visually from browser-owned UI.
+    ExtensionPopup {
+        popup: Option<ExtensionPopup>,
+    },
     Error {
         message: String,
     },
@@ -274,6 +626,37 @@ pub enum ServerMessage {
 pub struct TabSummary {
     pub id: u64,
     pub url: Option<String>,
+    /// The core-owned group this tab belongs to, if any. Optional by design:
+    /// groups are an additive Phase-16 capability and ungrouped tabs remain
+    /// first-class.
+    #[serde(default)]
+    pub group_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionPopup {
+    /// Core-assigned identity for rejecting stale activation messages.
+    #[serde(default)]
+    pub id: u64,
+    pub tab_id: u64,
+    pub title: String,
+    pub body: String,
+    /// A single browser-rendered button; absent for the v2 text-only popup.
+    #[serde(default)]
+    pub action_label: Option<String>,
+}
+
+/// One tab group's observable state, as reported by
+/// [`ServerMessage::TabGroups`] and group mutation replies. This small wire
+/// summary deliberately carries no frontend-local selection state: different
+/// observers can view different tabs while agreeing on the organization.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TabGroupSummary {
+    pub id: u64,
+    pub name: String,
+    /// A canonical CSS `#RRGGBB` color.
+    pub color: String,
+    pub collapsed: bool,
 }
 
 /// The HTML script classification used by a [`BlueTsScriptExecutionReport`].
@@ -351,7 +734,7 @@ pub struct BlueJsScriptExecutionReport {
 }
 
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
-    write_framed_with_limit(w, msg, usize::MAX)
+    write_framed_with_limit(w, msg, MAX_FRAME_BYTES)
 }
 
 pub(crate) fn write_framed_with_limit<W: Write, T: Serialize>(
@@ -373,7 +756,7 @@ pub(crate) fn write_framed_with_limit<W: Write, T: Serialize>(
 }
 
 fn read_frame_bytes<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
-    read_frame_bytes_with_limit(r, usize::MAX)
+    read_frame_bytes_with_limit(r, MAX_FRAME_BYTES)
 }
 
 /// Reads one framed payload while rejecting an oversized length before any
@@ -391,7 +774,7 @@ pub(crate) fn read_frame_bytes_with_limit<R: Read>(
     if len > max_bytes {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("frame length {len} exceeds protocol limit {max_bytes}"),
+            format!("frame length {len} exceeds the protocol maximum of {max_bytes}"),
         ));
     }
     let mut buf = vec![0u8; len];
@@ -678,441 +1061,5 @@ pub fn client_handshake<S: Read + Write>(stream: &mut S) -> io::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-    use std::net::{TcpListener, TcpStream};
-
-    /// Exercises framing across a real OS socket on every supported platform.
-    /// TCP keeps this protocol-boundary seam available on Windows while the
-    /// Unix-domain-socket services themselves remain Unix-only.
-    fn tcp_pair() -> (TcpStream, TcpStream) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let client = TcpStream::connect(address).unwrap();
-        let (server, _) = listener.accept().unwrap();
-        (client, server)
-    }
-
-    #[test]
-    fn client_message_round_trips_through_the_wire_format() {
-        for msg in [
-            ClientMessage::Hello {
-                protocol_version: PROTOCOL_VERSION,
-            },
-            ClientMessage::Navigate {
-                url: "https://example.com".to_string(),
-            },
-            ClientMessage::Resize {
-                width: 800,
-                height: 600,
-            },
-            ClientMessage::Click { x: 12.5, y: 30.0 },
-            ClientMessage::Scroll { delta_y: -40.0 },
-            ClientMessage::Chrome(ChromeCommand::SetVisible(false)),
-            ClientMessage::Hover { x: 5.0, y: 6.0 },
-            ClientMessage::GetRepresentation,
-            ClientMessage::ActOn {
-                id: 7,
-                action: NodeAction::Click,
-            },
-            ClientMessage::Highlight { id: Some(7) },
-            ClientMessage::Highlight { id: None },
-            ClientMessage::GetDom,
-            ClientMessage::GetBlueTsScriptReports,
-            ClientMessage::GetBlueJsScriptReports,
-            ClientMessage::OpenTab {
-                url: Some("https://example.com".to_string()),
-            },
-            ClientMessage::OpenTab { url: None },
-            ClientMessage::CloseTab,
-            ClientMessage::ListTabs,
-            ClientMessage::Shutdown,
-            ClientMessage::Unknown,
-        ] {
-            let mut buf = Vec::new();
-            write_client_message(&mut buf, &msg).unwrap();
-            let mut cursor = Cursor::new(buf);
-            assert_eq!(read_client_message(&mut cursor).unwrap(), msg);
-        }
-    }
-
-    #[test]
-    fn server_message_round_trips_through_the_wire_format() {
-        for msg in [
-            ServerMessage::Hello {
-                protocol_version: PROTOCOL_VERSION,
-            },
-            ServerMessage::FrameReady {
-                shm_path: "/dev/shm/blueice-1".to_string(),
-                width: 800,
-                height: 600,
-                generation: 42,
-            },
-            ServerMessage::Navigated {
-                url: "https://example.com/".to_string(),
-            },
-            ServerMessage::Representation(AiSnapshot {
-                generation: 42,
-                tab_id: 1,
-                url: Some("https://example.com/".to_string()),
-                scroll_y: 10.0,
-                nodes: vec![AiNode {
-                    id: 3,
-                    parent: None,
-                    children: vec![],
-                    role: Role::Link,
-                    name: Some("Example".to_string()),
-                    name_from: Some(NameFrom::Contents),
-                    state: NodeState {
-                        hovered: true,
-                        ..Default::default()
-                    },
-                    bounds: Bounds {
-                        x: 0.0,
-                        y: 0.0,
-                        width: 10.0,
-                        height: 5.0,
-                    },
-                    opacity: 1.0,
-                    occluded: false,
-                    occluded_by: None,
-                    occluded_fraction: 0.0,
-                }],
-            }),
-            ServerMessage::Dom("| <html>\n".to_string()),
-            ServerMessage::BlueTsScriptReports(vec![BlueTsScriptExecutionReport {
-                tab_id: 2,
-                document_generation: 42,
-                ordinal: 0,
-                kind: BlueTsScriptKind::Classic,
-                policy: BlueTsScriptRuntimePolicy::Checked,
-                source_position: None,
-                outcome: BlueTsScriptExecutionOutcome::Executed,
-            }]),
-            ServerMessage::BlueJsScriptReports(vec![BlueJsScriptExecutionReport {
-                tab_id: 2,
-                document_generation: 42,
-                ordinal: 0,
-                kind: BlueJsScriptKind::Classic,
-                outcome: BlueJsScriptExecutionOutcome::Executed,
-            }]),
-            ServerMessage::BlueJsScriptReports(vec![BlueJsScriptExecutionReport {
-                tab_id: 2,
-                document_generation: 42,
-                ordinal: 1,
-                kind: BlueJsScriptKind::Module,
-                outcome: BlueJsScriptExecutionOutcome::Rejected {
-                    category: "BlueJS compilation rejected the page script".to_string(),
-                },
-            }]),
-            ServerMessage::BlueTsScriptReports(vec![BlueTsScriptExecutionReport {
-                tab_id: 2,
-                document_generation: 42,
-                ordinal: 1,
-                kind: BlueTsScriptKind::Module,
-                policy: BlueTsScriptRuntimePolicy::StrictRuntime,
-                source_position: Some(BlueTsScriptSourcePosition { start: 3, end: 8 }),
-                outcome: BlueTsScriptExecutionOutcome::Rejected {
-                    category: "BlueTS compilation rejected the page script".to_string(),
-                },
-            }]),
-            ServerMessage::TabOpened {
-                tab_id: 2,
-                url: Some("https://example.com/".to_string()),
-            },
-            ServerMessage::TabOpened {
-                tab_id: 2,
-                url: None,
-            },
-            ServerMessage::TabClosed { tab_id: 2 },
-            ServerMessage::Tabs(vec![
-                TabSummary { id: 1, url: None },
-                TabSummary {
-                    id: 2,
-                    url: Some("https://example.com/".to_string()),
-                },
-            ]),
-            ServerMessage::Error {
-                message: "oops".to_string(),
-            },
-            ServerMessage::GatekeeperBlocked {
-                reason: "hidden instruction-shaped text".to_string(),
-                category: "prompt-injection".to_string(),
-                url: "https://example.com/".to_string(),
-            },
-            ServerMessage::Unknown,
-        ] {
-            let mut buf = Vec::new();
-            write_server_message(&mut buf, &msg).unwrap();
-            let mut cursor = Cursor::new(buf);
-            assert_eq!(read_server_message(&mut cursor).unwrap(), msg);
-        }
-    }
-
-    #[test]
-    fn multiple_messages_can_be_written_and_read_in_sequence_on_one_stream() {
-        let mut buf = Vec::new();
-        write_client_message(
-            &mut buf,
-            &ClientMessage::Resize {
-                width: 1,
-                height: 2,
-            },
-        )
-        .unwrap();
-        write_client_message(&mut buf, &ClientMessage::Shutdown).unwrap();
-        let mut cursor = Cursor::new(buf);
-        assert_eq!(
-            read_client_message(&mut cursor).unwrap(),
-            ClientMessage::Resize {
-                width: 1,
-                height: 2
-            }
-        );
-        assert_eq!(
-            read_client_message(&mut cursor).unwrap(),
-            ClientMessage::Shutdown
-        );
-    }
-
-    #[test]
-    fn reading_past_a_truncated_stream_is_an_io_error_not_a_panic() {
-        let mut buf = Vec::new();
-        write_client_message(&mut buf, &ClientMessage::Shutdown).unwrap();
-        buf.truncate(buf.len() - 1); // cut off the last byte of the payload
-        let mut cursor = Cursor::new(buf);
-        assert!(read_client_message::<_>(&mut cursor).is_err());
-    }
-
-    #[test]
-    fn reading_from_an_empty_stream_is_an_error() {
-        let mut cursor = Cursor::new(Vec::<u8>::new());
-        let result: io::Result<ClientMessage> = read_client_message(&mut cursor);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn reading_malformed_json_payload_is_an_error() {
-        let mut buf = Vec::new();
-        let bad_payload = b"not json";
-        buf.extend_from_slice(&(bad_payload.len() as u32).to_le_bytes());
-        buf.extend_from_slice(bad_payload);
-        let mut cursor = Cursor::new(buf);
-        let result: io::Result<ClientMessage> = read_client_message(&mut cursor);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn real_socket_round_trip() {
-        // TEST_PLAN.md's "UI testing strategy": core<->frontend IPC-
-        // boundary tests should drive the real protocol with a test
-        // client, not just an in-memory buffer -- this is that test,
-        // now actionable since Phase 4 is underway.
-        let (mut a, mut b) = tcp_pair();
-
-        let sent = ClientMessage::Navigate {
-            url: "https://example.com".to_string(),
-        };
-        write_client_message(&mut a, &sent).unwrap();
-        let received = read_client_message(&mut b).unwrap();
-        assert_eq!(received, sent);
-
-        let sent = ServerMessage::FrameReady {
-            shm_path: "/tmp/x".to_string(),
-            width: 10,
-            height: 20,
-            generation: 1,
-        };
-        write_server_message(&mut b, &sent).unwrap();
-        let received = read_server_message(&mut a).unwrap();
-        assert_eq!(received, sent);
-    }
-
-    #[test]
-    fn a_message_written_without_a_request_id_reads_back_as_none() {
-        let mut buf = Vec::new();
-        write_client_message(&mut buf, &ClientMessage::Shutdown).unwrap();
-        let mut cursor = Cursor::new(buf);
-        assert_eq!(
-            read_client_message_with_id(&mut cursor).unwrap(),
-            (None, ClientMessage::Shutdown)
-        );
-    }
-
-    #[test]
-    fn a_request_id_round_trips_for_both_a_unit_and_a_struct_variant() {
-        // Regression coverage for the envelope shape specifically: unit
-        // variants (`Shutdown`) serialize as a bare JSON string under
-        // the default externally-tagged representation, unlike struct
-        // variants (`Navigate`) -- both must still carry a request_id
-        // through the same envelope.
-        for msg in [
-            ClientMessage::Shutdown,
-            ClientMessage::Navigate {
-                url: "https://example.com".to_string(),
-            },
-        ] {
-            let mut buf = Vec::new();
-            write_client_message_with_id(&mut buf, Some(42), &msg).unwrap();
-            let mut cursor = Cursor::new(buf);
-            assert_eq!(
-                read_client_message_with_id(&mut cursor).unwrap(),
-                (Some(42), msg)
-            );
-        }
-
-        let mut buf = Vec::new();
-        let reply = ServerMessage::Representation(AiSnapshot {
-            generation: 1,
-            tab_id: 1,
-            url: None,
-            scroll_y: 0.0,
-            nodes: vec![],
-        });
-        write_server_message_with_id(&mut buf, Some(7), &reply).unwrap();
-        let mut cursor = Cursor::new(buf);
-        assert_eq!(
-            read_server_message_with_id(&mut cursor).unwrap(),
-            (Some(7), reply)
-        );
-    }
-
-    #[test]
-    fn a_tab_id_round_trips_alongside_a_request_id() {
-        let msg = ClientMessage::Navigate {
-            url: "https://example.com".to_string(),
-        };
-        let mut buf = Vec::new();
-        write_client_message_with_ids(&mut buf, Some(3), Some(42), &msg).unwrap();
-        let mut cursor = Cursor::new(buf);
-        assert_eq!(
-            read_client_message_with_ids(&mut cursor).unwrap(),
-            (Some(3), Some(42), msg)
-        );
-
-        let reply = ServerMessage::Navigated {
-            url: "https://example.com".to_string(),
-        };
-        let mut buf = Vec::new();
-        write_server_message_with_ids(&mut buf, Some(3), Some(42), &reply).unwrap();
-        let mut cursor = Cursor::new(buf);
-        assert_eq!(
-            read_server_message_with_ids(&mut cursor).unwrap(),
-            (Some(3), Some(42), reply)
-        );
-    }
-
-    #[test]
-    fn a_message_written_without_a_tab_id_reads_back_as_none() {
-        // The load-bearing backward-compatibility property Milestone C
-        // depends on: a client that never addresses a specific tab (or
-        // sent before Phase 16 existed) must resolve to the default tab
-        // transparently -- proven at the wire level here, and at the
-        // `session.rs` dispatch level in `blueice_engine`'s own tests.
-        let mut buf = Vec::new();
-        write_client_message(&mut buf, &ClientMessage::GetRepresentation).unwrap();
-        let mut cursor = Cursor::new(buf);
-        assert_eq!(
-            read_client_message_with_ids(&mut cursor).unwrap(),
-            (None, None, ClientMessage::GetRepresentation)
-        );
-    }
-
-    #[test]
-    fn tab_id_and_request_id_are_independent_of_each_other() {
-        // A message can carry either, neither, or both -- proven with
-        // tab_id present but request_id absent, the case the two other
-        // round-trip tests above don't cover on its own.
-        let mut buf = Vec::new();
-        write_client_message_with_ids(&mut buf, Some(5), None, &ClientMessage::ListTabs).unwrap();
-        let mut cursor = Cursor::new(buf);
-        assert_eq!(
-            read_client_message_with_ids(&mut cursor).unwrap(),
-            (Some(5), None, ClientMessage::ListTabs)
-        );
-    }
-
-    #[test]
-    fn an_unrecognized_client_variant_deserializes_as_unknown_rather_than_erroring() {
-        let mut buf = Vec::new();
-        let bad_payload = br#"{"message":"SomeFutureVariant"}"#;
-        buf.extend_from_slice(&(bad_payload.len() as u32).to_le_bytes());
-        buf.extend_from_slice(bad_payload);
-        let mut cursor = Cursor::new(buf);
-        assert_eq!(
-            read_client_message(&mut cursor).unwrap(),
-            ClientMessage::Unknown
-        );
-    }
-
-    #[test]
-    fn an_unrecognized_server_variant_deserializes_as_unknown_rather_than_erroring() {
-        let mut buf = Vec::new();
-        let bad_payload = br#"{"message":{"SomeFutureVariant":{"x":1}}}"#;
-        buf.extend_from_slice(&(bad_payload.len() as u32).to_le_bytes());
-        buf.extend_from_slice(bad_payload);
-        let mut cursor = Cursor::new(buf);
-        assert_eq!(
-            read_server_message(&mut cursor).unwrap(),
-            ServerMessage::Unknown
-        );
-    }
-
-    #[test]
-    fn client_handshake_succeeds_against_a_matching_hello_reply() {
-        let (mut client, mut server) = tcp_pair();
-        let responder = std::thread::spawn(move || {
-            assert_eq!(
-                read_client_message(&mut server).unwrap(),
-                ClientMessage::Hello {
-                    protocol_version: PROTOCOL_VERSION
-                }
-            );
-            write_server_message(
-                &mut server,
-                &ServerMessage::Hello {
-                    protocol_version: PROTOCOL_VERSION,
-                },
-            )
-            .unwrap();
-        });
-        client_handshake(&mut client).unwrap();
-        responder.join().unwrap();
-    }
-
-    #[test]
-    fn client_handshake_surfaces_an_error_reply_as_an_io_error() {
-        let (mut client, mut server) = tcp_pair();
-        let responder = std::thread::spawn(move || {
-            let _ = read_client_message(&mut server).unwrap();
-            write_server_message(
-                &mut server,
-                &ServerMessage::Error {
-                    message: "unsupported protocol_version".to_string(),
-                },
-            )
-            .unwrap();
-        });
-        let err = client_handshake(&mut client).unwrap_err();
-        assert!(err.to_string().contains("unsupported protocol_version"));
-        responder.join().unwrap();
-    }
-
-    #[test]
-    fn client_handshake_rejects_an_unexpected_reply_type() {
-        let (mut client, mut server) = tcp_pair();
-        let responder = std::thread::spawn(move || {
-            let _ = read_client_message(&mut server).unwrap();
-            write_server_message(
-                &mut server,
-                &ServerMessage::Navigated {
-                    url: "about:blank".to_string(),
-                },
-            )
-            .unwrap();
-        });
-        assert!(client_handshake(&mut client).is_err());
-        responder.join().unwrap();
-    }
-}
+#[path = "browser_protocol_tests.rs"]
+mod tests;

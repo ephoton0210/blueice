@@ -1,0 +1,152 @@
+{
+  "scope": "Readable-stream tee with real default/BYOB branch readers, independent byte data, cancellation/error/quota behavior; owner-traced Promise GC and explicit active async/job/import lifetimes. Focused increment, not complete Streams or cross-platform acceptance.",
+  "recorded_utc": "2026-10-12T17:22:46.055293+00:00",
+  "recorded_local_date": "2026-10-13",
+  "base_commit": "cee831c4ca14572b10571faf8c71f380b44ba972",
+  "source_sha256": {
+    "backend/bluejs/src/heap.rs": "fb4cce397ad72ac6abe6dc744d7098bc76d6d46b809ec10f8cbbb436d2394447",
+    "backend/bluejs/src/heap/core.rs": "d42e86c1e5d97ba840a19006591c6cf93abf0ba3810981a4c3f4048ee672a5de",
+    "backend/bluejs/src/heap/lifecycle.rs": "77adf52ee378511dd36a6d94a9e9191598bf86487ada3fd638ab52080fc1c1a9",
+    "backend/bluejs/src/heap/web_streams.rs": "ee07a4016d383ae831fe6d1799fd0d4375811e98584d6062c0a22e9f9a3b40ba",
+    "backend/bluejs/src/native.rs": "6ffead1c4fa3b2ccbb632e8a769e88fe4944866145b798c8b27c18c0dabe768e",
+    "backend/bluejs/src/vm/builtins/array_from_async.rs": "217cdc6d633a66b66aba119846478d5d6658e62f6d318964abba280655865387",
+    "backend/bluejs/src/vm/builtins/execution/closures.rs": "7715ce33c8b274bcb81164af48c45c4e402071aeebd5df52f381774818850066",
+    "backend/bluejs/src/vm/builtins/execution/runtime.rs": "cc41d0737c814c345117d514aabb6335e8b3f54729ab590d697a15ef13ef5c70",
+    "backend/bluejs/src/vm/builtins/native_dispatch/dispatch.rs": "b202c2857a3194a11f6a3af659de909962a29fd564bdc6a27b80251ae0d7234c",
+    "backend/bluejs/src/vm/builtins/promise_core.rs": "3fe44bcb006e474b68359314ddb8dc88fc9f0b122bdd0a572b2a1a36de9ae53d",
+    "backend/bluejs/src/vm/builtins/promises.rs": "8ab139596bfc0b41612539bb31239cd3f1e8f52e6067f41287b688e5d6da82ff",
+    "backend/bluejs/src/vm/execution.rs": "568baf8ccb318daf407be7beae5746d93722abcdae7393fe86e3aa2d832ad711",
+    "backend/bluejs/src/vm/web_streams.rs": "162c2597dc356cb4ce6e91ad460f55bae187c706f6d178ea03e1f6e9fa202b8a",
+    "backend/bluejs/src/vm/web_streams/bytes.rs": "7f4f61b70c24986a5a8e5bd07b4acf1c5c2fe7abbcd967eb44e9b079ba8848bc",
+    "backend/bluejs/src/vm/web_streams/tee.rs": "e2827acb07126753355cf077a8958452fc2e8d861052c500cd42db3a5c897847",
+    "backend/bluejs/tests/promise_gc_lifecycle.rs": "61d4f861746c647d0cb36cdbd8520e097c69dec793c0814983e441d793ef4ab4",
+    "backend/bluejs/tests/web_stream_tee.rs": "b27b951b66178b07abc87dcd61790af79d9137a0b436bec686d78f06e7f3d205",
+    "backend/bluets-bluejs/src/page_host_typings.rs": "248d95d089d1bb5e5cbd057717907206a75f2b0ed01efe27ef649ad2d420d406",
+    "backend/bluets-bluejs/src/page_host_typings/tee.rs": "d88ff0c5076ff7cd9802055ea1c515bee84c53feca1bcaea4b4e926860087887",
+    "backend/bluets-bluejs/tests/page_tee_typings.rs": "8c1d04d41a3de34cbb7a46487c58c5de29b068baed456cc59cf00c2b966e9e06",
+    "backend/launcher/src/bluejs_host.rs": "bd655eac53044c0e53c270b3c0967a8bdea6823392bddffe5fc12d2bee480c9d",
+    "backend/launcher/src/bluejs_host/script_execution.rs": "2c81d5c30033fe6f9e86b1aede4edfc9178d26a2b1cebbf3afa2e9e155c11a64",
+    "backend/launcher/tests/browser_file_reader.rs": "6bfc39679b08c42b83a627524218e3ccf434984a1d43bc72395a6221a0e17806"
+  },
+  "source_unchanged_at_terminal_gates": true,
+  "private_script_protocol": 9,
+  "page_host_protocol": 49,
+  "typing_profile": "core-script-dom-stream-tee-v9",
+  "typing_runtime_bindings": 39,
+  "bluejs_library_and_related": {
+    "passed": 1093,
+    "failed": 0,
+    "ignored": 0,
+    "groups": 18,
+    "exit_code": 0,
+    "log": "/private/tmp/blueice-followup-20261012/tee-gc-library-focused-second.log",
+    "log_sha256": "5262731e7b90d03ac0eb926b2d2cba8d1291453d6178f7e96949962c89d84d19"
+  },
+  "related_breakdown": {
+    "library": 919,
+    "promise_async_module_gc_stream": 174,
+    "new_gc": 6,
+    "tee": 14,
+    "existing_readable_stream": 20
+  },
+  "complete_bridge": {
+    "passed": 146,
+    "failed": 0,
+    "ignored": 0,
+    "groups": 9,
+    "exit_code": 0,
+    "log": "/private/tmp/blueice-followup-20261012/tee-bridge-final.log",
+    "log_sha256": "df6789ff55c2fb331373f4d1a7035be1309dff4571378964fe9f18766cd0cb43"
+  },
+  "actual_core_child_browser": {
+    "passed": 1,
+    "failed": 0,
+    "ignored": 0,
+    "groups": 1,
+    "exit_code": 0,
+    "log": "/private/tmp/blueice-followup-20261012/tee-browser-final.log",
+    "log_sha256": "b8b3aeccb0f75ca8f7bcbff8ef326a1387a8c0ee14932ee9c474e2ac4c3e3f6e"
+  },
+  "checks": {
+    "browser_build": {
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/tee-browser-build-final.log",
+      "log_sha256": "2d6346214492c05ab99dcaffd8b42f5e9de93095a084da88bce4831bc6694e37"
+    },
+    "clippy": {
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/tee-clippy-final.log",
+      "log_sha256": "0115d9ffa86663c321f92b7ac016bf7936676f0146c818a9da1597c427f44451",
+      "crates": [
+        "blueice-bluejs",
+        "blueice-bluets-bluejs",
+        "blueice-launcher",
+        "blueice-engine"
+      ],
+      "all_targets": true,
+      "warnings_denied": true
+    },
+    "formatter": {
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/tee-gc-fmt-final.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "owned_cleanup": {
+    "private_core_or_bluejs_processes_remaining": 0,
+    "file_reader_fixture_directories_remaining": 0
+  },
+  "failed_attempts": [
+    {
+      "log": "/private/tmp/blueice-followup-20261012/web-stream-tee-red.log",
+      "sha256": "bb17bbe0bf77cb1dfe94c9459340c468835344cf1be30373e57e486e73898f9b",
+      "finding": "Eight original cases fail before the tee method exists."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/web-stream-tee-first.log",
+      "sha256": "2490f9c784f8bf2c104387208e3cacb866474fd88fc1c30909c2fc5c2200df10",
+      "finding": "Sibling byte helpers were private; compilation failed before pub(super) repair."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/web-stream-tee-lifecycle.log",
+      "sha256": "df3a7582ec70b5c2dac90ed9308601992b74bd4cca5868920d8be20e4e030074",
+      "finding": "The slow branch regression exceeded the bounded browser checkpoint."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/web-stream-tee-queue-full-checkpoint.log",
+      "sha256": "b3d2b6e942dc76d3780cc0dd1a644a0826e9b503143b74004acecdd17f46d6a3",
+      "finding": "A test-only larger public Promise checkpoint reached the unchanged 16 MiB heap limit."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/web-stream-tee-queue-no-consumer-chain.log",
+      "sha256": "dcd58feb98f8a3392f28f7ec9395d1fdf7f09958e416dd08561e3a8772a234bb",
+      "finding": "Removing the consumer adoption chain still hit the unchanged heap limit."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/promise-gc-red.log",
+      "sha256": "1fd2386b473ed11b2c71e5fcdf8b21978b330312ddefbdd56c06ca0349134107",
+      "finding": "Two of four collection cases fail because every Promise record is an unconditional root."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/promise-gc-streams-first.log",
+      "sha256": "2ab7cb4e7c65fcbea2600640f4845bf89efa4b61592fa390f080534f1f4faa4f",
+      "finding": "Promise collection passes; 13 tee cases pass and the queue quota exposes missing propagation/cancellation."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/tee-gc-focused-all-first.log",
+      "sha256": "01d216101139ab3078ef11d8c33cabe289caa5f7551d57620df6604cdbd08f9d",
+      "finding": "Tee quota repair passes all 14 cases; async adaptation/call setup exposes missing temporary roots."
+    },
+    {
+      "log": "/private/tmp/blueice-followup-20261012/tee-gc-library-focused-final.log",
+      "sha256": "c1f33db1b545fa2acb7b8bbe293cee4f5e371d932d870ab92023559b0d7f5ca8",
+      "finding": "All 919 library cases pass; wider module/heap-limit regressions expose active-job stack displacement and missing import waiter roots."
+    }
+  ],
+  "remaining": [
+    "Integration after the frozen main 88c1f1438 complete Rust gate terminates",
+    "Fresh complete workspace/native/Windows acceptance for integrated current source",
+    "WritableStream, TransformStream, pipeTo/pipeThrough, async iteration and broader conformance",
+    "Remaining drag interoperability and physical Zhuyin/VoiceOver/monitor/printer acceptance"
+  ]
+}

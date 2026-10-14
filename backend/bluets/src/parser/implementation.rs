@@ -17,6 +17,7 @@ pub(super) struct Parser {
     diagnostics: Vec<Diagnostic>,
     max_type_depth: usize,
     type_depth: usize,
+    nested_function_depth: usize,
 }
 
 #[path = "declarations.rs"]

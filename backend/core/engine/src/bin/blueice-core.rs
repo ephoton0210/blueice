@@ -19,15 +19,42 @@
 //! route the narrow BlueJS script, debugger, and registered-project compiler
 //! protocols into that same session thread; their listeners never own DOM,
 //! tab, realm, VM, source graph, or compiler-cache state themselves.
+//!
+//! `--stdio --frame-dir <new-directory>` instead accepts a private inherited
+//! browser-protocol pipe on Unix or Windows. It reuses the same session loop
+//! without the Unix launcher/service listeners; external navigation stays
+//! blocked while gatekeeper review is unavailable.
 
+#[cfg(unix)]
+use blueice_engine::downloads_page::DownloadsSource;
+#[cfg(unix)]
+use blueice_engine::gatekeeper_settings_page::GatekeeperSettingsSource;
+#[cfg(unix)]
+use blueice_engine::session::ExtensionPageRequest;
 #[cfg(unix)]
 use blueice_engine::{
     compiler_ipc::{
         compiler_service_ipc_request_channel, CompilerServiceIpcRequestSender,
         CoreCompilerProjectCatalog,
     },
-    script, session, TabManager,
+    script, session, HistorySnapshotMode, TabManager,
 };
+#[cfg(unix)]
+use blueice_extension_host::{
+    default_durable_storage_root,
+    handle_extension_connection_with_actions_and_authentication_and_network_rules,
+    load_installed_extension, registry_for_installed_extension, ExtensionActionDelegates,
+    ExtensionConnectionAuthentication, ExtensionRegistry, ExtensionStorage,
+};
+#[cfg(unix)]
+use blueice_ipc::extension::{ExtensionRuntimeEvent, NetworkResponseInfo, NetworkTraceInfo};
+#[cfg(unix)]
+use blueice_ipc::permission_control::{
+    read_permission_control_request, write_permission_control_reply, EphemeralCapabilityInfo,
+    OptionalCapabilityInfo, PermissionControlReply, PermissionControlRequest,
+};
+#[cfg(unix)]
+use std::io::Write;
 #[cfg(unix)]
 use std::io::{self, Read};
 #[cfg(unix)]
@@ -35,14 +62,23 @@ use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 #[cfg(unix)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::ExitCode;
 #[cfg(unix)]
+use std::process::{Child, Command, Stdio};
+#[cfg(unix)]
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    mpsc, Arc, Mutex,
+};
+#[cfg(unix)]
 use std::thread;
+#[cfg(unix)]
+use std::time::Duration;
 
 #[cfg(unix)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 struct Args {
     socket: PathBuf,
     width: f64,
@@ -56,6 +92,41 @@ struct Args {
     /// subprocess at its own fake/stub gatekeeper instead of the
     /// system-wide default path.
     gatekeeper_socket: Option<PathBuf>,
+    /// Where `about:downloads` reads the downloads list from, and where a
+    /// downloads process started on the page's behalf listens -- `None`
+    /// (the common case) resolves to `blueice_ipc::downloads::
+    /// default_downloads_socket_path()`. Overridable for the same reason
+    /// `gatekeeper_socket` is: a test points a real subprocess at its own.
+    downloads_socket: Option<PathBuf>,
+    /// Keep displayable page snapshots in history instead of the default
+    /// URL-only entries. This is opt-in because normal Back/Forward behavior
+    /// re-fetches the URL and should therefore observe updated web content.
+    history_snapshots: bool,
+    /// Private extension-protocol listener. It is accepted only together
+    /// with `extension_manifest`, so core never exposes the standalone
+    /// hardcoded reference identity as a production-facing endpoint.
+    extension_socket: Option<PathBuf>,
+    /// Strict installed package manifest used to establish the server-side
+    /// extension identity/grants before the extension socket is published.
+    extension_manifest: Option<PathBuf>,
+    /// The trusted BlueIce extension-host executable that core starts for the
+    /// validated package. This enables a fresh child credential; without
+    /// it, the explicit extension socket remains the legacy development mode.
+    extension_host: Option<PathBuf>,
+    /// Explicitly enables a private, framed parent-to-core permission pipe on
+    /// stdin/stdout. It is never multiplexed over the public frontend socket.
+    permission_control_stdio: bool,
+    /// Live translation (`phase-7-local-ai/PLAN.md`): the `ai-assistant`
+    /// socket (only a startup flag can name it) and, optionally, the BCP 47
+    /// tag to start translating fetched pages into. A client can later choose
+    /// or clear the language; without a socket, translation is unavailable.
+    assistant_socket: Option<PathBuf>,
+    translate_to: Option<String>,
+    /// The whole-navigation translation budget; `None` means the default.
+    translate_deadline_ms: Option<u64>,
+    /// The assistant settings file `about:assistant` shows, read-only (`core`
+    /// never writes it). The launcher passes the file it loaded.
+    assistant_settings: Option<PathBuf>,
     /// Optional listener for the long-lived BlueJS script host. It is separate
     /// from the frontend protocol socket and can be injected by the launcher
     /// or an integration test; omitting it preserves the reference binary's
@@ -183,502 +254,35 @@ mod compiler_output;
 #[cfg(unix)]
 use args::parse_args;
 
-/// Registers the reference binary's deliberately compiled-in closed fixture.
-/// Real embedders use [`CoreCompilerProjectCatalog`] directly at trusted core
-/// startup, where they can supply their already-authorized graph and fixed
-/// policy without ever making a path/source/configuration API available to a
-/// compiler peer. Keeping this one profile in code gives the public process
-/// seam a real lifecycle regression target without turning a CLI flag into a
-/// filesystem project loader.
 #[cfg(unix)]
-fn register_compiler_startup_profile(
-    catalog: &mut CoreCompilerProjectCatalog,
-    profile: &str,
-) -> Result<(), String> {
-    use blueice_bluets::{
-        AuthorizedModule, AuthorizedModuleLoader, CompilerOptions, RuntimePolicy,
-    };
-
-    match profile {
-        "core-closed-fixture-v1" => {
-            let entry_module = "project:///core-fixture/main.ts";
-            catalog
-                .register_startup_project(
-                    blueice_engine::compiler_service::RegisteredProjectRegistration {
-                        canonical_project_root: "project:///core-fixture".to_string(),
-                        canonical_config_root: "project:///core-fixture/blue-ts.json".to_string(),
-                        canonical_output_root: "project:///core-fixture-dist".to_string(),
-                        entry_module: entry_module.to_string(),
-                        loader: AuthorizedModuleLoader::new(
-                            [AuthorizedModule::new(
-                                entry_module,
-                                "interface CoreFixtureSettings { enabled: boolean; } \
-                                 export const coreFixtureSettings: CoreFixtureSettings = { enabled: true }; \
-                                 export const coreRegisteredAnswer: number = 42;",
-                            )],
-                            [],
-                        )
-                        .map_err(|error| {
-                            format!("invalid compiled-in compiler project profile: {error}")
-                        })?,
-                        compiler_options: CompilerOptions {
-                            resolver_fingerprint: "core-closed-fixture-v1".to_string(),
-                            runtime_policy: RuntimePolicy::Checked,
-                            ..CompilerOptions::default()
-                        },
-                    },
-                )
-                .map_err(|error| format!("failed to register compiler startup profile: {error}"))?;
-            Ok(())
-        }
-        _ => Err(format!(
-            "unsupported compiler project profile: {profile}; only core-owned compiled-in profiles are accepted"
-        )),
-    }
-}
-
-/// Consumes the trusted launcher's already-selected closed graph. This runs
-/// before any core, compiler, debugger, or script listener is bound. Loader
-/// construction and catalog registration reject invalid graphs atomically.
-#[cfg(unix)]
-fn register_owner_compiler_catalog(
-    catalog: &mut CoreCompilerProjectCatalog,
-    bootstrap: blueice_ipc::compiler_catalog::CompilerCatalogBootstrap,
-) -> Result<(), String> {
-    use blueice_bluets::{
-        AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
-        EcmaTarget, ModuleSource, RuntimePolicy,
-    };
-    use blueice_ipc::compiler_catalog::{CompilerCatalogRuntimePolicy, CompilerCatalogTarget};
-
-    bootstrap.validate().map_err(|error| error.to_string())?;
-    for project in bootstrap.projects {
-        let expose_to_compiler_ipc = project.expose_to_compiler_ipc;
-        let grant_output_write = project.grant_output_write;
-        let loader = AuthorizedModuleLoader::new(
-            project
-                .modules
-                .into_iter()
-                .map(|module| AuthorizedModule::new(module.canonical_id, module.text)),
-            project.resolutions.into_iter().map(|edge| {
-                AuthorizedModuleResolution::new(
-                    edge.from_module,
-                    edge.specifier,
-                    edge.target_module,
-                )
-            }),
-        )
-        .map_err(|error| format!("invalid owner compiler graph: {error}"))?;
-        let compiler_options = CompilerOptions {
-            target: match project.options.target {
-                CompilerCatalogTarget::Es2020 => EcmaTarget::Es2020,
-                CompilerCatalogTarget::Es2022 => EcmaTarget::Es2022,
-            },
-            runtime_policy: match project.options.runtime_policy {
-                CompilerCatalogRuntimePolicy::TranspileOnly => RuntimePolicy::TranspileOnly,
-                CompilerCatalogRuntimePolicy::Checked => RuntimePolicy::Checked,
-                CompilerCatalogRuntimePolicy::StrictRuntime => RuntimePolicy::StrictRuntime,
-            },
-            source_map: project.options.source_map,
-            declaration: project.options.declaration,
-            resolver_fingerprint: project.options.resolver_fingerprint,
-            ambient_declaration_modules: project
-                .options
-                .ambient_declaration_modules
-                .into_iter()
-                .map(|module| ModuleSource::new(module.canonical_id, module.text))
-                .collect(),
-            require_declared_global_calls: project.options.require_declared_global_calls,
-            ..CompilerOptions::default()
-        };
-        let registration = blueice_engine::compiler_service::RegisteredProjectRegistration {
-            canonical_project_root: project.canonical_project_root,
-            canonical_config_root: project.canonical_config_root,
-            canonical_output_root: project.canonical_output_root,
-            entry_module: project.entry_module,
-            loader,
-            compiler_options,
-        };
-        let result = match (expose_to_compiler_ipc, grant_output_write) {
-            (true, true) => catalog
-                .register_startup_project_with_output_write_grant(registration)
-                .map_err(|error| error.to_string()),
-            (false, true) => catalog
-                .register_startup_project_private_with_output_write_grant(registration)
-                .map_err(|error| error.to_string()),
-            (true, false) => catalog
-                .register_startup_project(registration)
-                .map_err(|error| error.to_string()),
-            (false, false) => catalog
-                .register_startup_project_private(registration)
-                .map_err(|error| error.to_string()),
-        };
-        result.map_err(|error| format!("failed to register owner compiler project: {error}"))?;
-    }
-    Ok(())
-}
-
-/// Reuses the core's one HTTP(S) source-authorizer implementation. This is
-/// deliberately constructed before any listener: malformed canonical URLs,
-/// origin rules, integrity entries, or limits cannot create a partly live
-/// browser or compiler endpoint.
-#[cfg(unix)]
-fn construct_owner_http_page_policy(
-    bootstrap: blueice_ipc::owner_bootstrap::OwnerHttpPolicyBootstrap,
-) -> Result<script::http_resource_authorizer::HttpScriptResourcePolicy, String> {
-    use blueice_ipc::owner_bootstrap::OwnerHttpOriginRule;
-    use script::http_resource_authorizer::{
-        HttpScriptIntegrityManifest, HttpScriptResourceLimits, HttpScriptResourceOriginRule,
-        HttpScriptResourcePolicy,
-    };
-
-    bootstrap.validate().map_err(|error| error.to_string())?;
-    let origin_rule = match bootstrap.origin_rule {
-        OwnerHttpOriginRule::SameDocumentOrigin => {
-            HttpScriptResourceOriginRule::same_document_origin()
-        }
-        OwnerHttpOriginRule::ExactOrigin(origin) => {
-            HttpScriptResourceOriginRule::exact_origin(origin).map_err(|error| error.to_string())?
-        }
-    };
-    let manifest = HttpScriptIntegrityManifest::new(
-        bootstrap
-            .resources
-            .into_iter()
-            .map(|resource| (resource.canonical_url, resource.integrity)),
-    )
-    .map_err(|error| error.to_string())?;
-    HttpScriptResourcePolicy::new(origin_rule, manifest, HttpScriptResourceLimits::default())
-        .map_err(|error| error.to_string())
-}
-
-/// Serves one long-lived BlueJS script connection. Frame parsing lives at the
-/// IPC boundary, but every request waits for the owning core session to apply
-/// it against its live tab manager. A bad initial handshake gets a structured
-/// reply and no DOM request is forwarded.
-#[cfg(unix)]
-fn serve_script_connection(
-    mut stream: UnixStream,
-    sender: script::ScriptRequestSender,
-    expected_token: &str,
-) -> io::Result<()> {
-    // An unauthenticated peer must not monopolize this serialized listener
-    // indefinitely by connecting without sending a complete Hello frame.
-    stream.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
-    let first = blueice_ipc::script::read_script_request(&mut stream)?;
-    if !matches!(
-        &first,
-        blueice_ipc::script::ScriptRequest::Hello { protocol_version, session_token }
-            if *protocol_version == blueice_ipc::script::SCRIPT_PROTOCOL_VERSION
-                && script_capability_matches(expected_token, session_token)
-    ) {
-        blueice_ipc::script::write_script_reply(
-            &mut stream,
-            &blueice_ipc::script::ScriptReply::Error {
-                message: "script handshake denied".to_string(),
-            },
-        )?;
-        return Ok(());
-    }
-    stream.set_read_timeout(None)?;
-    blueice_ipc::script::write_script_reply(
-        &mut stream,
-        &blueice_ipc::script::ScriptReply::HelloAck {
-            protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
-        },
-    )?;
-
-    let mut next_call_id = 1u64;
-    loop {
-        let request = match blueice_ipc::script::read_script_request(&mut stream) {
-            Ok(request) => request,
-            Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
-            Err(error) => return Err(error),
-        };
-        let blueice_ipc::script::ScriptRequest::Call {
-            request_id,
-            request,
-        } = request
-        else {
-            blueice_ipc::script::write_script_reply(
-                &mut stream,
-                &blueice_ipc::script::ScriptReply::Error {
-                    message: "script DOM calls require a post-handshake envelope".to_string(),
-                },
-            )?;
-            return Ok(());
-        };
-        let Some(target) = request.document_target() else {
-            blueice_ipc::script::write_script_reply(
-                &mut stream,
-                &blueice_ipc::script::ScriptReply::Error {
-                    message: "nested or target-free script call denied".to_string(),
-                },
-            )?;
-            return Ok(());
-        };
-        if request_id != next_call_id {
-            blueice_ipc::script::write_script_reply(
-                &mut stream,
-                &blueice_ipc::script::ScriptReply::Error {
-                    message: "script call ID is not the next connection ID".to_string(),
-                },
-            )?;
-            return Ok(());
-        }
-        next_call_id = next_call_id.checked_add(1).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "script call ID space exhausted")
-        })?;
-        let reply = sender.request(*request)?;
-        blueice_ipc::script::write_script_reply(
-            &mut stream,
-            &blueice_ipc::script::ScriptReply::CallResult {
-                request_id,
-                target,
-                reply: Box::new(reply),
-            },
-        )?;
-    }
-}
-
-/// Avoid prefix matches and data-dependent early exits at the capability
-/// boundary. Both strings have the same validated fixed length in production.
-#[cfg(unix)]
-fn script_capability_matches(expected: &str, presented: &str) -> bool {
-    if !blueice_ipc::script::valid_script_session_token(presented) {
-        return false;
-    }
-    expected
-        .bytes()
-        .zip(presented.bytes())
-        .fold(0u8, |difference, (left, right)| difference | (left ^ right))
-        == 0
-}
-
-/// Accepts successive script-host connections. A malformed or disconnected
-/// host ends only its own connection; it never tears down the core session.
-#[cfg(unix)]
-fn serve_script_listener(
-    listener: UnixListener,
-    sender: script::ScriptRequestSender,
-    expected_token: String,
+fn cleanup_private_sockets(
+    script: &Option<PathBuf>,
+    debugger: &Option<PathBuf>,
+    compiler: &Option<PathBuf>,
+    compiler_output: &Option<PathBuf>,
 ) {
-    for stream in listener.incoming() {
-        let Ok(stream) = stream else {
-            break;
-        };
-        let _ = serve_script_connection(stream, sender.clone(), &expected_token);
-    }
-}
-
-/// Serves one native debugger discovery connection. The first-message
-/// negotiation belongs at this transport boundary; every later target lookup
-/// is forwarded to the core session thread, which owns live tab state.
-#[cfg(unix)]
-fn serve_debugger_connection(
-    mut stream: UnixStream,
-    sender: blueice_engine::debugger::DebuggerRequestSender,
-    allowed_metadata_capabilities: &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest,
-    allow_bounded_values: bool,
-) -> io::Result<()> {
-    let first = blueice_ipc::debugger::read_debugger_request(&mut stream)?;
-    let reply = blueice_ipc::debugger::negotiate_with_values(
-        &first,
-        allowed_metadata_capabilities,
-        allow_bounded_values,
-    );
-    blueice_ipc::debugger::write_debugger_reply(&mut stream, &reply)?;
-    let Some(metadata_session) =
-        blueice_ipc::debugger::metadata_session_authorization(&first, &reply)
-    else {
-        return Ok(());
-    };
-
-    loop {
-        let request = match blueice_ipc::debugger::read_debugger_request(&mut stream) {
-            Ok(request) => request,
-            Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
-            Err(error) => return Err(error),
-        };
-        let reply = sender
-            .request_with_metadata_session_authorization(request, metadata_session.clone())?;
-        blueice_ipc::debugger::write_debugger_reply(&mut stream, &reply)?;
-    }
-}
-
-/// Accepts successive debugger peers. A malformed/disconnected peer ends only
-/// its connection and never interrupts the owning frontend session.
-#[cfg(unix)]
-fn serve_debugger_listener(
-    listener: UnixListener,
-    sender: blueice_engine::debugger::DebuggerRequestSender,
-    allowed_metadata_capabilities: blueice_ipc::debugger::DebuggerMetadataCapabilityManifest,
-    allow_bounded_values: bool,
-) {
-    for stream in listener.incoming() {
-        let Ok(stream) = stream else {
-            break;
-        };
-        let _ = serve_debugger_connection(
-            stream,
-            sender.clone(),
-            &allowed_metadata_capabilities,
-            allow_bounded_values,
-        );
-    }
-}
-
-/// Serves one query-only registered-project compiler peer. Its `Hello`
-/// negotiation is intentionally completed on the listener side, while every
-/// later decoded request is synchronously handed to the sealed core catalog on
-/// the session thread under its core-minted stream attestation. Abandoned
-/// pagination cursors are revoked when this stream closes. The worker owns no
-/// source, project registration, or incremental compiler cache.
-#[cfg(unix)]
-fn serve_compiler_connection(
-    mut stream: UnixStream,
-    sender: CompilerServiceIpcRequestSender,
-) -> io::Result<()> {
-    let first = blueice_ipc::compiler::read_compiler_request(&mut stream)?;
-    let accepted = matches!(
-        first,
-        blueice_ipc::compiler::CompilerRequest::Hello {
-            protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
-        }
-    );
-    let session_evidence = accepted
-        .then(mint_compiler_session_hello_evidence)
-        .transpose()?;
-    let session_sender = session_evidence
-        .as_ref()
-        .map(|evidence| sender.bind_session(evidence.session_attestation.clone()))
-        .transpose()?;
-    let reply = blueice_ipc::compiler::negotiate(&first, session_evidence);
-    blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
-    if !accepted {
-        return Ok(());
-    }
-    let session_sender = session_sender.expect("an accepted Hello mints a bound compiler stream");
-
-    loop {
-        let request = match blueice_ipc::compiler::read_compiler_request(&mut stream) {
-            Ok(request) => request,
-            Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
-            Err(error) => return Err(error),
-        };
-        let reply = session_sender.request(request)?;
-        blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
-    }
-}
-
-/// Mints all handshake evidence for one accepted compiler stream. The core
-/// creates it only after the exact v6 `Hello`: an opaque per-stream
-/// attestation and the canonical fixed query-only manifest. Neither is tied
-/// to a project, source graph, catalog, path, or any extra authority.
-#[cfg(unix)]
-fn mint_compiler_session_hello_evidence(
-) -> io::Result<blueice_ipc::compiler::CompilerSessionHelloEvidence> {
-    let mut bytes = [0u8; 32];
-    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
-    let mut id = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        use std::fmt::Write;
-        write!(id, "{byte:02x}").expect("writing to a String cannot fail");
-    }
-    let session_attestation = blueice_ipc::compiler::CompilerSessionAttestation { id };
-    debug_assert!(session_attestation.is_well_formed());
-    let capability_manifest =
-        blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only();
-    debug_assert!(capability_manifest.is_well_formed());
-    Ok(blueice_ipc::compiler::CompilerSessionHelloEvidence {
-        session_attestation,
-        capability_manifest,
-    })
-}
-
-/// Accepts successive compiler query peers. Bad handshakes and disconnected
-/// peers affect only their own stream; they cannot tear down the frontend or
-/// alter the catalog registered by core startup.
-#[cfg(unix)]
-fn serve_compiler_listener(listener: UnixListener, sender: CompilerServiceIpcRequestSender) {
-    for stream in listener.incoming() {
-        let Ok(stream) = stream else {
-            break;
-        };
-        let _ = serve_compiler_connection(stream, sender.clone());
-    }
-}
-
-/// Binds either private capability-bearing listener with an explicit
-/// owner-only filesystem mode. A bearer token or opaque project ID is not a
-/// reason to rely on a permissive ambient umask. Existing live or non-socket
-/// paths are preserved; only an abandoned socket inode can be reclaimed.
-#[cfg(unix)]
-fn bind_owner_only_listener(path: &std::path::Path, label: &str) -> io::Result<UnixListener> {
-    match std::fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_socket() => match UnixStream::connect(path) {
-            // Never unlink a working peer merely because a second core was
-            // pointed at its endpoint.  The launcher preflights this too, but
-            // direct core invocation must preserve the same boundary.
-            Ok(_) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::AddrInUse,
-                    format!("{label} socket is already active: {}", path.display()),
-                ));
-            }
-            // This is the one recoverable startup residue: a dead core can
-            // leave its socket inode behind after a forceful stop.
-            Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => {
-                remove_owned_socket_if_owned(path);
-            }
-            Err(error) => return Err(error),
-        },
-        Ok(_) => {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!(
-                    "{label} socket is occupied by a non-socket path: {}",
-                    path.display()
-                ),
-            ));
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    let listener = UnixListener::bind(path)?;
-    if let Err(error) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+    if let Some(path) = script {
         remove_owned_socket_if_owned(path);
-        return Err(error);
     }
-    Ok(listener)
-}
-
-#[cfg(unix)]
-fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
-    bind_owner_only_listener(path, "compiler")
-}
-
-#[cfg(unix)]
-fn bind_script_listener(path: &std::path::Path) -> io::Result<UnixListener> {
-    bind_owner_only_listener(path, "script")
-}
-
-/// Removes a private listener endpoint only if it is still a Unix socket.
-/// The core may be force-killed by its supervisor, but lifecycle cleanup must
-/// never unlink a regular file, directory, or symlink that has appeared at a
-/// caller-selected path since the listener was created.
-#[cfg(unix)]
-fn remove_owned_socket_if_owned(path: &std::path::Path) {
-    let Ok(metadata) = std::fs::symlink_metadata(path) else {
-        return;
-    };
-    if metadata.file_type().is_socket() {
+    if let Some(path) = debugger {
         let _ = std::fs::remove_file(path);
+    }
+    if let Some(path) = compiler {
+        remove_owned_socket_if_owned(path);
+    }
+    if let Some(path) = compiler_output {
+        remove_owned_socket_if_owned(path);
     }
 }
 
 #[cfg(unix)]
 fn main() -> ExitCode {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--stdio")
+    {
+        return stdio::main();
+    }
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
         Err(message) => {
@@ -693,6 +297,140 @@ fn main() -> ExitCode {
     let gatekeeper_socket = args
         .gatekeeper_socket
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
+    let downloads_socket = args.downloads_socket.clone();
+
+    // An installed extension is a core concern: validate its package and
+    // derive its registry identity before core publishes either socket. When
+    // `--extension-host` is supplied, the listener additionally requires the
+    // freshly generated credential from exactly that core-spawned child.
+    let mut extension_capability_origins = Default::default();
+    let mut permission_metadata = None;
+    let (extension_service, extension_runtime_start, extension_runtime_events) = match (
+        args.extension_socket.as_ref(),
+        args.extension_manifest.as_deref(),
+    ) {
+        (Some(socket), Some(manifest)) => {
+            let installed = match load_installed_extension(manifest) {
+                Ok(installed) => installed,
+                Err(error) => {
+                    eprintln!(
+                        "blueice-core: could not install extension {}: {error}",
+                        manifest.display()
+                    );
+                    return ExitCode::FAILURE;
+                }
+            };
+            extension_capability_origins = installed.manifest().capability_origins().clone();
+            permission_metadata = Some(PermissionControlMetadata {
+                extension_id: installed.extension_id().to_string(),
+                name: installed.manifest().name().to_string(),
+                version: installed.manifest().version().to_string(),
+                optional: installed
+                    .manifest()
+                    .capabilities()
+                    .optional()
+                    .iter()
+                    .map(|capability| OptionalCapabilityInfo {
+                        capability: capability.clone(),
+                        granted: false,
+                        origins: installed
+                            .manifest()
+                            .capability_origins()
+                            .get(capability)
+                            .map(|origins| origins.iter().cloned().collect())
+                            .unwrap_or_default(),
+                    })
+                    .collect(),
+                ephemeral: installed
+                    .manifest()
+                    .capabilities()
+                    .runtime_ephemeral()
+                    .iter()
+                    .map(|capability| EphemeralCapabilityInfo {
+                        capability: capability.clone(),
+                        origins: installed
+                            .manifest()
+                            .capability_origins()
+                            .get(capability)
+                            .map(|origins| origins.iter().cloned().collect())
+                            .unwrap_or_default(),
+                    })
+                    .collect(),
+            });
+            if let Some(parent) = socket.parent() {
+                if let Err(error) = blueice_ipc::local_socket::ensure_private_socket_dir(parent) {
+                    eprintln!(
+                        "blueice-core: failed to prepare private extension socket directory {}: {error}",
+                        parent.display()
+                    );
+                    return ExitCode::FAILURE;
+                }
+            }
+            let _ = std::fs::remove_file(socket);
+            let listener = match blueice_ipc::local_socket::bind_private_listener(socket) {
+                Ok(listener) => listener,
+                Err(error) => {
+                    eprintln!(
+                        "blueice-core: failed to bind extension socket {}: {error}",
+                        socket.display()
+                    );
+                    return ExitCode::FAILURE;
+                }
+            };
+            let required_authentication = match args.extension_host.as_ref() {
+                Some(_) => match new_extension_authentication() {
+                    Ok(authentication) => Some(authentication),
+                    Err(error) => {
+                        let _ = std::fs::remove_file(socket);
+                        eprintln!("blueice-core: {error}");
+                        return ExitCode::FAILURE;
+                    }
+                },
+                None => None,
+            };
+            let (runtime_start, runtime_start_receiver, runtime_events, runtime_event_receiver) =
+                if args.extension_host.is_some() {
+                    let (sender, receiver) = mpsc::channel();
+                    let (event_sender, event_receiver) = mpsc::sync_channel(16);
+                    (
+                        Some(sender),
+                        Some(Arc::new(Mutex::new(receiver))),
+                        Some(event_sender),
+                        Some(Arc::new(Mutex::new(event_receiver))),
+                    )
+                } else {
+                    (None, None, None, None)
+                };
+            (
+                Some(ExtensionService {
+                    socket: socket.clone(),
+                    listener,
+                    registry: Arc::new(registry_for_installed_extension(&installed)),
+                    extension_id: installed.extension_id().to_string(),
+                    storage: match default_durable_storage_root() {
+                        Ok(root) => ExtensionStorage::default().with_durable_root(root),
+                        Err(reason) => {
+                            eprintln!(
+                                "blueice-core: durable extension storage unavailable: {reason}"
+                            );
+                            ExtensionStorage::default()
+                        }
+                    },
+                    required_authentication,
+                    runtime_start: runtime_start_receiver,
+                    runtime_events: runtime_event_receiver,
+                }),
+                runtime_start,
+                runtime_events,
+            )
+        }
+        (None, None) => (None, None, None),
+        // `parse_args` enforces this before `main`; retain a total match so a
+        // future construction of `Args` cannot accidentally make an unsafe
+        // partial configuration reachable.
+        _ => unreachable!("extension options were validated during argument parsing"),
+    };
+
     let script_socket = args.script_socket.clone();
     let script_session_token = args.script_session_token.clone();
     let debugger_socket = args.debugger_socket.clone();
@@ -819,6 +557,9 @@ fn main() -> ExitCode {
         Some(path) => match bind_script_listener(path) {
             Ok(listener) => Some(listener),
             Err(error) => {
+                if let Some(path) = &args.extension_socket {
+                    let _ = std::fs::remove_file(path);
+                }
                 eprintln!(
                     "blueice-core: failed to bind script socket {}: {error}",
                     path.display()
@@ -836,6 +577,9 @@ fn main() -> ExitCode {
                 Err(error) => {
                     if let Some(path) = &script_socket {
                         remove_owned_socket_if_owned(path);
+                    }
+                    if let Some(path) = &args.extension_socket {
+                        let _ = std::fs::remove_file(path);
                     }
                     eprintln!(
                         "blueice-core: failed to bind debugger socket {}: {error}",
@@ -855,6 +599,9 @@ fn main() -> ExitCode {
                     remove_owned_socket_if_owned(path);
                 }
                 if let Some(path) = &debugger_socket {
+                    let _ = std::fs::remove_file(path);
+                }
+                if let Some(path) = &args.extension_socket {
                     let _ = std::fs::remove_file(path);
                 }
                 eprintln!(
@@ -879,6 +626,9 @@ fn main() -> ExitCode {
                 if let Some(path) = &compiler_socket {
                     remove_owned_socket_if_owned(path);
                 }
+                if let Some(path) = &args.extension_socket {
+                    let _ = std::fs::remove_file(path);
+                }
                 eprintln!(
                     "blueice-core: failed to bind compiler output socket {}: {error}",
                     path.display()
@@ -892,23 +642,121 @@ fn main() -> ExitCode {
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse
     // even though nothing is actually listening -- remove it first.
+    let extension_socket = extension_service
+        .as_ref()
+        .map(|service| service.socket.clone());
+    let extension_permissions = extension_service
+        .as_ref()
+        .map(|service| (Arc::clone(&service.registry), service.extension_id.clone()));
+    let mut permission_session_requests = None;
+    let (extension_requests, mut extension_host_child) = if let Some(service) = extension_service {
+        let (tx, rx) = mpsc::channel();
+        if args.permission_control_stdio {
+            permission_session_requests = Some(tx.clone());
+        }
+        let required_authentication = service.required_authentication.clone();
+        let (authenticated_ready, ready_rx) = if args.extension_host.is_some() {
+            let (ready_tx, ready_rx) = mpsc::channel();
+            (Some(ready_tx), Some(ready_rx))
+        } else {
+            (None, None)
+        };
+        spawn_extension_listener(service, gatekeeper_socket.clone(), tx, authenticated_ready);
+
+        let child = if let Some(host) = args.extension_host.as_deref() {
+            let manifest = args
+                .extension_manifest
+                .as_deref()
+                .expect("extension-host configuration requires a manifest");
+            let socket = extension_socket
+                .as_deref()
+                .expect("extension-host configuration requires an extension socket");
+            let authentication = required_authentication
+                .as_deref()
+                .expect("extension-host configuration requires an authentication token");
+            let child = match spawn_extension_host(host, socket, manifest, authentication) {
+                Ok(child) => child,
+                Err(error) => {
+                    let _ = std::fs::remove_file(socket);
+                    cleanup_private_sockets(
+                        &script_socket,
+                        &debugger_socket,
+                        &compiler_socket,
+                        &compiler_output_socket,
+                    );
+                    eprintln!("blueice-core: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let ready_rx = ready_rx.expect("extension-host readiness receiver is configured");
+            match ready_rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(()) => Some(child),
+                Err(error) => {
+                    stop_extension_host(child);
+                    let _ = std::fs::remove_file(socket);
+                    cleanup_private_sockets(
+                        &script_socket,
+                        &debugger_socket,
+                        &compiler_socket,
+                        &compiler_output_socket,
+                    );
+                    eprintln!(
+                        "blueice-core: extension host did not authenticate before frontend readiness: {error}"
+                    );
+                    return ExitCode::FAILURE;
+                }
+            }
+        } else {
+            None
+        };
+        (Some(rx), child)
+    } else {
+        (None, None)
+    };
+
+    if args.permission_control_stdio {
+        let metadata = permission_metadata
+            .take()
+            .expect("permission control requires a package");
+        let (registry, _) = extension_permissions
+            .as_ref()
+            .expect("permission control requires a registry");
+        let registry = Arc::clone(registry);
+        let requests = permission_session_requests
+            .take()
+            .expect("permission control requires a session channel");
+        let runtime_events = extension_runtime_events.clone();
+        thread::spawn(move || {
+            if let Err(error) = serve_permission_control(
+                io::stdin(),
+                io::stdout(),
+                metadata,
+                registry,
+                requests,
+                runtime_events,
+            ) {
+                eprintln!("blueice-core: private permission control ended: {error}");
+            }
+        });
+    }
+
     let _ = std::fs::remove_file(&args.socket);
 
     let listener = match UnixListener::bind(&args.socket) {
         Ok(listener) => listener,
         Err(e) => {
-            if let Some(path) = &script_socket {
-                remove_owned_socket_if_owned(path);
+            if let Some(child) = extension_host_child.take() {
+                stop_extension_host(child);
             }
-            if let Some(path) = &debugger_socket {
-                let _ = std::fs::remove_file(path);
+            if let Some(extension_socket) = extension_socket.as_ref() {
+                let _ = std::fs::remove_file(extension_socket);
             }
-            if let Some(path) = &compiler_socket {
-                remove_owned_socket_if_owned(path);
-            }
-            if let Some(path) = &compiler_output_socket {
-                remove_owned_socket_if_owned(path);
-            }
+            cleanup_private_sockets(
+                &script_socket,
+                &debugger_socket,
+                &compiler_socket,
+                &compiler_output_socket,
+            );
             eprintln!(
                 "blueice-core: failed to bind {}: {e}",
                 args.socket.display()
@@ -948,7 +796,47 @@ fn main() -> ExitCode {
             });
         }
         let (mut stream, _) = listener.accept()?;
-        let mut tabs = TabManager::new(args.width, args.height);
+        let history_mode = if args.history_snapshots {
+            HistorySnapshotMode::Snapshot
+        } else {
+            HistorySnapshotMode::Reload
+        };
+        let mut tabs =
+            TabManager::new_with_history_snapshot_mode(args.width, args.height, history_mode);
+        tabs.set_extension_capability_origins(extension_capability_origins);
+        if let Some((registry, extension_id)) = extension_permissions.as_ref() {
+            tabs.set_extension_permission_registry(Arc::clone(registry), extension_id.clone());
+        }
+        let downloads_socket =
+            downloads_socket.unwrap_or_else(blueice_ipc::downloads::default_downloads_socket_path);
+        let downloads_source = if std::env::var_os("BLUEICE_NATIVE_DOWNLOADS_MANAGED").is_some() {
+            DownloadsSource::without_spawner(downloads_socket)
+        } else {
+            DownloadsSource::at(downloads_socket)
+        };
+        tabs.set_downloads_source(Arc::new(downloads_source));
+        tabs.set_gatekeeper_settings_source(Arc::new(GatekeeperSettingsSource::at(
+            gatekeeper_socket.clone(),
+        )));
+        tabs.assistant_panel()
+            .set_settings_file(args.assistant_settings.clone());
+        if let Some(socket) = &args.assistant_socket {
+            tabs.set_translation_endpoint(
+                socket.clone(),
+                Duration::from_millis(
+                    args.translate_deadline_ms
+                        .unwrap_or(DEFAULT_TRANSLATE_DEADLINE_MS),
+                ),
+            );
+            tabs.set_translation_language(args.translate_to.clone());
+        }
+        if let Some(runtime_start) = extension_runtime_start.as_ref() {
+            // The accepted frontend and its newly constructed session are the
+            // earliest point at which a Wasm host request can reach a live
+            // `TabManager`. The sender is one-shot: only the authenticated
+            // child can consume its paired receiver through RuntimeReady.
+            let _ = runtime_start.send(());
+        }
         let mut generation = 0u64;
         if inline_bluejs {
             let mut javascript_executor = script::javascript::JavaScriptPageExecutor::with_config(
@@ -981,6 +869,8 @@ fn main() -> ExitCode {
                             service,
                         }
                     }),
+                    extension: extension_requests.as_ref(),
+                    extension_events: extension_runtime_events.as_ref(),
                 },
                 Some(&mut javascript_executor),
             )
@@ -1039,6 +929,8 @@ fn main() -> ExitCode {
                             service,
                         }
                     }),
+                    extension: extension_requests.as_ref(),
+                    extension_events: extension_runtime_events.as_ref(),
                 },
                 Some(&mut javascript_executor),
             )
@@ -1069,6 +961,8 @@ fn main() -> ExitCode {
                             service,
                         }
                     }),
+                    extension: extension_requests.as_ref(),
+                    extension_events: extension_runtime_events.as_ref(),
                 },
                 Some(&mut inline_executor),
             )
@@ -1088,11 +982,23 @@ fn main() -> ExitCode {
                             service,
                         }
                     }),
+                    extension: extension_requests.as_ref(),
+                    extension_events: extension_runtime_events.as_ref(),
                 },
             )
         }
     })();
 
+    // Closing the bounded producer is the normal lifecycle shutdown signal.
+    // The authenticated handler turns it into RuntimeEventStreamClosed before
+    // the child receives the containment fallback below.
+    drop(extension_runtime_events);
+    if let Some(child) = extension_host_child.take() {
+        stop_extension_host(child);
+    }
+    if let Some(path) = extension_socket.as_ref() {
+        let _ = std::fs::remove_file(path);
+    }
     let _ = std::fs::remove_file(&args.socket);
     if let Some(path) = script_socket {
         remove_owned_socket_if_owned(&path);
@@ -1118,11 +1024,41 @@ fn main() -> ExitCode {
 }
 
 #[cfg(not(unix))]
-fn main() {
-    eprintln!("blueice-core is currently supported only on Unix platforms");
-    std::process::exit(1);
+fn main() -> std::process::ExitCode {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--stdio")
+    {
+        stdio::main()
+    } else {
+        eprintln!("blueice-core on this platform requires --stdio and --frame-dir");
+        std::process::ExitCode::FAILURE
+    }
 }
+
+#[path = "blueice-core/stdio.rs"]
+mod stdio;
 
 #[cfg(all(test, unix))]
 #[path = "blueice-core/tests.rs"]
 mod tests;
+
+#[cfg(all(test, unix))]
+#[path = "blueice-core/feature_tests.rs"]
+mod feature_tests;
+
+#[cfg(unix)]
+#[path = "blueice-core/extension_service.rs"]
+mod extension_service;
+#[cfg(unix)]
+use extension_service::*;
+#[cfg(unix)]
+#[path = "blueice-core/compiler_bootstrap.rs"]
+mod compiler_bootstrap;
+#[cfg(unix)]
+use compiler_bootstrap::*;
+#[cfg(unix)]
+#[path = "blueice-core/protocol_servers.rs"]
+mod protocol_servers;
+#[cfg(unix)]
+use protocol_servers::*;

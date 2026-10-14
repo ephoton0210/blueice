@@ -20,6 +20,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
+mod browser_tasks;
 mod builtins;
 mod classification;
 mod completion;
@@ -48,6 +49,17 @@ mod shadow_realm;
 mod temporal;
 mod test262;
 mod test262_agents;
+mod web_abort;
+mod web_dom_exception;
+mod web_drag_drop;
+mod web_event_target;
+mod web_events;
+mod web_file_api;
+mod web_file_input;
+mod web_url;
+pub use web_url::HostObjectUrls;
+mod web_file_reader;
+mod web_streams;
 // Coverage builds run internal boundary fixtures against the ordinary library
 // instance as well as the unit-test instance. This preserves raw LLVM coverage
 // semantics without exposing fixture APIs in normal builds.
@@ -72,12 +84,15 @@ use host_objects::{
     HostObjectMethodRegistration, HostObjectPairMethodRegistration,
 };
 pub use host_objects::{
-    HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod, HostObjectPairMethod,
+    HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragImage, HostDragItem,
+    HostFileSelectionEvent, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
+    HostObjectPairMethod,
 };
 use host_timers::HostTimer;
 pub(crate) use host_timers::HostTimerFunction;
 pub use host_timers::{BlueJsTimerRun, MAX_HOST_TIMERS_PER_REALM};
 use std::fmt;
+pub use web_file_input::{HostFileData, HostInputFilesReader, HostInputFilesUpdate};
 
 /// A private interpreter suspension boundary. `Offset` is also used by
 /// generator/module setup; only the debugger requests one executed root
@@ -991,13 +1006,18 @@ pub struct Vm {
     host_object_methods: Vec<HostObjectMethodRegistration>,
     host_object_pair_methods: Vec<HostObjectPairMethodRegistration>,
     host_object_families: Vec<HostObjectFamilyState>,
+    host_file_inputs: Vec<web_file_input::HostFileInputRegistration>,
+    host_object_urls: Option<Box<dyn HostObjectUrls>>,
     host_click_listeners: Vec<HostClickListener>,
+    next_host_listener_serial: u64,
     active_host_click_event: Option<ActiveHostClickEvent>,
     /// Pending `setTimeout`/`setInterval` entries and the host-supplied
     /// millisecond clock they are scheduled against.
     host_timers: Vec<HostTimer>,
     host_timer_next_id: u32,
     host_timer_clock_ms: u64,
+    active_host_drag_event: Option<ObjectId>,
+    event_time_origin: std::time::Instant,
     global_bindings: HashMap<String, GlobalBinding>,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an
     /// individual Realm. Test262 child realms share this handle; independent
@@ -1105,6 +1125,7 @@ pub struct Vm {
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
     promise_jobs: VecDeque<PromiseJob>,
+    browser_tasks: VecDeque<browser_tasks::BrowserTask>,
     /// Heap edges of displaced async frames and active iterator records that
     /// live outside the operand stack. Nested frames retain their own suffix
     /// until they return, fail, or hand ownership to a suspended frame.
@@ -1169,6 +1190,18 @@ pub struct Vm {
 }
 
 impl Vm {
+    /// Installs the owner-selected browser File API in this realm.
+    pub fn install_web_file_api(&mut self) -> Result<(), RuntimeError> {
+        self.install_web_files()?;
+        self.install_web_drag_drop()?;
+        self.install_web_event_target()?;
+        self.install_web_progress_events()?;
+        self.install_web_custom_events()?;
+        self.install_web_file_reader()?;
+        self.install_web_streams()?;
+        self.install_web_abort()
+    }
+
     /// Installs one non-constructable host function as an own property of
     /// `globalThis`. The name is rejected when a global property already
     /// exists, so an embedder cannot silently replace an ECMAScript global.
@@ -1775,6 +1808,16 @@ impl Vm {
             && !matches!(
                 function,
                 NativeFunction::String
+                    | NativeFunction::WebUrl(crate::native::UrlNative::Constructor)
+                    | NativeFunction::WebAbort(crate::native::AbortNative::Controller | crate::native::AbortNative::Signal)
+                    | NativeFunction::Blob
+                    | NativeFunction::File
+                    | NativeFunction::DOMException
+                    | NativeFunction::WebDrag(crate::native::DragNative::DataTransfer | crate::native::DragNative::DragEvent)
+                    | NativeFunction::WebEvent(crate::native::EventNative::Constructor(_))
+                    | NativeFunction::WebTarget(crate::native::TargetNative::Constructor)
+                    | NativeFunction::WebReader(crate::native::ReaderNative::Constructor)
+                    | NativeFunction::WebStream(crate::native::StreamNative::Constructor(_))
                     | NativeFunction::Array
                     | NativeFunction::Date
                     | NativeFunction::TemporalConstructor(_)

@@ -1,0 +1,205 @@
+{
+  "status": "related-native-drag-text-files-modifiers-passed",
+  "recorded_at": "2026-10-12T03:34:01.872613+00:00",
+  "base_commit": "67061e667aad4ba551266393dc9d70933e55c6f6",
+  "scope": "Focused related native drag suite only; complete four-track and full-native acceptance remain open",
+  "inputs": {
+    "frozen_at": "2026-10-12T03:27:31.273581+00:00",
+    "programs": {
+      "frontend/macos/Sources/BrowserDragFilePromise.swift": "93b8a44b8dc0d569bfc90d9627e69a70bff4a24def68dd5c3a096ce643c6c1a8",
+      "frontend/macos/Sources/BrowserDragPayload.swift": "9a2f03620b5fd765a7eb0f78e89d672d1666d31fd4fa50350586c40321e98757",
+      "frontend/macos/Sources/BrowserPageDragging.swift": "d274e26d0c425729537b273d3f7b1f1e3657f244fb0fa6010b497b4e5bcd9327",
+      "frontend/macos/Sources/PageViewport.swift": "c9056da46569b553dbd1f15d832a3136656cf4fbb136f303c4bf4a7066c782c5",
+      "frontend/macos/TestSupport/HTTPFixture.swift": "e1cf37b22eb21fa6064dad3eead12adc80a62887afc6d4ed88735224d66765ae",
+      "frontend/macos/TestSupport/DragInteropFixture.swift": "d4dd78c07e38346d329a096b883288cbd9aafa5a27a6fb23fd7447d7a18286da",
+      "frontend/macos/TestSupport/build-drag-interop-fixture.sh": "1cad58d978adc955c1f96cc40cb189ee9a3b1d5576f6e44cc7001a5990df34e2",
+      "frontend/macos/Tests/DragDropTests.swift": "0a538fbeb2d76cee4fbd412e979f4ff653201411c3199e3e68830131263a883c",
+      "frontend/macos/UITests/BrowserUITests.swift": "0daad57cd3a600489c36c30ed058a0e38add190233b15db39479102dc9622ebc",
+      "frontend/macos/BlueIce.xcodeproj/project.pbxproj": "2814beef304b412198569e329e63b29fd2dff5eefb9946523fd91530257ccdee",
+      "frontend/macos/test.sh": "4935771a9fd985d7d3b8378a2380e5d6cf4c99c26d6b1d05ec0b67480ae461b8"
+    }
+  },
+  "native_counts": {
+    "passed": 25,
+    "failed": 0,
+    "skipped": 0
+  },
+  "native_cases": [
+    "ProtocolTests.DragDropTests testActualStaleHoverReplyPreservesDenialButUnownedErrorsRemainVisible",
+    "ProtocolTests.DragDropTests testCustomWebDragFormatsUseValidDistinctPasteboardIdentifiers",
+    "ProtocolTests.DragDropTests testDragHeartbeatContinuesInTrackingModeAndStopsAfterOwnerRefusal",
+    "ProtocolTests.DragDropTests testDragPayloadRevocationStopsFutureReadsAndReleasesAdvertisedValues",
+    "ProtocolTests.DragDropTests testDragPayloadSourceRefusalBlocksConcurrentPasteboardReaders",
+    "ProtocolTests.DragDropTests testFilePromiseProviderRetainsItsDelegateAndWritesOnlyOnExplicitFulfillment",
+    "ProtocolTests.DragDropTests testModifierPolicyChoosesOnlyCoreAdvertisedOperations",
+    "ProtocolTests.DragDropTests testNativeDragPasteboardProviderStopsUnrequestedFormatsAfterRevocation",
+    "ProtocolTests.DragDropTests testNativeDropAcceptsVisibleInactiveDestinationWithoutTakingKeyboardFocus",
+    "ProtocolTests.DragDropTests testNativeDropDispatchesPageDragEventsAndKeepsPayloadProtectedUntilDrop",
+    "ProtocolTests.DragDropTests testNativeDropDoesNotRetargetAnOldDragToANewDocumentAtTheSameURL",
+    "ProtocolTests.DragDropTests testNativeDropNegotiatesTheActualCoreOperationInTheEntryCallback",
+    "ProtocolTests.DragDropTests testNativeDropRefusesACoreFrameThatTheGUIHasNotReceived",
+    "ProtocolTests.DragDropTests testNativeDropRefusesDisabledInertAndReadOnlyControlsWithoutChangingCoreValues",
+    "ProtocolTests.DragDropTests testNativeDropRefusesForeignAndHiddenDestinationWindows",
+    "ProtocolTests.DragDropTests testNativeDropWritesOnlyAfterTheExplicitDropToTheActualCoreDocument",
+    "ProtocolTests.DragDropTests testRevokedFilePromiseCannotMaterializeBytesOrOverwriteAnExistingFile",
+    "ProtocolTests.DragDropTests testStoppedDragHeartbeatCannotDispatchADeferredCallback",
+    "BrowserUITests.BrowserUITests testNativeOSDocumentTextDragCopiesToTheCoreControlAndRefusesReadOnlyDrop",
+    "BrowserUITests.BrowserUITests testNativeOSDragModifiersChooseCopyMoveLinkAndRefuseReadonlyMove",
+    "BrowserUITests.BrowserUITests testNativeOSFileDragFulfillsPromisesInIndependentAppWithExactBytes",
+    "BrowserUITests.BrowserUITests testNativeOSPageDragCancellationKeepsTheActualCoreDestinationEmpty",
+    "BrowserUITests.BrowserUITests testNativeOSPageTextDragCopiesAcrossInactiveWindowsAndKeepsSourceAlive",
+    "BrowserUITests.BrowserUITests testNativeOSStationaryDragDispatchesSourceCancellationBeforeRelease",
+    "BrowserUITests.BrowserUITests testNativeOSTextDragInteroperatesWithAnIndependentAppKitApplication"
+  ],
+  "xcresult_summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "00008132-001C51E40EC3001C",
+          "deviceName": "My Mac",
+          "modelName": "Mac mini",
+          "osBuildNumber": "26A434",
+          "osVersion": "27.0.1",
+          "platform": "macOS"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 25,
+        "skippedTests": 0,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "BlueIce · Built with macOS 27.0.1",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1791775965.198,
+    "passedTests": 25,
+    "result": "Passed",
+    "runtimeWarnings": [
+      {
+        "issueType": "Runtime Warning",
+        "message": "[Internal] Thread running at User-interactive quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions"
+      },
+      {
+        "issueType": "Runtime Warning",
+        "message": "[Internal] Thread running at User-interactive quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions"
+      },
+      {
+        "issueType": "Runtime Warning",
+        "message": "[Internal] Thread running at User-interactive quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions"
+      },
+      {
+        "issueType": "Runtime Warning",
+        "message": "[Internal] Thread running at User-interactive quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions"
+      },
+      {
+        "issueType": "Runtime Warning",
+        "message": "[Internal] Thread running at User-interactive quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions"
+      },
+      {
+        "issueType": "Runtime Warning",
+        "message": "[Internal] Thread running at User-interactive quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions"
+      },
+      {
+        "issueType": "Runtime Warning",
+        "message": "[Internal] Thread running at User-interactive quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions"
+      }
+    ],
+    "skippedTests": 0,
+    "startTime": 1791775665.313,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - BlueIce",
+    "topInsights": [],
+    "totalTestCount": 25
+  },
+  "result_bundle": "frontend/macos/.build/results-20261012-112742.xcresult",
+  "log": "frontend/macos/.build/drag-interop-and-promises-final.log",
+  "log_sha256": "8bb2577bca04ae3ea7da0c45ab125ee772ac6b0e08984480032d502c312a12b2",
+  "unchanged_backend_input_count": 1740,
+  "rust_workspace": "No fresh complete execution in this increment; backend inputs match accepted parent",
+  "signatures": [
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/DragInteropFixture.app",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-core",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-launcher",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-bluejs-host",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/bluejs-regexp-worker",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-gatekeeper",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-downloads",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-extension-host",
+      "exit": 0
+    },
+    {
+      "path": "frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-assistant",
+      "exit": 0
+    }
+  ],
+  "cleanup": {
+    "automatic_update": [
+      "{\"root_removed\": true, \"server_thread_gone\": true, \"owned_pids\": {}, \"remaining_owned_pids\": [], \"owned_group_gone\": true, \"command_group_gone\": true}"
+    ],
+    "sftp": [
+      "{\"root_removed\": true, \"helper_exit\": 0, \"helper_group_gone\": true, \"server_group_gone\": true}"
+    ]
+  },
+  "pending": [
+    "Windows complete Rust/WinUI runtime; unchanged 4 GiB C: guard",
+    "Default/custom source images and setDragImage",
+    "Broader file-promise lifecycle, incoming/mixed interoperability and media-type metadata",
+    "Physical IME, VoiceOver, monitor/printer transitions",
+    "FileReader, streams, object URLs and broader DOM/events",
+    "Full native acceptance and final complete Rust/static/build gates"
+  ],
+  "screenshots": [
+    {
+      "path": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-drag-related-D1F6A1B7-42A4-4085-8C57-9A0547A4A980.png",
+      "sha256": "facea481b6c0f0b3647c1b719254a72615d72eb9fe22f543a9bc318b14a7c009"
+    },
+    {
+      "path": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-drag-related-90758097-26E3-4EA0-B3F2-752BC1B2DB32.png",
+      "sha256": "9bf36573c8eaf5fd7f0007c6779c41dfa75b1066f8b537550667c9d7f72fe554"
+    },
+    {
+      "path": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-drag-related-FD33752E-A51E-44F2-8F48-36B246F609D9.png",
+      "sha256": "6292edc67c53f770096b365324c48cee24ec38a2441ac956fcc64df4e390ad31"
+    },
+    {
+      "path": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-drag-related-78B4A4F1-7EDF-4E4E-ADF7-AEAC430BFD22.png",
+      "sha256": "ea16d16a5bf5f0024d704fd293f88f657d27b1243375358dadf2579ffa665885"
+    }
+  ]
+}

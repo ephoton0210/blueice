@@ -27,6 +27,7 @@ struct Args {
     enable_dom_text_profile: bool,
     enable_dom_mutation_profile: bool,
     enable_dom_event_profile: bool,
+    enable_dom_file_profile: bool,
     runtime_limits: BlueJsHostRuntimeLimits,
 }
 
@@ -39,6 +40,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut enable_dom_text_profile = false;
     let mut enable_dom_mutation_profile = false;
     let mut enable_dom_event_profile = false;
+    let mut enable_dom_file_profile = false;
     let mut max_realms = None;
     let mut max_programs_per_realm = None;
     let mut max_bytecode_bytes_per_realm = None;
@@ -86,6 +88,12 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                     return Err("--enable-dom-event-profile may be supplied only once".to_string());
                 }
                 enable_dom_event_profile = true;
+            }
+            "--enable-dom-file-profile" => {
+                if enable_dom_file_profile {
+                    return Err("--enable-dom-file-profile may be supplied only once".into());
+                }
+                enable_dom_file_profile = true;
             }
             "--max-realms" => {
                 if max_realms.is_some() {
@@ -157,11 +165,15 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if enable_dom_event_profile && script_socket.is_none() {
         return Err("--enable-dom-event-profile requires --script-socket".to_string());
     }
+    if enable_dom_file_profile && script_socket.is_none() {
+        return Err("--enable-dom-file-profile requires --script-socket".into());
+    }
     if [
         enable_dom_lookup_probe,
         enable_dom_text_profile,
         enable_dom_mutation_profile,
         enable_dom_event_profile,
+        enable_dom_file_profile,
     ]
     .into_iter()
     .filter(|enabled| *enabled)
@@ -219,6 +231,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         enable_dom_mutation_profile,
         enable_dom_event_profile,
         runtime_limits,
+        enable_dom_file_profile,
     })
 }
 
@@ -250,14 +263,19 @@ fn main() -> ExitCode {
         }
     };
     if let Some(script_socket) = args.script_socket {
-        if let Err(error) = host.configure_script_dom_capability(
-            script_socket,
-            args.session_token.clone(),
-            args.enable_dom_lookup_probe,
-            args.enable_dom_text_profile,
-            args.enable_dom_mutation_profile,
-            args.enable_dom_event_profile,
-        ) {
+        let configured = if args.enable_dom_file_profile {
+            host.configure_script_file_dom_capability(script_socket, args.session_token.clone())
+        } else {
+            host.configure_script_dom_capability(
+                script_socket,
+                args.session_token.clone(),
+                args.enable_dom_lookup_probe,
+                args.enable_dom_text_profile,
+                args.enable_dom_mutation_profile,
+                args.enable_dom_event_profile,
+            )
+        };
+        if let Err(error) = configured {
             eprintln!("blueice-bluejs-host: invalid private script capability: {error}");
             return ExitCode::FAILURE;
         }

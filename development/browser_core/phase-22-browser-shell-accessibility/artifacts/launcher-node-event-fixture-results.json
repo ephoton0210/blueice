@@ -1,0 +1,130 @@
+{
+  "base_commit": "d37791e2e",
+  "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "change_scope": "Unix-only launcher integration fixture and diagnostics; production sources/binaries unchanged",
+  "source_sha256": "7d4b33f8bd75dfeabe9bf7ab316ffd041433037586f57431496727f02cd1d934",
+  "red_original_runtime": {
+    "source": "ec4217440",
+    "exit_code": 101,
+    "failed": 1,
+    "log_sha256": "bddff78b724e97a544e16531f3f279be9d15ba16ad495e1425b2a64736f66c59"
+  },
+  "red_same_corrected_runtime": {
+    "fixture_source": "d37791e2e",
+    "runtime_source": "504eeb924",
+    "exit_code": 101,
+    "failed": 1,
+    "log_sha256": "0c69fce44d6921edbc058fb6b457b0f5780a5bac69e9903defe3e8eefe6e148e"
+  },
+  "green_same_corrected_runtime": {
+    "session_id": 34583,
+    "exit_code": 0,
+    "passed": 7,
+    "failed": 0,
+    "ignored": 0,
+    "log_sha256": "fdd43a87c65328f9cef743b9be10cede52d177bf5a39a60cff96b8bca11253b3",
+    "case_names": [
+      "spawn_connects_to_a_real_core_and_cleans_up_on_drop",
+      "supervised_child_event_profile_pairs_static_and_runtime_unsupported_members",
+      "supervised_child_dom_text_profile_executes_checked_bluets_and_renders_live_text",
+      "supervised_child_script_completes_a_synchronous_core_dom_lookup",
+      "supervised_child_gets_a_private_script_listener_that_denies_foreign_hello",
+      "supervised_child_click_event_profile_runs_js_and_bluets_before_navigation",
+      "supervised_child_dom_mutation_profile_renders_created_subtree_from_js_and_bluets"
+    ]
+  },
+  "retained_assertions": [
+    "callable node dispatchEvent",
+    "real JS click and typed ActOn click",
+    "three FrameReady replies",
+    "native click default navigation cancelled",
+    "throwing JS listener contained",
+    "queued Promise DOM mutation",
+    "typed DOM mutation and created subtree"
+  ],
+  "build": {
+    "compiler": "Rust1.96 standalone test compiler",
+    "native_link_search_paths_from": "Immutable existing Cargo build-script output files",
+    "command": [
+      "/Users/ephoton/.cargo/bin/rustup",
+      "run",
+      "1.96.0",
+      "rustc",
+      "--edition=2021",
+      "--test",
+      "/private/tmp/blueice-launcher-event-order-20261013/backend/launcher/tests/spawn_core.rs",
+      "-L",
+      "dependency=/private/tmp/blueice-array-from-async-target/debug/deps",
+      "-o",
+      "/private/tmp/blueice-launcher-event-order-20261013/.build/diagnostic/debug/deps/spawn_core-diagnostic",
+      "--extern",
+      "blueice_launcher=/private/tmp/blueice-array-from-async-target/debug/deps/libblueice_launcher-5d1e7d07157a1bac.rlib",
+      "--extern",
+      "blueice_ipc=/private/tmp/blueice-array-from-async-target/debug/deps/libblueice_ipc-83148200b33bf4ec.rlib",
+      "--extern",
+      "blueice_ai_gatekeeper=/private/tmp/blueice-array-from-async-target/debug/deps/libblueice_ai_gatekeeper-b6ae5782a3ae4fec.rlib",
+      "--extern",
+      "blueice_bluets=/private/tmp/blueice-array-from-async-target/debug/deps/libblueice_bluets-6b004e819815416b.rlib",
+      "--extern",
+      "blueice_bluets_bluejs=/private/tmp/blueice-array-from-async-target/debug/deps/libblueice_bluets_bluejs-01a7c2cefe501f50.rlib",
+      "-L",
+      "native=/opt/homebrew/opt/openssl@3/lib",
+      "-L",
+      "native=/private/tmp/blueice-array-from-async-target/debug/build/libssh2-sys-d10cc3142c3a3d82/out/build",
+      "-L",
+      "native=/private/tmp/blueice-array-from-async-target/debug/build/ring-d682103b2f061122/out",
+      "-L",
+      "native=/private/tmp/blueice-array-from-async-target/debug/build/wasmtime-840064ffba028bac/out"
+    ],
+    "historical_output_directory_moved_to": "/private/tmp/blueice-spawn-core-diagnostic-build-20261013",
+    "diagnostic_binaries_sha256": {
+      "spawn_core-original-fixture": "e4bd1a3972b2887a543a43cb06323ac22c3c9e69bf443af64d0776549f3d528e",
+      "spawn_core-diagnostic": "96a31cedeb8ddde69770def45bf05438967464b7bba65d119bb37e31b24170f6"
+    },
+    "existing_cache_or_runtime_binaries_mutated": false
+  },
+  "fixed_runtime_binaries": {
+    "blueice-core": {
+      "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-core",
+      "bytes": 87734560,
+      "sha256": "6754944660867b6e6c3a5eb90aed759c0a170bbba7dbb67c928082f4ba6f0bf4"
+    },
+    "blueice-launcher": {
+      "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-launcher",
+      "bytes": 8450768,
+      "sha256": "3308e25db00f343f910151a8e84df1e8f9d4b9954ec7dd30c95d775f97e71893"
+    },
+    "blueice-bluejs-host": {
+      "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-bluejs-host",
+      "bytes": 45176912,
+      "sha256": "0e1c26935a7ebae74d8089c607684e1f2f3e74934b694fa1eefa5d31dc0ac9e0"
+    },
+    "bluejs-regexp-worker": {
+      "path": "/private/tmp/blueice-array-from-async-target/debug/bluejs-regexp-worker",
+      "bytes": 1718880,
+      "sha256": "07e45474be4133153e3c1e22ac538072a79cec7a42563ca1a941c7c2a9cccc63"
+    },
+    "blueice-ai-gatekeeper": {
+      "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-ai-gatekeeper",
+      "bytes": 5083712,
+      "sha256": "3268ba6046e09bfc80fbb7a00bad05b95ea2663a8dd8a86f06a8a0ddaa805f8d"
+    },
+    "blueice-downloads": {
+      "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-downloads",
+      "bytes": 9294880,
+      "sha256": "e50d859ba6bae28bd8b5e2d144f295fa4ee4a60d3b8d82947af1871fbf34b02a"
+    },
+    "blueice-extension-host": {
+      "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-extension-host",
+      "bytes": 16272896,
+      "sha256": "ec19b4b96f737fa5f7f8da85724fbd30f856fa1232a780b757d965c95bb60885"
+    },
+    "blueice-ai-assistant": {
+      "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-ai-assistant",
+      "bytes": 4488464,
+      "sha256": "1e67ed01190c27497cc4e4111a67548a11e25de2966aa66c92376b1104b8547c"
+    }
+  },
+  "format": "Rust1.96 rustfmt edition2021 passed",
+  "remaining": "Canonical complete corrected macOS workspace gate after main integration; current native/Windows gates use identical504production runtime"
+}

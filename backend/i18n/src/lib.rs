@@ -42,10 +42,20 @@ pub const SUPPORTED_LOCALES: &[&str] = &["en", "zh-TW"];
 
 fn resource_text(locale: &str, namespace: &str) -> Option<&'static str> {
     match (locale, namespace) {
+        ("en", "assistant") => Some(include_str!("../locales/en/assistant.ftl")),
         ("en", "credits") => Some(include_str!("../locales/en/credits.ftl")),
+        ("en", "downloads") => Some(include_str!("../locales/en/downloads.ftl")),
         ("en", "frontend") => Some(include_str!("../locales/en/frontend.ftl")),
+        ("en", "gatekeeper-settings") => {
+            Some(include_str!("../locales/en/gatekeeper-settings.ftl"))
+        }
+        ("zh-TW", "assistant") => Some(include_str!("../locales/zh-TW/assistant.ftl")),
         ("zh-TW", "credits") => Some(include_str!("../locales/zh-TW/credits.ftl")),
+        ("zh-TW", "downloads") => Some(include_str!("../locales/zh-TW/downloads.ftl")),
         ("zh-TW", "frontend") => Some(include_str!("../locales/zh-TW/frontend.ftl")),
+        ("zh-TW", "gatekeeper-settings") => {
+            Some(include_str!("../locales/zh-TW/gatekeeper-settings.ftl"))
+        }
         // Test-only fixtures for the two defensive panics in
         // `bundle_for` below, which no real bundled `.ftl` file should
         // ever trigger -- these exist purely so those panics are
@@ -190,6 +200,111 @@ mod tests {
         "translation-notice",
     ];
     const FRONTEND_KEYS: &[&str] = &["window-title-default", "window-title-navigated"];
+    /// The `about:downloads` page (`phase-10-download-manager/PLAN.md`).
+    /// Deliberately no message takes an argument: Fluent wraps a placeable in
+    /// bidi-isolation marks, which would show up as stray glyphs in page text,
+    /// so the page composes values and labels in Rust instead.
+    const DOWNLOADS_KEYS: &[&str] = &[
+        "downloads-title",
+        "downloads-empty",
+        "downloads-unavailable",
+        "downloads-count-one",
+        "downloads-count-other",
+        "state-queued",
+        "state-awaiting-clearance",
+        "state-active",
+        "state-paused",
+        "state-completed",
+        "state-failed",
+        "state-cancelled",
+        "state-blocked",
+        "state-unknown",
+        "label-of",
+        "label-total-unknown",
+        "label-speed",
+        "label-eta",
+        "label-connections",
+        "label-mode",
+        "label-retries",
+        "label-last-error",
+        "label-blocked",
+        "label-saved-to",
+        "mode-segmented",
+        "mode-single-stream",
+        "mode-single-unknown-length",
+        "note-resume-unsafe",
+        "segments-heading",
+    ];
+    /// The `about:assistant` page (`phase-7-local-ai/PLAN.md`).
+    const ASSISTANT_KEYS: &[&str] = &[
+        "assistant-title",
+        "assistant-empty",
+        "assistant-unavailable",
+        "assistant-note",
+        "kind-summary",
+        "kind-organized",
+        "label-source",
+        "label-request",
+        "label-failed",
+        "settings-heading",
+        "settings-none",
+        "settings-missing",
+        "settings-invalid",
+        "settings-file",
+        "settings-apply",
+        "settings-backend",
+        "backend-none",
+        "backend-loopback",
+        "backend-candle",
+        "backend-both",
+        "settings-loopback",
+        "settings-candle-model",
+        "settings-candle-tokenizer",
+        "settings-candle-context",
+        "settings-idle",
+        "settings-memory",
+        "settings-memory-none",
+        "settings-nice",
+    ];
+    const GATEKEEPER_SETTINGS_KEYS: &[&str] = &[
+        "title",
+        "intro",
+        "ruleset-version",
+        "model-review",
+        "model-active",
+        "model-inactive",
+        "baseline-rules-heading",
+        "workflow-heading",
+        "category",
+        "conditions",
+        "trigger",
+        "custom-blocklist-heading",
+        "mandatory",
+        "adjustable",
+        "add-host-label",
+        "add-host-button",
+        "remove-host-button",
+        "custom-blocklist-empty",
+        "custom-phrases-heading",
+        "add-phrase-label",
+        "add-phrase-button",
+        "remove-phrase-button",
+        "custom-phrases-empty",
+        "custom-extensions-heading",
+        "add-extension-label",
+        "add-extension-button",
+        "remove-extension-button",
+        "custom-extensions-empty",
+        "custom-popup-phrases-heading",
+        "add-popup-phrase-label",
+        "add-popup-phrase-button",
+        "remove-popup-phrase-button",
+        "custom-popup-phrases-empty",
+        "locked-note",
+        "unavailable",
+        "saved",
+        "invalid",
+    ];
 
     #[test]
     fn every_supported_locale_defines_every_key_the_default_locale_does() {
@@ -197,7 +312,13 @@ mod tests {
         // documents -- a resource file silently missing a key it
         // should have, discovered here at test time rather than by a
         // user seeing English leak into an otherwise-translated screen.
-        for (namespace, keys) in [("credits", CREDITS_KEYS), ("frontend", FRONTEND_KEYS)] {
+        for (namespace, keys) in [
+            ("credits", CREDITS_KEYS),
+            ("frontend", FRONTEND_KEYS),
+            ("downloads", DOWNLOADS_KEYS),
+            ("assistant", ASSISTANT_KEYS),
+            ("gatekeeper-settings", GATEKEEPER_SETTINGS_KEYS),
+        ] {
             for locale in SUPPORTED_LOCALES {
                 let bundle = bundle_for(locale, namespace)
                     .unwrap_or_else(|| panic!("{locale}/{namespace} has no resource at all"));
@@ -207,6 +328,23 @@ mod tests {
                         "{locale}/{namespace} is missing key {key:?} that {DEFAULT_LOCALE} defines"
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn no_downloads_message_takes_an_argument_so_no_isolation_marks_reach_the_page() {
+        for locale in SUPPORTED_LOCALES {
+            for key in DOWNLOADS_KEYS {
+                let text = translate(locale, "downloads", key, &[("x", "y")]);
+                assert!(
+                    !text.contains(FSI) && !text.contains(PDI),
+                    "{locale}/{key}: {text:?}"
+                );
+                assert!(
+                    !text.contains("{ $") && !text.contains("{$"),
+                    "{locale}/{key} has a placeable: {text:?}"
+                );
             }
         }
     }

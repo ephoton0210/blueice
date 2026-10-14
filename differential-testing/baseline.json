@@ -1,0 +1,349 @@
+{
+  "schemaVersion": 1,
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "summary": {
+    "fixturesCompared": 30,
+    "domIdenticalCount": 30,
+    "averageDomSimilarity": 1,
+    "averagePixelMatch": 0.9968397222222222
+  },
+  "missing": {
+    "onlyBlueice": [],
+    "onlyChromium": []
+  },
+  "results": [
+    {
+      "fixture": "adoption-agency.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 79,
+        "totalPixels": 480000,
+        "matchFraction": 0.9998354166666666
+      }
+    },
+    {
+      "fixture": "adoption-agency.dat_1",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 75,
+        "totalPixels": 480000,
+        "matchFraction": 0.99984375
+      }
+    },
+    {
+      "fixture": "adoption-agency.dat_2",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 309,
+        "totalPixels": 480000,
+        "matchFraction": 0.99935625
+      }
+    },
+    {
+      "fixture": "adoption-agency.dat_3",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 0,
+        "totalPixels": 480000,
+        "matchFraction": 1
+      }
+    },
+    {
+      "fixture": "adoption-agency.dat_4",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 105,
+        "totalPixels": 480000,
+        "matchFraction": 0.99978125
+      }
+    },
+    {
+      "fixture": "adoption-agency.dat_5",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 180,
+        "totalPixels": 480000,
+        "matchFraction": 0.999625
+      }
+    },
+    {
+      "fixture": "adoption-agency.dat_6",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 159,
+        "totalPixels": 480000,
+        "matchFraction": 0.99966875
+      }
+    },
+    {
+      "fixture": "basic.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 61,
+        "totalPixels": 480000,
+        "matchFraction": 0.9998729166666667
+      }
+    },
+    {
+      "fixture": "basic.dat_1",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 44,
+        "totalPixels": 480000,
+        "matchFraction": 0.9999083333333333
+      }
+    },
+    {
+      "fixture": "basic.dat_2",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 87,
+        "totalPixels": 480000,
+        "matchFraction": 0.99981875
+      }
+    },
+    {
+      "fixture": "basic.dat_3",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 59,
+        "totalPixels": 480000,
+        "matchFraction": 0.9998770833333334
+      }
+    },
+    {
+      "fixture": "css.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 61,
+        "totalPixels": 480000,
+        "matchFraction": 0.9998729166666667
+      }
+    },
+    {
+      "fixture": "css.dat_1",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 169,
+        "totalPixels": 480000,
+        "matchFraction": 0.9996479166666666
+      }
+    },
+    {
+      "fixture": "css.dat_2",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 61,
+        "totalPixels": 480000,
+        "matchFraction": 0.9998729166666667
+      }
+    },
+    {
+      "fixture": "css.dat_3",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 15200,
+        "totalPixels": 480000,
+        "matchFraction": 0.9683333333333334
+      }
+    },
+    {
+      "fixture": "demo.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 7848,
+        "totalPixels": 480000,
+        "matchFraction": 0.98365
+      }
+    },
+    {
+      "fixture": "differential.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 313,
+        "totalPixels": 480000,
+        "matchFraction": 0.9993479166666667
+      }
+    },
+    {
+      "fixture": "differential.dat_1",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 301,
+        "totalPixels": 480000,
+        "matchFraction": 0.9993729166666667
+      }
+    },
+    {
+      "fixture": "foster-parenting.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 358,
+        "totalPixels": 480000,
+        "matchFraction": 0.9992541666666667
+      }
+    },
+    {
+      "fixture": "foster-parenting.dat_1",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 165,
+        "totalPixels": 480000,
+        "matchFraction": 0.99965625
+      }
+    },
+    {
+      "fixture": "foster-parenting.dat_2",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 136,
+        "totalPixels": 480000,
+        "matchFraction": 0.9997166666666667
+      }
+    },
+    {
+      "fixture": "layout.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 88,
+        "totalPixels": 480000,
+        "matchFraction": 0.9998166666666667
+      }
+    },
+    {
+      "fixture": "layout.dat_1",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 324,
+        "totalPixels": 480000,
+        "matchFraction": 0.999325
+      }
+    },
+    {
+      "fixture": "layout.dat_2",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 22,
+        "totalPixels": 480000,
+        "matchFraction": 0.9999541666666667
+      }
+    },
+    {
+      "fixture": "paint.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 18376,
+        "totalPixels": 480000,
+        "matchFraction": 0.9617166666666667
+      }
+    },
+    {
+      "fixture": "reconstruction.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 484,
+        "totalPixels": 480000,
+        "matchFraction": 0.9989916666666667
+      }
+    },
+    {
+      "fixture": "tables.dat_0",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 103,
+        "totalPixels": 480000,
+        "matchFraction": 0.9997854166666666
+      }
+    },
+    {
+      "fixture": "tables.dat_1",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 167,
+        "totalPixels": 480000,
+        "matchFraction": 0.9996520833333333
+      }
+    },
+    {
+      "fixture": "tables.dat_2",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 87,
+        "totalPixels": 480000,
+        "matchFraction": 0.99981875
+      }
+    },
+    {
+      "fixture": "tables.dat_3",
+      "domIdentical": true,
+      "domSimilarity": 1,
+      "screenshot": {
+        "comparable": true,
+        "mismatchedPixels": 87,
+        "totalPixels": 480000,
+        "matchFraction": 0.99981875
+      }
+    }
+  ]
+}

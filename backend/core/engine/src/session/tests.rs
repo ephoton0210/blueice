@@ -29,7 +29,7 @@ use std::time::Instant;
 
 fn temp_frame_dir(label: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "blueice-session-test-{label}-{}",
+        "blueice-session-unit-test-{label}-{}",
         std::process::id()
     ))
 }
@@ -53,7 +53,10 @@ fn client_pair() -> (UnixStream, UnixStream) {
 fn unique_gatekeeper_socket_path(_label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("bl-gk-{}-{n}.sock", std::process::id()))
+    // The feature tests have their own counter in the same test process.
+    // Keep this namespace distinct so their clearing listener cannot answer
+    // a test that deliberately points at an unreachable gatekeeper.
+    std::env::temp_dir().join(format!("bl-unit-gk-{}-{n}.sock", std::process::id()))
 }
 
 /// Spins up a background listener that behaves exactly like `ai-
@@ -852,16 +855,17 @@ fn direct_page_host_is_invalidated_by_a_session_document_replacement() {
 fn synchronous_navigation_paths_supersede_pending_navigation_sequences() {
     let dir = temp_frame_dir("sync-navigation-supersedes");
     std::fs::create_dir_all(&dir).unwrap();
-    let mut page = Page::new(320.0, 200.0);
+    let mut tabs = TabManager::new(320.0, 200.0);
+    let tab = tabs.default_tab();
     let mut stream = Vec::new();
     let mut generation = 0;
-    let tab = TabId::from_u64(7);
+    let mut downloads_refresher = DownloadsRefresher::default();
     let mut pending_nav_seq = HashMap::from([(tab, 41)]);
     let (completion_tx, _completion_rx) = mpsc::channel();
     let unused_gatekeeper = unique_gatekeeper_socket_path("sync-navigation-supersedes");
 
     begin_gated_navigation(
-        &mut page,
+        &mut tabs,
         &mut stream,
         &dir,
         &mut generation,
@@ -871,14 +875,16 @@ fn synchronous_navigation_paths_supersede_pending_navigation_sequences() {
         "about:blank".to_string(),
         PendingKind::Navigate,
         &mut pending_nav_seq,
+        &mut downloads_refresher,
         &completion_tx,
         &unused_gatekeeper,
+        None,
     )
     .unwrap();
     assert_eq!(pending_nav_seq[&tab], 42);
 
     begin_gated_navigation(
-        &mut page,
+        &mut tabs,
         &mut stream,
         &dir,
         &mut generation,
@@ -888,8 +894,10 @@ fn synchronous_navigation_paths_supersede_pending_navigation_sequences() {
         "file:///not-allowed".to_string(),
         PendingKind::Navigate,
         &mut pending_nav_seq,
+        &mut downloads_refresher,
         &completion_tx,
         &unused_gatekeeper,
+        None,
     )
     .unwrap();
     assert_eq!(pending_nav_seq[&tab], 43);
@@ -1257,6 +1265,8 @@ fn get_dom_returns_the_full_tree_unfiltered_by_the_ai_representation() {
 mod dispatch_gaps;
 #[path = "tests/navigation.rs"]
 mod navigation;
+#[path = "tests/script_frames.rs"]
+mod script_frames;
 #[path = "tests/session_actions.rs"]
 mod session_actions;
 #[path = "tests/session_wrappers.rs"]

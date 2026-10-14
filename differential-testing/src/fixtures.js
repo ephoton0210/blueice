@@ -97,5 +97,22 @@ export function loadFixtures(dir) {
   return all;
 }
 
+/**
+ * Builds the browser input for a shared fixture. `#css` is an author
+ * stylesheet in the Rust fixture format, not literal HTML, so embed it in a
+ * `<style>` element for both differential-testing browsers. Prefer an
+ * existing head; otherwise a leading style element makes both HTML parsers
+ * create the implicit head the normal way.
+ */
+export function htmlForFixture(fixture) {
+  const html = fixture.sections.data;
+  const css = fixture.sections.css;
+  if (!css) return html;
+  const style = `<style>${css}</style>`;
+  return /<\/head\s*>/i.test(html)
+    ? html.replace(/<\/head\s*>/i, `${style}</head>`)
+    : `${style}${html}`;
+}
+
 /** The shared fixture corpus's location, resolved relative to this file. */
 export const FIXTURES_DIR = join(__dirname, "../../development/browser_core/testing/fixtures");

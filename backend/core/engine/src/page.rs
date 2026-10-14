@@ -18,28 +18,47 @@
 //! it" ([`Page::render_visible`]), not overflow/clipping during layout
 //! itself.
 
+use crate::assistant_page::{assistant_html, is_assistant_url, AssistantPanel};
+use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsSource, DownloadsView};
+use crate::gatekeeper_settings_page::{
+    gatekeeper_settings_html, is_gatekeeper_settings_url, GatekeeperSettingsSource,
+    GatekeeperSettingsView, SettingsNotice,
+};
 use blueice_css::{cascade, ua_stylesheet, ComputedStyle, Origin, Rule};
 use blueice_dom::{Document, NodeData, NodeId};
+use blueice_ipc::gatekeeper::GatekeeperSettingsChange;
 use blueice_ipc::{AiSnapshot, NodeAction};
 use blueice_layout::{layout, Constraints, Fragment};
 use blueice_paint::{paint, Color, Frame, PaintCommand, Rect};
 use blueice_raster::{rasterize, Pixmap};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use url::Url;
 
 // A child-visible handle must never numerically alias a node in another
 // document, even when both DOM allocators assign the same internal NodeId.
 static NEXT_SCRIPT_NODE_HANDLE: AtomicU64 = AtomicU64::new(1);
 
 pub struct Page {
+    pub(crate) object_url_origin: Option<crate::object_urls::DocumentOrigin>,
+    pub(crate) object_url_environment: Option<crate::object_urls::DocumentEnvironment>,
+    pub(crate) submission_pending: bool,
+    pub(crate) post_expired: bool,
+    pub(crate) last_navigation: Option<crate::navigation_request::BrowserNavigation>,
     doc: Document,
     styles: HashMap<NodeId, ComputedStyle>,
     fragment: Fragment,
     ua: Vec<Rule>,
     viewport_width: f64,
     viewport_height: f64,
+    pub(crate) display_viewport: Option<blueice_ipc::viewport::DisplayViewport>,
+    pub(crate) page_zoom: f64,
+    pub(crate) display_preferences: Option<blueice_ipc::display::DisplayPreferences>,
     scroll_y: f64,
     url: Option<String>,
+    network_response: Option<blueice_ipc::extension::NetworkResponseInfo>,
+    network_trace: Option<blueice_ipc::extension::NetworkTraceInfo>,
     /// Monotonically changes whenever this navigable context receives a
     /// replacement document. Page-script realms use it to distinguish a
     /// same-origin navigation from the document that preceded it.
@@ -47,32 +66,135 @@ pub struct Page {
     /// Only handles minted for this exact document can resolve to its nodes.
     script_nodes: HashMap<u64, NodeId>,
     script_node_handles: HashMap<NodeId, u64>,
+    /// Set when page script changed the document after the last published
+    /// frame, so the session can push the new render pass without waiting for
+    /// an unrelated request to carry it.
+    script_change_unpublished: bool,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
+    native_editor: Option<native_editing::EditorSession>,
+    native_drag: Option<native_drag::DragDestination>,
+    native_drag_source: Option<native_drag::DragSource>,
+    native_drag_last_id: u64,
+    native_drag_source_last_id: u64,
+    document_selection: document_selection::DocumentSelection,
+    native_text_scroll: HashMap<NodeId, (f64, f64)>,
+    native_text_scroll_target: Option<(NodeId, blueice_ipc::input::TextRange)>,
+    native_select: native_select::SelectSession,
+    native_undo: native_editing::undo::UndoHistory,
+    native_focus_generation: u64,
+    native_focus_exit: Option<blueice_ipc::input::FocusDirection>,
+    native_focus_start: Option<NodeId>,
+    /// Core-owned defaults survive live native/extension value changes. This
+    /// private state never enters accessibility or script IPC snapshots.
+    native_form_defaults: HashMap<NodeId, native_forms::ControlDefault>,
+    native_files: HashMap<NodeId, Vec<blueice_ipc::file_input::FileData>>,
+    native_file_revision: u64,
     highlighted: Option<NodeId>,
+    find: find::FindSession,
+    live_regions: accessibility::LiveRegions,
+    /// The most recent raster frame for this one tab. Another tab rendering
+    /// must not invalidate this tab's frame/representation pairing.
+    frame_generation: u64,
+    /// Where `about:downloads` reads its list from; `None` (the default)
+    /// renders the "service is not running" page.
+    downloads: Option<Arc<DownloadsSource>>,
+    /// Where `about:settings` reads and updates the actual, private Phase 7
+    /// gatekeeper policy. It is optional so isolated parser/render tests do
+    /// not need a process, in which case the page says it is unavailable.
+    gatekeeper_settings: Option<Arc<GatekeeperSettingsSource>>,
+    settings_notice: Option<SettingsNotice>,
+    /// Where `about:assistant` reads the shared list of assistant results;
+    /// `None` (isolated tests) renders the "not configured" page.
+    assistant_panel: Option<Arc<AssistantPanel>>,
+    /// Live-translation substitutions for the current document, with the
+    /// retained originals (`phase-7-local-ai/PLAN.md`). Empty when the page
+    /// was not translated.
+    translation: crate::translation::TranslationState,
 }
 
 impl Page {
     pub fn new(viewport_width: f64, viewport_height: f64) -> Self {
+        Self::new_continuing_from(viewport_width, viewport_height, 0)
+    }
+
+    /// Creates a page whose first DOM node starts at `next_node_id`. This is
+    /// crate-visible because [`crate::TabManager`] can retain complete pages
+    /// when its optional history-snapshot policy is enabled: a replacement
+    /// page in one tab must continue after the highest ID in every retained
+    /// snapshot, just as [`Self::load_html`] already continues after the page
+    /// it replaces. Otherwise a stale node ID from a snapshot in that tab's
+    /// Back/Forward cache could be misdirected at an unrelated document.
+    pub(crate) fn new_continuing_from(
+        viewport_width: f64,
+        viewport_height: f64,
+        next_node_id: u64,
+    ) -> Self {
         Page {
-            doc: Document::new(),
+            object_url_origin: None,
+            object_url_environment: None,
+            doc: Document::new_continuing_from(next_node_id),
             styles: HashMap::new(),
             fragment: Fragment::empty_block(),
             ua: ua_stylesheet(),
             viewport_width,
             viewport_height,
+            display_viewport: None,
+            page_zoom: 1.0,
+            display_preferences: None,
             scroll_y: 0.0,
             url: None,
+            network_response: None,
+            network_trace: None,
             document_generation: 0,
             script_nodes: HashMap::new(),
             script_node_handles: HashMap::new(),
+            script_change_unpublished: false,
             hovered: None,
             focused: None,
+            native_editor: None,
+            native_drag: None,
+            native_drag_source: None,
+            native_drag_last_id: 0,
+            native_drag_source_last_id: 0,
+            document_selection: document_selection::DocumentSelection::default(),
+            native_text_scroll: HashMap::new(),
+            native_text_scroll_target: None,
+            native_select: native_select::SelectSession::default(),
+            native_undo: native_editing::undo::UndoHistory::default(),
+            native_focus_generation: 0,
+            native_focus_exit: None,
+            native_focus_start: None,
+            native_form_defaults: HashMap::new(),
+            native_files: HashMap::new(),
+            native_file_revision: 0,
+            last_navigation: None,
+            post_expired: false,
+            submission_pending: false,
             highlighted: None,
+            find: find::FindSession::default(),
+            live_regions: accessibility::LiveRegions::default(),
+            frame_generation: 0,
+            downloads: None,
+            gatekeeper_settings: None,
+            settings_notice: None,
+            assistant_panel: None,
+            translation: crate::translation::TranslationState::default(),
         }
     }
 
     fn load_html(&mut self, html: &str) {
+        self.load_html_translating(html, None);
+    }
+
+    /// Parses `html`, substitutes `translations` for its translatable text
+    /// (see [`crate::translation`]) when given and well-formed, then styles and
+    /// lays out. The substitution sits between parse and cascade so layout
+    /// measures the text that is actually shown; a wrong-length answer leaves
+    /// the original page (fail-open).
+    fn load_html_translating(&mut self, html: &str, translations: Option<&[String]>) {
+        self.object_url_environment = None;
+        self.object_url_origin = None;
         // `parse_continuing_from` (not `parse`) so this replacement
         // document's NodeIds never collide with -- or get numerically
         // confused with -- the document it's replacing. A client that
@@ -82,10 +204,26 @@ impl Page {
         // an unrelated node that happens to have been assigned the same
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
+        self.translation = translations
+            .and_then(|translations| {
+                crate::translation::apply_translation(&mut self.doc, translations)
+            })
+            .unwrap_or_default();
+        self.network_response = None;
+        self.network_trace = None;
+        self.native_form_defaults.clear();
+        self.native_select = native_select::SelectSession::default();
+        self.native_undo.clear();
+        self.native_text_scroll.clear();
+        self.native_text_scroll_target = None;
+        self.native_files.clear();
+        self.native_file_revision = self.native_file_revision.wrapping_add(1);
+        self.last_navigation = None;
+        self.post_expired = false;
+        self.submission_pending = false;
         self.document_generation = self.document_generation.wrapping_add(1);
         self.script_nodes.clear();
         self.script_node_handles.clear();
-        self.recascade();
         self.scroll_y = 0.0;
         // A fresh document invalidates every NodeId a prior interaction
         // might have recorded -- holding onto a stale ID here would let
@@ -93,11 +231,31 @@ impl Page {
         // the *previous* page.
         self.hovered = None;
         self.focused = None;
+        self.native_editor = None;
+        self.clear_native_drag();
+        self.native_drag_last_id = 0;
+        self.native_drag_source_last_id = 0;
+        self.document_selection = document_selection::DocumentSelection::default();
+        self.native_focus_exit = None;
+        self.native_focus_start = None;
         self.highlighted = None;
+        self.find = find::FindSession::default();
+        self.live_regions = accessibility::LiveRegions::default();
+        self.restyle_and_relayout();
+    }
+
+    /// Re-cascades the current DOM then reflows it. Script mutation must use
+    /// this rather than [`Self::relayout`] alone because a node created after
+    /// navigation has no entry in the prior `styles` map; layout would leave
+    /// script DOM state and the rendered frame out of sync.
+    fn restyle_and_relayout(&mut self) {
+        self.prune_native_files();
+        self.recascade();
         self.relayout();
     }
 
     fn relayout(&mut self) {
+        self.native_undo.prune(&self.doc);
         self.fragment = layout(
             &self.doc,
             self.doc.root(),
@@ -106,12 +264,21 @@ impl Page {
                 available_width: self.viewport_width,
             },
         );
+        self.adjust_native_select_scroll();
+        self.adjust_native_editor_scroll();
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
+        self.rebuild_find();
+        self.rebuild_document_selection();
+        self.refresh_accessibility();
     }
 
     fn recascade(&mut self) {
-        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
+        self.remember_native_form_defaults();
+        let author = crate::stylesheet::extract_inline_stylesheets_with_environment(
+            &self.doc,
+            &self.media_environment(),
+        );
         self.styles = cascade(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
@@ -125,16 +292,130 @@ impl Page {
     /// helper out of non-test builds means external `Page` users cannot bypass
     /// that boundary by calling a convenient network method directly.
     #[cfg(test)]
-    fn navigate(&mut self, url: &str) -> Result<(), blueice_net::FetchError> {
-        if let Some(html) = built_in_page(url) {
-            self.load_html(&html);
-            self.url = Some(url.to_string());
+    pub(crate) fn navigate(&mut self, url: &str) -> Result<(), blueice_net::FetchError> {
+        if self.load_built_in(url) {
             return Ok(());
         }
         let fetched = blueice_net::fetch(url)?;
         self.load_html(&fetched.body);
+        self.network_response = Some(blueice_ipc::extension::NetworkResponseInfo {
+            method: "GET".to_string(),
+            final_url: fetched.final_url.clone(),
+            status: fetched.status,
+            content_type: fetched.content_type,
+        });
         self.url = Some(fetched.final_url);
         Ok(())
+    }
+
+    /// Where `about:downloads` gets its list (see
+    /// [`DownloadsSource`]); every tab of one `core` shares one source.
+    pub fn set_downloads_source(&mut self, source: Option<Arc<DownloadsSource>>) {
+        self.downloads = source;
+    }
+
+    pub fn downloads_source(&self) -> Option<&Arc<DownloadsSource>> {
+        self.downloads.as_ref()
+    }
+
+    /// Where `about:settings` gets and updates the gatekeeper's complete
+    /// policy view. Every tab shares one source through [`crate::TabManager`].
+    pub fn set_gatekeeper_settings_source(
+        &mut self,
+        source: Option<Arc<GatekeeperSettingsSource>>,
+    ) {
+        self.gatekeeper_settings = source;
+    }
+
+    /// Where `about:assistant` reads the assistant's results. Every tab of one
+    /// `core` shares one panel through [`crate::TabManager`].
+    pub fn set_assistant_panel(&mut self, panel: Option<Arc<AssistantPanel>>) {
+        self.assistant_panel = panel;
+    }
+
+    /// `about:assistant`'s HTML for `url` from the shared panel's current state.
+    fn assistant_panel_html(&self, url: &str) -> String {
+        let (entries, available, settings_file) = match &self.assistant_panel {
+            Some(panel) => (panel.entries(), panel.is_available(), panel.settings_file()),
+            None => (Vec::new(), false, None),
+        };
+        // Read on every render, so an edit to the file shows without a restart
+        // (it still takes effect only when the launcher next starts).
+        let settings = crate::assistant_page::read_settings_view(settings_file.as_deref());
+        assistant_html(
+            &entries,
+            available,
+            &settings,
+            settings_file.as_deref(),
+            crate::credits::locale_from_url(url),
+        )
+    }
+
+    /// Re-renders this page from the panel's current state, keeping the scroll
+    /// position, when (and only when) it is showing `about:assistant`.
+    /// Returns whether it did, so the caller knows a fresh frame is due.
+    pub(crate) fn refresh_assistant_panel(&mut self) -> bool {
+        let Some(url) = self.url.clone().filter(|url| is_assistant_url(url)) else {
+            return false;
+        };
+        let html = self.assistant_panel_html(&url);
+        self.refresh_html(&html);
+        true
+    }
+
+    pub fn gatekeeper_settings_source(&self) -> Option<&Arc<GatekeeperSettingsSource>> {
+        self.gatekeeper_settings.as_ref()
+    }
+
+    /// Loads the built-in page for `url` if it is one (`about:blank`,
+    /// `about:credits`, `about:downloads`, `about:settings`, `about:assistant`), returning whether it was --
+    /// never touching the network. The downloads page reads the downloads
+    /// process over its socket, quickly and with a hard time bound (a
+    /// hung process must not stall the session), and falls back to the
+    /// "service is not running" page rather than failing the navigation.
+    pub(crate) fn load_built_in(&mut self, url: &str) -> bool {
+        let html = if let Some(html) = built_in_page(url) {
+            html
+        } else if is_downloads_url(url) {
+            let locale = crate::credits::locale_from_url(url);
+            match self.downloads.as_ref().map(|source| source.fetch_quick()) {
+                Some(Ok(transfers)) => {
+                    downloads_html(&DownloadsView::Transfers(&transfers), locale)
+                }
+                _ => downloads_html(&DownloadsView::Unavailable, locale),
+            }
+        } else if is_assistant_url(url) {
+            self.assistant_panel_html(url)
+        } else if is_gatekeeper_settings_url(url) {
+            let locale = crate::credits::locale_from_url(url);
+            let notice = self.settings_notice.take();
+            let view = match self
+                .gatekeeper_settings
+                .as_ref()
+                .map(|source| source.fetch())
+            {
+                Some(Ok(settings)) => GatekeeperSettingsView::Settings(settings),
+                _ => GatekeeperSettingsView::Unavailable,
+            };
+            gatekeeper_settings_html(&view, locale, notice)
+        } else {
+            return false;
+        };
+        self.load_html(&html);
+        self.url = Some(url.to_string());
+        true
+    }
+
+    /// Replaces the current document with `html` *keeping the scroll
+    /// position* (clamped to what still exists) -- for a live-updating
+    /// built-in page such as `about:downloads`, where a reader halfway down
+    /// a long list must not be thrown back to the top every half second.
+    /// The URL is left as it is.
+    pub(crate) fn refresh_html(&mut self, html: &str) {
+        let scroll = self.scroll_y;
+        self.load_html(html);
+        let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
+        self.scroll_y = scroll.min(max_scroll);
     }
 
     /// Loads `html` directly, with no network fetch -- used by tests,
@@ -157,20 +438,186 @@ impl Page {
     /// method from outside the crate, so skipping the gate for a real
     /// (non-built-in, non-test) navigation is a compile error, not a
     /// runtime convention a differently-written caller could omit.
-    pub(crate) fn apply_fetched(
+    ///
+    /// Also substitutes the assistant's translation of the page's
+    /// translatable text, if any was obtained in time. The clearance covers the
+    /// *original* HTML; a translation can only be applied on top of a cleared
+    /// page, never instead of one.
+    pub(crate) fn apply_fetched_translated(
         &mut self,
         _clearance: crate::gatekeeper_client::GatekeeperClearance,
         url: &str,
         html: &str,
+        translations: Option<&[String]>,
     ) {
-        self.load_html(html);
+        self.load_html_translating(html, translations);
         self.url = Some(url.to_string());
     }
 
+    /// Loads `html` with `translations` applied, like [`Self::load_html_str`]
+    /// plus a translation. Ungated exactly as `load_html_str` is (tests and
+    /// trusted built-in content).
+    pub fn load_html_translated(
+        &mut self,
+        html: &str,
+        url: Option<String>,
+        translations: &[String],
+    ) {
+        self.load_html_translating(html, Some(translations));
+        self.url = url;
+    }
+
+    /// Whether the current document has any substituted text to toggle.
+    pub fn has_translation(&self) -> bool {
+        self.translation.has_translation()
+    }
+
+    /// Whether the translation (rather than the original) is on screen.
+    pub fn translation_shown(&self) -> bool {
+        self.translation.is_shown()
+    }
+
+    /// Shows the translation (`true`) or the retained original (`false`) and
+    /// relayouts. Returns whether anything changed, so callers only publish a
+    /// new frame when there is one.
+    pub fn set_translation_shown(&mut self, shown: bool) -> bool {
+        let changed = crate::translation::set_shown(&mut self.doc, &mut self.translation, shown);
+        if changed {
+            self.restyle_and_relayout();
+        }
+        changed
+    }
+
+    /// The page's shown prose as plain text, at most what the assistant
+    /// accepts in one request (`crate::page_text`).
+    pub fn visible_text(&self) -> String {
+        crate::page_text::visible_text(
+            &self.doc,
+            &self.styles,
+            blueice_ipc::assistant::MAX_REQUEST_TEXT_BYTES,
+        )
+    }
+
+    /// The original text of a translated text node, for the AI representation.
+    pub(crate) fn original_text(&self, node: NodeId) -> Option<&str> {
+        self.translation.original_of(&self.doc, node)
+    }
+
+    pub(crate) fn set_network_response(
+        &mut self,
+        response: blueice_ipc::extension::NetworkResponseInfo,
+    ) {
+        self.network_response = Some(response);
+    }
+
+    pub(crate) fn network_response(&self) -> Option<&blueice_ipc::extension::NetworkResponseInfo> {
+        self.network_response.as_ref()
+    }
+
+    pub(crate) fn set_network_trace(&mut self, trace: blueice_ipc::extension::NetworkTraceInfo) {
+        self.network_trace = Some(trace);
+    }
+
+    pub(crate) fn network_trace(&self) -> Option<&blueice_ipc::extension::NetworkTraceInfo> {
+        self.network_trace.as_ref()
+    }
+
     pub fn resize(&mut self, width: f64, height: f64) {
-        self.viewport_width = width;
-        self.viewport_height = height;
-        self.relayout();
+        if let Some(display) = &mut self.display_viewport {
+            display.width = width;
+            display.height = height;
+        }
+        self.viewport_width = width / self.page_zoom;
+        self.viewport_height = height / self.page_zoom;
+        self.restyle_and_relayout();
+    }
+
+    pub(crate) fn configure_display(&mut self, display: blueice_ipc::viewport::DisplayViewport) {
+        self.display_viewport = Some(display);
+        self.resize(display.width, display.height);
+    }
+
+    fn media_environment(&self) -> blueice_css::MediaEnvironment {
+        let preferences = self.display_preferences.unwrap_or_default();
+        blueice_css::MediaEnvironment {
+            print: false,
+            width: self.viewport_width,
+            height: self.viewport_height,
+            resolution: self
+                .display_viewport
+                .map_or(1.0, |v| v.backing_scale.unwrap_or(v.device_scale))
+                * self.page_zoom,
+            dark: preferences.dark,
+            high_contrast: preferences.high_contrast,
+            reduced_motion: preferences.reduced_motion,
+        }
+    }
+
+    pub(crate) fn set_display_preferences(
+        &mut self,
+        preferences: blueice_ipc::display::DisplayPreferences,
+    ) {
+        if self.display_preferences != Some(preferences) {
+            self.display_preferences = Some(preferences);
+            self.restyle_and_relayout();
+        }
+    }
+
+    pub(crate) fn display_preferences_state(
+        &self,
+        source: u64,
+        tab_id: u64,
+    ) -> blueice_ipc::display::DisplayPreferencesState {
+        blueice_ipc::display::DisplayPreferencesState {
+            tab_id,
+            frame_source: source,
+            frame_generation: self.frame_generation,
+            preferences: self.display_preferences.unwrap_or_default(),
+        }
+    }
+
+    pub(crate) fn set_page_zoom(&mut self, zoom: f64) {
+        let display = self
+            .display_viewport
+            .unwrap_or(blueice_ipc::viewport::DisplayViewport {
+                width: self.viewport_width,
+                height: self.viewport_height,
+                device_scale: 1.0,
+                backing_scale: None,
+            });
+        self.page_zoom = zoom;
+        self.configure_display(display);
+        self.scroll_by(0.0);
+    }
+
+    pub(crate) fn viewport_state(
+        &self,
+        source: u64,
+        tab_id: u64,
+    ) -> blueice_ipc::viewport::ViewportState {
+        let display = self
+            .display_viewport
+            .unwrap_or(blueice_ipc::viewport::DisplayViewport {
+                width: self.viewport_width,
+                height: self.viewport_height,
+                device_scale: 1.0,
+                backing_scale: None,
+            });
+        let (pixel_width, pixel_height) = display.pixel_size();
+        blueice_ipc::viewport::ViewportState {
+            tab_id,
+            frame_source: source,
+            frame_generation: self.frame_generation,
+            width: display.width,
+            height: display.height,
+            device_scale: display.device_scale,
+            backing_scale: display.backing_scale,
+            zoom: self.page_zoom,
+            css_width: self.viewport_width,
+            css_height: self.viewport_height,
+            pixel_width,
+            pixel_height,
+        }
     }
 
     pub fn scroll_by(&mut self, delta_y: f64) {
@@ -183,18 +630,46 @@ impl Page {
     /// here to reach content coordinates) against the layout tree,
     /// returning the URL to follow if the click landed on an `<a
     /// href>` (the clicked node itself or any ancestor up to the
-    /// nearest one).
+    /// nearest one). Relative links are resolved against the current
+    /// page URL when it is an absolute, hierarchical URL.
     pub fn click(&self, x: f64, y: f64) -> Option<String> {
+        let node = self.click_target(x, y)?;
+        nearest_link_href(&self.doc, node).map(|href| self.resolve_link_href(href))
+    }
+
+    /// Returns the current DOM target for a pointer click. Core obtains this
+    /// before it invokes BlueJS listeners, so a listener may mutate/remove the
+    /// target while the browser still retains the pre-dispatch default action
+    /// (for example, a link navigation) to apply unless it is prevented.
+    pub fn click_target(&self, x: f64, y: f64) -> Option<NodeId> {
         let content_y = y + self.scroll_y;
-        let node = hit_test(&self.fragment, x, content_y)?;
-        nearest_link_href(&self.doc, node)
+        hit_test(&self.doc, &self.fragment, x, content_y)
+    }
+
+    /// Applies the native default focus action for a pointer click. Only an
+    /// enabled text input can become the editing target; every other click
+    /// clears a previous text-input focus. Keeping this state in the core
+    /// means the reference frontend never has to turn keyboard events into a
+    /// guessed DOM node ID.
+    pub(crate) fn supports_native_text_input(&self, node: NodeId) -> bool {
+        self.native_focusable(node) && native_editing::supports_native_input(&self.doc, node)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn focus_text_input_at(&mut self, target: Option<NodeId>) -> bool {
+        let focused = target.and_then(|node| nearest_supported_text_input(&self.doc, node));
+        if self.focused == focused {
+            return false;
+        }
+        self.focused = focused;
+        true
     }
 
     /// The live element receiving an owner-originated click. Text fragments
     /// hit-test to text nodes, but the first event profile exposes element
     /// listeners, so route to their nearest element ancestor.
     pub(crate) fn click_event_target(&self, x: f64, y: f64) -> Option<NodeId> {
-        let node = hit_test(&self.fragment, x, y + self.scroll_y)?;
+        let node = hit_test(&self.doc, &self.fragment, x, y + self.scroll_y)?;
         self.event_element_target(node)
     }
 
@@ -217,7 +692,26 @@ impl Page {
     /// pointer leaving the window's content area.
     pub fn hover_at(&mut self, x: f64, y: f64) {
         let content_y = y + self.scroll_y;
-        self.hovered = hit_test(&self.fragment, x, content_y);
+        self.hovered = hit_test(&self.doc, &self.fragment, x, content_y);
+    }
+
+    /// Leaving the viewport clears hover even when content is scrolled.
+    pub(crate) fn clear_hover(&mut self) {
+        self.hovered = None;
+    }
+
+    pub(crate) fn validate_native_hover_context(
+        &self,
+        context: &blueice_ipc::input::PointerContext,
+        source: u64,
+    ) -> Result<(), String> {
+        if context.version != 1
+            || context.frame_source != source
+            || context.document_generation != self.document_generation
+        {
+            return Err("Stale or unsupported native hover context".into());
+        }
+        Ok(())
     }
 
     /// Sets or clears (`None`) the highlighted node -- rendered as an
@@ -231,22 +725,50 @@ impl Page {
     /// Applies `action` to the element addressed by `id` -- see
     /// [`NodeAction`]'s own docs for what each variant does. Returns
     /// the URL to navigate to when `action` is [`NodeAction::Click`]
-    /// on a link, same shape as [`Page::click`]'s return value, so a
-    /// caller drives both the same way. A stale or unknown `id` (e.g.
-    /// from before the last navigation) is silently a no-op, not an
-    /// error -- the same tolerance [`Page::click`] already has for a
-    /// point that hits nothing.
+    /// on a link, same shape as [`Page::click`]'s return value (and the
+    /// same relative-link resolution), so a caller drives both the same
+    /// way. A stale or unknown `id` (e.g. from before the last
+    /// navigation) is silently a no-op, not an error -- the same
+    /// tolerance [`Page::click`] already has for a point that hits
+    /// nothing.
     pub fn act(&mut self, id: NodeId, action: NodeAction) -> Option<String> {
         if !self.doc.contains(id) {
             return None;
         }
         match action {
-            NodeAction::Click => nearest_link_href(&self.doc, id),
+            NodeAction::Click => {
+                nearest_link_href(&self.doc, id).map(|href| self.resolve_link_href(href))
+            }
             NodeAction::Focus => {
+                if self.focused != Some(id) {
+                    self.commit_native_composition();
+                    self.native_focus_generation = self.native_focus_generation.wrapping_add(1);
+                    self.native_editor = None;
+                    self.native_select.focus(Some(id));
+                    self.native_focus_exit = None;
+                }
                 self.focused = Some(id);
+                self.native_focus_start = Some(id);
+                self.relayout();
+                self.reveal_native_text_focus();
                 None
             }
             NodeAction::SetValue(value) => {
+                self.native_undo.forget(id);
+                if matches!(self.doc.data(id),NodeData::Element { tag_name,.. } if tag_name=="input")
+                    && element_attribute(&self.doc, id, "type")
+                        .is_some_and(|kind| kind.eq_ignore_ascii_case("file"))
+                {
+                    // Empty IDL-like values can clear a selection. Nonempty
+                    // values never become filenames, contents, or OS paths.
+                    if value.is_empty() {
+                        self.native_files.remove(&id);
+                        self.doc.set_file_control_names(id, vec![]);
+                        self.native_file_revision = self.native_file_revision.wrapping_add(1);
+                        self.relayout();
+                    }
+                    return None;
+                }
                 if let NodeData::Element { attributes, .. } = self.doc.data_mut(id) {
                     match attributes.iter_mut().find(|(k, _)| k == "value") {
                         Some((_, existing)) => *existing = value,
@@ -254,13 +776,10 @@ impl Page {
                     }
                 }
                 // `load_html` (the only other path that mutates `doc`)
-                // always relayouts afterward; this in-place mutation was
-                // missed. Inert today since nothing in blueice-layout/
-                // blueice-paint reads an element's `value` attribute
-                // yet, but the render pass and AI snapshot would
-                // otherwise silently go stale relative to `dom_dump()`
-                // (which reads `doc` live) the moment layout starts
-                // rendering input values.
+                // always relayouts afterward. The input-value fragment and
+                // accessibility snapshot both read this core-owned attribute,
+                // so this render pass is the synchronization point the human
+                // and MCP observers share after a value change.
                 self.relayout();
                 None
             }
@@ -272,6 +791,149 @@ impl Page {
                 None
             }
         }
+    }
+
+    /// Applies a control activated from the built-in `about:settings` page.
+    /// This is intentionally not a generic DOM-to-privileged bridge: only the
+    /// fixed data attributes emitted by `gatekeeper_settings_html` are
+    /// recognized, their input is revalidated by the gatekeeper process, and
+    /// no action can disable a compiled rule or workflow step.
+    /// Returns `None` for an ordinary page control, and `Some` when this was
+    /// one of the fixed settings controls. A rejected update is still a
+    /// handled control: the refreshed page presents a localized rejection
+    /// notice, while the caller can preserve its ordinary frame lifecycle.
+    pub(crate) fn apply_gatekeeper_settings_control(
+        &mut self,
+        id: NodeId,
+    ) -> Option<Result<(), String>> {
+        if !self.url.as_deref().is_some_and(is_gatekeeper_settings_url) {
+            return None;
+        }
+        let change = self.gatekeeper_settings_change_for(id)?;
+        let locale = self
+            .url
+            .as_deref()
+            .map(crate::credits::locale_from_url)
+            .unwrap_or(blueice_i18n::DEFAULT_LOCALE);
+        let Some(source) = self.gatekeeper_settings.as_ref() else {
+            self.settings_notice = Some(SettingsNotice::Rejected(
+                "the settings service is unavailable".to_string(),
+            ));
+            let html = gatekeeper_settings_html(
+                &GatekeeperSettingsView::Unavailable,
+                locale,
+                self.settings_notice.take(),
+            );
+            self.load_html(&html);
+            return Some(Err(
+                "the gatekeeper settings source is unavailable".to_string()
+            ));
+        };
+        let (view, notice) = match source.update(change) {
+            Ok(settings) => (
+                GatekeeperSettingsView::Settings(settings),
+                SettingsNotice::Saved,
+            ),
+            Err(error) => {
+                let view = source
+                    .fetch()
+                    .map(GatekeeperSettingsView::Settings)
+                    .unwrap_or(GatekeeperSettingsView::Unavailable);
+                let html = gatekeeper_settings_html(
+                    &view,
+                    locale,
+                    Some(SettingsNotice::Rejected(error.clone())),
+                );
+                self.load_html(&html);
+                return Some(Err(error));
+            }
+        };
+        let html = gatekeeper_settings_html(&view, locale, Some(notice));
+        self.load_html(&html);
+        Some(Ok(()))
+    }
+
+    fn gatekeeper_settings_change_for(&self, mut node: NodeId) -> Option<GatekeeperSettingsChange> {
+        let action = loop {
+            if let Some(value) = element_attribute(&self.doc, node, "data-gatekeeper-action") {
+                break value.to_string();
+            }
+            node = self.doc.parent(node)?;
+        };
+        match action.as_str() {
+            "configure-model" => {
+                let read_input = |id| {
+                    let input = find_element_by_id(&self.doc, self.doc.root(), id)?;
+                    element_attribute(&self.doc, input, "value").map(str::to_string)
+                };
+                Some(GatekeeperSettingsChange::ConfigureLocalModel {
+                    provider: read_input("gatekeeper-model-provider")?,
+                    base_url: read_input("gatekeeper-model-base")?,
+                    model: read_input("gatekeeper-model-name")?,
+                })
+            }
+            "disable-model" => Some(GatekeeperSettingsChange::DisableLocalModel),
+            "add-host" => {
+                let input =
+                    find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-host")?;
+                Some(GatekeeperSettingsChange::AddBlockedHost {
+                    host: element_attribute(&self.doc, input, "value")?.to_string(),
+                })
+            }
+            "remove-host" => Some(GatekeeperSettingsChange::RemoveBlockedHost {
+                host: element_attribute(&self.doc, node, "data-gatekeeper-host")?.to_string(),
+            }),
+            "add-phrase" => {
+                let input =
+                    find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-phrase")?;
+                Some(GatekeeperSettingsChange::AddBlockedPhrase {
+                    phrase: element_attribute(&self.doc, input, "value")?.to_string(),
+                })
+            }
+            "remove-phrase" => Some(GatekeeperSettingsChange::RemoveBlockedPhrase {
+                phrase: element_attribute(&self.doc, node, "data-gatekeeper-phrase")?.to_string(),
+            }),
+            "add-extension" => {
+                let input =
+                    find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-extension")?;
+                Some(GatekeeperSettingsChange::AddBlockedDownloadExtension {
+                    extension: element_attribute(&self.doc, input, "value")?.to_string(),
+                })
+            }
+            "remove-extension" => Some(GatekeeperSettingsChange::RemoveBlockedDownloadExtension {
+                extension: element_attribute(&self.doc, node, "data-gatekeeper-extension")?
+                    .to_string(),
+            }),
+            "add-popup-phrase" => {
+                let input = find_element_by_id(
+                    &self.doc,
+                    self.doc.root(),
+                    "gatekeeper-custom-popup-phrase",
+                )?;
+                Some(GatekeeperSettingsChange::AddBlockedPopupPhrase {
+                    phrase: element_attribute(&self.doc, input, "value")?.to_string(),
+                })
+            }
+            "remove-popup-phrase" => Some(GatekeeperSettingsChange::RemoveBlockedPopupPhrase {
+                phrase: element_attribute(&self.doc, node, "data-gatekeeper-popup-phrase")?
+                    .to_string(),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Resolves an anchor's raw `href` using the current document URL.
+    /// Test-only pages and built-in pages may have no usable hierarchical
+    /// base; in that case preserve the raw target, so the session's normal
+    /// scheme validation reports an invalid target rather than silently
+    /// inventing a destination.
+    fn resolve_link_href(&self, href: String) -> String {
+        self.url
+            .as_deref()
+            .and_then(|base| Url::parse(base).ok())
+            .and_then(|base| base.join(&href).ok())
+            .map(|url| url.to_string())
+            .unwrap_or(href)
     }
 
     /// A snapshot of the AI-facing representation
@@ -335,6 +997,11 @@ impl Page {
             .then(|| self.script_handle_for_node(node))
     }
 
+    #[cfg(unix)]
+    pub(crate) fn script_raw_node_for_handle(&self, handle: u64) -> Option<u64> {
+        self.script_node(handle).ok().map(|node| node.as_u64())
+    }
+
     /// Checks whether a child-private node handle still belongs to this
     /// document. Detached nodes remain valid until their subtree is removed.
     pub(crate) fn script_validate_node(&self, node: u64) -> Result<(), String> {
@@ -375,11 +1042,24 @@ impl Page {
             return Err("the child node is already attached".to_string());
         }
         self.doc.append_child(parent, child);
+        let mut ancestor = Some(parent);
+        while let Some(id) = ancestor {
+            self.native_undo.forget(id);
+            ancestor = self.doc.parent(id);
+        }
+        self.native_form_script_text_change(parent);
         // Newly created elements have no computed style until they join this
         // document. Recompute author/UA styles before layout and paint.
         self.recascade();
         self.relayout();
+        self.script_change_unpublished = true;
         Ok(())
+    }
+
+    /// Reports, once, that page script changed the document after the last
+    /// published frame. Publishing a frame clears the condition itself.
+    pub(crate) fn take_unpublished_script_change(&mut self) -> bool {
+        std::mem::take(&mut self.script_change_unpublished)
     }
 
     /// Returns the recursive text content for one live page-script node.
@@ -404,6 +1084,11 @@ impl Page {
         value: String,
     ) -> Result<(), String> {
         let node = self.script_node(node)?;
+        let mut ancestor = Some(node);
+        while let Some(id) = ancestor {
+            self.native_undo.forget(id);
+            ancestor = self.doc.parent(id);
+        }
         if let NodeData::Text { data } = self.doc.data_mut(node) {
             *data = value;
         } else {
@@ -416,7 +1101,9 @@ impl Page {
                 self.doc.append_child(node, text);
             }
         }
+        self.native_form_script_text_change(node);
         self.relayout();
+        self.script_change_unpublished = true;
         Ok(())
     }
 
@@ -428,8 +1115,80 @@ impl Page {
             .ok_or_else(|| "unknown script node handle".to_string())
     }
 
+    /// Replaces an element's children with one text node (or updates a Text
+    /// node in place) for core-owned form edits, then restyles and relayouts.
+    fn set_node_text_content(&mut self, node: NodeId, value: String) -> Result<(), String> {
+        if !self.doc.contains(node) {
+            return Err("node does not belong to this document".to_string());
+        }
+        if let NodeData::Text { data } = self.doc.data_mut(node) {
+            *data = value;
+        } else {
+            let children = self.doc.children(node).collect::<Vec<_>>();
+            for child in children {
+                self.doc.remove_subtree(child);
+            }
+            let text = self.doc.create_node(NodeData::Text { data: value });
+            self.doc.append_child(node, text);
+        }
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
+    /// Advances this tab's render-pass generation. `session` calls this
+    /// immediately before writing the corresponding frame.
+    pub(crate) fn advance_frame_generation(&mut self) -> u64 {
+        self.script_change_unpublished = false;
+        self.frame_generation = self
+            .frame_generation
+            .checked_add(1)
+            .expect("a page cannot render more than u64::MAX frames");
+        self.frame_generation
+    }
+
+    /// Makes this page the successor of `previous` within one tab: its frame
+    /// generation continues from the departing page's (so a frontend that only
+    /// accepts newer frames never drops the first frame of a new document), and
+    /// its document generation is strictly greater (so a page-script realm bound
+    /// to the departed document can never alias this one).
+    pub(crate) fn continue_tab_generations_from(&mut self, previous: &Page) {
+        self.object_url_environment = None;
+        self.native_undo.clear();
+        self.native_select = native_select::SelectSession::default();
+        self.native_text_scroll.clear();
+        self.native_text_scroll_target = None;
+        self.frame_generation = previous.frame_generation;
+        self.document_generation = previous.document_generation.wrapping_add(1);
+        self.live_regions = accessibility::LiveRegions::default();
+        self.refresh_accessibility();
+        self.display_viewport = previous.display_viewport;
+        self.page_zoom = previous.page_zoom;
+        let media_changed = self.display_preferences != previous.display_preferences;
+        self.display_preferences = previous.display_preferences;
+        if self.viewport_width != previous.viewport_width
+            || self.viewport_height != previous.viewport_height
+            || media_changed
+        {
+            self.viewport_width = previous.viewport_width;
+            self.viewport_height = previous.viewport_height;
+            self.restyle_and_relayout();
+        }
+    }
+
+    /// The generation of this tab's most recently written frame, or zero
+    /// before it has rendered one.
+    pub(crate) fn frame_generation(&self) -> u64 {
+        self.frame_generation
+    }
+
     pub(crate) fn doc(&self) -> &Document {
         &self.doc
+    }
+
+    /// The first node ID a subsequent replacement document would have to use
+    /// to avoid reusing any ID currently present in this page.
+    pub(crate) fn next_node_id(&self) -> u64 {
+        self.doc.next_node_id()
     }
 
     pub(crate) fn fragment(&self) -> &Fragment {
@@ -482,8 +1241,58 @@ impl Page {
     /// This is intentionally crate-visible: it is a core lifecycle token, not
     /// web-observable state. It lets the script host invalidate a realm even
     /// when a navigation keeps the same origin.
+    #[cfg(unix)]
+    pub(crate) fn effective_script_origin(&self) -> Option<String> {
+        match &self.object_url_origin {
+            Some(crate::object_urls::DocumentOrigin::Tuple(origin)) => Some(origin.clone()),
+            Some(crate::object_urls::DocumentOrigin::Opaque(_)) => None,
+            None => blueice_net::canonical_http_origin(self.url()?).ok(),
+        }
+    }
+
     pub(crate) fn document_generation(&self) -> u64 {
         self.document_generation
+    }
+
+    /// Native control values retain whitespace. Accessible names use a
+    /// different, collapsed text algorithm; protected values never cross it.
+    pub(crate) fn native_control_public_value(&self, node: NodeId) -> Option<String> {
+        let NodeData::Element { tag_name, .. } = self.doc.data(node) else {
+            return None;
+        };
+        if tag_name == "textarea" {
+            return Some(node_text_content(&self.doc, node));
+        }
+        if tag_name == "select" {
+            return self.native_select_value(node);
+        }
+        if tag_name != "input" {
+            return None;
+        }
+        let kind = element_attribute(&self.doc, node, "type")
+            .unwrap_or("text")
+            .to_ascii_lowercase();
+        if kind == "file" {
+            return Some(self.doc.file_control_names(node).join(", "));
+        }
+        if kind == "range" {
+            return blueice_layout::input_range_values(&self.doc, node).map(|(_, _, value)| {
+                // Preserve a valid in-range source spelling, including exact
+                // integers beyond f64 precision. Only defaults/clamps replace it.
+                element_attribute(&self.doc, node, "value")
+                    .filter(|raw| {
+                        raw.parse::<f64>()
+                            .ok()
+                            .is_some_and(|parsed| parsed.is_finite() && parsed == value)
+                    })
+                    .map_or_else(|| value.to_string(), str::to_string)
+            });
+        }
+        if matches!(kind.as_str(), "text" | "search" | "email" | "url" | "tel") {
+            element_attribute(&self.doc, node, "value").map(str::to_string)
+        } else {
+            None
+        }
     }
 
     pub fn viewport_size(&self) -> (f64, f64) {
@@ -496,6 +1305,10 @@ impl Page {
 
     pub fn render(&self) -> Frame {
         let mut frame = paint(&self.fragment, &self.styles);
+        self.paint_native_editor(&mut frame);
+        self.paint_document_selection(&mut frame);
+        self.paint_native_focus(&mut frame);
+        self.paint_find(&mut frame);
         if let Some(id) = self.highlighted {
             if let Some(bounds) = find_fragment_bounds(&self.fragment, id, 0.0, 0.0) {
                 frame.commands.extend(highlight_border_commands(bounds));
@@ -504,10 +1317,21 @@ impl Page {
         frame
     }
 
-    /// Rasterizes the full page, then crops to the current viewport at
-    /// the current scroll offset -- see module docs for why this is
-    /// how "scrolling" works without real overflow-clipped layout.
+    /// Native display sessions rasterize a bounded viewport directly at their
+    /// backing-density/page-zoom transform. Legacy sessions rasterize the full
+    /// page and crop, retaining their original one-pixel-per-CSS-pixel output.
     pub fn render_visible(&self) -> Pixmap {
+        if let Some(display) = self.display_viewport {
+            let (pixel_width, pixel_height) = display.pixel_size();
+            return blueice_raster::rasterize_viewport(
+                &self.render(),
+                self.scroll_y,
+                pixel_width,
+                pixel_height,
+                display.device_scale * self.page_zoom,
+            )
+            .expect("validated display viewport has bounded physical dimensions");
+        }
         let full = rasterize(&self.render());
         crop(
             &full,
@@ -518,566 +1342,28 @@ impl Page {
     }
 }
 
-fn find_element_by_id(document: &Document, node: NodeId, id: &str) -> Option<NodeId> {
-    if matches!(
-        document.data(node),
-        NodeData::Element { attributes, .. }
-            if attributes.iter().any(|(name, value)| name == "id" && value == id)
-    ) {
-        return Some(node);
-    }
-    document
-        .children(node)
-        .find_map(|child| find_element_by_id(document, child, id))
-}
-
-fn node_text_content(document: &Document, node: NodeId) -> String {
-    match document.data(node) {
-        NodeData::Text { data } => data.clone(),
-        NodeData::Document | NodeData::Element { .. } => document
-            .children(node)
-            .map(|child| node_text_content(document, child))
-            .collect(),
-    }
-}
-
-fn crop(pixmap: &Pixmap, top: f64, width: f64, height: f64) -> Pixmap {
-    let top = top.round().max(0.0) as u32;
-    let w = (width.round().max(0.0) as u32).min(pixmap.width.max(1));
-    let h = height.round().max(0.0) as u32;
-    let mut pixels = Vec::with_capacity(w as usize * h as usize * 4);
-    for row in 0..h {
-        let src_row = top + row;
-        if src_row < pixmap.height {
-            let start = ((src_row * pixmap.width) * 4) as usize;
-            let end = start + (w as usize * 4);
-            pixels.extend_from_slice(&pixmap.pixels[start..end.min(pixmap.pixels.len())]);
-            pixels.resize((row as usize + 1) * w as usize * 4, 255);
-        } else {
-            pixels.extend(std::iter::repeat_n(255u8, w as usize * 4));
-        }
-    }
-    Pixmap {
-        width: w,
-        height: h,
-        pixels,
-    }
-}
-
-/// Finds `id`'s own fragment and resolves its bounds to document-
-/// content coordinates (accumulating each ancestor's offset the same
-/// way `blueice-paint`'s own tree walk does -- a `Fragment`'s `x`/`y`
-/// are relative to its parent, not absolute) -- `None` if `id` has no
-/// fragment at all, which is exactly right for a `display:none`
-/// subtree (dropped entirely by layout, per `research/layout.md`) or a
-/// stale ID from before the last navigation. Shared by
-/// [`Page::render`]'s highlight overlay, [`Page::act`]'s
-/// `ScrollIntoView`, and `ai_snapshot`'s bounds extraction, so the
-/// three never disagree about where a node actually is.
-pub(crate) fn find_fragment_bounds(
-    fragment: &Fragment,
-    id: NodeId,
-    offset_x: f64,
-    offset_y: f64,
-) -> Option<blueice_ipc::Bounds> {
-    let x = offset_x + fragment.x;
-    let y = offset_y + fragment.y;
-    if fragment.node == Some(id) {
-        return Some(blueice_ipc::Bounds {
-            x,
-            y,
-            width: fragment.width,
-            height: fragment.height,
-        });
-    }
-    fragment
-        .children
-        .iter()
-        .find_map(|child| find_fragment_bounds(child, id, x, y))
-}
-
-const HIGHLIGHT_COLOR: Color = Color::Rgba(255, 149, 0, 255);
-const HIGHLIGHT_THICKNESS: f64 = 2.0;
-
-/// A four-edge outline around `bounds`, built from ordinary
-/// `PaintCommand::BorderEdge`s rather than a new paint-command variant
-/// -- an AI-requested highlight is an interaction-layer concept
-/// `Page` owns, not a CSS box-model feature `blueice-paint` needs to
-/// know about.
-fn highlight_border_commands(bounds: blueice_ipc::Bounds) -> Vec<PaintCommand> {
-    let blueice_ipc::Bounds {
-        x,
-        y,
-        width,
-        height,
-    } = bounds;
-    let t = HIGHLIGHT_THICKNESS;
-    vec![
-        PaintCommand::BorderEdge {
-            rect: Rect {
-                x,
-                y,
-                width,
-                height: t,
-            },
-            color: HIGHLIGHT_COLOR,
-        },
-        PaintCommand::BorderEdge {
-            rect: Rect {
-                x: x + width - t,
-                y,
-                width: t,
-                height,
-            },
-            color: HIGHLIGHT_COLOR,
-        },
-        PaintCommand::BorderEdge {
-            rect: Rect {
-                x,
-                y: y + height - t,
-                width,
-                height: t,
-            },
-            color: HIGHLIGHT_COLOR,
-        },
-        PaintCommand::BorderEdge {
-            rect: Rect {
-                x,
-                y,
-                width: t,
-                height,
-            },
-            color: HIGHLIGHT_COLOR,
-        },
-    ]
-}
-
-fn hit_test(fragment: &Fragment, x: f64, y: f64) -> Option<NodeId> {
-    hit_test_rec(fragment, x, y, 0.0, 0.0)
-}
-
-fn hit_test_rec(
-    fragment: &Fragment,
-    x: f64,
-    y: f64,
-    offset_x: f64,
-    offset_y: f64,
-) -> Option<NodeId> {
-    let fx = offset_x + fragment.x;
-    let fy = offset_y + fragment.y;
-    if x < fx || y < fy || x > fx + fragment.width || y > fy + fragment.height {
-        return None;
-    }
-    for child in &fragment.children {
-        if let Some(hit) = hit_test_rec(child, x, y, fx, fy) {
-            return Some(hit);
-        }
-    }
-    fragment.node
-}
-
-fn nearest_link_href(doc: &Document, mut node: NodeId) -> Option<String> {
-    loop {
-        if let NodeData::Element {
-            tag_name,
-            attributes,
-        } = doc.data(node)
-        {
-            if tag_name == "a" {
-                if let Some((_, href)) = attributes.iter().find(|(k, _)| k == "href") {
-                    return Some(href.clone());
-                }
-            }
-        }
-        node = doc.parent(node)?;
-    }
-}
-
-/// The HTML for `url`, for the small set of `about:` URLs `navigate`
-/// serves locally instead of fetching over the network -- `None` for
-/// any other URL (including unrecognized `about:` ones, which aren't
-/// treated as built-in pages here). Owned `String`, not `&'static
-/// str`: the credits page is generated per request from `blueice-i18n`
-/// at whatever locale the URL's `?lang=` parameter asks for
-/// (`credits::locale_from_url`), not a single fixed literal.
-pub(crate) fn built_in_page(url: &str) -> Option<String> {
-    if url == "about:blank" {
-        return Some(String::new());
-    }
-    if url == crate::credits::CREDITS_URL
-        || url.starts_with(&format!("{}?", crate::credits::CREDITS_URL))
-    {
-        return Some(crate::credits::credits_html(
-            crate::credits::locale_from_url(url),
-        ));
-    }
-    None
-}
+mod accessibility;
+mod context_menu;
+mod document_selection;
+mod dom_helpers;
+mod dom_write;
+mod file_input;
+mod find;
+mod form_submission;
+pub(crate) mod native_drag;
+mod native_drag_image;
+mod native_editing;
+mod native_forms;
+mod native_interaction;
+mod native_select;
+pub(crate) mod printing;
+use dom_helpers::*;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use blueice_paint::PaintCommand;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    use std::thread;
+mod tests;
 
-    #[test]
-    fn new_page_is_blank_with_no_url() {
-        let page = Page::new(320.0, 200.0);
-        assert_eq!(page.url(), None);
-        assert!(page.render().commands.is_empty());
-    }
+#[cfg(test)]
+#[path = "../tests/support/document_selection.rs"]
+mod document_selection_tests;
 
-    #[test]
-    fn load_html_str_sets_url_and_renders_content() {
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str("<p>hi</p>", Some("about:blank".to_string()));
-        assert_eq!(page.url(), Some("about:blank"));
-        assert!(page
-            .render()
-            .commands
-            .iter()
-            .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
-    }
-
-    #[test]
-    fn page_exposes_only_explicit_blue_ts_script_declarations() {
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str(
-            r#"
-                <script>const javascript = true;</script>
-                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
-                <script type="application/x-blueice-typescript-module" src="/module.ts"></script>
-            "#,
-            Some("https://example.test/".to_string()),
-        );
-
-        assert_eq!(
-            page.blue_ts_script_declarations(),
-            vec![
-                crate::script::BlueTsPageScriptDeclaration::Inline {
-                    ordinal: 0,
-                    kind: crate::script::direct_page::DirectPageScriptKind::Classic,
-                    source: "const typed: number = 42;".to_string(),
-                },
-                crate::script::BlueTsPageScriptDeclaration::External {
-                    ordinal: 1,
-                    kind: crate::script::direct_page::DirectPageScriptKind::Module,
-                    src: "/module.ts".to_string(),
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn page_exposes_standard_javascript_declarations_separately_from_bluets() {
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str(
-            r#"
-                <script>const javascript = true;</script>
-                <script type="module">export const module = true;</script>
-                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
-            "#,
-            Some("https://example.test/".to_string()),
-        );
-
-        assert_eq!(
-            page.blue_js_script_declarations(),
-            vec![
-                crate::script::BlueJsPageScriptDeclaration::Inline {
-                    ordinal: 0,
-                    kind: crate::script::BlueJsPageScriptKind::Classic,
-                    source: "const javascript = true;".to_string(),
-                },
-                crate::script::BlueJsPageScriptDeclaration::Inline {
-                    ordinal: 1,
-                    kind: crate::script::BlueJsPageScriptKind::Module,
-                    source: "export const module = true;".to_string(),
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn navigate_to_about_credits_loads_the_built_in_credits_page_without_network() {
-        let mut page = Page::new(320.0, 200.0);
-        page.navigate("about:credits").unwrap();
-        assert_eq!(page.url(), Some("about:credits"));
-        let text = all_text(&page.render());
-        assert!(
-            text.contains("Chromium"),
-            "must reproduce the Chromium BSD-3-Clause notice: {text}"
-        );
-        assert!(text.contains("Gecko"), "must credit Gecko: {text}");
-        assert!(
-            text.contains("DejaVu"),
-            "must credit the bundled DejaVu font: {text}"
-        );
-    }
-
-    #[test]
-    fn navigate_to_about_credits_with_a_lang_parameter_loads_the_localized_credits_page() {
-        let mut page = Page::new(320.0, 200.0);
-        page.navigate("about:credits?lang=zh-TW").unwrap();
-        assert_eq!(page.url(), Some("about:credits?lang=zh-TW"));
-        let text = all_text(&page.render());
-        assert!(
-            text.contains("關於"),
-            "must render the localized page: {text}"
-        );
-    }
-
-    #[test]
-    fn navigating_never_reuses_a_nodeid_from_the_previous_document() {
-        // Regression: `NodeIdAllocator` used to live on `Document`
-        // itself, restarting at 0 every time `load_html` built a fresh
-        // `Document` -- so a client that cached a NodeId before this
-        // navigation and acted on it afterward could get silently
-        // redirected to whatever unrelated node the recycled ID now
-        // happened to belong to, instead of a safe "doesn't exist"
-        // (plan §1's stable-ID-across-mutations requirement).
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str("<p>first</p>", None);
-        let stale_id = page.doc().root();
-        let first_next_id = page.doc().next_node_id();
-
-        page.load_html_str("<p>second</p>", None);
-
-        assert!(
-            !page.doc().contains(stale_id),
-            "a NodeId real in the previous document must not resolve to anything in the new one"
-        );
-        assert!(page.doc().next_node_id() >= first_next_id, "the new document's allocator must continue from where the old one left off, not restart at 0");
-    }
-
-    fn find_by_tag(doc: &Document, root: NodeId, tag: &str) -> Option<NodeId> {
-        if let NodeData::Element { tag_name, .. } = doc.data(root) {
-            if tag_name == tag {
-                return Some(root);
-            }
-        }
-        doc.children(root).find_map(|c| find_by_tag(doc, c, tag))
-    }
-
-    #[test]
-    fn act_set_value_updates_the_value_attribute() {
-        // No existing test exercised `NodeAction::SetValue` at all. Its
-        // handler was also found to skip the `relayout()` call every
-        // other `doc`-mutating path makes (harmless today since nothing
-        // in blueice-layout/blueice-paint reads an input's value yet, so
-        // there's no *observable* effect to assert on here beyond "it
-        // doesn't panic" -- but the call is now in place for whenever
-        // layout does start reading it).
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str(r#"<input type="text">"#, None);
-        let input_id = find_by_tag(page.doc(), page.doc().root(), "input").unwrap();
-
-        page.act(input_id, NodeAction::SetValue("hello".to_string()));
-
-        let NodeData::Element { attributes, .. } = page.doc().data(input_id) else {
-            panic!("expected an element")
-        };
-        assert!(attributes.contains(&("value".to_string(), "hello".to_string())));
-    }
-
-    #[test]
-    fn navigate_to_about_blank_loads_an_empty_page_without_network() {
-        let mut page = Page::new(320.0, 200.0);
-        page.navigate("about:blank").unwrap();
-        assert_eq!(page.url(), Some("about:blank"));
-        assert!(page.render().commands.is_empty());
-    }
-
-    #[test]
-    fn dom_dump_matches_blueice_doms_own_dump_of_the_same_document() {
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str(r#"<div class="x"><p>hi</p></div>"#, None);
-        assert_eq!(page.dom_dump(), blueice_dom::dump(page.doc()));
-        assert!(page.dom_dump().contains("<div>"));
-    }
-
-    #[test]
-    fn dom_dump_includes_nodes_the_ai_snapshot_would_exclude() {
-        // a bare <div> has no semantic role, so Page::snapshot excludes
-        // it entirely -- dom_dump must not apply that filter.
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
-        assert!(page.dom_dump().contains("<div>"));
-        assert!(page.snapshot(0, 1).nodes.is_empty());
-    }
-
-    #[test]
-    fn script_appended_element_receives_author_style_before_rasterization() {
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str(
-            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'></div>",
-            None,
-        );
-        let mut static_page = Page::new(320.0, 200.0);
-        static_page.load_html_str(
-            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'><span></span></div>",
-            None,
-        );
-        assert_eq!(
-            static_page.render_visible().get_pixel(0, 0),
-            [255, 0, 0, 255]
-        );
-        let baseline = page.render_visible();
-        let parent = page.script_get_element_by_id("target").unwrap();
-        let child = page.script_create_element("span".to_string()).unwrap();
-        let parent = page.script_handle_for_node(parent);
-        let child = page.script_handle_for_node(child);
-        page.script_append_child(parent, child).unwrap();
-        let appended = page.render_visible();
-        assert_ne!(baseline.get_pixel(0, 0), appended.get_pixel(0, 0));
-        assert_eq!(appended.get_pixel(0, 0), [255, 0, 0, 255]);
-    }
-
-    fn all_text(frame: &Frame) -> String {
-        frame
-            .commands
-            .iter()
-            .filter_map(|c| match c {
-                PaintCommand::Text { text, .. } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
-    #[test]
-    fn navigate_fetches_over_the_network_and_loads_the_body() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 1024];
-            let _ = stream.read(&mut buf);
-            let body = "<p>fetched</p>";
-            stream
-                .write_all(
-                    format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                        body.len()
-                    )
-                    .as_bytes(),
-                )
-                .unwrap();
-        });
-        let mut page = Page::new(320.0, 200.0);
-        page.navigate(&format!("http://{addr}")).unwrap();
-        assert!(page
-            .render()
-            .commands
-            .iter()
-            .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "fetched")));
-    }
-
-    fn distinct_line_count(frame: &Frame) -> usize {
-        let mut ys: Vec<i64> = frame
-            .commands
-            .iter()
-            .filter_map(|c| match c {
-                PaintCommand::Text { y, .. } => Some(y.round() as i64),
-                _ => None,
-            })
-            .collect();
-        ys.sort_unstable();
-        ys.dedup();
-        ys.len()
-    }
-
-    #[test]
-    fn resize_relayouts_at_the_new_width() {
-        let mut page = Page::new(1000.0, 200.0);
-        page.load_html_str("<p>aaaa bbbb cccc dddd eeee</p>", None);
-        let wide_lines = distinct_line_count(&page.render());
-        page.resize(50.0, 200.0);
-        let narrow_lines = distinct_line_count(&page.render());
-        assert!(
-            narrow_lines > wide_lines,
-            "a much narrower viewport must wrap onto more lines"
-        );
-    }
-
-    #[test]
-    fn scroll_clamps_to_the_content_range() {
-        let mut page = Page::new(100.0, 20.0);
-        page.load_html_str("<div style=\"height: 500px;\"></div>", None);
-        page.scroll_by(-100.0);
-        assert_eq!(page.scroll_y(), 0.0, "cannot scroll above the top");
-        page.scroll_by(10_000.0);
-        assert!(
-            page.scroll_y() > 0.0 && page.scroll_y() <= 500.0,
-            "cannot scroll past the bottom of the content"
-        );
-    }
-
-    #[test]
-    fn click_on_a_link_returns_its_href() {
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str(r#"<a href="https://example.com/next">click me</a>"#, None);
-        // the link is the only content, at the top-left of the page
-        assert_eq!(
-            page.click(2.0, 2.0),
-            Some("https://example.com/next".to_string())
-        );
-    }
-
-    #[test]
-    fn click_on_nested_content_inside_a_link_still_finds_the_href() {
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str(r#"<a href="/x"><b>bold link text</b></a>"#, None);
-        assert_eq!(page.click(2.0, 2.0), Some("/x".to_string()));
-    }
-
-    #[test]
-    fn click_outside_any_link_returns_none() {
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str("<p>no links here</p>", None);
-        assert_eq!(page.click(2.0, 2.0), None);
-    }
-
-    #[test]
-    fn click_past_the_end_of_the_content_returns_none() {
-        let mut page = Page::new(320.0, 200.0);
-        page.load_html_str(r#"<a href="/x">hi</a>"#, None);
-        assert_eq!(page.click(300.0, 190.0), None);
-    }
-
-    #[test]
-    fn render_visible_crops_to_the_viewport_size() {
-        let mut page = Page::new(50.0, 30.0);
-        page.load_html_str(
-            "<div style=\"height: 500px; background-color: red;\"></div>",
-            None,
-        );
-        let visible = page.render_visible();
-        assert_eq!(visible.width, 50);
-        assert_eq!(visible.height, 30);
-    }
-
-    #[test]
-    fn render_visible_shows_content_at_the_current_scroll_offset() {
-        let mut page = Page::new(20.0, 10.0);
-        page.load_html_str(
-            "<div style=\"height: 10px; background-color: red;\"></div><div style=\"height: 10px; background-color: blue;\"></div>",
-            None,
-        );
-        let top = page.render_visible();
-        assert_eq!(
-            top.get_pixel(0, 0),
-            [255, 0, 0, 255],
-            "scrolled to top, red div is visible"
-        );
-
-        page.scroll_by(10.0);
-        let scrolled = page.render_visible();
-        assert_eq!(
-            scrolled.get_pixel(0, 0),
-            [0, 0, 255, 255],
-            "scrolled down 10px, blue div is now visible"
-        );
-    }
-}
+pub(crate) use dom_helpers::find_fragment_bounds;

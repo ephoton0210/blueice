@@ -52,6 +52,30 @@ impl<'a> ModuleChecker<'a> {
                     arguments: Vec::new(),
                 };
             }
+            if let Some(constructor) = scope.get(&call.callee.text) {
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                if let PropertyType::Found {
+                    value: Type::Function { parameters, result },
+                    ..
+                } = property_type(
+                    constructor,
+                    "new",
+                    &self.types,
+                    &mut HashSet::new(),
+                    &mut budget,
+                ) {
+                    return self.infer_function_call(
+                        &[FunctionSignature {
+                            parameters,
+                            type_parameters: Vec::new(),
+                            return_type: *result,
+                        }],
+                        call.arguments,
+                        scope,
+                        None,
+                    );
+                }
+            }
         }
         if let Some((_, _, result)) = top_level_binary_parts(tokens, &[","], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
@@ -127,6 +151,16 @@ impl<'a> ModuleChecker<'a> {
                             );
                         }
                     }
+                    Type::Intersection(overloads) if !has_literal_method_tags(&overloads) => {
+                        if let Some(signatures) = method_overload_signatures(&overloads) {
+                            return self.infer_function_call(
+                                &signatures,
+                                call.arguments,
+                                scope,
+                                None,
+                            );
+                        }
+                    }
                     Type::Intersection(overloads)
                         if supports_callback_method_receiver(
                             &base,
@@ -139,7 +173,12 @@ impl<'a> ModuleChecker<'a> {
                                 self.expanded_call_argument_types(&arguments, scope)
                             {
                                 if let Ok(Type::Function { result, .. }) =
-                                    select_callback_method_overload(&overloads, &actuals)
+                                    select_callback_method_overload(
+                                        &overloads,
+                                        &actuals,
+                                        &self.types,
+                                        self.max_type_expansions,
+                                    )
                                 {
                                     return *result.clone();
                                 }

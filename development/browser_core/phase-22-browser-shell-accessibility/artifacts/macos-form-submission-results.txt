@@ -1,0 +1,30 @@
+BlueIce macOS form submission validation metadata
+{
+  "result": "/Users/ephoton/git/blueice-downloads/frontend/macos/.build/results-20261002-220202.xcresult",
+  "unit": 37,
+  "ui": 20,
+  "total": 58,
+  "passed": 57,
+  "skipped": 1,
+  "failed": 0,
+  "runtime_warnings": 13,
+  "view_update_warnings": 0,
+  "rust_unique": 1460,
+  "rust_groups": {
+    "core": 1269,
+    "mcp": 191
+  },
+  "rust_ignored": 1,
+  "source_files": 37,
+  "source_sha256": "3aa09c173b06b2731703dff6fb768dae636d17b17aa20482ea3e689b5d869059",
+  "supplementary_ipc_fixture_sha256": "316ee307f51de00b2a5a71208cd44422ad19d3fa1025032bf4afd79b36c789d2",
+  "screenshot": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-form-resubmission.png",
+  "screenshot_bytes": 243528,
+  "screenshot_sha256": "65e7e020798f6192b840cde4b0be89574942da38c7695162e46167a530d93c80",
+  "base": "4c1c6e922db02b9109edccb2afa192caba0c4710",
+  "strict_signatures": "app + core + launcher + gatekeeper passed",
+  "owned_native_processes_after_suite": 0,
+  "workspace_all_targets": "passed",
+  "clippy_affected_packages": 8,
+  "screenshot_inspected": true
+}

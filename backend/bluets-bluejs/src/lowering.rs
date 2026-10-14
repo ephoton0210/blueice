@@ -283,6 +283,7 @@ fn lower_function_body(
     let mut body = Vec::with_capacity(items.len());
     for item in items {
         match item {
+            FunctionBodyItem::Function(function) => body.push(lower_function(module, function)?),
             FunctionBodyItem::Variable(variable) => body.push(lower_variable(module, variable)?),
             FunctionBodyItem::Expression { tokens, .. } => body.push(bluejs::Stmt::Expr(
                 ExpressionLowerer::new(&module.id, tokens).parse()?,
@@ -414,7 +415,8 @@ fn ensure_supported_try_body(items: &[FunctionBodyItem]) -> Result<(), BridgeErr
                     "body syntax is outside the direct try subset",
                 ));
             }
-            FunctionBodyItem::Expression { .. }
+            FunctionBodyItem::Function(_)
+            | FunctionBodyItem::Expression { .. }
             | FunctionBodyItem::Throw { .. }
             | FunctionBodyItem::Return { .. } => {}
         }
@@ -461,7 +463,8 @@ fn ensure_supported_while_body(items: &[FunctionBodyItem]) -> Result<(), BridgeE
                     "loop body syntax is outside the direct while subset",
                 ));
             }
-            FunctionBodyItem::Expression { .. }
+            FunctionBodyItem::Function(_)
+            | FunctionBodyItem::Expression { .. }
             | FunctionBodyItem::Throw { .. }
             | FunctionBodyItem::Return { .. } => {}
         }

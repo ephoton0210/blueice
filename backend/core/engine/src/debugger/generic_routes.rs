@@ -77,7 +77,11 @@ pub(super) fn resolve_live_realm(
     tabs: &TabManager,
     realm: DebuggerPageRealm,
 ) -> Result<TabId, Box<DebuggerReply>> {
-    if !realm.is_well_formed() || realm.browser_context_id != DEFAULT_BROWSER_CONTEXT_ID {
+    if !realm.is_well_formed()
+        || tabs
+            .tab_context(TabId::from_u64(realm.tab_id))
+            .is_none_or(|context| context.as_u64() != realm.browser_context_id)
+    {
         return Err(Box::new(DebuggerReply::Error {
             code: DebuggerErrorCode::InvalidTarget,
             message: "invalid debugger realm target".to_string(),

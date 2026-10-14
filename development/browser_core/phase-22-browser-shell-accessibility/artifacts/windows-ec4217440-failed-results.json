@@ -1,0 +1,117 @@
+{
+  "source_commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+  "status": "complete-rust-failed-before-winui",
+  "started": "2026-10-12T18:58:15.5073144Z",
+  "finished": "2026-10-12T20:28:36.3296293Z",
+  "controller_pid": 10436,
+  "error": "Failed step: rust-test, exit 101",
+  "steps": [
+    {
+      "name": "rust-fmt",
+      "exit_code": 0,
+      "seconds": 32.6953628,
+      "command": "& 'B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-ec4217440\\format-workspace28.ps1'",
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-ec4217440\\rust-fmt.log",
+      "log_sha256": "02a92ed809a18e00b21625860e1bd4b9f2577cfd38bb25872f2b5eab7bcc10be",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-clippy",
+      "exit_code": 0,
+      "seconds": 84.25586249999999,
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc clippy --workspace --all-targets --locked -- -D warnings",
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-ec4217440\\rust-clippy.log",
+      "log_sha256": "1a19d75fd1d78eafa07a573dfc11b93ea77ab6afeab7a77e8687e8b6d232d714",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-build",
+      "exit_code": 0,
+      "seconds": 286.18419439999997,
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc build --workspace --all-targets --locked",
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-ec4217440-retry1\\rust-build.log",
+      "log_sha256": "95d2322dedb0dfa8cdf7dc0ca55b2d57c16d3a0dbbc2110baa0ddf7481a28f30",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-test",
+      "exit_code": 101,
+      "seconds": 5105.4114285,
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc test --workspace --no-fail-fast --locked",
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-ec4217440-retry1\\rust-test.log",
+      "log_sha256": "6aa28af5e5789fef224f8ee7dbee758da8805f4a031f7b5cf6051135a8cdd0e9",
+      "rust_counts": {
+        "ignored": 64,
+        "groups": 516,
+        "failed": 2,
+        "passed": 5764
+      }
+    }
+  ],
+  "full_result_sha256": "524edd10a9a4ffbc2b80a451222936ae8c4a68ae79f5fda5958d4509b719dc0a",
+  "final_source_log_and_idle_audit": {
+    "status": "prior-source-result-and-idle-verified",
+    "commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+    "source_files": 2186,
+    "controller_gone": true,
+    "related_runtime_gone": true,
+    "step_logs": [
+      {
+        "sha256": "02a92ed809a18e00b21625860e1bd4b9f2577cfd38bb25872f2b5eab7bcc10be",
+        "name": "rust-fmt",
+        "exit_code": 0
+      },
+      {
+        "sha256": "1a19d75fd1d78eafa07a573dfc11b93ea77ab6afeab7a77e8687e8b6d232d714",
+        "name": "rust-clippy",
+        "exit_code": 0
+      },
+      {
+        "sha256": "95d2322dedb0dfa8cdf7dc0ca55b2d57c16d3a0dbbc2110baa0ddf7481a28f30",
+        "name": "rust-build",
+        "exit_code": 0
+      },
+      {
+        "sha256": "6aa28af5e5789fef224f8ee7dbee758da8805f4a031f7b5cf6051135a8cdd0e9",
+        "name": "rust-test",
+        "exit_code": 101
+      }
+    ],
+    "rust_counts": {
+      "ignored": 64,
+      "groups": 516,
+      "failed": 2,
+      "passed": 5764
+    },
+    "free_b": 280889106432,
+    "free_c": 7249928192,
+    "utc": "2026-10-12T20:41:38.1974332Z",
+    "pid": 9656
+  },
+  "bootstrap_handle": "QGA handle missing after completion; exact controller/process/source audit independently confirms no related runtime",
+  "winui_current_source_executed": false,
+  "known_failures": [
+    "array_from_async_allocations_after_a_user_hook",
+    "atomics_wait_async"
+  ],
+  "corrections": [
+    "33dfdb3b7",
+    "504eeb924"
+  ],
+  "remaining": "Complete fresh504 Rust+WinUI acceptance"
+}

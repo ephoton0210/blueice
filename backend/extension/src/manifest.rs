@@ -1,0 +1,744 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Install-time extension manifest loading and identity derivation.
+//!
+//! A connected extension never gets to select a friendly, author-written
+//! identity as its authority. Instead the host reads a strict package manifest
+//! plus its declared WASM module, validates both, and derives a domain-separated
+//! SHA-256 identity from their exact installed bytes. That exact identity is
+//! what the registry grants capabilities to and what a later protocol handshake
+//! must present. A hash-derived ID alone is not credentials: core's optional
+//! host-spawned mode binds it to an environment-only child credential through
+//! `HelloAuthenticated`; manual development listeners intentionally retain the
+//! bearer `Hello` form.
+//! The private runtime executes these validated exact bytes after its
+//! authenticated core handshake. This loader still performs only package
+//! validation and identity derivation; it does not grant ambient OS authority
+//! to a module.
+
+use crate::{
+    ExtensionRegistry, CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
+    CAPABILITY_NETWORK_OBSERVE, CAPABILITY_STORAGE, CAPABILITY_UI_INJECT,
+};
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
+use std::error::Error;
+use std::fmt;
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+use url::{Host, Url};
+
+/// The only manifest API version this Phase 9 host currently accepts.
+pub const MANIFEST_API_VERSION: u32 = 1;
+
+const IDENTITY_DOMAIN: &[u8] = b"blueice-extension-identity-v1\0";
+const WASM_MAGIC: &[u8; 4] = b"\0asm";
+const WASM_VERSION_1: &[u8; 4] = &[1, 0, 0, 0];
+
+/// The largest package module the host will load into memory. The runtime has
+/// stricter per-instance linear-memory limits; this bound protects install and
+/// compilation from an arbitrarily large package artifact first.
+pub const MAX_WASM_MODULE_BYTES: usize = 1024 * 1024;
+
+/// The install-time capability classes described by Phase 9. Only `declared`
+/// grants authority immediately; optional and runtime-ephemeral declarations
+/// are retained for a later consent/gesture flow but cannot authorize requests
+/// on their own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManifestCapabilities {
+    declared: BTreeSet<String>,
+    optional: BTreeSet<String>,
+    runtime_ephemeral: BTreeSet<String>,
+}
+
+impl ManifestCapabilities {
+    /// Capabilities persistently granted when the package is installed.
+    pub fn declared(&self) -> &BTreeSet<String> {
+        &self.declared
+    }
+
+    /// Capabilities declared as available but not install-time-granted.
+    pub fn optional(&self) -> &BTreeSet<String> {
+        &self.optional
+    }
+
+    /// Capabilities that require a future user-gesture flow.
+    pub fn runtime_ephemeral(&self) -> &BTreeSet<String> {
+        &self.runtime_ephemeral
+    }
+}
+
+/// The validated, declarative contents of `extension.json`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionManifest {
+    name: String,
+    version: String,
+    blueice_api_version: u32,
+    entry_point: PathBuf,
+    capabilities: ManifestCapabilities,
+    /// Exact canonical HTTP(S) origins for page-facing capabilities declared
+    /// in any tier. This restricts a later optional/ephemeral grant too; it
+    /// never turns a declaration into authority on its own.
+    capability_origins: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl ExtensionManifest {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub fn blueice_api_version(&self) -> u32 {
+        self.blueice_api_version
+    }
+
+    /// A package-root-relative path to the validated WASM module.
+    pub fn entry_point(&self) -> &Path {
+        &self.entry_point
+    }
+
+    pub fn capabilities(&self) -> &ManifestCapabilities {
+        &self.capabilities
+    }
+
+    pub fn capability_origins(&self) -> &BTreeMap<String, BTreeSet<String>> {
+        &self.capability_origins
+    }
+}
+
+/// A validated extension package, ready for installation into an
+/// [`ExtensionRegistry`]. The identity is derived by the host, never accepted
+/// from a manifest field or a protocol peer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledExtension {
+    manifest: ExtensionManifest,
+    manifest_path: PathBuf,
+    wasm_path: PathBuf,
+    wasm_bytes: Vec<u8>,
+    extension_id: String,
+}
+
+impl InstalledExtension {
+    pub fn manifest(&self) -> &ExtensionManifest {
+        &self.manifest
+    }
+
+    pub fn manifest_path(&self) -> &Path {
+        &self.manifest_path
+    }
+
+    pub fn wasm_path(&self) -> &Path {
+        &self.wasm_path
+    }
+
+    /// The exact validated module bytes used when deriving this package's
+    /// identity. Runtime execution consumes these bytes directly instead of
+    /// reopening a path that could change after installation.
+    pub fn wasm_bytes(&self) -> &[u8] {
+        &self.wasm_bytes
+    }
+
+    /// The `sha256:<hex>` identity that protocol peers must use in `Hello`.
+    pub fn extension_id(&self) -> &str {
+        &self.extension_id
+    }
+}
+
+/// Failure to parse or validate an installable extension package.
+#[derive(Debug)]
+pub enum ManifestError {
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Parse(serde_json::Error),
+    Invalid(String),
+}
+
+impl fmt::Display for ManifestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read { path, source } => write!(f, "could not read {}: {source}", path.display()),
+            Self::Parse(source) => write!(f, "invalid extension manifest JSON: {source}"),
+            Self::Invalid(message) => f.write_str(message),
+        }
+    }
+}
+
+impl Error for ManifestError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read { source, .. } => Some(source),
+            Self::Parse(source) => Some(source),
+            Self::Invalid(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawManifest {
+    name: String,
+    version: String,
+    blueice_api_version: u32,
+    entry_point: String,
+    #[serde(default)]
+    capabilities: RawCapabilities,
+    #[serde(default)]
+    capability_origins: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCapabilities {
+    #[serde(default)]
+    declared: Vec<String>,
+    #[serde(default)]
+    optional: Vec<String>,
+    #[serde(default, alias = "runtime-ephemeral")]
+    runtime_ephemeral: Vec<String>,
+}
+
+/// Loads, parses, and validates an `extension.json` package manifest and its
+/// relative WASM entry point. The entry point cannot escape the manifest's
+/// directory through `..`, an absolute path, or a symlink.
+pub fn load_installed_extension(
+    manifest_path: impl AsRef<Path>,
+) -> Result<InstalledExtension, ManifestError> {
+    let manifest_path = manifest_path.as_ref();
+    let manifest_bytes = read_file(manifest_path)?;
+    let raw: RawManifest = serde_json::from_slice(&manifest_bytes).map_err(ManifestError::Parse)?;
+    let manifest = validate_manifest(raw)?;
+
+    let package_root = manifest_path.parent().unwrap_or_else(|| Path::new("."));
+    let canonical_root = fs::canonicalize(package_root).map_err(|source| ManifestError::Read {
+        path: package_root.to_path_buf(),
+        source,
+    })?;
+    let candidate_wasm_path = canonical_root.join(manifest.entry_point());
+    let wasm_path =
+        fs::canonicalize(&candidate_wasm_path).map_err(|source| ManifestError::Read {
+            path: candidate_wasm_path,
+            source,
+        })?;
+    if !wasm_path.starts_with(&canonical_root) {
+        return Err(ManifestError::Invalid(
+            "extension entry_point resolves outside its package directory".to_string(),
+        ));
+    }
+    let wasm_bytes = read_file(&wasm_path)?;
+    validate_wasm_header(&wasm_bytes)?;
+
+    let extension_id = derive_extension_id(&manifest_bytes, &wasm_bytes);
+    Ok(InstalledExtension {
+        manifest,
+        manifest_path: manifest_path.to_path_buf(),
+        wasm_path,
+        wasm_bytes,
+        extension_id,
+    })
+}
+
+/// Registers all host-supported Phase 9 capability windows and grants just an
+/// installed manifest's persistent `declared` capabilities to its derived
+/// identity. Optional and runtime-ephemeral declarations are retained but
+/// ungranted; the latter only seeds a dormant one-shot lease slot.
+pub fn registry_for_installed_extension(extension: &InstalledExtension) -> ExtensionRegistry {
+    let mut registry = ExtensionRegistry::with_supported_capabilities();
+    for capability in extension.manifest().capabilities().declared() {
+        registry.grant(extension.extension_id(), capability);
+    }
+    for capability in extension.manifest().capabilities().optional() {
+        registry.declare_optional(extension.extension_id(), capability);
+    }
+    for capability in extension.manifest().capabilities().runtime_ephemeral() {
+        registry.declare_runtime_ephemeral(extension.extension_id(), capability);
+    }
+    registry
+}
+
+fn read_file(path: &Path) -> Result<Vec<u8>, ManifestError> {
+    fs::read(path).map_err(|source| ManifestError::Read {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+fn validate_manifest(raw: RawManifest) -> Result<ExtensionManifest, ManifestError> {
+    validate_text_field("name", &raw.name, 128)?;
+    validate_text_field("version", &raw.version, 64)?;
+    if raw.blueice_api_version != MANIFEST_API_VERSION {
+        return Err(ManifestError::Invalid(format!(
+            "unsupported blueice_api_version {}; this host supports {MANIFEST_API_VERSION}",
+            raw.blueice_api_version
+        )));
+    }
+    let entry_point = validate_entry_point(&raw.entry_point)?;
+    let capabilities = validate_capabilities(raw.capabilities)?;
+    let capability_origins = validate_capability_origins(raw.capability_origins, &capabilities)?;
+    Ok(ExtensionManifest {
+        name: raw.name,
+        version: raw.version,
+        blueice_api_version: raw.blueice_api_version,
+        entry_point,
+        capabilities,
+        capability_origins,
+    })
+}
+
+fn validate_capability_origins(
+    raw: BTreeMap<String, Vec<String>>,
+    capabilities: &ManifestCapabilities,
+) -> Result<BTreeMap<String, BTreeSet<String>>, ManifestError> {
+    let mut scopes = BTreeMap::new();
+    for (capability, origins) in raw {
+        if !matches!(
+            capability.as_str(),
+            CAPABILITY_DOM_READ
+                | CAPABILITY_DOM_WRITE
+                | CAPABILITY_NETWORK_OBSERVE
+                | CAPABILITY_NETWORK_INTERCEPT
+        ) || !(capabilities.declared().contains(&capability)
+            || capabilities.optional().contains(&capability)
+            || capabilities.runtime_ephemeral().contains(&capability))
+        {
+            return Err(ManifestError::Invalid(format!(
+                "capability_origins can scope only an origin-aware capability declared in the manifest, not {capability}"
+            )));
+        }
+        if origins.is_empty() || origins.len() > 32 {
+            return Err(ManifestError::Invalid(format!(
+                "capability_origins for {capability} must contain 1–32 origins"
+            )));
+        }
+        let mut validated = BTreeSet::new();
+        for origin in origins {
+            if origin.len() > 256 {
+                return Err(ManifestError::Invalid(
+                    "capability origin is too long".to_string(),
+                ));
+            }
+            let parsed = Url::parse(&origin).map_err(|_| {
+                ManifestError::Invalid(format!("invalid capability origin {origin:?}"))
+            })?;
+            let canonical = parsed.origin().ascii_serialization();
+            if !matches!(parsed.scheme(), "http" | "https")
+                || parsed.host().is_none()
+                || matches!(parsed.host(), Some(Host::Domain(domain)) if !valid_dns_origin_host(domain))
+                || parsed.port() == Some(0)
+                || origin != canonical
+            {
+                return Err(ManifestError::Invalid(format!(
+                    "capability origin must be a canonical HTTP(S) scheme, host, and optional port without path, credentials, query, or fragment: {origin:?}"
+                )));
+            }
+            if !validated.insert(canonical) {
+                return Err(ManifestError::Invalid(
+                    "duplicate capability origin".to_string(),
+                ));
+            }
+        }
+        scopes.insert(capability, validated);
+    }
+    Ok(scopes)
+}
+
+fn valid_dns_origin_host(host: &str) -> bool {
+    host.len() <= 253
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && label
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric())
+                && label
+                    .bytes()
+                    .last()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric())
+                && label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
+}
+
+fn validate_text_field(field: &str, value: &str, max_len: usize) -> Result<(), ManifestError> {
+    if value.is_empty() || value.len() > max_len || value.chars().any(char::is_control) {
+        return Err(ManifestError::Invalid(format!(
+            "manifest {field} must be non-empty printable text no longer than {max_len} bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_entry_point(value: &str) -> Result<PathBuf, ManifestError> {
+    let path = Path::new(value);
+    if value.is_empty()
+        || path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+        || path.extension().is_none_or(|extension| extension != "wasm")
+    {
+        return Err(ManifestError::Invalid(
+            "manifest entry_point must be a package-relative .wasm file without traversal"
+                .to_string(),
+        ));
+    }
+    Ok(path.to_path_buf())
+}
+
+fn validate_capabilities(raw: RawCapabilities) -> Result<ManifestCapabilities, ManifestError> {
+    let mut all = BTreeSet::new();
+    let declared = validate_capability_tier("declared", raw.declared, &mut all)?;
+    let optional = validate_capability_tier("optional", raw.optional, &mut all)?;
+    let runtime_ephemeral =
+        validate_capability_tier("runtime_ephemeral", raw.runtime_ephemeral, &mut all)?;
+    Ok(ManifestCapabilities {
+        declared,
+        optional,
+        runtime_ephemeral,
+    })
+}
+
+fn validate_capability_tier(
+    tier: &str,
+    values: Vec<String>,
+    all: &mut BTreeSet<String>,
+) -> Result<BTreeSet<String>, ManifestError> {
+    let mut tier_values = BTreeSet::new();
+    for capability in values {
+        if !is_supported_capability(&capability) {
+            return Err(ManifestError::Invalid(format!(
+                "manifest {tier} capability {capability:?} is not supported by this host"
+            )));
+        }
+        if !all.insert(capability.clone()) || !tier_values.insert(capability.clone()) {
+            return Err(ManifestError::Invalid(format!(
+                "manifest capability {capability:?} appears more than once"
+            )));
+        }
+    }
+    Ok(tier_values)
+}
+
+fn is_supported_capability(capability: &str) -> bool {
+    matches!(
+        capability,
+        CAPABILITY_DOM_READ
+            | CAPABILITY_DOM_WRITE
+            | CAPABILITY_NETWORK_INTERCEPT
+            | CAPABILITY_NETWORK_OBSERVE
+            | CAPABILITY_UI_INJECT
+            | CAPABILITY_STORAGE
+    )
+}
+
+fn validate_wasm_header(bytes: &[u8]) -> Result<(), ManifestError> {
+    if bytes.len() > MAX_WASM_MODULE_BYTES {
+        return Err(ManifestError::Invalid(format!(
+            "extension Wasm module exceeds the {} byte package limit",
+            MAX_WASM_MODULE_BYTES
+        )));
+    }
+    if bytes.len() < 8 || &bytes[..4] != WASM_MAGIC || &bytes[4..8] != WASM_VERSION_1 {
+        return Err(ManifestError::Invalid(
+            "extension entry_point is not a WebAssembly version-1 module".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn derive_extension_id(manifest_bytes: &[u8], wasm_bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(IDENTITY_DOMAIN);
+    for bytes in [manifest_bytes, wasm_bytes] {
+        hasher.update((bytes.len() as u64).to_be_bytes());
+        hasher.update(bytes);
+    }
+    let digest = hasher.finalize();
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("sha256:{hex}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const WASM_V1: &[u8] = b"\0asm\x01\0\0\0";
+
+    fn temporary_package(label: &str, manifest: &str, wasm: &[u8]) -> (PathBuf, PathBuf) {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "blueice-extension-manifest-{label}-{}-{id}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let manifest_path = root.join("extension.json");
+        let wasm_path = root.join("extension.wasm");
+        std::fs::write(&manifest_path, manifest).unwrap();
+        std::fs::write(&wasm_path, wasm).unwrap();
+        (root, manifest_path)
+    }
+
+    fn manifest(capabilities: &str) -> String {
+        format!(
+            r#"{{"name":"Demo","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{capabilities}}}"#
+        )
+    }
+
+    #[test]
+    fn a_valid_package_derives_a_stable_sha256_identity_and_only_grants_declared_capabilities() {
+        let (root, path) = temporary_package(
+            "valid",
+            &manifest(
+                r#"{"declared":["dom:read"],"optional":["dom:write"],"runtime_ephemeral":["network:intercept"]}"#,
+            ),
+            WASM_V1,
+        );
+        let extension = load_installed_extension(&path).unwrap();
+        let again = load_installed_extension(&path).unwrap();
+        assert_eq!(extension.extension_id(), again.extension_id());
+        assert!(extension.extension_id().starts_with("sha256:"));
+        assert_eq!(extension.extension_id().len(), "sha256:".len() + 64);
+
+        let registry = registry_for_installed_extension(&extension);
+        assert!(registry.has_capability(extension.extension_id(), CAPABILITY_DOM_READ));
+        assert!(!registry.has_capability(extension.extension_id(), CAPABILITY_DOM_WRITE));
+        assert!(!registry.has_capability(extension.extension_id(), CAPABILITY_NETWORK_INTERCEPT));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn declared_origin_aware_capabilities_accept_only_exact_canonical_origin_scopes() {
+        let source = r#"{"name":"Scoped","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read","dom:write","network:observe","network:intercept"]},"capability_origins":{"dom:read":["https://example.test","http://127.0.0.1:4312"],"dom:write":["https://example.test"],"network:intercept":["http://127.0.0.1:4312"]}}"#;
+        let (root, path) = temporary_package("origin-scopes", source, WASM_V1);
+        let extension = load_installed_extension(&path).unwrap();
+        assert_eq!(
+            extension.manifest().capability_origins()[CAPABILITY_DOM_READ],
+            BTreeSet::from([
+                "https://example.test".to_string(),
+                "http://127.0.0.1:4312".to_string(),
+            ])
+        );
+        assert!(!extension
+            .manifest()
+            .capability_origins()
+            .contains_key(CAPABILITY_NETWORK_OBSERVE));
+        assert_eq!(
+            extension.manifest().capability_origins()[CAPABILITY_NETWORK_INTERCEPT],
+            BTreeSet::from(["http://127.0.0.1:4312".to_string()])
+        );
+        let original_id = extension.extension_id().to_string();
+        std::fs::write(
+            &path,
+            source.replace("https://example.test", "https://other.test"),
+        )
+        .unwrap();
+        assert_ne!(
+            load_installed_extension(&path).unwrap().extension_id(),
+            original_id
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn optional_and_ephemeral_origin_scopes_are_retained_without_granting_authority() {
+        let source = r#"{"name":"Scoped tiers","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["dom:read"],"runtime_ephemeral":["network:observe"]},"capability_origins":{"dom:read":["https://example.test"],"network:observe":["https://example.test"]}}"#;
+        let (root, path) = temporary_package("scoped-tiers", source, WASM_V1);
+        let extension = load_installed_extension(&path).unwrap();
+        let id = extension.extension_id();
+        assert_eq!(
+            extension.manifest().capability_origins()[CAPABILITY_DOM_READ],
+            BTreeSet::from(["https://example.test".to_string()])
+        );
+        assert_eq!(
+            extension.manifest().capability_origins()[CAPABILITY_NETWORK_OBSERVE],
+            BTreeSet::from(["https://example.test".to_string()])
+        );
+        let registry = registry_for_installed_extension(&extension);
+        assert!(!registry.has_capability(id, CAPABILITY_DOM_READ));
+        assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE));
+        assert!(registry
+            .grant_optional(id, CAPABILITY_NETWORK_OBSERVE)
+            .is_err());
+        let ticket = registry
+            .arm_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, 1, 0)
+            .unwrap();
+        assert!(
+            !registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE),
+            "arming the one-shot slot must not become a persistent grant"
+        );
+        assert!(registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, &ticket, 1, 0));
+        assert!(!registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, &ticket, 1, 0));
+        assert!(registry.grant_optional(id, CAPABILITY_DOM_READ).unwrap());
+        assert!(registry.has_capability(id, CAPABILITY_DOM_READ));
+        assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE));
+        assert!(registry.revoke_optional(id, CAPABILITY_DOM_READ).unwrap());
+        assert!(!registry.has_capability(id, CAPABILITY_DOM_READ));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn origin_scopes_reject_undeclared_or_ambiguous_authority() {
+        for (label, declared, scopes) in [
+            (
+                "undeclared",
+                r#"["dom:read"]"#,
+                r#"{"dom:write":["https://example.test"]}"#,
+            ),
+            (
+                "storage",
+                r#"["storage"]"#,
+                r#"{"storage":["https://example.test"]}"#,
+            ),
+            (
+                "ungranted-intercept",
+                r#"[]"#,
+                r#"{"network:intercept":["https://example.test"]}"#,
+            ),
+            ("empty", r#"["dom:read"]"#, r#"{"dom:read":[]}"#),
+            (
+                "wildcard",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://*.example.test"]}"#,
+            ),
+            (
+                "path",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://example.test/private"]}"#,
+            ),
+            (
+                "credentials",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://user@example.test"]}"#,
+            ),
+            (
+                "noncanonical",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://EXAMPLE.test"]}"#,
+            ),
+            (
+                "duplicate",
+                r#"["dom:read"]"#,
+                r#"{"dom:read":["https://example.test","https://example.test"]}"#,
+            ),
+        ] {
+            let source = format!(
+                r#"{{"name":"Scoped","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{{"declared":{declared}}},"capability_origins":{scopes}}}"#
+            );
+            let (root, path) = temporary_package(label, &source, WASM_V1);
+            assert!(
+                load_installed_extension(&path).is_err(),
+                "{label} must be rejected"
+            );
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn identity_changes_when_either_installed_artifact_changes() {
+        let source = manifest(r#"{"declared":["dom:read"]}"#);
+        let (root, path) = temporary_package("identity", &source, WASM_V1);
+        let first = load_installed_extension(&path).unwrap();
+
+        std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0changed").unwrap();
+        let module_changed = load_installed_extension(&path).unwrap();
+        assert_ne!(first.extension_id(), module_changed.extension_id());
+
+        std::fs::write(
+            &path,
+            manifest(r#"{"declared":["dom:read"],"optional":["dom:write"]}"#),
+        )
+        .unwrap();
+        let manifest_changed = load_installed_extension(&path).unwrap();
+        assert_ne!(
+            module_changed.extension_id(),
+            manifest_changed.extension_id()
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn invalid_manifests_cannot_widen_authority_or_escape_the_package() {
+        for (label, source, expected) in [
+            (
+                "unknown-capability",
+                manifest(r#"{"declared":["network:exfiltrate"]}"#),
+                "not supported",
+            ),
+            (
+                "duplicate-capability",
+                manifest(r#"{"declared":["dom:read"],"optional":["dom:read"]}"#),
+                "appears more than once",
+            ),
+            (
+                "traversal",
+                r#"{"name":"Demo","version":"1","blueice_api_version":1,"entry_point":"../outside.wasm"}"#.to_string(),
+                "package-relative",
+            ),
+            (
+                "spoof-id-field",
+                r#"{"name":"Demo","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","extension_id":"friendly-name"}"#.to_string(),
+                "invalid extension manifest JSON",
+            ),
+        ] {
+            let (root, path) = temporary_package(label, &source, WASM_V1);
+            let error = load_installed_extension(&path).unwrap_err().to_string();
+            assert!(error.contains(expected), "{label}: {error}");
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn invalid_wasm_header_is_rejected_before_an_identity_is_registered() {
+        let (root, path) = temporary_package(
+            "bad-wasm",
+            &manifest(r#"{"declared":["dom:read"]}"#),
+            b"not a wasm module",
+        );
+        assert!(load_installed_extension(&path)
+            .unwrap_err()
+            .to_string()
+            .contains("not a WebAssembly"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn an_oversized_wasm_module_is_rejected_before_identity_derivation() {
+        let mut wasm = WASM_V1.to_vec();
+        wasm.resize(MAX_WASM_MODULE_BYTES + 1, 0);
+        let (root, path) = temporary_package("oversized-wasm", &manifest("{}"), &wasm);
+        assert!(load_installed_extension(&path)
+            .unwrap_err()
+            .to_string()
+            .contains("package limit"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn capability_windows_remain_separate_from_manifest_grants() {
+        let (root, path) =
+            temporary_package("window", &manifest(r#"{"declared":["dom:read"]}"#), WASM_V1);
+        let extension = load_installed_extension(&path).unwrap();
+        let registry = registry_for_installed_extension(&extension);
+        assert_eq!(
+            registry.unsupported_capability_version(CAPABILITY_DOM_READ, 4),
+            Some(
+                blueice_ipc::extension::UnsupportedCapabilityVersion::OutsideSupportedRange {
+                    min_inclusive: 1,
+                    max_inclusive: 3,
+                }
+            )
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+}

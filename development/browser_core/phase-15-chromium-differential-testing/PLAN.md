@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — the full local pipeline (BlueIce capture, Chromium capture, diff/report) works end to end (`npm run differential`); CI wiring and corpus curation are what's left. See "Staged build-out" and "First real results" below.
+**Status**: Complete — the local and CI pipelines capture BlueIce and Chromium, compare DOM/screenshots, publish an informational cross-run trend against the committed baseline, and retain artifacts. The shared corpus includes author stylesheets, a script-bearing page, and comment-adjacent text coverage. See "Staged build-out" and "First real results" below.
 
 ## Objective
 
@@ -35,32 +35,42 @@ Built in two stages, on request — the BlueIce-driving half proven working on i
 
 - `src/fixtures.js` — a JS port of `blueice-testing`'s `.dat` corpus parser, kept in exact lockstep with the Rust parser's rules (section-marker regex, blank-line stripping, one fixture per `#data` marker) so this harness reads the identical corpus BlueIce's own fixture tests do, not a subtly different one.
 - `src/serve-fixture.js` — a throwaway local HTTP server per fixture, since `blueice-net` only fetches `http://`/`https://` (no `file://`/`data:`) and a real Chromium tab will need an actual URL too, for the same comparison on both sides.
-- `src/blueice-client.js` — spawns `blueice-mcp-server` and wraps its `navigate`/`get_dom`/`screenshot` tools.
+- `src/blueice-client.js` — spawns `blueice-mcp-server`, unwraps its stable untrusted-page-content envelope before parsing machine data, and wraps its `navigate`/`get_dom`/`screenshot` tools.
+- `src/blueice-runtime.js` — reuses an already-running gatekeeper/launcher if present; otherwise starts the fail-closed gatekeeper and a launcher (therefore `core` plus its BlueJS sibling) as one owned process group and reaps only that group after capture. This makes a clean checkout run just as fully as an existing user session, including document-script execution.
 - `src/capture-blueice.js` (`npm run capture:blueice`) — runs every `#data`-bearing fixture in the shared corpus through the above and writes `differential-testing/output/blueice/<fixture>/{dom.txt,screenshot.png}`.
 
-Run and verified against all 28 current fixtures: every one captured a real DOM dump and a real, correctly-rendered PNG (spot-checked by eye) with zero failures.
+Run and verified against all 30 current fixtures: every one captured a real DOM dump and a real, correctly-rendered PNG with zero failures.
 
 **Stage 2 (done): Puppeteer capture + the actual diff.**
 
 - `src/dump-dom-in-page.js` — a JS port of `blueice_dom::dump`'s exact algorithm (same traversal order, indentation, attribute sorting, comment/doctype exclusion, text quoting), run inside a live Chromium tab via `page.evaluate()`. Both sides produce output from *the same dump function design*, not two structurally different serializations needing their own normalization pass before they're even comparable.
-- `src/capture-chromium.js` (`npm run capture:chromium`) — mirrors `capture-blueice.js` exactly (same corpus, same per-fixture local HTTP server, same output-directory shape), driving a real headless Chromium instead. Viewport fixed at 800×600 to match `blueice-mcp-server`'s `CoreProcess::spawn(800, 600)`, so the two sides' screenshots are pixel-comparable at all.
-- `src/compare.js` (`npm run compare`) — diffs `output/blueice/` against `output/chromium/` per fixture: DOM via `diff`'s `diffLines` (an exact-match flag plus a line-similarity fraction for the cases that differ), screenshots via `pixelmatch` (a match-fraction plus a written diff image highlighting exactly which pixels differ). Writes `output/report.json` (full per-fixture data) and a console summary table. Deliberately never fails/exits nonzero on a low similarity score — per "not exact parity" above, this is a report, not a pass/fail test.
-- `npm run differential` runs all three in sequence.
+- `src/capture-chromium.js` (`npm run capture:chromium`) — mirrors `capture-blueice.js` exactly (same corpus, same per-fixture local HTTP server, same output-directory shape), driving a real headless Chromium instead. Viewport fixed at 800×600 to match the launcher's `core`, so the two sides' screenshots are pixel-comparable at all.
+- `src/fixtures.js`'s `htmlForFixture` feeds both browsers the same complete input: `#data` plus any shared-fixture `#css` section embedded as an author `<style>` element. A Rust fixture's stylesheet is therefore no longer silently absent from the independent comparison.
+- `src/compare.js` (`npm run compare`) — diffs `output/blueice/` against `output/chromium/` per fixture: DOM via `diff`'s `diffLines` (an exact-match flag plus a line-similarity fraction for the cases that differ), screenshots via `pixelmatch` (a match-fraction plus a written diff image highlighting exactly which pixels differ). Writes `output/report.json` (including platform/architecture) and a console summary table. Deliberately never fails/exits nonzero on a low similarity score — per "not exact parity" above, this is a report, not a pass/fail test.
+- `npm run differential` runs capture, comparison, and trend rendering in sequence.
+
+## Cross-run trend and CI
+
+`differential-testing/baseline.json` is a versioned, committed snapshot of the full report. `npm run trend` compares a fresh `output/report.json` to it and writes human-readable `output/trend.md`: aggregate DOM/pixel metrics, corpus additions/removals, and material per-fixture changes. A handful of antialiased pixels is intentionally omitted from the per-fixture table; exact metrics remain in JSON. Similarity never sets a failing exit code.
+
+Updating that snapshot is deliberately explicit: after reviewing an intended change, run `npm run baseline:update` and commit the resulting `baseline.json`; an ordinary differential run never moves its own reference point. The current committed baseline is 30/30 DOM-identical with 100.00% average DOM similarity and 99.68% average pixel match on the recorded macOS/arm64 run.
+
+`.github/workflows/ci.yml` now has a separate `chromium-differential` job. It installs the lockfile, explicitly downloads Chrome for Testing (rather than relying on an npm lifecycle hook), builds the BlueIce subprocesses, runs the Node helper tests and `npm run differential`, writes `trend.md` to the GitHub job summary, and uploads the generated report/diff artifacts. A broken harness still fails its own job; a lower rendering similarity remains informational rather than a build gate.
 
 ## First real results
 
 Running `npm run differential` against all 28 current fixtures initially found **27/28 DOM-identical, 99.9% average DOM line similarity, 99.8% average pixel match** — and the one exception was a genuine `blueice-html` bug, not an MVP-scope gap: whitespace text either side of `</body>` (and, more generally, any two character-token runs separated only by a dropped comment token) landed as two adjacent sibling Text nodes instead of merging into one, per HTML5's "insert a character" algorithm. Invisible in any rendered output (pure whitespace either way), which is exactly why no fixture's `#paint`/`#layout` section had caught it — found specifically because this phase does a byte-level structural DOM comparison against a real, spec-compliant engine. **Fixed**: `blueice-html`'s `insert_text` (and `blueice-dom` gained `last_child`/`prev_sibling` accessors to support it) now checks whether the insertion point already ends with a Text node and appends to it rather than always creating a new one, on both the ordinary and foster-parenting insertion paths. Re-running the harness after the fix: **28/28 DOM-identical.**
 
-The remaining screenshot difference (`demo.dat`, 98.4% pixel match, the richest fixture — headings, a list, a form) is a real, already-understood MVP-scope gap, not a bug: the diff image (`output/diff/demo.dat_0/screenshot-diff.png`) shows Chromium rendering list bullets and a visible input-box border BlueIce's MVP scope doesn't yet, its default serif body font against BlueIce's bundled DejaVu Sans (sans-serif), and `:link` blue/underline styling BlueIce's MVP selector list doesn't include (`phase-2-mvp-scope/PLAN.md`'s deferred-selectors list explicitly excludes `:link`/`:visited`). This is exactly the kind of signal the phase exists to produce: a real, quantified baseline distinguishing "known scope boundary" from "actual bug" instead of an assumption — and it found one of each on its very first run.
+The committed 30-fixture baseline is **30/30 DOM-identical, 100.00% average DOM similarity, and 99.68% average pixel match**. The largest current visual deltas are `paint.dat#0` (96.2%), the `currentColor` stylesheet case in `css.dat#3` (96.8%), and `demo.dat#0` (98.4%). `demo` still represents understood MVP differences — list markers/input chrome, default font, and `:link` styling — while the first two now have a durable independent signal for future rendering work. This is exactly the kind of signal the phase exists to produce: a real, quantified baseline distinguishing a scope boundary from a regression instead of assuming either.
 
 ## Checklist
 
 - [x] Design the comparison strategy (what's compared, corpus source, not-exact-match philosophy) — see `TEST_PLAN.md`
 - [x] Add the DOM-tree capability the harness needs but didn't exist externally — `blueice_dom::dump`, `ClientMessage::GetDom`, `get_dom` MCP tool
 - [x] Confirm the screenshot capability the harness needs — `screenshot` MCP tool, verified against a real live-fetched page
-- [x] Write the Node.js harness's BlueIce-driving half (stage 1) — `differential-testing/`, verified against all 28 current fixtures
+- [x] Write the Node.js harness's BlueIce-driving half (stage 1) — `differential-testing/`, including clean-run gatekeeper/launcher/BlueJS lifecycle, verified against all 30 current fixtures
 - [x] Add the Puppeteer/Chromium-driving half (stage 2) — `capture-chromium.js`, same corpus and output shape as stage 1
 - [x] Implement the screenshot diff (pixel/perceptual) and the DOM structural diff — `compare.js`, `pixelmatch` + `diff`, with a written visual diff image per fixture
-- [ ] Decide and implement how the diff trend is tracked *across runs* (a baseline file committed to the repo, so a regression is visible in a PR diff? a job-summary-only report with no persisted history? — `report.json` exists per-run today, but nothing compares one run's report to a prior one yet)
-- [ ] Wire the `chromium-differential` CI job (`testing/TEST_PLAN.md`'s CI section) — needs Node.js plus a headless-Chromium-capable runner image; reports to the job summary, not gating the build
-- [ ] Curate/extend the fixture corpus if differential testing surfaces gaps the current corpus doesn't exercise (none found yet — the one real divergence found, `demo.dat`, was already-known MVP scope, not a new gap)
+- [x] Track the diff trend across runs — committed `baseline.json`, explicit `baseline:update`, and informational `trend.md` with focused Node tests
+- [x] Wire the `chromium-differential` CI job — lockfile Node setup, explicit Chrome for Testing download, job summary, and downloadable artifacts; similarity does not gate the build
+- [x] Curate/extend the fixture corpus for gaps the original run did not exercise — `differential.dat` checks first-paint inline-script execution and comment-adjacent text merging; the harness now includes every fixture's `#css` author stylesheet

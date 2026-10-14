@@ -51,6 +51,9 @@ impl Heap {
         object: ObjectId,
         key: PropertyName,
     ) -> Result<Option<PropertyDescriptor>, HeapError> {
+        if let Some(value) = self.drag_index_value(object, &key)? {
+            return Ok(value.map(|value| PropertyDescriptor::data(value, false, true, true)));
+        }
         if let Some(numeric) = self.typed_array_numeric_key(object, &key)? {
             match numeric {
                 TypedArrayNumericKey::Index(index) => {
@@ -128,6 +131,9 @@ impl Heap {
         key: PropertyName,
         descriptor: PropertyDescriptor,
     ) -> Result<bool, HeapError> {
+        if self.drag_index_value(object, &key)?.is_some() {
+            return Ok(false);
+        }
         if descriptor.accessor() && (descriptor.value.is_some() || descriptor.writable.is_some()) {
             return Ok(false);
         }
@@ -386,6 +392,23 @@ impl Heap {
                 | ObjectKind::StringIterator { string, .. }
                 | ObjectKind::RegExpIterator { string, .. } => string.byte_len(),
                 ObjectKind::ArrayBuffer { bytes, .. } => bytes.len(),
+                ObjectKind::WebFileList(files) => files.len().saturating_mul(size_of::<ObjectId>()),
+                ObjectKind::WebDataTransfer(store) => store.bytes(),
+                ObjectKind::WebDragEvent(state) => state.bytes(),
+                ObjectKind::WebEventTarget(state) => state.bytes(),
+                ObjectKind::WebFileReader(state) => state.bytes(),
+                ObjectKind::WebStream(state) => state.bytes(),
+                ObjectKind::WebDOMException { name, message } => {
+                    name.byte_len().saturating_add(message.byte_len())
+                }
+                ObjectKind::WebAbortSignal(state) => state.bytes(),
+                ObjectKind::WebAbortController(_) => 0,
+                ObjectKind::WebUrl(url) => size_of::<url::Url>() + url.as_str().len(),
+                ObjectKind::WebBlob(blob) => blob
+                    .bytes
+                    .len()
+                    .saturating_add(blob.media_type.byte_len())
+                    .saturating_add(blob.file.as_ref().map_or(0, |(name, _)| name.byte_len())),
                 ObjectKind::RegExp(regexp) => exotic::regexp_bytes(regexp),
                 ObjectKind::Collator { data, .. } => data.bytes(),
                 ObjectKind::NumberFormat { data, .. } => data.bytes(),
@@ -500,6 +523,9 @@ impl Heap {
     }
 
     fn get_own_key(&self, object: ObjectId, key: PropertyName) -> Result<Option<Value>, HeapError> {
+        if let Some(value) = self.drag_index_value(object, &key)? {
+            return Ok(value);
+        }
         if let Some(numeric) = self.typed_array_numeric_key(object, &key)? {
             return match numeric {
                 TypedArrayNumericKey::Index(index) => self.typed_array_index_value(object, index),
@@ -578,6 +604,9 @@ impl Heap {
         key: PropertyName,
         value: Value,
     ) -> Result<(), HeapError> {
+        if self.drag_index_value(object, &key)?.is_some() {
+            return Err(HeapError::ReadOnlyProperty);
+        }
         if self.typed_array_numeric_key(object, &key)?.is_some() {
             return Err(HeapError::ReadOnlyProperty);
         }
@@ -675,6 +704,9 @@ impl Heap {
         object: ObjectId,
         key: PropertyName,
     ) -> Result<bool, HeapError> {
+        if let Some(value) = self.drag_index_value(object, &key)? {
+            return Ok(value.is_none());
+        }
         if let Some(numeric) = self.typed_array_numeric_key(object, &key)? {
             let TypedArrayNumericKey::Index(index) = numeric else {
                 return Ok(true);
@@ -756,6 +788,11 @@ impl Heap {
         }
         let mut indices = Vec::new();
         let mut strings = Vec::new();
+        if let Some(length) = self.drag_index_count(object)? {
+            for index in 0..length {
+                indices.push((index, index.to_string().into()));
+            }
+        }
         if let ObjectKind::String(string) = &obj.kind {
             for index in 0..string.len() {
                 indices.push((index, index.to_string().into()));
@@ -784,6 +821,9 @@ impl Heap {
     /// about which indices an `[[HasProperty]]` probe could find.
     pub(crate) fn own_integer_keys(&self, object: ObjectId) -> Result<Option<Vec<u64>>, HeapError> {
         let obj = self.object(object)?;
+        if self.drag_index_count(object)?.is_some() {
+            return Ok(None);
+        }
         if matches!(
             obj.kind,
             ObjectKind::Proxy { .. }

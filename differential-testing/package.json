@@ -8,7 +8,10 @@
     "capture:blueice": "node src/capture-blueice.js",
     "capture:chromium": "node src/capture-chromium.js",
     "compare": "node src/compare.js",
-    "differential": "npm run capture:blueice && npm run capture:chromium && npm run compare"
+    "trend": "node src/trend.js",
+    "baseline:update": "node src/update-baseline.js",
+    "test": "node --test",
+    "differential": "npm run capture:blueice && npm run capture:chromium && npm run compare && npm run trend"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

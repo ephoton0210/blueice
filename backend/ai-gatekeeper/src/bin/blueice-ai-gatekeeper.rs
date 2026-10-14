@@ -3,48 +3,31 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `blueice-ai-gatekeeper`: the process binary. Deliberately thin --
-//! all the logic it runs (`handle_one_check`, always replying
-//! `Cleared`) lives in `blueice_ai_gatekeeper`'s `lib.rs`, already
+//! all review logic (mandatory versioned rules and an optional local model)
+//! lives in `blueice_ai_gatekeeper`'s `GatekeeperService`, already
 //! covered by its own unit tests against an in-process `UnixStream`
-//! pair. This file is just binding a real `UnixListener` at the
-//! well-known gatekeeper socket path and accepting connections --
-//! matching how `blueice-core`'s own thin binary is structured (see
-//! that crate's `src/bin/blueice-core.rs` docs).
+//! pair. This file is just parsing an optional private socket override,
+//! binding a real `UnixListener`, and accepting connections -- matching
+//! how `blueice-core`'s own thin binary is structured (see that crate's
+//! `src/bin/blueice-core.rs` docs). The override lets `blueice-launcher`
+//! give each supervised browser session its own gatekeeper instead of
+//! competing for the well-known standalone-development socket.
 //!
 //! `core` opens a short-lived, per-check connection per review (connect
-//! -> request -> reply -> disconnect), so handling connections
-//! sequentially here is a deliberate match to that shape, not a
-//! scalability shortcut -- see `blueice_ai_gatekeeper`'s own module
-//! docs.
+//! -> request -> reply -> disconnect). Each accepted connection runs in its
+//! own bounded-time worker, so an idle local peer cannot block other reviews.
 
 #[cfg(unix)]
-use blueice_ai_gatekeeper::handle_one_check;
-#[cfg(unix)]
-use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
-#[cfg(unix)]
-use std::os::unix::net::UnixListener;
+#[path = "blueice-ai-gatekeeper/unix.rs"]
+mod unix;
 
 #[cfg(unix)]
-fn main() -> std::io::Result<()> {
-    let path = default_gatekeeper_socket_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    // A stale socket file from a previous run (e.g. one that crashed
-    // instead of exiting cleanly) makes bind() fail with AddrInUse even
-    // though nothing is actually listening -- remove it first, same as
-    // `blueice-core`'s own binary does for its own socket.
-    let _ = std::fs::remove_file(&path);
-
-    let listener = UnixListener::bind(&path)?;
-    for mut stream in listener.incoming().flatten() {
-        let _ = handle_one_check(&mut stream);
-    }
-    Ok(())
+fn main() -> std::process::ExitCode {
+    unix::main()
 }
 
 #[cfg(not(unix))]
-fn main() {
-    eprintln!("blueice-ai-gatekeeper is currently supported only on Unix platforms");
-    std::process::exit(1);
+fn main() -> std::process::ExitCode {
+    eprintln!("blueice-ai-gatekeeper requires Unix-domain socket support on this platform");
+    std::process::ExitCode::FAILURE
 }

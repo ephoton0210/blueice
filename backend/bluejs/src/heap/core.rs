@@ -70,6 +70,7 @@ impl Heap {
             remembered: HashSet::new(),
             roots: HashMap::new(),
             scoped_roots: Vec::new(),
+            scoped_owned_edges: Vec::new(),
             managed_bytes: 0,
             next_major_bytes: config.major_threshold_bytes,
             #[cfg(any(test, coverage))]
@@ -930,7 +931,10 @@ impl Heap {
     }
 
     pub(crate) fn is_error(&self, object: ObjectId) -> Result<bool, HeapError> {
-        Ok(matches!(self.object(object)?.kind, ObjectKind::Error))
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::Error | ObjectKind::WebDOMException { .. }
+        ))
     }
 
     pub(crate) fn is_date(&self, object: ObjectId) -> Result<bool, HeapError> {

@@ -1,0 +1,1286 @@
+{
+  "utc": "2026-10-13T04:07:21.544259+00:00",
+  "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "source_commit": "2cf93cf5695bed6e44eb74c779e07821b28b710f",
+  "attempt": "native-event-channel",
+  "preceding_native_gate_exit": 65,
+  "preceding_native_gate_failures": [
+    "BrowserUITests.BrowserUITests testSessionManualRestoreForgetAndInvalidPreferenceRecovery",
+    "BrowserUITests.BrowserUITests testTraditionalChineseChromeSettingsMenusAndMultipleWindows"
+  ],
+  "scope": "Real native BlueIce GUI and system OS keyboard operations; actual Core text/marked/representation state read-only",
+  "mode": "voiceover",
+  "voiceover_driver": "native",
+  "application_build": "candidate",
+  "front_end_base_commit": "2cf93cf5695bed6e44eb74c779e07821b28b710f",
+  "front_end_inputs": {
+    "frontend/macos/Sources/PageViewport.swift": "d4340be9277bb5d417591f7b171fbb49d4eee52d72addb183bc055e96b4af85d",
+    "frontend/macos/Sources/NativeEditingMenu.swift": "c4992680aa20689ee99584f3c98b8784ca85e9ef3727e4d7faa70c34ed5d844e"
+  },
+  "sources": {
+    "run-owned-physical-zhuyin.py": "98b61ea9a55f26a8a349020d023d3850b40f43ccce4bab7a2ac8d6bc7b762fa4",
+    "owned-zhuyin-source-lease.swift": "0b06782027bb803a4745e4669e16f0232f9a6d443e38c57b05ee35ebdb9fc94a",
+    "owned-system-key-driver.applescript": "c82f5649681918265b4dd6661806b619e3c149afd7370f53c66f5ee74185dcde",
+    "owned-gui-field-control.applescript": "7d64d78b8296c88f038d105bf6e0c99da9f0372fe8abb39d81235057b7100c57",
+    "observe-owned-input-state.py": "62dd688ed4006554a32f32ba0ac0b921b894920de34a987159d7df4bf9fcadc3",
+    "physical-input-source-probe.swift": "2002d776442b37866d97b7c5a2b8533bfb467750e402068bd6cb2a690bcb8192",
+    "read-voiceover-system-state.swift": "bac56170a7995749433aecf8c48afca21ab5b0532ec99fb1ed19c032b3a8c7d8",
+    "owned-voiceover-quickstart.applescript": "cf82772c4d6658889a067fb6dd4818fb6fb1637fbd2f57c689450acfa79692d0",
+    "owned-voiceover-enable.applescript": "f3d3a6f4e2800e33ad99cdc2c8fbb08cf93ff95da51903db6b4aa0ff2d2c2539",
+    "owned-voiceover-phrase-lease.swift": "2c81e339c5a2861b2bdd537cf0d39695582341cc7210fe934c06d5b427a1f22e",
+    "owned-native-voiceover-key.swift": "d1d7b037f72c48b75b698201f09d463e10dc12301c33eb80c166e40ae47846e6",
+    "read-native-event-post-preflight.swift": "dc664f1688f25196f4d3fe86899bec9a83b9872849322f2dd2b075f9cfcc04b7"
+  },
+  "initial_input_source": {
+    "current": {
+      "enabled": true,
+      "id": "com.apple.keylayout.ABC",
+      "name": "ABC",
+      "selectable": true,
+      "selected": true
+    },
+    "enabled_zhuyin_count": 1,
+    "physical_ime_accepted": false,
+    "scope": "Read-only system TIS input source inspection; no source selection or key injection",
+    "zhuyin_candidates": [
+      {
+        "enabled": true,
+        "id": "com.apple.inputmethod.TCIM.Zhuyin",
+        "name": "Zhuyin – Traditional",
+        "selectable": true,
+        "selected": false
+      }
+    ]
+  },
+  "clipboard_modified": false,
+  "initial_reader_state": {
+    "enabled": false,
+    "physical_voiceover_accepted": false,
+    "quickstarts": [],
+    "readers": [],
+    "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+  },
+  "preferences_domain": "cc.blueice.physical.ime.31a0d9abe153400eba674c2fb6d7d0cb",
+  "fixture": "/private/tmp/bi-ime-tf7gwlm0",
+  "physical_ime_accepted": false,
+  "physical_voiceover_accepted": false,
+  "application_pid": 21338,
+  "launcher_pid": 21342,
+  "runtime": "/private/tmp/bi-66ECE8ED1A4D413895A379428E2CEE8F",
+  "navigation_gui": "Delivered guarded native address keyboard navigation\n",
+  "keyboard_focus_trace": [
+    {
+      "application": 21338,
+      "launcher": 21342,
+      "representation": {
+        "accessibility": {
+          "acknowledged_revision": 0,
+          "announcements": [],
+          "delivery_version": 1,
+          "document_generation": 2,
+          "hidden_nodes": [],
+          "names": [],
+          "revision": 0,
+          "truncated": false
+        },
+        "frame_source": 7190269667192840917,
+        "generation": 6,
+        "nodes": [
+          {
+            "bounds": {
+              "height": 38.4,
+              "width": 1120.0,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "children": [],
+            "id": 48,
+            "name": "Physical VoiceOver fixture",
+            "name_from": "Contents",
+            "occluded": false,
+            "occluded_by": null,
+            "occluded_fraction": 0.0,
+            "opacity": 1.0,
+            "parent": null,
+            "role": {
+              "Heading": {
+                "level": 1
+              }
+            },
+            "state": {
+              "checked": null,
+              "disabled": false,
+              "file_input": false,
+              "focused": false,
+              "hovered": false,
+              "multiple": false,
+              "native_drag_source": false,
+              "native_focusable": false,
+              "native_text_input": false,
+              "protected": false,
+              "radio": false,
+              "required": false,
+              "select_list": false,
+              "selected": false,
+              "value": null
+            }
+          },
+          {
+            "bounds": {
+              "height": 36.0,
+              "width": 300.0,
+              "x": 0.0,
+              "y": 38.4
+            },
+            "children": [],
+            "id": 50,
+            "name": "Name",
+            "name_from": {
+              "Attribute": "aria-label"
+            },
+            "occluded": false,
+            "occluded_by": null,
+            "occluded_fraction": 0.0,
+            "opacity": 1.0,
+            "parent": null,
+            "role": "TextBox",
+            "state": {
+              "checked": null,
+              "disabled": false,
+              "file_input": false,
+              "focused": false,
+              "hovered": false,
+              "multiple": false,
+              "native_drag_source": false,
+              "native_focusable": true,
+              "native_text_input": true,
+              "protected": false,
+              "radio": false,
+              "required": false,
+              "select_list": false,
+              "selected": false,
+              "value": "hello"
+            }
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1120.0,
+              "x": 0.0,
+              "y": 74.4
+            },
+            "children": [],
+            "id": 51,
+            "name": "Open destination",
+            "name_from": "Contents",
+            "occluded": false,
+            "occluded_by": null,
+            "occluded_fraction": 0.0,
+            "opacity": 1.0,
+            "parent": null,
+            "role": "Link",
+            "state": {
+              "checked": null,
+              "disabled": false,
+              "file_input": false,
+              "focused": false,
+              "hovered": false,
+              "multiple": false,
+              "native_drag_source": true,
+              "native_focusable": true,
+              "native_text_input": false,
+              "protected": false,
+              "radio": false,
+              "required": false,
+              "select_list": false,
+              "selected": false,
+              "value": null
+            }
+          }
+        ],
+        "scroll_y": 0.0,
+        "tab_id": 1,
+        "url": "http://127.0.0.1:62231/accessibility"
+      },
+      "scope": "Read-only actual owned Core state",
+      "text_input": {
+        "document": {
+          "active": false,
+          "limited": false,
+          "selected_text": null,
+          "selection": {
+            "length": 0,
+            "location": 0
+          },
+          "selection_rects": [],
+          "text_length": 43,
+          "version": 1
+        },
+        "document_generation": 2,
+        "focus_exit": null,
+        "focus_generation": 0,
+        "focused": null,
+        "focused_node": null,
+        "frame_generation": 6,
+        "frame_source": 7190269667192840917,
+        "scroll_y": 0.0,
+        "select": null,
+        "tab_id": 1,
+        "version": 1
+      },
+      "viewport": {
+        "backing_scale": 2.0,
+        "css_height": 680.0,
+        "css_width": 1120.0,
+        "device_scale": 2.0,
+        "frame_generation": 6,
+        "frame_source": 7190269667192840917,
+        "height": 680.0,
+        "pixel_height": 1360,
+        "pixel_width": 2240,
+        "tab_id": 1,
+        "width": 1120.0,
+        "zoom": 1.0
+      }
+    },
+    {
+      "application": 21338,
+      "launcher": 21342,
+      "representation": {
+        "accessibility": {
+          "acknowledged_revision": 0,
+          "announcements": [],
+          "delivery_version": 1,
+          "document_generation": 2,
+          "hidden_nodes": [],
+          "names": [],
+          "revision": 0,
+          "truncated": false
+        },
+        "frame_source": 7190269667192840917,
+        "generation": 7,
+        "nodes": [
+          {
+            "bounds": {
+              "height": 38.4,
+              "width": 1120.0,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "children": [],
+            "id": 48,
+            "name": "Physical VoiceOver fixture",
+            "name_from": "Contents",
+            "occluded": false,
+            "occluded_by": null,
+            "occluded_fraction": 0.0,
+            "opacity": 1.0,
+            "parent": null,
+            "role": {
+              "Heading": {
+                "level": 1
+              }
+            },
+            "state": {
+              "checked": null,
+              "disabled": false,
+              "file_input": false,
+              "focused": false,
+              "hovered": false,
+              "multiple": false,
+              "native_drag_source": false,
+              "native_focusable": false,
+              "native_text_input": false,
+              "protected": false,
+              "radio": false,
+              "required": false,
+              "select_list": false,
+              "selected": false,
+              "value": null
+            }
+          },
+          {
+            "bounds": {
+              "height": 36.0,
+              "width": 300.0,
+              "x": 0.0,
+              "y": 38.4
+            },
+            "children": [],
+            "id": 50,
+            "name": "Name",
+            "name_from": {
+              "Attribute": "aria-label"
+            },
+            "occluded": false,
+            "occluded_by": null,
+            "occluded_fraction": 0.0,
+            "opacity": 1.0,
+            "parent": null,
+            "role": "TextBox",
+            "state": {
+              "checked": null,
+              "disabled": false,
+              "file_input": false,
+              "focused": true,
+              "hovered": false,
+              "multiple": false,
+              "native_drag_source": false,
+              "native_focusable": true,
+              "native_text_input": true,
+              "protected": false,
+              "radio": false,
+              "required": false,
+              "select_list": false,
+              "selected": false,
+              "value": "hello"
+            }
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1120.0,
+              "x": 0.0,
+              "y": 74.4
+            },
+            "children": [],
+            "id": 51,
+            "name": "Open destination",
+            "name_from": "Contents",
+            "occluded": false,
+            "occluded_by": null,
+            "occluded_fraction": 0.0,
+            "opacity": 1.0,
+            "parent": null,
+            "role": "Link",
+            "state": {
+              "checked": null,
+              "disabled": false,
+              "file_input": false,
+              "focused": false,
+              "hovered": false,
+              "multiple": false,
+              "native_drag_source": true,
+              "native_focusable": true,
+              "native_text_input": false,
+              "protected": false,
+              "radio": false,
+              "required": false,
+              "select_list": false,
+              "selected": false,
+              "value": null
+            }
+          }
+        ],
+        "scroll_y": 0.0,
+        "tab_id": 1,
+        "url": "http://127.0.0.1:62231/accessibility"
+      },
+      "scope": "Read-only actual owned Core state",
+      "text_input": {
+        "document": {
+          "active": false,
+          "limited": false,
+          "selected_text": null,
+          "selection": {
+            "length": 0,
+            "location": 0
+          },
+          "selection_rects": [],
+          "text_length": 43,
+          "version": 1
+        },
+        "document_generation": 2,
+        "focus_exit": null,
+        "focus_generation": 1,
+        "focused": {
+          "bounds": {
+            "height": 36.0,
+            "width": 300.0,
+            "x": 0.0,
+            "y": 38.4
+          },
+          "can_redo": false,
+          "can_undo": false,
+          "caret": {
+            "height": 19.2,
+            "width": 1.0,
+            "x": 43.6640625,
+            "y": 41.4
+          },
+          "carets": [
+            {
+              "bounds": {
+                "height": 19.2,
+                "width": 1.0,
+                "x": 5.0,
+                "y": 41.4
+              },
+              "offset": 0
+            },
+            {
+              "bounds": {
+                "height": 19.2,
+                "width": 1.0,
+                "x": 15.140625,
+                "y": 41.4
+              },
+              "offset": 1
+            },
+            {
+              "bounds": {
+                "height": 19.2,
+                "width": 1.0,
+                "x": 24.984375,
+                "y": 41.4
+              },
+              "offset": 2
+            },
+            {
+              "bounds": {
+                "height": 19.2,
+                "width": 1.0,
+                "x": 29.4296875,
+                "y": 41.4
+              },
+              "offset": 3
+            },
+            {
+              "bounds": {
+                "height": 19.2,
+                "width": 1.0,
+                "x": 33.875,
+                "y": 41.4
+              },
+              "offset": 4
+            },
+            {
+              "bounds": {
+                "height": 19.2,
+                "width": 1.0,
+                "x": 43.6640625,
+                "y": 41.4
+              },
+              "offset": 5
+            }
+          ],
+          "marked": null,
+          "multiline": false,
+          "node_id": 50,
+          "protected": false,
+          "selection": {
+            "length": 0,
+            "location": 5
+          },
+          "selection_rects": [],
+          "text": "hello",
+          "text_length": 5,
+          "undo_limited": false,
+          "writable": true
+        },
+        "focused_node": 50,
+        "frame_generation": 7,
+        "frame_source": 7190269667192840917,
+        "scroll_y": 0.0,
+        "select": null,
+        "tab_id": 1,
+        "version": 1
+      },
+      "viewport": {
+        "backing_scale": 2.0,
+        "css_height": 680.0,
+        "css_width": 1120.0,
+        "device_scale": 2.0,
+        "frame_generation": 7,
+        "frame_source": 7190269667192840917,
+        "height": 680.0,
+        "pixel_height": 1360,
+        "pixel_width": 2240,
+        "tab_id": 1,
+        "width": 1120.0,
+        "zoom": 1.0
+      }
+    }
+  ],
+  "baseline": {
+    "application": 21338,
+    "launcher": 21342,
+    "representation": {
+      "accessibility": {
+        "acknowledged_revision": 0,
+        "announcements": [],
+        "delivery_version": 1,
+        "document_generation": 2,
+        "hidden_nodes": [],
+        "names": [],
+        "revision": 0,
+        "truncated": false
+      },
+      "frame_source": 7190269667192840917,
+      "generation": 7,
+      "nodes": [
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 0.0
+          },
+          "children": [],
+          "id": 48,
+          "name": "Physical VoiceOver fixture",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 1
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 36.0,
+            "width": 300.0,
+            "x": 0.0,
+            "y": 38.4
+          },
+          "children": [],
+          "id": 50,
+          "name": "Name",
+          "name_from": {
+            "Attribute": "aria-label"
+          },
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "TextBox",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": true,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": true,
+            "native_text_input": true,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": "hello"
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 74.4
+          },
+          "children": [],
+          "id": 51,
+          "name": "Open destination",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Link",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": true,
+            "native_focusable": true,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        }
+      ],
+      "scroll_y": 0.0,
+      "tab_id": 1,
+      "url": "http://127.0.0.1:62231/accessibility"
+    },
+    "scope": "Read-only actual owned Core state",
+    "text_input": {
+      "document": {
+        "active": false,
+        "limited": false,
+        "selected_text": null,
+        "selection": {
+          "length": 0,
+          "location": 0
+        },
+        "selection_rects": [],
+        "text_length": 43,
+        "version": 1
+      },
+      "document_generation": 2,
+      "focus_exit": null,
+      "focus_generation": 1,
+      "focused": {
+        "bounds": {
+          "height": 36.0,
+          "width": 300.0,
+          "x": 0.0,
+          "y": 38.4
+        },
+        "can_redo": false,
+        "can_undo": false,
+        "caret": {
+          "height": 19.2,
+          "width": 1.0,
+          "x": 43.6640625,
+          "y": 41.4
+        },
+        "carets": [
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 5.0,
+              "y": 41.4
+            },
+            "offset": 0
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 15.140625,
+              "y": 41.4
+            },
+            "offset": 1
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 24.984375,
+              "y": 41.4
+            },
+            "offset": 2
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 29.4296875,
+              "y": 41.4
+            },
+            "offset": 3
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 33.875,
+              "y": 41.4
+            },
+            "offset": 4
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 43.6640625,
+              "y": 41.4
+            },
+            "offset": 5
+          }
+        ],
+        "marked": null,
+        "multiline": false,
+        "node_id": 50,
+        "protected": false,
+        "selection": {
+          "length": 0,
+          "location": 5
+        },
+        "selection_rects": [],
+        "text": "hello",
+        "text_length": 5,
+        "undo_limited": false,
+        "writable": true
+      },
+      "focused_node": 50,
+      "frame_generation": 7,
+      "frame_source": 7190269667192840917,
+      "scroll_y": 0.0,
+      "select": null,
+      "tab_id": 1,
+      "version": 1
+    },
+    "viewport": {
+      "backing_scale": 2.0,
+      "css_height": 680.0,
+      "css_width": 1120.0,
+      "device_scale": 2.0,
+      "frame_generation": 7,
+      "frame_source": 7190269667192840917,
+      "height": 680.0,
+      "pixel_height": 1360,
+      "pixel_width": 2240,
+      "tab_id": 1,
+      "width": 1120.0,
+      "zoom": 1.0
+    }
+  },
+  "enable_shortcut": "",
+  "quickstart_action": "Selected the actual system VoiceOver startup action",
+  "actual_reader_pid": 21444,
+  "actual_reader_state": {
+    "enabled": true,
+    "physical_voiceover_accepted": false,
+    "quickstarts": [],
+    "readers": [
+      {
+        "active": false,
+        "bundle": "/System/Library/CoreServices/VoiceOver.app",
+        "bundle_id": "com.apple.VoiceOver",
+        "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+        "expected_system_bundle": true,
+        "pid": 21444
+      }
+    ],
+    "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+  },
+  "reader_startup_trace": [
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [
+        {
+          "active": false,
+          "bundle": "/System/Library/CoreServices/VoiceOver.app",
+          "bundle_id": "com.apple.VoiceOver",
+          "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+          "expected_system_bundle": true,
+          "pid": 21403
+        }
+      ],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [
+        {
+          "active": false,
+          "bundle": "/System/Library/PrivateFrameworks/ScreenReader.framework/Versions/A/Resources/VoiceOver Quickstart.app",
+          "bundle_id": "com.apple.VoiceOverQuickstart",
+          "executable": "/System/Library/PrivateFrameworks/ScreenReader.framework/Versions/A/Resources/VoiceOver Quickstart.app/Contents/MacOS/VoiceOver Quickstart",
+          "expected_system_bundle": true,
+          "pid": 21415
+        }
+      ],
+      "readers": [],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [
+        {
+          "active": false,
+          "bundle": "/System/Library/CoreServices/VoiceOver.app",
+          "bundle_id": "com.apple.VoiceOver",
+          "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+          "expected_system_bundle": true,
+          "pid": 21444
+        }
+      ],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [
+        {
+          "active": false,
+          "bundle": "/System/Library/CoreServices/VoiceOver.app",
+          "bundle_id": "com.apple.VoiceOver",
+          "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+          "expected_system_bundle": true,
+          "pid": 21444
+        }
+      ],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [
+        {
+          "active": false,
+          "bundle": "/System/Library/CoreServices/VoiceOver.app",
+          "bundle_id": "com.apple.VoiceOver",
+          "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+          "expected_system_bundle": true,
+          "pid": 21444
+        }
+      ],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [
+        {
+          "active": false,
+          "bundle": "/System/Library/CoreServices/VoiceOver.app",
+          "bundle_id": "com.apple.VoiceOver",
+          "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+          "expected_system_bundle": true,
+          "pid": 21444
+        }
+      ],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [
+        {
+          "active": false,
+          "bundle": "/System/Library/CoreServices/VoiceOver.app",
+          "bundle_id": "com.apple.VoiceOver",
+          "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+          "expected_system_bundle": true,
+          "pid": 21444
+        }
+      ],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [
+        {
+          "active": false,
+          "bundle": "/System/Library/CoreServices/VoiceOver.app",
+          "bundle_id": "com.apple.VoiceOver",
+          "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+          "expected_system_bundle": true,
+          "pid": 21444
+        }
+      ],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [
+        {
+          "active": false,
+          "bundle": "/System/Library/CoreServices/VoiceOver.app",
+          "bundle_id": "com.apple.VoiceOver",
+          "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+          "expected_system_bundle": true,
+          "pid": 21444
+        }
+      ],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    {
+      "enabled": true,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [
+        {
+          "active": false,
+          "bundle": "/System/Library/CoreServices/VoiceOver.app",
+          "bundle_id": "com.apple.VoiceOver",
+          "executable": "/System/Library/CoreServices/VoiceOver.app/Contents/MacOS/VoiceOver",
+          "expected_system_bundle": true,
+          "pid": 21444
+        }
+      ],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    }
+  ],
+  "reader_focus_actual": {
+    "application": 21338,
+    "launcher": 21342,
+    "representation": {
+      "accessibility": {
+        "acknowledged_revision": 0,
+        "announcements": [],
+        "delivery_version": 1,
+        "document_generation": 2,
+        "hidden_nodes": [],
+        "names": [],
+        "revision": 0,
+        "truncated": false
+      },
+      "frame_source": 7190269667192840917,
+      "generation": 7,
+      "nodes": [
+        {
+          "bounds": {
+            "height": 38.4,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 0.0
+          },
+          "children": [],
+          "id": 48,
+          "name": "Physical VoiceOver fixture",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": {
+            "Heading": {
+              "level": 1
+            }
+          },
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": false,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        },
+        {
+          "bounds": {
+            "height": 36.0,
+            "width": 300.0,
+            "x": 0.0,
+            "y": 38.4
+          },
+          "children": [],
+          "id": 50,
+          "name": "Name",
+          "name_from": {
+            "Attribute": "aria-label"
+          },
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "TextBox",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": true,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": false,
+            "native_focusable": true,
+            "native_text_input": true,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": "hello"
+          }
+        },
+        {
+          "bounds": {
+            "height": 19.2,
+            "width": 1120.0,
+            "x": 0.0,
+            "y": 74.4
+          },
+          "children": [],
+          "id": 51,
+          "name": "Open destination",
+          "name_from": "Contents",
+          "occluded": false,
+          "occluded_by": null,
+          "occluded_fraction": 0.0,
+          "opacity": 1.0,
+          "parent": null,
+          "role": "Link",
+          "state": {
+            "checked": null,
+            "disabled": false,
+            "file_input": false,
+            "focused": false,
+            "hovered": false,
+            "multiple": false,
+            "native_drag_source": true,
+            "native_focusable": true,
+            "native_text_input": false,
+            "protected": false,
+            "radio": false,
+            "required": false,
+            "select_list": false,
+            "selected": false,
+            "value": null
+          }
+        }
+      ],
+      "scroll_y": 0.0,
+      "tab_id": 1,
+      "url": "http://127.0.0.1:62231/accessibility"
+    },
+    "scope": "Read-only actual owned Core state",
+    "text_input": {
+      "document": {
+        "active": false,
+        "limited": false,
+        "selected_text": null,
+        "selection": {
+          "length": 0,
+          "location": 0
+        },
+        "selection_rects": [],
+        "text_length": 43,
+        "version": 1
+      },
+      "document_generation": 2,
+      "focus_exit": null,
+      "focus_generation": 1,
+      "focused": {
+        "bounds": {
+          "height": 36.0,
+          "width": 300.0,
+          "x": 0.0,
+          "y": 38.4
+        },
+        "can_redo": false,
+        "can_undo": false,
+        "caret": {
+          "height": 19.2,
+          "width": 1.0,
+          "x": 43.6640625,
+          "y": 41.4
+        },
+        "carets": [
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 5.0,
+              "y": 41.4
+            },
+            "offset": 0
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 15.140625,
+              "y": 41.4
+            },
+            "offset": 1
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 24.984375,
+              "y": 41.4
+            },
+            "offset": 2
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 29.4296875,
+              "y": 41.4
+            },
+            "offset": 3
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 33.875,
+              "y": 41.4
+            },
+            "offset": 4
+          },
+          {
+            "bounds": {
+              "height": 19.2,
+              "width": 1.0,
+              "x": 43.6640625,
+              "y": 41.4
+            },
+            "offset": 5
+          }
+        ],
+        "marked": null,
+        "multiline": false,
+        "node_id": 50,
+        "protected": false,
+        "selection": {
+          "length": 0,
+          "location": 5
+        },
+        "selection_rects": [],
+        "text": "hello",
+        "text_length": 5,
+        "undo_limited": false,
+        "writable": true
+      },
+      "focused_node": 50,
+      "frame_generation": 7,
+      "frame_source": 7190269667192840917,
+      "scroll_y": 0.0,
+      "select": null,
+      "tab_id": 1,
+      "version": 1
+    },
+    "viewport": {
+      "backing_scale": 2.0,
+      "css_height": 680.0,
+      "css_width": 1120.0,
+      "device_scale": 2.0,
+      "frame_generation": 7,
+      "frame_source": 7190269667192840917,
+      "height": 680.0,
+      "pixel_height": 1360,
+      "pixel_width": 2240,
+      "tab_id": 1,
+      "width": 1120.0,
+      "zoom": 1.0
+    }
+  },
+  "phrase_lease_ready": {
+    "clipboard_bytes_preserved": 4,
+    "clipboard_items_preserved": 1,
+    "lease_seconds": 180,
+    "operation": "ready",
+    "physical_voiceover_accepted": false
+  },
+  "cursor_sync_delivery": "{\"delivered\":true,\"event_source\":\"combinedSessionState\",\"event_tap\":\"cghidEventTap\",\"foreground_reader_guard_after\":true,\"observed_transient_modifier_state_restored\":true,\"operation\":\"vo-sync-focused\",\"owned_modifier_keys_released\":true,\"owner_pid\":21338,\"physical_voiceover_accepted\":false,\"reader_pid\":21444}",
+  "phrase_lease_responses": [
+    {
+      "clipboard_changed": false,
+      "driver_exit": 0,
+      "driver_output": "{\"delivered\":true,\"event_source\":\"combinedSessionState\",\"event_tap\":\"cghidEventTap\",\"foreground_reader_guard_after\":true,\"observed_transient_modifier_state_restored\":true,\"operation\":\"vo-copy-phrase\",\"owned_modifier_keys_released\":true,\"owner_pid\":21338,\"physical_voiceover_accepted\":false,\"reader_pid\":21444}\n",
+      "operation": "phrase-copy-diagnostic",
+      "owned_foreground": true,
+      "reader_enabled": true
+    }
+  ],
+  "phrase_lease_released": {
+    "clipboard_restored": true,
+    "copied_last_phrase": false,
+    "operation": "released",
+    "physical_voiceover_accepted": false,
+    "release_reason": "phrase-copy-failed",
+    "termination_signal": 0
+  },
+  "observations": [],
+  "requests": [
+    "/accessibility"
+  ],
+  "failure": "('Unexpected phrase-lease response', {'clipboard_changed': False, 'driver_exit': 0, 'driver_output': '{\"delivered\":true,\"event_source\":\"combinedSessionState\",\"event_tap\":\"cghidEventTap\",\"foreground_reader_guard_after\":true,\"observed_transient_modifier_state_restored\":true,\"operation\":\"vo-copy-phrase\",\"owned_modifier_keys_released\":true,\"owner_pid\":21338,\"physical_voiceover_accepted\":false,\"reader_pid\":21444}\\n', 'operation': 'phrase-copy-diagnostic', 'owned_foreground': True, 'reader_enabled': True})",
+  "cleanup": {
+    "source_lease_exit": 1,
+    "actual_input_source_after": {
+      "current": {
+        "enabled": true,
+        "id": "com.apple.keylayout.ABC",
+        "name": "ABC",
+        "selectable": true,
+        "selected": true
+      },
+      "enabled_zhuyin_count": 1,
+      "physical_ime_accepted": false,
+      "scope": "Read-only system TIS input source inspection; no source selection or key injection",
+      "zhuyin_candidates": [
+        {
+          "enabled": true,
+          "id": "com.apple.inputmethod.TCIM.Zhuyin",
+          "name": "Zhuyin – Traditional",
+          "selectable": true,
+          "selected": false
+        }
+      ]
+    },
+    "original_source_restored": true,
+    "reader_disable_shortcut": "",
+    "reader_state_after": {
+      "enabled": false,
+      "physical_voiceover_accepted": false,
+      "quickstarts": [],
+      "readers": [],
+      "scope": "Read-only system VoiceOver state and exact installed reader/startup applications"
+    },
+    "reader_restored_off_and_processes_gone": true,
+    "normal_quit": {
+      "accepted": true,
+      "application": 21338,
+      "operation": "terminate"
+    },
+    "application_exit": 0,
+    "fixture_server_gone": true,
+    "remaining_owned_products_processes": [],
+    "runtime_removed": true,
+    "owned_preferences_delete_exit": 0,
+    "own_preferences_file_removed": true,
+    "own_fixture_removed": true
+  }
+}

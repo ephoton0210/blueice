@@ -38,6 +38,7 @@
 
 use super::bluejs_host::{BlueJsHostCoreConfig, BlueJsHostRuntimeLimits, SpawnedBlueJsHost};
 use super::control;
+use super::{assistant_proposals, assistant_settings_service, trusted_window, update_watch};
 
 pub use super::control::default_control_socket_path;
 
@@ -46,20 +47,24 @@ use blueice_ipc::owner_bootstrap::{
     write_core_owner_bootstrap, CoreOwnerBootstrap, OwnerHttpPolicyBootstrap,
     CORE_OWNER_BOOTSTRAP_VERSION,
 };
+use blueice_ipc::permission_control::{
+    read_permission_control_reply, write_permission_control_request, PermissionControlReply,
+    PermissionControlRequest,
+};
 use blueice_ipc::{
     read_client_message_with_ids, read_server_message_with_id, read_server_message_with_ids,
     write_client_message_with_id, write_client_message_with_ids, write_server_message_with_ids,
     ClientMessage, ServerMessage, TabSummary,
 };
-use std::io;
+use std::io::{self, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -74,6 +79,11 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CoreLaunchOptions {
     gatekeeper_socket: Option<PathBuf>,
+    /// An installed package to run through core's authenticated extension
+    /// host. Each core generation gets a fresh private socket and credential.
+    extension_manifest: Option<PathBuf>,
+    /// The assistant the launcher supervises, reproduced on every core.
+    assistant: Option<AssistantWiring>,
     supervise_out_of_process_bluejs: bool,
     /// Immutable launcher-owner resource envelope forwarded only through
     /// trusted child bootstrap. The public launcher CLI, core, page, and
@@ -98,6 +108,7 @@ pub struct CoreLaunchOptions {
     /// Separate owner-selected click-event profile. It includes bounded
     /// live DOM mutation and exact VM-owned listener registration.
     core_dom_event_fixture: bool,
+    core_dom_file_bindings: bool,
     /// A caller-selected Unix endpoint for a sealed core compiler catalog.
     /// The default builder selects the fixed compiled-in fixture; the
     /// separate trusted-owner builder may supply a complete closed graph.
@@ -207,30 +218,13 @@ pub fn default_rendezvous_socket_path() -> PathBuf {
 /// directory without duplicating the `XDG_RUNTIME_DIR`/`/tmp` fallback
 /// logic.
 pub(crate) fn rendezvous_socket_dir() -> PathBuf {
-    match std::env::var_os("XDG_RUNTIME_DIR") {
+    match std::env::var_os("XDG_RUNTIME_DIR").filter(|dir| !dir.is_empty()) {
         Some(dir) => PathBuf::from(dir).join("blueice"),
-        None => std::env::temp_dir().join(format!("blueice-{}", unsafe { libc_getuid() })),
+        None => std::env::temp_dir().join(format!(
+            "blueice-{}",
+            blueice_ipc::local_socket::current_uid()
+        )),
     }
-}
-
-// A tiny, deliberately minimal stand-in for `libc::getuid()` rather than
-// adding a whole `libc` dependency for one syscall: reads the real UID
-// via the `/proc/self/status` line every Linux (BlueIce's only
-// currently-supported target -- see `blueice-core`'s own `UnixListener`
-// dependency, already Unix-only) exposes, falling back to the process
-// ID if that ever fails so the path is still unique per-process rather
-// than panicking.
-unsafe fn libc_getuid() -> u32 {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|status| {
-            status
-                .lines()
-                .find_map(|line| line.strip_prefix("Uid:"))
-                .and_then(|rest| rest.split_whitespace().next())
-                .and_then(|s| s.parse().ok())
-        })
-        .unwrap_or_else(std::process::id)
 }
 
 /// One [`ServerMessage`] reply as relayed through the broker's
@@ -289,8 +283,16 @@ pub fn broadcast_core_to_clients(
     mut core: UnixStream,
     clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
 ) {
+    broadcast_core_to_clients_for_generation(&mut core, clients, None);
+}
+
+fn broadcast_core_to_clients_for_generation(
+    core: &mut UnixStream,
+    clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
+    generation: Option<(&AtomicU64, u64)>,
+) {
     loop {
-        let (tab_id, request_id, message) = match read_server_message_with_ids(&mut core) {
+        let (tab_id, request_id, message) = match read_server_message_with_ids(core) {
             Ok(triple) => triple,
             Err(_) => return,
         };
@@ -302,6 +304,12 @@ pub fn broadcast_core_to_clients(
         let mut clients = clients
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Test the generation while holding the same lock used by the
+        // cutover's replay-frame handoff. A v1 read that completed just
+        // before the swap must not be queued *after* a v2 frame.
+        if generation.is_some_and(|(current, mine)| current.load(Ordering::SeqCst) != mine) {
+            return;
+        }
         clients.retain(|client| client.send(tagged.clone()).is_ok());
     }
 }
@@ -408,7 +416,12 @@ fn spawn_generation_tagged_broadcast(
     done: Sender<()>,
 ) {
     thread::spawn(move || {
-        broadcast_core_to_clients(core_stream, clients);
+        let mut core_stream = core_stream;
+        broadcast_core_to_clients_for_generation(
+            &mut core_stream,
+            clients,
+            Some((&generation, my_generation)),
+        );
         if generation.load(Ordering::SeqCst) == my_generation {
             let _ = done.send(());
         }
@@ -421,13 +434,7 @@ fn spawn_generation_tagged_broadcast(
 /// new broadcast thread shares the exact same `Arc`
 /// [`broadcast_core_to_clients`] was already fanning v1's traffic out
 /// to, so no already-registered client ever needs to reconnect.
-struct Broker {
-    /// A cutover spans tab capture, v2 startup/replay, health checking and
-    /// the swap. Control connections are served on independent threads, so
-    /// this lock makes that whole transaction serial: a second request sees
-    /// the newly active generation rather than racing for the same v2 frame
-    /// directory or generation number.
-    cutover_lock: Mutex<()>,
+pub(crate) struct Broker {
     /// The one connection external clients' messages are currently
     /// forwarded into. Its *contents* (not the `Arc` itself) are
     /// swapped during a cutover, so [`forward_client_to_core`] threads
@@ -438,6 +445,11 @@ struct Broker {
     /// Bumped by [`perform_swap`] *before* the old core connection is
     /// closed -- see [`spawn_generation_tagged_broadcast`]'s docs.
     generation: Arc<AtomicU64>,
+    /// At most one cutover may own v1 capture, v2 replay, and the
+    /// eventual writer/process swap at a time. Without this gate, two
+    /// simultaneous control connections could capture different v1
+    /// states and race to replace the same active core.
+    cutover_gate: CutoverGate,
     /// The `core` process currently backing this broker. `None` only in
     /// the brief window while [`run_broker`] is tearing everything
     /// down at the very end. Both `run_broker`'s final cleanup and
@@ -456,6 +468,21 @@ struct Broker {
     /// `core` instances would let their independently-zeroed
     /// `generation` counters collide on the same frame filename.
     frame_dir: PathBuf,
+    /// The private, always-resident gatekeeper this launcher spawned
+    /// before v1. Every replacement core receives the same path, so a
+    /// cutover cannot accidentally turn the fail-closed navigation
+    /// checkpoint into an unreachable default socket.
+    gatekeeper_socket: PathBuf,
+    /// The installed package, if any, must be revalidated in each fresh core
+    /// generation rather than silently disappearing after a cutover.
+    extension_manifest: Option<PathBuf>,
+    /// The assistant wiring, when the launcher supervises one. Every replacement
+    /// core receives the same, so live translation and assistant tasks keep
+    /// working across a cutover.
+    assistant: Option<AssistantWiring>,
+    /// Owner of the assistant's settings and pending proposals, when the
+    /// launcher supervises an assistant.
+    assistant_settings: Option<Arc<assistant_settings_service::AssistantSettingsService>>,
     /// The launcher-owned startup policy that must be reproduced for a
     /// replacement core. An out-of-process host is deliberately fresh
     /// per core generation, so no private child capability crosses a
@@ -477,374 +504,10 @@ struct Broker {
     done: Sender<()>,
 }
 
-/// A generous but bounded wait for [`capture_v1_tabs`]'s `Tabs` reply --
-/// a few seconds, per `phase-8-live-core-hotswap/PLAN.md`'s "a
-/// reasonable timeout... if it never arrives, that's a `CutoverFailed`."
-const TAB_CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// A cheap, dependency-free, sufficiently-unique request id for the
-/// launcher's own synthetic internal-client messages (`ListTabs` during
-/// tab capture; `Navigate`/`OpenTab`/`ListTabs` during replay and the
-/// post-replay health check) -- time-based rather than a small
-/// sequential counter, so an accidental collision with another,
-/// independently-numbered client's own (typically small, sequential)
-/// request_id sharing the same broker is vanishingly unlikely. Mirrors
-/// `blueice-mcp-server`'s own `fastrand_like_suffix`.
-fn synthetic_request_id() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0)
-}
-
-/// Captures v1's currently-open tab list, as a synthetic internal
-/// client of the broker -- `core` only ever has the one real connection
-/// `core_writer` holds; every external client's traffic (and this
-/// synthetic one) is proxied through it, so this reuses the exact same
-/// [`register_client`]-style registration rather than a side channel.
-/// Filters the broadcast stream for the specific reply carrying the
-/// request ID this call generated itself, exactly the discipline
-/// `blueice-mcp-server`'s `send_and_drain` already established for
-/// picking one reply out of shared, multi-client traffic --
-/// reimplemented locally per this crate's existing duplicate-small-
-/// helpers convention.
-///
-/// The synthetic client is never explicitly removed from `clients`:
-/// once this call returns, its local `receiver` is dropped, so the
-/// very next broadcast attempt to its paired `Sender` (still sitting in
-/// `clients`) fails and [`broadcast_core_to_clients`]'s existing
-/// dead-channel pruning removes it -- the same self-cleanup mechanism
-/// already relied on for any other client's writer thread exiting, so
-/// no new client-identity-tracking machinery is needed just for this.
-fn capture_v1_tabs(
-    core_writer: &Arc<Mutex<UnixStream>>,
-    clients: &Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
-    timeout: Duration,
-) -> Result<Vec<TabSummary>, String> {
-    let (sender, receiver) = mpsc::channel::<TaggedServerMessage>();
-    clients
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .push(sender);
-
-    let request_id = synthetic_request_id();
-    {
-        let mut core = core_writer
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        write_client_message_with_id(&mut *core, Some(request_id), &ClientMessage::ListTabs)
-            .map_err(|e| format!("failed to send ListTabs to v1: {e}"))?;
+impl Broker {
+    pub(crate) fn wait_for_shutdown(&self, timeout: Duration) -> bool {
+        self.cutover_gate.wait_closed(timeout)
     }
-
-    let deadline = Instant::now() + timeout;
-    loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return Err("timed out waiting for v1's ListTabs reply".to_string());
-        }
-        match receiver.recv_timeout(remaining) {
-            Ok(TaggedServerMessage {
-                request_id: Some(id),
-                message: ServerMessage::Tabs(tabs),
-                ..
-            }) if id == request_id => return Ok(tabs),
-            Ok(_) => continue, // some other client's concurrent broadcast traffic
-            // A timeout inside `recv_timeout` itself (as opposed to the
-            // deadline check above) is not yet the final "timed out"
-            // error -- loop back so that check produces the accurate
-            // message once `remaining` is truly exhausted, rather than
-            // this arm misreporting it as a disconnect.
-            Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                return Err(
-                    "v1's broadcast connection ended while waiting for its ListTabs reply"
-                        .to_string(),
-                )
-            }
-        }
-    }
-}
-
-/// Replays `captured_tabs` (v1's [`TabSummary`] list, in the order
-/// [`capture_v1_tabs`] returned them) into `v2`, talking directly to
-/// `v2_stream` -- v2 has no other client yet, so there's no broadcast/
-/// synthetic-client dance needed here, unlike [`capture_v1_tabs`].
-/// `Navigate{url}` for the first (v2's own already-existing default)
-/// tab, skipped entirely if it had no url (leaves that slot blank, same
-/// as a fresh tab); `OpenTab{url}` for every subsequent one (itself
-/// `Option<String>`, so a blank later tab is replayed as a blank
-/// `OpenTab` too, preserving v1's own tab count). The first failure (an
-/// `Error`/`GatekeeperBlocked` reply, or the connection breaking)
-/// aborts the whole replay -- `phase-8-live-core-hotswap/PLAN.md`'s
-/// single-attempt, fail-closed contract.
-fn replay_tabs(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Result<(), String> {
-    for (i, tab) in captured_tabs.iter().enumerate() {
-        if i == 0 {
-            let Some(url) = &tab.url else { continue };
-            let request_id = synthetic_request_id();
-            write_client_message_with_id(
-                v2_stream,
-                Some(request_id),
-                &ClientMessage::Navigate { url: url.clone() },
-            )
-            .map_err(|e| format!("failed to replay the default tab's Navigate into v2: {e}"))?;
-            expect_navigate_success(v2_stream, request_id)?;
-        } else {
-            let request_id = synthetic_request_id();
-            write_client_message_with_id(
-                v2_stream,
-                Some(request_id),
-                &ClientMessage::OpenTab {
-                    url: tab.url.clone(),
-                },
-            )
-            .map_err(|e| format!("failed to replay tab {i}'s OpenTab into v2: {e}"))?;
-            expect_open_tab_success(v2_stream, request_id, tab.url.is_some())?;
-        }
-    }
-    Ok(())
-}
-
-/// Reads from `v2_stream` until the reply to `request_id` -- `Navigated`
-/// on success -- is seen, then keeps reading until the `FrameReady`
-/// that always follows it (`session.rs`'s `reply_success` always sends
-/// both, in that order) arrives too, so this call never leaves an
-/// unread `FrameReady` on the wire for the next replay message to
-/// misinterpret -- mirroring `blueice-mcp-server`'s own
-/// `send_and_drain`/`open_tab` discipline. Any `Error`/
-/// `GatekeeperBlocked` reply, or the read itself failing (v2's
-/// connection broke, e.g. because writing the frame failed), is a
-/// replay failure.
-fn expect_navigate_success(v2_stream: &mut UnixStream, request_id: u64) -> Result<(), String> {
-    let mut navigated = false;
-    loop {
-        let (reply_id, message) = read_server_message_with_id(v2_stream)
-            .map_err(|e| format!("failed reading v2's reply while replaying: {e}"))?;
-        if matches!(reply_id, Some(id) if id != request_id) {
-            continue;
-        }
-        match message {
-            ServerMessage::Navigated { .. } => navigated = true,
-            ServerMessage::FrameReady { .. } if navigated => return Ok(()),
-            ServerMessage::FrameReady { .. } => continue, // shouldn't happen before Navigated, but don't misinterpret
-            ServerMessage::Error { message } => {
-                return Err(format!("v2 rejected the replayed Navigate: {message}"))
-            }
-            ServerMessage::GatekeeperBlocked { reason, .. } => {
-                return Err(format!(
-                    "v2's gatekeeper blocked the replayed Navigate: {reason}"
-                ))
-            }
-            _ => continue,
-        }
-    }
-}
-
-/// Like [`expect_navigate_success`], for a replayed `OpenTab` --
-/// `session.rs`'s `handle_open_tab` only sends a `FrameReady` after
-/// `TabOpened` when the tab was actually navigated (`expects_frame`),
-/// so a blank replayed tab is considered done as soon as `TabOpened`
-/// itself arrives.
-fn expect_open_tab_success(
-    v2_stream: &mut UnixStream,
-    request_id: u64,
-    expects_frame: bool,
-) -> Result<(), String> {
-    let mut opened = false;
-    loop {
-        let (reply_id, message) = read_server_message_with_id(v2_stream)
-            .map_err(|e| format!("failed reading v2's reply while replaying: {e}"))?;
-        if matches!(reply_id, Some(id) if id != request_id) {
-            continue;
-        }
-        match message {
-            ServerMessage::TabOpened { .. } => {
-                opened = true;
-                if !expects_frame {
-                    return Ok(());
-                }
-            }
-            ServerMessage::FrameReady { .. } if opened => return Ok(()),
-            ServerMessage::FrameReady { .. } => continue,
-            ServerMessage::Error { message } => {
-                return Err(format!("v2 rejected the replayed OpenTab: {message}"))
-            }
-            ServerMessage::GatekeeperBlocked { reason, .. } => {
-                return Err(format!(
-                    "v2's gatekeeper blocked the replayed OpenTab: {reason}"
-                ))
-            }
-            _ => continue,
-        }
-    }
-}
-
-/// Confirms v2 actually reflects what was just replayed: sends
-/// `ListTabs` directly on `v2_stream` and checks the tab count and URLs
-/// match `captured_tabs` -- the "lighter" health bar this minimal
-/// slice's plan settled on (structurally diffing each tab's DOM/
-/// representation against v1's own captured state is explicitly
-/// deferred).
-fn health_check(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Result<(), String> {
-    let request_id = synthetic_request_id();
-    write_client_message_with_id(v2_stream, Some(request_id), &ClientMessage::ListTabs)
-        .map_err(|e| format!("failed to send v2's health-check ListTabs: {e}"))?;
-    loop {
-        let (reply_id, message) = read_server_message_with_id(v2_stream)
-            .map_err(|e| format!("failed reading v2's health-check reply: {e}"))?;
-        if matches!(reply_id, Some(id) if id != request_id) {
-            continue;
-        }
-        match message {
-            ServerMessage::Tabs(tabs) => {
-                let expected: Vec<&Option<String>> = captured_tabs.iter().map(|t| &t.url).collect();
-                let actual: Vec<&Option<String>> = tabs.iter().map(|t| &t.url).collect();
-                return if actual == expected {
-                    Ok(())
-                } else {
-                    Err(format!("v2's post-replay ListTabs didn't match what was captured from v1: expected {expected:?}, got {actual:?}"))
-                };
-            }
-            _ => continue,
-        }
-    }
-}
-
-/// A fresh, unique frame directory for a newly-[`SpawnedCore::spawn`]ed
-/// v2, derived from v1's own -- see [`Broker::frame_dir`]'s docs for
-/// why sharing one directory between two simultaneously-live `core`
-/// instances isn't safe. `target_generation` (the generation this
-/// cutover attempt would bump to if it succeeds) makes this unique
-/// across repeated cutover attempts too, not just between v1 and v2.
-fn v2_frame_dir(v1_frame_dir: &Path, target_generation: u64) -> PathBuf {
-    let stem = v1_frame_dir
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "frames".to_string());
-    v1_frame_dir.with_file_name(format!("{stem}-cutover-{target_generation}"))
-}
-
-/// The actual swap, once replay + health check have both fully
-/// succeeded -- see `phase-8-live-core-hotswap/PLAN.md`'s "Concrete
-/// cutover mechanism" for the exact ordering this follows: bump
-/// `generation`, start v2's own generation-tagged broadcast thread
-/// (sharing the same `clients` list), retarget `core_writer`'s
-/// contents at v2, then close v1's stream (letting its now-superseded
-/// broadcast thread exit quietly, per [`spawn_generation_tagged_broadcast`])
-/// and drop v1 itself (killing its process, cleaning up its socket and
-/// frame directory).
-fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
-    // Every relay accept snapshots its target while holding this gate.
-    // Hold it across the browser-writer swap and both relay activations,
-    // so no newly accepted compiler or debugger connection can observe a
-    // different core generation from browser traffic.
-    let _route_handoff = broker
-        .route_gate
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    broker.generation.store(target_generation, Ordering::SeqCst);
-
-    let v2_broadcast_stream = v2
-        .stream
-        .try_clone()
-        .expect("try_clone on a fresh stream should not fail");
-    spawn_generation_tagged_broadcast(
-        v2_broadcast_stream,
-        Arc::clone(&broker.clients),
-        Arc::clone(&broker.generation),
-        target_generation,
-        broker.done.clone(),
-    );
-
-    let v2_writer_stream = v2
-        .stream
-        .try_clone()
-        .expect("try_clone on a fresh stream should not fail");
-    *broker
-        .core_writer
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = v2_writer_stream;
-
-    // The replacement private listeners are ready before replay/health
-    // checking. Under the shared handoff gate, make them targets only for
-    // future accepts after browser traffic has moved to the same core.
-    v2.activate_relays_after_handoff();
-
-    let mut active = broker
-        .active_core
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(v1) = active.replace(v2) {
-        // Unblocks v1's old broadcast thread's blocked read (shutdown
-        // affects every fd sharing this socket's underlying open file
-        // description, including that thread's own clone) so it exits
-        // through the ordinary disconnect path -- which it now
-        // recognizes as an expected supersession, not a fault, since
-        // `generation` was already bumped above.
-        let _ = v1.stream.shutdown(Shutdown::Both);
-        drop(v1); // kills v1's process, cleans up its socket + frame_dir
-    }
-}
-
-/// Performs one cutover attempt: captures v1's tab list, spawns v2,
-/// replays the tabs into it, health-checks it, and -- only if all of
-/// that succeeds -- performs the actual swap. A single attempt, fail
-/// closed to v1 on any error -- see `phase-8-live-core-hotswap/PLAN.md`'s
-/// "Wiring design" for why no retry policy exists yet. v1 is never
-/// touched until every step through the health check has succeeded.
-fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
-    let _cutover = broker
-        .cutover_lock
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let captured_tabs =
-        match capture_v1_tabs(&broker.core_writer, &broker.clients, TAB_CAPTURE_TIMEOUT) {
-            Ok(tabs) => tabs,
-            Err(reason) => return control::ControlReply::CutoverFailed { reason },
-        };
-
-    let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
-    let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
-    let mut v2 = match SpawnedCore::spawn_with_options_and_relays(
-        broker.width,
-        broker.height,
-        &frame_dir,
-        broker.core_options.clone(),
-        RelaySet {
-            route_gate: Arc::clone(&broker.route_gate),
-            compiler_mcp_relay: broker.compiler_mcp_relay.clone(),
-            debugger_relay: broker.debugger_relay.clone(),
-        },
-    ) {
-        Ok(v2) => v2,
-        Err(e) => {
-            return control::ControlReply::CutoverFailed {
-                reason: format!("failed to spawn v2: {e}"),
-            }
-        }
-    };
-
-    if let Err(reason) = replay_tabs(&mut v2.stream, &captured_tabs) {
-        return control::ControlReply::CutoverFailed { reason }; // v2 dropped here: killed, cleaned up
-    }
-    if let Err(reason) = health_check(&mut v2.stream, &captured_tabs) {
-        return control::ControlReply::CutoverFailed { reason }; // v2 dropped here: killed, cleaned up
-    }
-
-    let tabs_migrated = captured_tabs.len();
-    perform_swap(broker, v2, target_generation);
-    control::ControlReply::CutoverDone { tabs_migrated }
-}
-
-/// Handles one control-socket connection: reads its one
-/// [`control::ControlRequest`], routes `Cutover` into [`cutover`], and
-/// writes back the resulting [`control::ControlReply`].
-fn handle_control_connection(mut conn: UnixStream, broker: &Arc<Broker>) -> io::Result<()> {
-    let request = control::read_control_request(&mut conn)?;
-    let reply = match request {
-        control::ControlRequest::Cutover => cutover(broker),
-    };
-    control::write_control_reply(&mut conn, &reply)
 }
 
 /// Runs the broker for as long as the currently-active `core` isn't
@@ -863,7 +526,7 @@ fn handle_control_connection(mut conn: UnixStream, broker: &Arc<Broker>) -> io::
 ///
 /// `core` (v1) is fully owned by this call from here on: whichever
 /// `SpawnedCore` is active when this function is about to return is
-/// explicitly torn down (killed, socket/frame_dir cleaned up) before
+/// explicitly torn down (reaped, socket/frame_dir cleaned up) before
 /// returning, mirroring the `drop(core)` `main()` used to do itself
 /// before this function grew cutover support.
 ///
@@ -880,8 +543,84 @@ pub fn run_broker(
     core: SpawnedCore,
     width: f64,
     height: f64,
+    gatekeeper_socket: PathBuf,
 ) -> io::Result<()> {
+    run_broker_with_trusted_window(
+        rendezvous_listener,
+        control_listener,
+        core,
+        width,
+        height,
+        gatekeeper_socket,
+        None,
+    )
+}
+
+/// The same broker with an optional launcher-spawned native frontend child.
+/// Only the anonymous pipes owned for that exact child can carry the private
+/// trusted-window protocol; shared frontend and operator-control sockets
+/// cannot grant or revoke optional permissions.
+pub fn run_broker_with_trusted_window(
+    rendezvous_listener: UnixListener,
+    control_listener: UnixListener,
+    core: SpawnedCore,
+    width: f64,
+    height: f64,
+    gatekeeper_socket: PathBuf,
+    trusted_window: Option<SpawnedTrustedWindow>,
+) -> io::Result<()> {
+    run_broker_with_options(
+        rendezvous_listener,
+        control_listener,
+        core,
+        width,
+        height,
+        gatekeeper_socket,
+        BrokerOptions {
+            trusted_window,
+            auto_update_interval: None,
+            assistant_settings: None,
+        },
+    )
+}
+
+/// Optional broker behavior beyond the required arguments.
+#[derive(Default)]
+pub struct BrokerOptions {
+    /// See [`run_broker_with_trusted_window`].
+    pub trusted_window: Option<SpawnedTrustedWindow>,
+    /// When set, the launcher polls its `blueice-core` binary this often and
+    /// cuts over to a newer one on its own (see [`update_watch`]).
+    pub auto_update_interval: Option<Duration>,
+    /// The assistant's settings owner, when one is supervised. Agents reach it
+    /// only through the operator-control socket's propose-only requests.
+    pub assistant_settings: Option<Arc<assistant_settings_service::AssistantSettingsService>>,
+}
+
+/// The path of the `blueice-core` binary this launcher spawns, the one an
+/// update replaces.
+pub fn core_binary_path() -> io::Result<PathBuf> {
+    Ok(sibling_core_binary(&std::env::current_exe()?))
+}
+
+/// [`run_broker_with_trusted_window`] with the full option set.
+pub fn run_broker_with_options(
+    rendezvous_listener: UnixListener,
+    control_listener: UnixListener,
+    core: SpawnedCore,
+    width: f64,
+    height: f64,
+    gatekeeper_socket: PathBuf,
+    options: BrokerOptions,
+) -> io::Result<()> {
+    let BrokerOptions {
+        mut trusted_window,
+        auto_update_interval,
+        assistant_settings,
+    } = options;
     let frame_dir = core.frame_dir.clone();
+    let extension_manifest = core.options.extension_manifest.clone();
+    let assistant = core.options.assistant.clone();
     let core_options = core.options.clone();
     let route_gate = core.route_gate.clone();
     let compiler_mcp_relay = core.compiler_mcp_relay.clone();
@@ -893,20 +632,38 @@ pub fn run_broker(
     let (done_tx, done_rx) = mpsc::channel();
 
     let broker = Arc::new(Broker {
-        cutover_lock: Mutex::new(()),
         core_writer: Arc::clone(&core_writer),
         clients: Arc::clone(&clients),
         generation: Arc::clone(&generation),
+        cutover_gate: CutoverGate::new(),
         active_core: Mutex::new(Some(core)),
         width,
         height,
         frame_dir,
+        gatekeeper_socket,
+        extension_manifest,
+        assistant,
+        assistant_settings,
         core_options,
         route_gate,
         compiler_mcp_relay,
         debugger_relay,
         done: done_tx.clone(),
     });
+
+    let trusted_ready = if let Some(window) = trusted_window.as_mut() {
+        let (requests, replies) = window.take_pipes()?;
+        let broker = Arc::clone(&broker);
+        let (ready_tx, ready_rx) = mpsc::channel();
+        thread::spawn(move || {
+            if let Err(error) = serve_trusted_window_pipe(requests, replies, &broker, ready_tx) {
+                eprintln!("blueice-launcher: trusted window pipe ended: {error}");
+            }
+        });
+        Some(ready_rx)
+    } else {
+        None
+    };
 
     spawn_generation_tagged_broadcast(
         broadcast_stream,
@@ -929,6 +686,18 @@ pub fn run_broker(
         }
     });
 
+    let update_watcher = if let Some(interval) = auto_update_interval {
+        match core_binary_path() {
+            Ok(binary) => update_watch::spawn_update_watcher(Arc::clone(&broker), binary, interval),
+            Err(error) => {
+                eprintln!("blueice-launcher: automatic updates are off: {error}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let control_broker = Arc::clone(&broker);
     thread::spawn(move || {
         for incoming in control_listener.incoming() {
@@ -940,7 +709,22 @@ pub fn run_broker(
         }
     });
 
+    if let Some(ready) = trusted_ready {
+        if ready.recv_timeout(Duration::from_secs(10)).is_err() {
+            stop_broker_cutovers(&broker, update_watcher);
+            if let Ok(mut active) = broker.active_core.lock() {
+                active.take();
+            }
+            drop(trusted_window);
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "trusted native frontend did not inspect its core before the startup deadline",
+            ));
+        }
+    }
+
     let _ = done_rx.recv();
+    stop_broker_cutovers(&broker, update_watcher);
 
     if let Ok(mut active) = broker.active_core.lock() {
         active.take();
@@ -952,128 +736,33 @@ pub fn run_broker(
         relay.close();
     }
 
+    drop(trusted_window);
+
     Ok(())
 }
 
-/// The `blueice-core` binary's path, resolved relative to this
-/// (`blueice-launcher`'s) own executable -- mirrors `blueice-mcp-
-/// server`'s identical `sibling_core_binary` helper (not shared between
-/// the two crates: each is ~10 lines, and the two processes' spawn
-/// helpers are otherwise independent enough that a shared crate just
-/// for this would be more indirection than the duplication costs).
-/// Steps out of a `deps` directory first so the same lookup works both
-/// for the installed binary and for a `cargo test` integration-test
-/// binary, which lands one level deeper (`target/<profile>/deps/`).
-fn sibling_core_binary(this_exe: &Path) -> PathBuf {
-    let name = if cfg!(windows) {
-        "blueice-core.exe"
-    } else {
-        "blueice-core"
-    };
-    let dir = this_exe.parent().unwrap_or_else(|| Path::new("."));
-    let dir = if dir.file_name().is_some_and(|n| n == "deps") {
-        dir.parent().unwrap_or(dir)
-    } else {
-        dir
-    };
-    dir.join(name)
-}
-
-/// A path for `core`'s *internal* socket -- never exposed to external
-/// clients, which only ever see the rendezvous socket this launcher
-/// itself listens on. Includes a monotonic counter alongside the PID:
-/// a PID alone isn't unique enough once a single launcher process can
-/// call [`SpawnedCore::spawn`] more than once in its own lifetime (v1
-/// at startup, then a fresh v2 on every cutover) -- without the
-/// counter, v2's internal socket path would collide with v1's still-
-/// live one.
-fn unique_internal_socket_path() -> PathBuf {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "blueice-launcher-core-{}-{n}.sock",
-        std::process::id()
-    ))
-}
-
-/// A generation-private compiler socket.  Unlike the public endpoint
-/// selected by the caller, this name is launcher-generated and never
-/// exposed as a CLI/MCP input.  v1 and a staged v2 therefore can each
-/// bind their own listener while the public relay remains stable.
-fn unique_internal_compiler_socket_path() -> PathBuf {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "blueice-launcher-compiler-{}-{n}.sock",
-        std::process::id()
-    ))
-}
-
-/// A script-DOM listener unique to one supervised core/child pair. The
-/// child capability, not knowledge of this pathname, grants access.
-fn unique_internal_script_socket_path() -> PathBuf {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "blueice-launcher-script-{}-{n}.sock",
-        std::process::id()
-    ))
-}
-
-/// A generation-private debugger socket. Like the compiler socket, this
-/// name is launcher-generated and cannot be supplied through the public
-/// debugger transport.
-fn unique_internal_debugger_socket_path() -> PathBuf {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "blueice-launcher-debugger-{}-{n}.sock",
-        std::process::id()
-    ))
-}
-
-/// Connects to a socket a child process is still setting up. The socket
-/// file appears at `bind` but only accepts connections after `listen`, so
-/// `wait_for_socket` seeing the path does not mean the child is ready: on a
-/// loaded machine a connect in between is refused. Retry that briefly.
-fn connect_when_listening(path: &Path, timeout: Duration) -> io::Result<UnixStream> {
-    let deadline = Instant::now() + timeout;
-    loop {
-        match UnixStream::connect(path) {
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
-                ) && Instant::now() < deadline =>
-            {
-                thread::sleep(Duration::from_millis(10));
-            }
-            result => return result,
-        }
+fn stop_broker_cutovers(broker: &Broker, watcher: Option<JoinHandle<()>>) {
+    broker.cutover_gate.close();
+    // Disconnect synthetic capture waiters and any serving-core I/O before
+    // waiting for the cutover owner to reap its staged generation.
+    broker
+        .clients
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clear();
+    if let Some(core) = broker
+        .active_core
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+    {
+        let _ = core.stream.shutdown(Shutdown::Both);
+    }
+    broker.cutover_gate.wait_idle();
+    if let Some(watcher) = watcher {
+        let _ = watcher.join();
     }
 }
-
-fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if path.exists() {
-            return true;
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-    false
-}
-
-/// The sole compiler profile the launcher may ask its child to register.
-/// This label is an implementation detail of the trusted startup edge;
-/// it is not a caller-selectable profile or a compiler IPC field.
-const CORE_CLOSED_COMPILER_PROJECT_PROFILE: &str = "core-closed-fixture-v1";
-
-/// Keep selected filesystem endpoints comfortably below the smallest
-/// common `sockaddr_un.sun_path` capacity.  The actual platform capacity
-/// varies, so a conservative launcher-side limit rejects a bad setup
-/// before a core (or an optional BlueJS host) is spawned.
-const MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES: usize = 100;
 
 /// Removes only a Unix-domain socket.  A caller-selected endpoint must
 /// never let cleanup unlink an ordinary file, directory, or symlink that
@@ -1257,6 +946,7 @@ impl PrivatePageHostLaunch {
                 options.core_dom_text_fixture,
                 options.core_dom_mutation_fixture,
                 options.core_dom_event_fixture,
+                options.core_dom_file_bindings,
             )?;
         Ok(Some(Self {
             host,
@@ -1270,9 +960,20 @@ impl PrivatePageHostLaunch {
 /// and cleaned up (process, internal socket, and frame directory) on
 /// [`Drop`], the same lifetime discipline `mcp-server`'s `CoreProcess`
 /// already established for its own (today, unshared) spawned `core`.
+/// What the launcher tells every `core` it starts about the assistant it
+/// supervises: the public socket to reach it, and the settings file `core` may
+/// show (read-only) on `about:assistant`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssistantWiring {
+    pub socket: PathBuf,
+    pub settings_file: Option<PathBuf>,
+}
+
 pub struct SpawnedCore {
     child: Child,
     internal_socket_path: PathBuf,
+    extension_socket_path: Option<PathBuf>,
+    permission_control: Option<PermissionControlChannel>,
     script_private_socket_path: Option<PathBuf>,
     /// A launcher-generated core-private compiler listener. The public
     /// endpoint is owned by [`GenerationPinnedUnixRelay`] instead, so
@@ -1303,3 +1004,16 @@ mod spawned_core;
 
 #[cfg(test)]
 mod tests;
+
+pub use processes::{SpawnedGatekeeper, SpawnedTrustedWindow};
+#[path = "unix/cutover.rs"]
+mod cutover_pipeline;
+pub(crate) use cutover_pipeline::cutover;
+use cutover_pipeline::*;
+#[path = "unix/trusted_window.rs"]
+mod window_session;
+use window_session::*;
+mod processes;
+use processes::*;
+mod permission_worker;
+use permission_worker::*;

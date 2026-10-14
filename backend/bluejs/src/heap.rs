@@ -51,6 +51,20 @@ mod lifecycle;
 mod object_storage;
 #[cfg(test)]
 mod tests;
+mod web_abort;
+mod web_drag_drop;
+mod web_event_target;
+mod web_file_api;
+mod web_file_reader;
+mod web_streams;
+mod web_url;
+pub(crate) use web_abort::{AbortData, AbortHook};
+pub(crate) use web_drag_drop::{DragEventState, DragItem, DragItemData, DragStore, DragStoreMode};
+pub(crate) use web_event_target::{WebListener, WebTargetData};
+pub(crate) use web_file_reader::{FileReadKind, FileReaderState};
+pub(crate) use web_streams::{
+    PullInto, StreamData, StreamRead, StreamReader, StreamTee, WebStreamState,
+};
 
 /// A persistent root registration, independent of other registrations
 /// of the same object. Release it with [`Heap::unroot`]. Copying or
@@ -598,6 +612,13 @@ impl GeneratorState {
 }
 
 #[derive(Clone)]
+pub(crate) struct WebBlobData {
+    pub bytes: Vec<u8>,
+    pub media_type: JsString,
+    pub file: Option<(JsString, i64)>,
+}
+
+#[derive(Clone)]
 pub(crate) struct BoundFunction {
     pub target: ObjectId,
     pub this: Value,
@@ -874,6 +895,30 @@ enum ObjectKind {
         /// is always an unshared, fixed-length, never-detached ArrayBuffer
         /// whose bytes nothing may write after that allocation.
         immutable: bool,
+    },
+    WebAbortController(ObjectId),
+    WebAbortSignal(Box<AbortData>),
+    WebUrl(Box<url::Url>),
+    WebBlob(WebBlobData),
+    WebFileList(Vec<ObjectId>),
+    WebDOMException {
+        name: JsString,
+        message: JsString,
+    },
+    // Optional browser payloads must not enlarge every ordinary JS object.
+    WebDataTransfer(Box<DragStore>),
+    WebDragItems(ObjectId),
+    WebDragFiles(ObjectId),
+    WebDragItem {
+        store: ObjectId,
+        id: u64,
+    },
+    WebDragEvent(Box<DragEventState>),
+    WebEventTarget(Box<WebTargetData>),
+    WebFileReader(Box<FileReaderState>),
+    WebStream(Box<WebStreamState>),
+    HostSelectionEvent {
+        current_target: Option<ObjectId>,
     },
     DataView {
         buffer: ObjectId,
@@ -1327,6 +1372,21 @@ impl Object {
                     .chain(bound.args.iter().filter_map(Value::object_id))
                     .collect(),
                 ObjectKind::NativeFunction { function, .. } => function.references(),
+                ObjectKind::WebAbortController(signal) => vec![*signal],
+                ObjectKind::WebAbortSignal(state) => state.references(),
+                ObjectKind::WebUrl(_) => Vec::new(),
+                ObjectKind::WebFileList(files) => files.clone(),
+                ObjectKind::WebDataTransfer(store) => store.references(),
+                ObjectKind::WebDragItems(store)
+                | ObjectKind::WebDragFiles(store)
+                | ObjectKind::WebDragItem { store, .. } => vec![*store],
+                ObjectKind::WebDragEvent(state) => state.references(),
+                ObjectKind::WebEventTarget(state) => state.references(),
+                ObjectKind::WebFileReader(state) => state.references(),
+                ObjectKind::WebStream(state) => state.references(),
+                ObjectKind::HostSelectionEvent { current_target } => {
+                    current_target.iter().copied().collect()
+                }
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
                 ObjectKind::DateTimeFormat { format, .. } => format.iter().copied().collect(),
@@ -1535,6 +1595,18 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
                 .chain(bound.args.iter().filter_map(Value::object_id))
                 .collect(),
             ObjectKind::NativeFunction { function, .. } => function.references(),
+            ObjectKind::WebFileList(files) => files.clone(),
+            ObjectKind::WebDataTransfer(store) => store.references(),
+            ObjectKind::WebDragItems(store)
+            | ObjectKind::WebDragFiles(store)
+            | ObjectKind::WebDragItem { store, .. } => vec![*store],
+            ObjectKind::WebDragEvent(state) => state.references(),
+            ObjectKind::WebEventTarget(state) => state.references(),
+            ObjectKind::WebFileReader(state) => state.references(),
+            ObjectKind::WebStream(state) => state.references(),
+            ObjectKind::HostSelectionEvent { current_target } => {
+                current_target.iter().copied().collect()
+            }
             ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
             ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
             ObjectKind::DateTimeFormat { format, .. } => format.iter().copied().collect(),
@@ -1599,6 +1671,8 @@ pub struct Heap {
     /// Batches of temporary roots, innermost last. A VM safepoint registers
     /// everything it holds as one batch instead of one `roots` entry each.
     scoped_roots: Vec<Vec<ObjectId>>,
+    /// VM side-table edges, traced only while their heap owner is live.
+    scoped_owned_edges: Vec<Vec<(ObjectId, Vec<ObjectId>)>>,
     managed_bytes: usize,
     next_major_bytes: usize,
     /// First refused request in a test allocation sweep, after normal GC.

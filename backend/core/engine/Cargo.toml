@@ -10,18 +10,31 @@ blueice-html = { path = "../html" }
 blueice-css = { path = "../css" }
 blueice-layout = { path = "../layout" }
 blueice-paint = { path = "../paint" }
+blueice-font = { path = "../font" }
+unicode-segmentation = "1.13.3"
+unicode-normalization = "0.1.25"
+regex = "1.13.1"
 blueice-raster = { path = "../raster" }
 blueice-net = { path = "../../net" }
 blueice-ipc = { path = "../../ipc" }
 blueice-i18n = { path = "../../i18n" }
+blueice-assistant-settings = { path = "../../assistant-settings" }
+blueice-extension-host = { path = "../../extension" }
+serde_json = "1"
+url = "2"
 blueice-bluets = { path = "../../bluets" }
 blueice-bluets-bluejs = { path = "../../bluets-bluejs" }
 blueice-bluejs = { path = "../../bluejs" }
-ureq = "3"
+# Keep the workspace HTTP client free of transparent decompression. Cargo
+# unifies features with blueice-net, whose ranged downloads must inspect the
+# original Content-Encoding and representation byte offsets.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 getrandom = "0.3"
+zeroize = "1.9.0"
 
 [dev-dependencies]
+blueice-downloads = { path = "../../downloads" }
 blueice-testing = { path = "../../testing" }
 blueice-ai-gatekeeper = { path = "../../ai-gatekeeper" }
+blueice-ai-assistant = { path = "../../ai-assistant" }
 blueice-launcher = { path = "../../launcher" }
-serde_json = "1"

@@ -1,0 +1,190 @@
+{
+  "scope": "Complete Windows Rust plus WinUI build/protocol/actual desktop acceptance for the frozen 83436f846 product source",
+  "source_commit": "83436f8461c6f681df183473ecb7dcbe83423605",
+  "source_files": 2112,
+  "program_files": 1863,
+  "manifest_sha256": "0e34b26e4ef6e56796975f05653a6815c41f8be83997dee930f30f61d71b7eb3",
+  "bootstrap_exit_code": 0,
+  "status": "windows-acceptance-passed",
+  "rust": {
+    "ignored": 64,
+    "groups": 495,
+    "failed": 0,
+    "passed": 5670
+  },
+  "steps": [
+    {
+      "name": "rust-fmt",
+      "command": "& 'B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\format-workspace28.ps1'",
+      "exit_code": 0,
+      "seconds": 38.996249,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-fmt.log",
+      "log_sha256": "02a92ed809a18e00b21625860e1bd4b9f2577cfd38bb25872f2b5eab7bcc10be",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-clippy",
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc clippy --workspace --all-targets --locked -- -D warnings",
+      "exit_code": 0,
+      "seconds": 132.0144367,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-clippy.log",
+      "log_sha256": "9c247cfe2251edcd8b7b8be313d1f463a1023ecf9b37003a549c007c59f396e5",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-build",
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc build --workspace --all-targets --locked",
+      "exit_code": 0,
+      "seconds": 2377.3336096,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-build.log",
+      "log_sha256": "8b2466fa9ca6a01fcf3f4bf8babda3a599f2dc04ed3c761a70db9b6d9469afb0",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-test",
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc test --workspace --no-fail-fast --locked",
+      "exit_code": 0,
+      "seconds": 3986.8588176999997,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-test.log",
+      "log_sha256": "531c8980282b582f8a1ada0c0eb3325bc30fd0d77d277e0c6319679760b847b0",
+      "rust_counts": {
+        "ignored": 64,
+        "groups": 495,
+        "failed": 0,
+        "passed": 5670
+      }
+    },
+    {
+      "name": "winui-build",
+      "command": "& 'B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc\\winui-msvc-build.ps1'",
+      "exit_code": 0,
+      "seconds": 533.3108112,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc\\winui-build.log",
+      "log_sha256": "ba70c55ddc267762b81683a9c99384b73ee134d6e0f4f594e3cc140328303401",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "winui-protocol",
+      "command": "& dotnet run --project 'B:\\BlueIce\\workspaces\\blueice-downloads\\frontend\\winui\\tests\\ProtocolTests.csproj' -- 'B:\\BlueIce\\workspaces\\blueice-downloads\\target\\debug\\blueice-core.exe'",
+      "exit_code": 0,
+      "seconds": 12.174852399999999,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc\\winui-protocol.log",
+      "log_sha256": "d243f3f4f6aa856efeb7851dc530cb384887a35bd7798597ec2751e4b02143fb",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    }
+  ],
+  "desktop": {
+    "exit_code": 0,
+    "error": null,
+    "pid": 15000,
+    "session": 1,
+    "apartment": "MTA",
+    "pass_count": 7,
+    "results": "PASS real WinUI window and core-rendered credits\r\nPASS reload preserves the committed URL\r\nPASS settings, back and forward\r\nPASS create, select and close tabs\r\nPASS external navigation fails closed visibly\r\nPAGE_BOUNDS=28,145,944,488\r\nADDRESS_BOUNDS=178,107,650,32\r\nPASS visible rendered page pixels (2999 dark samples)\r\nPASS window close stops core and removes frames\r\n",
+    "artifacts": {
+      "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-json\\winui-desktop.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-json\\winui-artifacts\\results.txt": "46f0b45c987bf968f9c38eb0289b9502e4344dbc6ba97b760ba3d04555bd1104",
+      "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-json\\winui-artifacts\\window.png": "1c4c75bbe95926f6bc3e86e99143cc785c0f62e5465e326cb59d9b992270569c"
+    }
+  },
+  "desktop_task_exit_code": 0,
+  "source_unchanged": true,
+  "cleanup": {
+    "status": "final-owned-cleanup-verified",
+    "task_exists": false,
+    "desktop_helpers": [],
+    "owned_apps": [],
+    "storage": [
+      {
+        "DriveLetter": "C",
+        "FileSystemLabel": "",
+        "FileSystem": "NTFS",
+        "Size": 150323851264,
+        "SizeRemaining": 7249690624
+      },
+      {
+        "DriveLetter": "B",
+        "FileSystemLabel": "BlueIceTests320",
+        "FileSystem": "NTFS",
+        "Size": 343579553792,
+        "SizeRemaining": 295577165824
+      }
+    ]
+  },
+  "toolchains_unchanged": true,
+  "persistent_execution_policies_unchanged": true,
+  "harness_deltas": [
+    "Pinned MSVC external build helper uses unchanged frozen Rust/C# sources; original GNU toolchain selection failure retained",
+    "Close driver first tries WindowPattern, then validates HWND/PID before ordinary WM_CLOSE; all seven existing assertions retained; isolated fix commit 6bea737fb",
+    "MTA desktop driver plus direct phase tracing",
+    "ReadAllText returns a plain string for JSON results; original Get-Content provider metadata serialization stalls retained"
+  ],
+  "source_scope_limit": "Later object URL, AbortSignal and CustomEvent increments require their own complete gates; this receipt does not cover those added APIs",
+  "preserved_failures": [
+    "GNU WinUI build missing gcc.exe",
+    "Six desktop assertions passed before unsupported WindowPattern failed close",
+    "Seven desktop assertions passed but STA result publication timed out",
+    "Seven desktop assertions passed but MTA result publication also timed out; traces locate JSON publication",
+    "First standalone-probe cleanup refused on a UTC/local comparison; no process changed; corrected exact-identity cleanup succeeded"
+  ],
+  "serialization_probe": {
+    "version": "5.1.26100.9444",
+    "decorated_note_properties": [
+      "PSPath",
+      "PSParentPath",
+      "PSChildName",
+      "PSDrive",
+      "PSProvider",
+      "ReadCount"
+    ],
+    "plain_note_properties": [],
+    "owned_probe_cleanup": {
+      "pid": 14860,
+      "created": "2026-10-12T14:43:51.7700920Z",
+      "reason": "Confirmed Get-Content decorated-string serialization stall; plain-string probe completed"
+    }
+  },
+  "artifact_sha256": {
+    "acceptance.json": "cd7b37875c2c19b8b90bdcbd917a38421671428269a96fdde887dc6dc9bb2212",
+    "window.png": "1c4c75bbe95926f6bc3e86e99143cc785c0f62e5465e326cb59d9b992270569c",
+    "ui-results.txt": "46f0b45c987bf968f9c38eb0289b9502e4344dbc6ba97b760ba3d04555bd1104",
+    "desktop-phase.log": "f7c66893938a00bd4d005dd7121ba493a40e8f8310f937f6728af0279e6b985e",
+    "smoke-phase.log": "112a8413bbe074f442f21a2b5dbab8eb1dd2640109af3452aa5294221736b432",
+    "failed-close-pattern.json": "79cef2f4fd69467e6b6edb373444eb97b808179d0cbcd7e34ff8209460d6c93a",
+    "failed-result-publication-sta.json": "b67e195c619436c4f0af192c27e85cd37877bc99447fe9243ad634b323c93a2c",
+    "failed-result-publication-mta.json": "9c5e3d299b8b3fb3c6bc4f8a917c12b4336f290b2e8bee8ee07f87cd62b21248",
+    "failed-close-pattern-results.txt": "fdc0f25fdb564e0fadf7d5126aa9bb848e4ec11a930d43cb9d336932e584fb8d",
+    "plain-string-probe-phase.log": "3de84fddc05ee92fa8dae4760832b6438003cd606106cff0d33fbec751bc86b3",
+    "DesktopDriver.ps1": "9645198e1deb0aef0744a0a66a3d7b988b4ebaafd2cb5e3c454e165e32835a5d",
+    "WindowSmoke.ps1": "d4d2c3785f2ca110254bbf3cefe8b955db20d67be22371aa09c520d76a2ded03",
+    "Controller.ps1": "50c915c84734549cf2c9e20a01ad64f47cbbb926518034382d7e5c8c875c7526",
+    "MsvcBuild.ps1": "23a1a009d1613a655074660df6200f962938ceea06f0ae87dddad0f6d6336dbe",
+    "cleanup.json": "febbd7328a0ffcfe6486722b99ad62e1a30edaea7fff3196e0db57944b408297",
+    "serializer-metadata.json": "47d34a4780234a44899e8350dae3b797a454780aeef43f3b941d10d6f9b19deb"
+  }
+}

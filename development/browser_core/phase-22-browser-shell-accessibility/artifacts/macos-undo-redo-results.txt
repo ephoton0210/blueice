@@ -1,0 +1,115 @@
+BlueIce macOS native Undo/Redo acceptance
+Date: 2026-10-03 Asia/Taipei
+Base commit: 3932537a7a8061d7714edb2a9153f885af6d0a64
+Platform: arm64 macOS 26.6.2 (25G83), Xcode 27.0 (27A266a), Swift 6.4, Rust 1.96.0
+Native xcresult: frontend/macos/.build/results-20261003-205824.xcresult
+Native terminal exit: 0
+Native: 155 passed, 0 failed, 1 physical Zhuyin skipped (92 XCTest, 63 UI passes)
+Warnings: 50 internal QoS; 0 SwiftUI view-update warnings
+Rust workspace terminal exit: 0; 7217 passed, 69 ignored, 0 failed
+Workspace build all targets: terminal exit 0
+Workspace strict Clippy all targets: terminal exit 0
+Workspace fmt --check: terminal exit 0
+Owned native bundle processes after UI: 0 (Rust/other prefixes excluded)
+Parent/private-panel architectures: x86_64 arm64; executed arm64
+PNG ignored, inspected, unedited: artifacts/macos-undo-redo.png
+PNG SHA-256: fffa22b6edfefb69e45dee49d7258b4acc269caae5c371ed3753ef530a3fe934
+Existing Local Network prompt: preserved, neither accepted nor dismissed
+Final native frozen inputs: 70
+Final aggregate SHA-256: 5f1fc2fafd792a4c70d94dd94cfa601818100c66c98a86acc990ae7b4d787c6e
+Rust/Cargo inputs: 13 unchanged from the original freeze through all workspace gates
+Original freeze aggregate: 8fc798c39b69bcb7c34d63520ee43d780ea7c9dceb37e70ab8671a462a454545
+Changes before final native freeze: only BrowserSessionRestore.swift and BrowserUITests.swift
+Focused passes overlap the final gates; not added to totals.
+First two full native runs: 153 passed/2 failed/1 skipped; 154 passed/1 failed/1 skipped. Excluded from acceptance.
+
+Commands:
+frontend/macos/test.sh
+CARGO_TARGET_DIR=frontend/macos/.build/core-target rustup run 1.96.0 cargo test --workspace --locked
+CARGO_TARGET_DIR=frontend/macos/.build/core-target rustup run 1.96.0 cargo build --workspace --all-targets --locked
+CARGO_TARGET_DIR=frontend/macos/.build/core-target rustup run 1.96.0 cargo clippy --workspace --all-targets --locked -- -D warnings
+rustup run 1.96.0 cargo fmt --all -- --check
+Rust tests use frontend/macos/TestSupport/run-signed-test.sh as the arm64 runner.
+One workspace target cache; no exclusions or skip changes introduced.
+
+Strict signature verifications:
+frontend/macos/.build/Build/Products/Debug/BlueIce.app: exit 0
+frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app: exit 0
+frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-core: exit 0
+frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-launcher: exit 0
+frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-gatekeeper: exit 0
+frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-downloads: exit 0
+frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-extension-host: exit 0
+frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-assistant: exit 0
+
+Frozen file SHA-256 (rechecked unchanged after final acceptance):
+fe558c2335d1fd84f913e4bc6327960c41560401e27caad073c40218a37ecd33  Cargo.lock
+0a3eb0f801e18fd9e4b4ca70eae8ed7471c949b9b13d0fbf029b54a26866014d  Cargo.toml
+2f229900e1da90ef0628df06d58bd29c058ab6c25e89eadffd90c66353715488  backend/core/engine/Cargo.toml
+3ab404a87f2615f97d2af0100fbd0a85a30994badc68bd67a7da97c520ffe31a  backend/core/engine/src/page.rs
+f13ee88fc924da29428c8a64d579d460648a1d3a640de86bc91f2c42a9541ad5  backend/core/engine/src/page/dom_write.rs
+a87b94b74dc1fd0a9c97f5e730b75e64a13ddeb4b8bc502f0625a17452fe597f  backend/core/engine/src/page/native_editing.rs
+6952bce3a17749c91fae14831e02b0a3540bc029dc12e6d54435355e4edbfe8d  backend/core/engine/src/page/native_editing/tests.rs
+dc92bab663a24743db76e721b7c1d9d683b7bbecc9b34ab84b2c8b8f8e893a4f  backend/core/engine/src/page/native_editing/undo.rs
+9dae72e1077393a3a2f4285949c1d65a4883d2d97bc5abf5022d867c5be5dbb5  backend/core/engine/src/page/native_forms.rs
+d8f15ce39e74821272703f37ecfe9879e2bb1f8a730b33cfc8420a81604c4256  backend/core/engine/src/page/native_interaction.rs
+cffd63f302b77b1c43638a391785b63e0d849bd88d5b6b3687cffa0e6a86025c  backend/core/engine/tests/native_keyboard.rs
+753346bb887f9e5a28d5b7cd6c9eaf934c82c086bd64382d98e8e918f897658d  backend/ipc/src/browser_protocol_tests.rs
+678cd0a79f67aa7ff1dbb4f894ee4b8c53c30fa8bf74ceac80688232d7041558  backend/ipc/src/input.rs
+5ba2c166c3da00983a703b61e14303e97bc5e4cc60851fa9935a617767fff619  frontend/macos/BlueIce.xcodeproj/project.pbxproj
+8bcbbb239c0338c3966325dabc00d9913d5941647bc7a6f6dbc47cc425d29120  frontend/macos/BlueIce.xcodeproj/xcshareddata/xcschemes/BlueIce.xcscheme
+d4ba0bcc2dfd952718e46b9c619f460008962e097386bd44f3e918b22fa8719d  frontend/macos/README.md
+891e96707b28ce83d39084e4cc984ccec21248ecc236ed2ac8fb956f11e470a1  frontend/macos/Sources/BlueIceApp.swift
+b2c9464b4809788a7a7e9b2b64ae561b3aefd317dc0bc99cf589b015ff539129  frontend/macos/Sources/BrowserAppearance.swift
+58d3211418755f9cd61196006b172d161311f88ca410ffe49e63befa11ac7277  frontend/macos/Sources/BrowserAssistant.swift
+0c7c3c49fa4ba023c7f84d648c348375eeb7800d916738f5aec25a4cf5f7728a  frontend/macos/Sources/BrowserAssistantView.swift
+600788bbba729bfab2d94ce9494e2f16617ef7db3d1e5a9a2462160a90d08f82  frontend/macos/Sources/BrowserContexts.swift
+626c31eb6fedeb026a0cf4b47095e73eb1c5a4f5ff10bbdcd7a83bbd4ef48e8e  frontend/macos/Sources/BrowserDownloads.swift
+ec188a3b9fef4e6e5d406380f14614136735456a2af82ed1ca4bd017f6c4fc60  frontend/macos/Sources/BrowserDownloadsSession.swift
+8bdfa9f20cc6dcc38369e3531e4c5b4b56bdf85768583fd4a1bd0f4f3a3799b3  frontend/macos/Sources/BrowserDownloadsView.swift
+697400d0b27739d0ccefd9f182b6ea703d02f163e3362b87019fc229e127a36f  frontend/macos/Sources/BrowserFileInput.swift
+04c842b6f2286ed5ba423fedae1226918010abf741afcf7c94b1fc3ebd85bdbf  frontend/macos/Sources/BrowserModel.swift
+cc6f27675bad9da105bc636a4fe51f170c93c8c0aebc489dfeaaf50f2917c86c  frontend/macos/Sources/BrowserPrinting.swift
+567e294e5e625d42e93a60915592420e25c4ef601fab90ea5a3658265b187d20  frontend/macos/Sources/BrowserProfiles.swift
+2a18163b2eedb992c2c5895a93eedc7f2f7565d976b00d71ff3d206460313b96  frontend/macos/Sources/BrowserSession.swift
+490538453e2911e3aa02664fd5f1a65afecb64ef9c261f8cd75a196daad5e4a4  frontend/macos/Sources/BrowserSessionRestore.swift
+461eb63889b341530c3b350c856cba46b849c59b82c4d29aeb01f25fba195c21  frontend/macos/Sources/BrowserTabGroups.swift
+190d649ecf0b70b3ce760cc77bd36a177ea1bf699d91e6e2f79c23d00ea7e824  frontend/macos/Sources/BrowserTransport.swift
+6f210d13de6aaa557ba8e9488a865124466da36b71a114a8e4f3eba68c3b7ecd  frontend/macos/Sources/BrowserView.swift
+785ed9139a9ce3be2f47d910720d0e50921e006878a96aee1acb0ce89afdba39  frontend/macos/Sources/BrowserWindows.swift
+ca766a935d29393ac89e556d979b60fd1a922fd02ebeee438f4925c220b95dc8  frontend/macos/Sources/BrowserWire.swift
+b605567ed14319e797c02bf3a711b3ea9bedfb60293957f770a04dde545397ee  frontend/macos/Sources/BrowserWorkspace.swift
+83fa709d3dcae552678c9e70fc61dedcd5a7635ebf296c88cb09cdd08d84cf8e  frontend/macos/Sources/FramePixels.swift
+35eaac7df71f5c8cc15c93f2ed4b22207235d20d7193e737ad019c1cfa35c0f1  frontend/macos/Sources/NativeEditingMenu.swift
+8df2e79de2620f8f002e7cb728b904a33bf309b40587f545c38ada310f8241ea  frontend/macos/Sources/NativeTextInput.swift
+9297173cb262caea97c8ef84efaaacb56f3a157524838862bdc43ede8eb612ed  frontend/macos/Sources/PageAccessibility.swift
+cdd49c9e5f26ca2b59f60180b592d7e0964941c7522a28eab2bac3bf2c20c927  frontend/macos/Sources/PageRepresentation.swift
+ca59e568faa53efbb1a20ada1ef1b81eb9ad68af7456e127c9304b6c81c3b3a2  frontend/macos/Sources/PageViewport.swift
+43de25175e7888debc9acc48cb41fa423c0108d713106e90f9c96b5963a33178  frontend/macos/TestSupport/AssistantModelFixture.swift
+9e9b08d9450c6eb7492556461256add1fdbbe872837b6d1ab9395f360ddc841b  frontend/macos/TestSupport/DownloadFixture.swift
+877a1a2a029d1bff1566cd31290eecf2f5fdbb025deda030fa067a056500fd14  frontend/macos/TestSupport/HTTPFixture.swift
+489f4acbe836737b963c545f38c48a7ca7a7c35c8af4cdae63824d998584f9e0  frontend/macos/TestSupport/run-signed-test.sh
+b7a0c222874f8f42560b42cdc1b1a86fe9715ddd51bfb24def5a7de5d28c46c4  frontend/macos/Tests/AccessibilityTests.swift
+9f253e0a602c641a333725cbcf1b777de89002d6cd6ac0de2ea7fc1d4326494e  frontend/macos/Tests/AssistantPageTests.swift
+56d87476908552baae0f1ce9419d69d648fbafdf8c82d07e4a1da1589d33fc22  frontend/macos/Tests/AssistantSettingsTests.swift
+c426f0b2e18f04aadb14b2e55cf28edae81980f37450676cafa4c70aa361dd83  frontend/macos/Tests/BrowserAppearanceTests.swift
+6702b337d8321826b5be9e8af3f63790809c0986798495725fed2bf702d14e84  frontend/macos/Tests/DownloadTests.swift
+417f99651ad9e01a0fde4fce4d06348fbd436bd2b835bd9628828d8d31c2e38b  frontend/macos/Tests/FileInputTests.swift
+1b0f4087d2d371bc6a4c5261e33b783c40b6f7cf72e4286e361854ac58ba711d  frontend/macos/Tests/NativeEditingTests.swift
+268e29ccd6d0cd3a3951ce61a73d958722b5738f14405a0d081acb64bbe12454  frontend/macos/Tests/PermissionPanelTests.swift
+d3a6de655f232e52f9a7835c57166b050e9b3b53dd14dec0610b9f3520e25333  frontend/macos/Tests/PrintingTests.swift
+cb186a18662431a7e7cb7cb435afa62b1ea573f50a599b333909467973e9d074  frontend/macos/Tests/ProtocolTests.swift
+0866e834ea91e6856adc726c14f2c96541148d9ce60858056abba20cd3708c09  frontend/macos/Tests/SessionRestoreTests.swift
+1b298e1a5c6cb46712e9f000e22db74c681749067ec9ccfc4e4ba627e7da2eb7  frontend/macos/TrustedPanels/AssistantSettingsModel.swift
+d678fde20a8ed83d3c2c1052040726d58dc2dbaf49a5430a7b3282b8dab93ff5  frontend/macos/TrustedPanels/AssistantSettingsView.swift
+f88c5a0fb5b1cbd7937f462cddd619882b81184796bac39ed05a7266589df166  frontend/macos/TrustedPanels/AssistantSettingsWire.swift
+9b632f6de23b90e91a173d4a5738ab69cc5389cddff18cd34ddc7ec8ac526a36  frontend/macos/TrustedPanels/BlueIcePanels.swift
+1f34d649941c988212a71330955d459bea90edd9b2e4e00363d33f87c3c979c1  frontend/macos/TrustedPanels/Info.plist
+da41cc6aee84bf897fdca456f50539b639ea16ec261c75ccb41460fc3e5c6e8d  frontend/macos/TrustedPanels/PermissionModel.swift
+3f5a5e621f9730cdf63d0a0096f45a52a8bea3c4a160cae57265dc47b80057eb  frontend/macos/TrustedPanels/PermissionTransport.swift
+5f060cbf5520444b16a513a510af22e3e87bbba971e3508251e5c641347cea64  frontend/macos/TrustedPanels/PermissionWire.swift
+46692869790f7f97e857cb28b313bc1a6b641886cffc3c3920daa526b5d3392a  frontend/macos/UITests/BrowserUITests.swift
+49f282a5386d7342d755793a95987bcbbc25ee32b619d3bd46a04c23cc990ac8  frontend/macos/UITests/Network.entitlements
+8ad6d523058c62bf7e1ff2d30e8aa1995b5cd685814a8d1d9a1d0726fd6e67b6  frontend/macos/build-panels.sh
+67e852696321e6148b32392ca1f66f154e512be08f05041e668e812fd8a724cb  frontend/macos/build.sh
+10cc3053d4b63573c3ea1f45578a4e399b6e5c1e27bb485cabdfa1cb2656ce5e  frontend/macos/test.sh

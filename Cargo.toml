@@ -1,7 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
+    "backend/ai-assistant",
     "backend/ai-gatekeeper",
+    "backend/assistant-settings",
     "backend/bluejs",
     "backend/ecma402",
     "backend/bluets",
@@ -14,10 +16,12 @@ members = [
     "backend/core/paint",
     "backend/core/raster",
     "backend/core/engine",
+    "backend/downloads",
     "backend/extension",
     "backend/frontend-reference",
     "backend/i18n",
     "backend/launcher",
+    "backend/loopback-model",
     "backend/mcp-server",
     "backend/ipc",
     "backend/net",

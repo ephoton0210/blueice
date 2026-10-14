@@ -1,0 +1,261 @@
+{
+  "scope": "Dedicated Windows test storage preparation; not full Rust or WinUI acceptance",
+  "status": "verified",
+  "completed": "2026-10-12T09:30:52.4568057Z",
+  "host": "pb60g.bravotekcorp.cc",
+  "host_volume": "/data on /dev/sda1, existing ext4 2 TB disk",
+  "vm": "omnisolve-winui-automation",
+  "disk": {
+    "image": "/data/vms/blueice-test-320g.qcow2",
+    "virtual_bytes": 343597383680,
+    "host_allocation_bytes": 343650058240,
+    "preallocation": "falloc",
+    "bus": "virtio",
+    "target": "vda",
+    "serial": "BLUEICE_TEST_320G",
+    "guest_number": 2,
+    "guest_volume": "B:",
+    "label": "BlueIceTests320",
+    "live_and_persistent": true,
+    "host_allocation_observation": {
+      "observed_utc": "2026-10-12T11:58:39Z",
+      "allocated_bytes": 31545245696,
+      "host_volume_free_bytes": 1659417358336,
+      "discard": "unmap",
+      "initial_allocation_is_permanent_reservation": false,
+      "commands": [
+        "df -B1 /data",
+        "du -B1 /data/vms/blueice-test-320g.qcow2",
+        "virsh dumpxml omnisolve-winui-automation"
+      ]
+    }
+  },
+  "final_free_bytes": {
+    "c": 7251255296,
+    "b": 313754607616
+  },
+  "original_c_reserve_bytes": 4294967296,
+  "archive_inputs_verified": 2077,
+  "corpus_manifest_sha256": "8abd6392abcdde3aa17326391ed008a0336a253364c1676caa1af31b8a5bffd8",
+  "copies": [
+    {
+      "copy_exit": 1,
+      "source": "X:\\blueice-validation-drag15-07f19d82",
+      "destination": "B:\\BlueIce\\archive\\x-drive\\blueice-validation-drag15-07f19d82",
+      "junctions_excluded": true,
+      "verification_log": "B:\\BlueIce\\results\\verify-blueice-validation-drag15-07f19d82-0.log",
+      "inventory_exit": 0,
+      "log": "B:\\BlueIce\\results\\copy-blueice-validation-drag15-07f19d82-0.log"
+    },
+    {
+      "copy_exit": 1,
+      "source": "X:\\blueice-merge-fixes",
+      "destination": "B:\\BlueIce\\archive\\x-drive\\blueice-merge-fixes",
+      "junctions_excluded": true,
+      "verification_log": "B:\\BlueIce\\results\\verify-blueice-merge-fixes-1.log",
+      "inventory_exit": 0,
+      "log": "B:\\BlueIce\\results\\copy-blueice-merge-fixes-1.log"
+    },
+    {
+      "copy_exit": 1,
+      "source": "X:\\blueice-test262-72faf8ec-verified",
+      "destination": "B:\\BlueIce\\corpora\\test262-72faf8ec-verified",
+      "junctions_excluded": true,
+      "verification_log": "B:\\BlueIce\\results\\verify-test262-72faf8ec-verified-2.log",
+      "inventory_exit": 0,
+      "log": "B:\\BlueIce\\results\\copy-test262-72faf8ec-verified-2.log"
+    },
+    {
+      "copy_exit": 1,
+      "source": "X:\\blueice-verify",
+      "destination": "B:\\BlueIce\\archive\\x-drive\\blueice-verify",
+      "junctions_excluded": true,
+      "verification_log": "B:\\BlueIce\\results\\verify-blueice-verify-3.log",
+      "inventory_exit": 0,
+      "log": "B:\\BlueIce\\results\\copy-blueice-verify-3.log"
+    },
+    {
+      "copy_exit": 1,
+      "source": "X:\\blueice-winui-artifacts",
+      "destination": "B:\\BlueIce\\archive\\x-drive\\blueice-winui-artifacts",
+      "junctions_excluded": true,
+      "verification_log": "B:\\BlueIce\\results\\verify-blueice-winui-artifacts-4.log",
+      "inventory_exit": 0,
+      "log": "B:\\BlueIce\\results\\copy-blueice-winui-artifacts-4.log"
+    },
+    {
+      "copy_exit": 1,
+      "source": "X:\\blueice-winui-transfer",
+      "destination": "B:\\BlueIce\\archive\\x-drive\\blueice-winui-transfer",
+      "junctions_excluded": true,
+      "verification_log": "B:\\BlueIce\\results\\verify-blueice-winui-transfer-5.log",
+      "inventory_exit": 0,
+      "log": "B:\\BlueIce\\results\\copy-blueice-winui-transfer-5.log"
+    },
+    {
+      "copy_exit": 1,
+      "source": "C:\\Windows\\System32\\config\\systemprofile\\.cargo",
+      "destination": "B:\\BlueIce\\cache\\cargo",
+      "junctions_excluded": true,
+      "verification_log": "B:\\BlueIce\\results\\verify-cargo-6.log",
+      "inventory_exit": 0,
+      "log": "B:\\BlueIce\\results\\copy-cargo-6.log"
+    },
+    {
+      "copy_exit": 1,
+      "source": "C:\\Windows\\System32\\config\\systemprofile\\.rustup",
+      "destination": "B:\\BlueIce\\cache\\rustup",
+      "junctions_excluded": true,
+      "verification_log": "B:\\BlueIce\\results\\verify-rustup-7.log",
+      "inventory_exit": 0,
+      "log": "B:\\BlueIce\\results\\copy-rustup-7.log"
+    },
+    {
+      "copy_exit": 1,
+      "source": "C:\\Windows\\System32\\config\\systemprofile\\.nuget\\packages",
+      "destination": "B:\\BlueIce\\cache\\nuget",
+      "junctions_excluded": true,
+      "verification_log": "B:\\BlueIce\\results\\verify-nuget-8.log",
+      "inventory_exit": 0,
+      "log": "B:\\BlueIce\\results\\copy-nuget-8.log"
+    }
+  ],
+  "toolchain_move": {
+    "source": "C:\\Windows\\System32\\config\\systemprofile\\.rustup",
+    "destination": "B:\\BlueIce\\cache\\rustup",
+    "old_path_rustc_works": true,
+    "files_verified": 1181,
+    "hashes_sha256": "e3f5cb516596955d123e65db19dffed34aad43da1211f177803f658a85bb4b8d",
+    "old_physical_copy_removed": true,
+    "bytes": 4641719366,
+    "hashes": "B:\\BlueIce\\results\\toolchain-source-hashes-20261012.json",
+    "compatibility_junction": true
+  },
+  "cleanup": [
+    {
+      "path": "C:\\Windows\\Temp\\blueice-0297e937fbeec925a7d1f4bc48f2c1b22e3e4443",
+      "removed": true,
+      "files": 0,
+      "bytes": 0,
+      "empty_directories": 1020
+    },
+    {
+      "path": "C:\\Windows\\Temp\\blueice-11bb1d7",
+      "removed": true,
+      "files": 0,
+      "bytes": 0,
+      "empty_directories": 435
+    },
+    {
+      "path": "C:\\Windows\\Temp\\blueice-3cf075f",
+      "removed": true,
+      "files": 0,
+      "bytes": 0,
+      "empty_directories": 435
+    },
+    {
+      "path": "C:\\Windows\\Temp\\blueice-7c32903456327c569deb89db66cc46e70f0fd6b5",
+      "removed": true,
+      "files": 0,
+      "bytes": 0,
+      "empty_directories": 679
+    },
+    {
+      "path": "C:\\Windows\\Temp\\blueice-fee633d",
+      "removed": true,
+      "files": 0,
+      "bytes": 0,
+      "empty_directories": 326
+    },
+    {
+      "path": "C:\\Windows\\Temp\\blueice-node24",
+      "removed": true,
+      "files": 0,
+      "bytes": 0,
+      "empty_directories": 466
+    }
+  ],
+  "wrapper_probe": {
+    "time": "2026-10-12T09:19:45.0079718Z",
+    "status": "passed",
+    "positive_exit": 0,
+    "c_workspace_rejected": true,
+    "child_exit_forwarded": 7,
+    "parent_environment_unchanged": true,
+    "wrapper_sha256": "f9d9d73dfc6eae2488fc2ab1645295211d8e2fd42f42955193f43843e5b2d1e0"
+  },
+  "wrapper_repo_path": "scripts/test-with-windows-storage.ps1",
+  "global_machine_user_execution_policy_changed": false,
+  "vm_rebooted": false,
+  "pagefile_policy_changed": false,
+  "evidence": {
+    "/private/tmp/blueice-followup-20261012/windows-storage-finalized.json": "5accfd1a6773d9d225d1e03db24f30851d1df24d5fe42748010ae8dbae321eb3",
+    "/private/tmp/blueice-followup-20261012/windows-storage-finalize-receipt.json": "9b2e8552c54e038645e01f3578b6047fee867f206e1c1f76912f14c49a3ddb85",
+    "/private/tmp/blueice-followup-20261012/windows-storage-initialized-receipt.json": "687eba1b77230e018bd93911bf2a1f02a65b5f6c86f2fe126aacd67268e0a0a4",
+    "/private/tmp/blueice-followup-20261012/windows-storage-inventory-receipt.json": "9e967003e955e7c522389b438cdd5061dfe8f9c9edca6b803fb1025fbd8fcde5",
+    "/private/tmp/blueice-followup-20261012/windows-storage-verify-receipt.json": "a41694f60fb0ba0e175334cb134bb8e681ff487a5f22a8d3bfef0cb48ab45e9c",
+    "/private/tmp/blueice-followup-20261012/windows-storage-migration-receipt.json": "6206ddba76dee167023c202176ecd92d275cb59681d0ea015fae055f4fe955dd",
+    "/private/tmp/blueice-followup-20261012/windows-storage-runner-probe-receipt.json": "665df8194368dd27108b68ee91308a43fe1a703153de064c2c528adacda5179d",
+    "/private/tmp/blueice-followup-20261012/windows-virtio-install-receipt.json": "4589b4bf978396449fd6d8bc4c6f07377405d25a2533a02ba25a6c8241a439eb",
+    "/private/tmp/blueice-followup-20261012/windows-desktop-storage-probe-receipt.json": "7717fc3657f531f74e42a742a5e3a9d510e1ff2b0a538a757288389f4c724a8f",
+    "/private/tmp/blueice-followup-20261012/windows-template-syntax-receipt.json": "82c72f9052a8db7aec5afb7818f94aa1265c389a698e6b3c957b1c0eb59d5983"
+  },
+  "historical_failures": [
+    "SATA hotplug unsupported; changed to signed VirtIO driver and live attachment.",
+    "Initial archive manifest path was wrong; completed copies were retained, real manifest located, and 2077 hashes verified.",
+    "Initial empty-root cleanup rejected directories with empty descendants; full subtrees were audited and removed only after proving zero files and no reparse points.",
+    "Initial unsigned-script invocation was refused by existing policy; validation uses only process-scoped execution policy."
+  ],
+  "desktop_storage_probe": {
+    "status": "passed",
+    "user": "ephoton",
+    "session": 1,
+    "temp": "B:\\BlueIce\\tmp",
+    "rustup": "B:\\BlueIce\\cache\\rustup",
+    "binary_temporary_io": "passed",
+    "time": "2026-10-12T10:14:31.6851108Z",
+    "task_exit": 0,
+    "task_removed": true
+  },
+  "validation_template_syntax": {
+    "time": "2026-10-12T10:08:57.7720937Z",
+    "status": "passed",
+    "scripts": [
+      {
+        "path": "B:\\BlueIce\\scripts\\validation-controller-20261012.ps1",
+        "sha256": "0cbdc4ca8e20a2d345fb47b522927e62a61ff46032c75aea72539a67b31caa63",
+        "syntax": "passed"
+      },
+      {
+        "path": "B:\\BlueIce\\scripts\\validation-format-20261012.ps1",
+        "sha256": "997050b1d9ee00cc4ebea9fe3165671ab1eda339e789adaf560badf5159c9ed8",
+        "syntax": "passed"
+      },
+      {
+        "path": "B:\\BlueIce\\scripts\\validation-desktop-20261012.ps1",
+        "sha256": "e9787d4428ff60592f2a36b64ae35a3fb94bfed9057c30a5581f31a3d1d6b78f",
+        "syntax": "passed"
+      },
+      {
+        "path": "B:\\BlueIce\\scripts\\validation-state-store-20261012.ps1",
+        "sha256": "fdffd15529b31aa2d527d1c6b11de179abdb5964413cedae44847a2912ef436c",
+        "syntax": "passed"
+      },
+      {
+        "path": "B:\\BlueIce\\scripts\\test-with-windows-storage.ps1",
+        "sha256": "f9d9d73dfc6eae2488fc2ab1645295211d8e2fd42f42955193f43843e5b2d1e0",
+        "syntax": "passed"
+      }
+    ],
+    "volumes": [
+      {
+        "DriveLetter": "C",
+        "SizeRemaining": 7252721664
+      },
+      {
+        "DriveLetter": "B",
+        "SizeRemaining": 313106608128
+      }
+    ]
+  }
+}

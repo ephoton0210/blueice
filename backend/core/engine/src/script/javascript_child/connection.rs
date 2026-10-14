@@ -82,6 +82,16 @@ impl PageHostConnection {
             ));
         }
         let deadline = Instant::now() + wait;
+        // Install the receive bound before sending. A child can reply and
+        // close immediately; Darwin may reject SO_RCVTIMEO after that EOF,
+        // even though a complete, valid reply is still buffered.
+        if let Err(error) = self.stream.set_read_timeout(Some(wait)) {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(io::Error::new(
+                error.kind(),
+                format!("page-host read timeout: {error}"),
+            ));
+        }
         self.stream.set_write_timeout(Some(wait)).map_err(|error| {
             io::Error::new(error.kind(), format!("page-host write timeout: {error}"))
         })?;
@@ -105,13 +115,6 @@ impl PageHostConnection {
                 return Err(error);
             }
         };
-        if let Err(error) = reader.set_read_timeout(Some(remaining)) {
-            let _ = self.stream.shutdown(Shutdown::Both);
-            return Err(io::Error::new(
-                error.kind(),
-                format!("page-host read timeout: {error}"),
-            ));
-        }
         let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
         let reader_task = thread::spawn(move || {
             let _ = reply_sender.send(page_host::read_page_host_reply(&mut reader));
@@ -159,6 +162,41 @@ impl PageHostConnection {
 }
 
 impl PageHostClient for PageHostConnection {
+    fn browser_tasks_available(&self) -> bool {
+        true
+    }
+    fn dispatch_drag_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        nodes: Vec<u64>,
+        event: blueice_ipc::page_host::PageHostDragEvent,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::DispatchDrag {
+                tab_id,
+                document_generation,
+                nodes,
+                event,
+            },
+            pump,
+        )
+    }
+    fn flush_drag_tasks_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::FlushDragTasks {
+                tab_id,
+                document_generation,
+            },
+            pump,
+        )
+    }
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply> {
         self.request(PageHostRequest::SynchronizeDocument { document })
     }
@@ -169,6 +207,25 @@ impl PageHostClient for PageHostConnection {
         pump: &mut dyn FnMut() -> io::Result<()>,
     ) -> io::Result<PageHostReply> {
         self.request_while_pumping_script(PageHostRequest::SynchronizeDocument { document }, pump)
+    }
+
+    fn dispatch_file_selection_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        nodes: Vec<u64>,
+        event: blueice_ipc::page_host::PageHostFileSelectionEvent,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::DispatchFileSelection {
+                tab_id,
+                document_generation,
+                nodes,
+                event,
+            },
+            pump,
+        )
     }
 
     fn dispatch_click_with_script_pump(

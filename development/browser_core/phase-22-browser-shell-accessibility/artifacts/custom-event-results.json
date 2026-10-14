@@ -1,0 +1,66 @@
+{
+  "scope": "CustomEvent VM semantics, additive BlueTS typings, actual Core/isolated-child DOM integration; general node synthetic dispatch remains pending",
+  "base_commit": "6bea737fb75b1d77b168691fce7dc53bf5714714",
+  "source_files": {
+    "backend/bluejs/src/heap/web_drag_drop.rs": "45a084fc103d3ef78e9a1ee6f1c31928012b5888dabbf95069a950687cc78e1f",
+    "backend/bluejs/src/native.rs": "42e774f1c76a7d4b0ce994f1e64e57ffb36f2c16c643509e6be466f5f3a347af",
+    "backend/bluejs/src/vm.rs": "22f7facd2fdc619f23645736d79532f9438e949df8578cd1ff3044f0e93d66f4",
+    "backend/bluejs/src/vm/web_events.rs": "67cd2ccb7ba6a5e7d57b5f91c5757ec3f36605089bf44323b987706b0e1e51c3",
+    "backend/bluets-bluejs/src/page_host_typings.rs": "4873b338e9b6acab003d62ef98a2533af57c5a0f156ae91ec378fbfdd36fcf09",
+    "backend/launcher/src/bluejs_host.rs": "890cde9f77ef290036d4ef0e2fdd77a4075ebfd598239d60bd0b8277e40838a9",
+    "backend/launcher/src/bluejs_host/script_execution.rs": "46844f378e8191061f35ad5b8f96d7bc05ec6d962fa267e383984a21e55f6fdf",
+    "backend/launcher/tests/browser_file_reader.rs": "66a10f99fb5dbb2f360a3e80995e8dbea735daec502698d0ca523a24ab5fe2cc",
+    "backend/bluejs/tests/web_custom_event.rs": "bcbfb4c9ece450ce8efc184f8c56eeeaf208a979a55caa3980e30698e6a9d295",
+    "backend/bluets-bluejs/src/page_host_typings/custom_events.rs": "a5504d929ff5c20764fa3d08f02f8a2a7a7bb4ceed863a70491f9011763b08c4",
+    "backend/bluets-bluejs/tests/page_custom_event_typings.rs": "54572053ce0dc38892b0f1d4a89f1573c234be02100e58f672b65a0403bef10c"
+  },
+  "initial_missing_interface": {
+    "passed": 0,
+    "failed": 4,
+    "reason": "ReferenceError CustomEvent",
+    "library": "libblueice_bluejs-4c784e73529c8587.rlib"
+  },
+  "final_focused": {
+    "passed": 102,
+    "failed": 0,
+    "ignored": 0,
+    "groups": 12,
+    "exit_code": 0
+  },
+  "actual_browser": {
+    "passed": 1,
+    "failed": 0,
+    "exit_code": 0,
+    "payload": "custom 中文:false",
+    "boundary": "Generic EventTarget in actual isolated BlueJS host; exact detail writes the same live Core DOM"
+  },
+  "clippy": {
+    "crates": [
+      "blueice-bluejs",
+      "blueice-bluets-bluejs",
+      "blueice-launcher"
+    ],
+    "all_targets": true,
+    "deny_warnings": true,
+    "exit_code": 0
+  },
+  "workspace_format_exit_code": 0,
+  "retained_failures": [
+    "Initial Cargo command used nonexistent web_files target; corrected to web_file_api",
+    "First CustomEvent BlueTS declaration used reserved parameter name type; renamed eventType without changing its type or runtime argument behavior"
+  ],
+  "remaining": [
+    "General synthetic node events/capture/bubbling",
+    "Further DOM/lifecycle APIs and WPT conformance",
+    "New full workspace/native/Windows gates after integration"
+  ],
+  "log_sha256": {
+    "web-custom-event-red.log": "a6a6e2f5fd2cd8692249dd3c3af35181141b6e8288e727a59983e5d525b00660",
+    "web-custom-event-first.log": "40bf8e0ccce5a27500cd9c476bd08e2f7fe586e4fa32574a959069fcfb7c804a",
+    "web-custom-event-first-corrected.log": "e0fe532442bc0032727c81530d5b95c47fa17ae5c2153746233eb402045c7022",
+    "web-custom-event-focused.log": "0c9a29b6176c78e3d3bfdae9374d2af222f2c386fbf16e62e44b73dd071b0476",
+    "web-custom-event-focused-corrected.log": "33579d099ebf608b53c1c0ff8977a1bbae8e79df539e21c842c535141597780e",
+    "web-custom-event-browser.log": "8768959c54c22acfe1f953b77716bdbcf5b41d05502776819aed5bc7139ff08b",
+    "web-custom-event-clippy.log": "ab702e5dc4988aef23d4edf17e607effe28977499abb90112aeab72238988221"
+  }
+}

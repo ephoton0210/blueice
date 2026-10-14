@@ -161,7 +161,11 @@ fn no_flags_uses_the_default_rendezvous_socket_and_default_size() {
     assert_eq!(parsed.width, 800.0);
     assert_eq!(parsed.height, 600.0);
     assert_eq!(parsed.frame_dir, None);
+    assert_eq!(parsed.extension_manifest, None);
+    assert!(!parsed.trusted_frontend);
+    assert!(!parsed.exit_on_stdin_eof);
     assert_eq!(parsed.gatekeeper_socket, None);
+    assert_eq!(parsed.owned_gatekeeper_socket, None);
     assert!(!parsed.out_of_process_bluejs);
     assert_eq!(parsed.compiler_mcp_socket, None);
     assert_eq!(parsed.compiler_catalog_file, None);
@@ -191,6 +195,24 @@ fn no_flags_uses_the_default_rendezvous_socket_and_default_size() {
 }
 
 #[test]
+fn owned_gatekeeper_endpoint_cannot_be_combined_with_an_external_override() {
+    assert_eq!(
+        args(&["--owned-gatekeeper-socket", "/tmp/owned-review.sock"])
+            .unwrap()
+            .owned_gatekeeper_socket,
+        Some(PathBuf::from("/tmp/owned-review.sock"))
+    );
+    assert!(args(&[
+        "--owned-gatekeeper-socket",
+        "/tmp/owned-review.sock",
+        "--gatekeeper-socket",
+        "/tmp/external-review.sock"
+    ])
+    .is_err());
+    assert!(args(&["--owned-gatekeeper-socket"]).is_err());
+}
+
+#[test]
 fn every_flag_is_parsed() {
     let parsed = args(&[
         "--socket",
@@ -203,6 +225,10 @@ fn every_flag_is_parsed() {
         "50",
         "--frame-dir",
         "/tmp/frames",
+        "--extension-manifest",
+        "/tmp/extension.json",
+        "--trusted-frontend",
+        "--exit-on-stdin-eof",
         "--gatekeeper-socket",
         "/tmp/gatekeeper.sock",
         "--out-of-process-bluejs",
@@ -240,8 +266,13 @@ fn every_flag_is_parsed() {
             width: 100.0,
             height: 50.0,
             frame_dir: Some(PathBuf::from("/tmp/frames")),
+            extension_manifest: Some(PathBuf::from("/tmp/extension.json")),
+            trusted_frontend: true,
+            exit_on_stdin_eof: true,
             gatekeeper_socket: Some(PathBuf::from("/tmp/gatekeeper.sock")),
+            owned_gatekeeper_socket: None,
             out_of_process_bluejs: true,
+            page_dom_bindings: false,
             compiler_mcp_socket: Some(PathBuf::from("/tmp/compiler-mcp.sock")),
             compiler_catalog_file: None,
             page_http_policy_file: None,
@@ -269,8 +300,63 @@ fn every_flag_is_parsed() {
             debugger_static_scope_relation: false,
             simulate_low_memory: true,
             memory_poll_interval: Duration::from_millis(50),
+            assistant_settings: None,
+            assistant_bin: None,
+            auto_update: None,
         }
     );
+}
+
+#[test]
+fn assistant_flags_are_parsed_and_the_default_path_is_the_shared_default() {
+    let none = args(&[]).unwrap();
+    assert_eq!(none.assistant_settings, None);
+    assert_eq!(none.assistant_bin, None);
+    let explicit = args(&[
+        "--assistant-settings",
+        "/tmp/a.json",
+        "--assistant-bin",
+        "/tmp/assistant",
+    ])
+    .unwrap();
+    assert_eq!(
+        explicit.assistant_settings,
+        Some(PathBuf::from("/tmp/a.json"))
+    );
+    assert_eq!(
+        explicit.assistant_bin,
+        Some(PathBuf::from("/tmp/assistant"))
+    );
+    let default = args(&["--assistant"]).unwrap();
+    assert_eq!(
+        default.assistant_settings,
+        Some(blueice_assistant_settings::default_settings_path())
+    );
+    // An explicit path wins over `--assistant`, in either order.
+    for flags in [
+        ["--assistant", "--assistant-settings", "/tmp/a.json"],
+        ["--assistant-settings", "/tmp/a.json", "--assistant"],
+    ] {
+        assert_eq!(
+            args(&flags).unwrap().assistant_settings,
+            Some(PathBuf::from("/tmp/a.json")),
+            "{flags:?}"
+        );
+    }
+    assert!(args(&["--assistant-settings"]).is_err());
+}
+
+#[test]
+fn the_auto_update_interval_is_opt_in_and_must_be_positive() {
+    assert_eq!(args(&[]).unwrap().auto_update, None);
+    assert_eq!(
+        args(&["--auto-update-secs", "30"]).unwrap().auto_update,
+        Some(Duration::from_secs(30))
+    );
+    for bad in ["0", "soon", "-5"] {
+        assert!(args(&["--auto-update-secs", bad]).is_err(), "{bad}");
+    }
+    assert!(args(&["--auto-update-secs"]).is_err());
 }
 
 #[test]

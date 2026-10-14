@@ -3,62 +3,87 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `blueice-extension-host`: the minimal-slice implementation of
-//! `phase-9-extension-protocol/PLAN.md`'s "Minimal first slice" -- a
-//! hardcoded single extension (no WASM runtime, no manifest file
-//! parser yet), proving server-side capability enforcement end to end
-//! over a real process boundary before any of that fuller machinery
-//! exists.
+//! `phase-9-extension-protocol/PLAN.md`'s incremental reference host.
+//! It retains a hardcoded protocol-only fallback, and can now install one
+//! strict JSON manifest plus WASM module at startup to derive its registry
+//! identity and persistent grants before serving any connection. Its
+//! core-spawned mode now runs a bounded, no-WASI WebAssembly reactor after
+//! authentication.
 //!
 //! **Where this logic lives, and why.** The plan doc's "Wiring design"
 //! frames the enforcing side as living inside `core` itself (an
 //! `ExtensionRegistry` "a peer to `TabManager`, not a member of it").
-//! This minimal slice deliberately does *not* wire that into the real
-//! `blueice-core` binary/`blueice_engine::session::run_session` loop --
-//! see that fn's own docs, untouched by this crate -- because extension
-//! messages are a wholly separate wire protocol on a separate
-//! connection, and multiplexing a second listener into `core`'s
-//! existing single-client session loop is real future work, not this
-//! slice's. Instead, `blueice-extension-host` -- a crate literally
-//! named for the "host" role a WASM extension runtime eventually plays
-//! -- serves that protocol standalone: it owns [`ExtensionRegistry`]
-//! and [`handle_extension_connection`] itself, rather than depending on
-//! `blueice-engine` (which is `core`-specific `Page`/`TabManager`
-//! dispatch logic this crate has no business reaching into for a
-//! placeholder DOM value). When capability enforcement is eventually
-//! wired into the real `core` process, this module is what moves (or
-//! gets called from) there -- the mechanism doesn't change, only which
-//! process runs it.
+//! The standalone `blueice-extension-host` binary remains a protocol-only
+//! reference server. `blueice-core` can now opt in with an installed manifest
+//! and private extension socket: it owns the registry and calls
+//! [`handle_extension_connection_with_actions`] from a connection worker,
+//! delegating bounded real operations back to its session thread.
+//! This crate still does not depend on `blueice-engine`; that preserves the
+//! protocol/engine boundary and keeps `Page`/`TabManager` single-thread-owned.
+//! The bridge remains deliberately narrow: it has explicit tab/node targets
+//! for form-control writes and one connection-scoped exact initial-navigation
+//! block rule, but no generic DOM mutation, request callback, redirect, or
+//! header/body interception surface.
 //!
 //! **What's real, what's a placeholder** (mirrors `blueice-ai-
 //! gatekeeper`'s own "mechanism real, content stub" scoping): the
 //! handshake, the registry lookup, and the allow/deny decision are all
-//! real and tested. [`ExtensionReply::DomReadResult`]'s value is a
-//! fixed placeholder string, not real `Page` state -- wiring a real DOM
-//! snapshot through is explicitly out of scope for this slice (it would
-//! require this crate to depend on `blueice-engine` and share a `Page`
-//! across a process boundary that doesn't exist yet); the point of this
-//! slice is proving the *authorization* mechanism, not the DOM-read
-//! capability's real payload.
+//! real and tested. The standalone binary retains a fixed
+//! [`ExtensionReply::DomReadResult`] value, but
+//! [`handle_extension_connection_with_actions`] lets `blueice-core`
+//! provide core-owned representation reads plus explicit form-control writes
+//! and v2/v3 declarative navigation-rule delegates without this crate taking an
+//! engine dependency. Generic `DomWrite` and legacy v1 `NetworkIntercept`
+//! still lack safe core operation shapes, so they are reported as unavailable
+//! rather than acknowledged without an effect.
 //!
-//! **Non-spoofable identity is still open work.** A real `extension_id`
-//! is meant to be derived from a hash of the extension's manifest +
-//! WASM module (per the plan doc), so it can't be spoofed at connect
-//! time. This slice's [`blueice_ipc::extension::ExtensionRequest::Hello`]
-//! still carries a plain author-chosen `extension_id` string -- the
-//! registry enforces *whatever* identity is declared, which is the
-//! actual mechanism under test here, but nothing yet stops a connecting
-//! process from simply declaring a different extension's id. Tracked as
-//! still-open in `phase-9-extension-protocol/PLAN.md`, not solved here.
+//! **Identity derivation versus peer authentication.**
+//! [`load_installed_extension`] derives a `sha256:` ID from exact manifest and
+//! WASM bytes, so package authors cannot assign an arbitrary friendly ID and a
+//! changed installed artifact receives a different registry identity. The
+//! core-owned production path now starts a host child and requires its fresh,
+//! environment-only credential in
+//! [`blueice_ipc::extension::ExtensionRequest::HelloAuthenticated`] before it
+//! accepts that ID. The standalone server and an explicit manual core socket
+//! deliberately retain the bearer [`blueice_ipc::extension::ExtensionRequest::Hello`]
+//! form for protocol development; a derived identity alone is not credentials.
+
+#[cfg(unix)]
+mod durable_storage;
+#[cfg(not(unix))]
+#[path = "durable_storage_unsupported.rs"]
+mod durable_storage;
+mod manifest;
+#[cfg(unix)]
+mod runtime;
+
+pub use durable_storage::default_durable_storage_root;
+pub use manifest::{
+    load_installed_extension, registry_for_installed_extension, ExtensionManifest,
+    InstalledExtension, ManifestCapabilities, ManifestError, MANIFEST_API_VERSION,
+};
+#[cfg(unix)]
+pub use runtime::{
+    execute_installed_extension, execute_installed_extension_for_invocation, RuntimeInvocation,
+};
 
 use blueice_ipc::extension::{
     read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
+    ExtensionRuntimeEvent, NetworkResponseInfo, NetworkTraceInfo, UnsupportedCapabilityVersion,
 };
-use std::collections::{HashMap, HashSet};
+use blueice_ipc::gatekeeper::{default_gatekeeper_socket_path, GatekeeperReply};
+#[cfg(unix)]
+use blueice_ipc::gatekeeper::{read_gatekeeper_reply, write_gatekeeper_request, GatekeeperRequest};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Read, Write};
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::{Duration, Instant};
 
-/// The one hardcoded extension identity this minimal slice recognizes.
-/// A real, non-spoofable, manifest-derived identity scheme is still-open
-/// future work -- see this crate's own module docs.
+/// The one hardcoded identity used only when no installed manifest is supplied.
 pub const MINIMAL_SLICE_EXTENSION_ID: &str = "minimal-slice-extension";
 
 /// The capability this slice's one hardcoded extension is granted.
@@ -68,429 +93,77 @@ pub const CAPABILITY_DOM_READ: &str = "dom:read";
 /// *not* granted -- the request that proves server-side denial.
 pub const CAPABILITY_DOM_WRITE: &str = "dom:write";
 
+/// Registering network interception is high-risk and therefore always
+/// needs a cleared gatekeeper review after ordinary capability checks.
+pub const CAPABILITY_NETWORK_INTERCEPT: &str = "network:intercept";
+
+/// Read-only observation of the final response behind a committed page.
+pub const CAPABILITY_NETWORK_OBSERVE: &str = "network:observe";
+
+/// A bounded native-chrome surface, not an HTML/CSS injection privilege.
+pub const CAPABILITY_UI_INJECT: &str = "ui:inject";
+
+pub fn validate_toolbar_label(label: &str) -> Result<(), String> {
+    if label.is_empty()
+        || label.len() > blueice_ipc::extension::MAX_EXTENSION_TOOLBAR_LABEL_BYTES
+        || label.trim() != label
+        || !label
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b' ' | b'-' | b'_'))
+    {
+        return Err("toolbar label must be 1–20 ASCII letters, digits, spaces, hyphens, or underscores without outer spaces".to_string());
+    }
+    Ok(())
+}
+
+pub fn validate_popup_text(title: &str, body: &str) -> Result<(), String> {
+    validate_toolbar_label(title)?;
+    if body.is_empty()
+        || body.len() > blueice_ipc::extension::MAX_EXTENSION_POPUP_BODY_BYTES
+        || body.trim() != body
+        || !body.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+    {
+        return Err(
+            "popup body must be 1–120 printable ASCII bytes without outer spaces".to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// A per-extension key-value capability owned by core, never by the guest's
+/// ambient filesystem or process. Version 1 is process-lifetime; version 2
+/// uses a separate durable bucket under a core-selected private data root.
+pub const CAPABILITY_STORAGE: &str = "storage";
+
+/// A storage bucket has a bounded number of key/value pairs even when its
+/// values are small, so an extension cannot turn its declared capability into
+/// unbounded core memory use.
+pub const MAX_STORAGE_ENTRIES_PER_EXTENSION: usize = 128;
+
+/// Includes UTF-8 key and value bytes across one extension identity's bucket.
+pub const MAX_STORAGE_BYTES_PER_EXTENSION: usize = 256 * 1024;
+
 /// [`ExtensionReply::DomReadResult`]'s value for a granted `DomRead` in
 /// this minimal slice -- a fixed placeholder, not real `Page` state; see
 /// this crate's own module docs for why.
 const PLACEHOLDER_DOM_READ_VALUE: &str =
     "<blueice-extension-host: no real Page is wired into this minimal slice>";
 
-/// Which capabilities each connected extension has been granted --
-/// `phase-9-extension-protocol/PLAN.md`'s "Wiring design" describes this
-/// as an in-memory `ExtensionRegistry` keyed by a *derived*
-/// (non-spoofable) `extension_id`; for this minimal slice it's a plain
-/// `extension_id -> granted capability names` map, seeded with one
-/// hardcoded entry ([`ExtensionRegistry::minimal_slice`]) rather than
-/// built from install-time manifest persistence -- both explicitly
-/// still-open future work per the plan doc, not solved here.
-pub struct ExtensionRegistry {
-    grants: HashMap<String, HashSet<String>>,
-}
-
-impl Default for ExtensionRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ExtensionRegistry {
-    /// An empty registry: no extension_id is granted anything.
-    pub fn new() -> Self {
-        Self {
-            grants: HashMap::new(),
-        }
-    }
-
-    /// Grants `capability` to `extension_id`, in addition to whatever
-    /// it already holds.
-    pub fn grant(&mut self, extension_id: impl Into<String>, capability: impl Into<String>) {
-        self.grants
-            .entry(extension_id.into())
-            .or_default()
-            .insert(capability.into());
-    }
-
-    /// The actual enforcement point: does `extension_id` currently hold
-    /// `capability`? An unrecognized `extension_id` (never granted
-    /// anything) simply has no capabilities -- see this crate's module
-    /// docs for why an unknown identity isn't rejected outright at
-    /// handshake time.
-    pub fn has_capability(&self, extension_id: &str, capability: &str) -> bool {
-        self.grants
-            .get(extension_id)
-            .is_some_and(|caps| caps.contains(capability))
-    }
-
-    /// Seeds the hardcoded single-extension grant this minimal slice
-    /// ships: [`MINIMAL_SLICE_EXTENSION_ID`] gets [`CAPABILITY_DOM_READ`]
-    /// only -- deliberately *not* [`CAPABILITY_DOM_WRITE`], so a
-    /// `DomWrite` attempt is the concrete proof of server-side denial.
-    pub fn minimal_slice() -> Self {
-        let mut registry = Self::new();
-        registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
-        registry
-    }
-}
-
-/// Serves one extension connection until it disconnects (or sends
-/// something this minimal slice can't make sense of -- see below):
-/// requires [`ExtensionRequest::Hello`] as the very first message
-/// (rejecting/ending the connection otherwise, mirroring how
-/// `blueice_engine::session`'s `perform_handshake` rejects a non-`Hello`
-/// first message on the external client protocol), replies
-/// [`ExtensionReply::HelloAck`], then loops handling `DomRead`/
-/// `DomWrite` requests -- checking `registry` before executing each,
-/// replying [`ExtensionReply::CapabilityDenied`] for an unauthorized
-/// request rather than a silent no-op or a bare/generic error.
-///
-/// **A later `Hello`** (once past the initial handshake) is accepted
-/// and just answered with another `HelloAck`, updating which
-/// `extension_id` subsequent requests on this connection are checked
-/// against -- the same "answered again, not re-gating the whole
-/// connection" discipline `run_session`'s own docs describe for a
-/// repeat `Hello` on the external client protocol, applied here to a
-/// long-lived extension connection.
-///
-/// **Any read failure** (a clean disconnect, or bytes that don't parse
-/// as a well-formed [`ExtensionRequest`]) ends the connection by
-/// returning `Ok(())`, never propagating a "malformed input" case as a
-/// distinguishable error and never panicking -- mirrors `run_session`'s
-/// own "any non-timeout read error means disconnect" handling of the
-/// external client protocol's main loop. The wire-level parsing
-/// functions this calls (`blueice_ipc::extension::read_extension_
-/// request`) do still surface a malformed frame as a real `io::Error`
-/// to *their own* callers/tests -- this fn just chooses, deliberately,
-/// to treat that the same as an ordinary disconnect rather than
-/// escalate it, the same choice `run_session` already made for the
-/// analogous case on the external protocol.
-pub fn handle_extension_connection<S: Read + Write>(
-    registry: &ExtensionRegistry,
-    stream: &mut S,
-) -> io::Result<()> {
-    let mut extension_id = match read_extension_request(stream) {
-        Ok(ExtensionRequest::Hello { extension_id, .. }) => {
-            write_extension_reply(stream, &ExtensionReply::HelloAck)?;
-            extension_id
-        }
-        Ok(_) => return Ok(()), // first message wasn't Hello: reject by ending the connection
-        Err(_) => return Ok(()), // disconnected, or sent something unparseable, before ever completing the handshake
-    };
-
-    loop {
-        let request = match read_extension_request(stream) {
-            Ok(request) => request,
-            Err(_) => return Ok(()),
-        };
-        match request {
-            ExtensionRequest::Hello {
-                extension_id: new_id,
-                ..
-            } => {
-                extension_id = new_id;
-                write_extension_reply(stream, &ExtensionReply::HelloAck)?;
-            }
-            ExtensionRequest::DomRead => {
-                if registry.has_capability(&extension_id, CAPABILITY_DOM_READ) {
-                    write_extension_reply(
-                        stream,
-                        &ExtensionReply::DomReadResult {
-                            value: PLACEHOLDER_DOM_READ_VALUE.to_string(),
-                        },
-                    )?;
-                } else {
-                    write_extension_reply(
-                        stream,
-                        &ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_DOM_READ.to_string(),
-                            reason: format!("{extension_id} is not granted {CAPABILITY_DOM_READ}"),
-                        },
-                    )?;
-                }
-            }
-            ExtensionRequest::DomWrite { value: _ } => {
-                if registry.has_capability(&extension_id, CAPABILITY_DOM_WRITE) {
-                    write_extension_reply(stream, &ExtensionReply::DomWriteAck)?;
-                } else {
-                    write_extension_reply(
-                        stream,
-                        &ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_DOM_WRITE.to_string(),
-                            reason: format!("{extension_id} is not granted {CAPABILITY_DOM_WRITE}"),
-                        },
-                    )?;
-                }
-            }
-        }
-    }
-}
+#[cfg(unix)]
+const GATEKEEPER_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+mod storage;
+pub use storage::ExtensionStorage;
+#[cfg(unix)]
+use storage::*;
+mod registry;
+use registry::*;
+pub use registry::{CapabilityVersionWindow, ExtensionRegistry};
+mod connection_support;
+use connection_support::*;
+mod delegates;
+pub use delegates::{ExtensionActionDelegates, ExtensionConnectionAuthentication};
+mod connection;
+pub use connection::*;
 
 #[cfg(all(test, unix))]
-mod tests {
-    use super::*;
-    use blueice_ipc::extension::{read_extension_reply, write_extension_request};
-    use std::collections::BTreeMap;
-    use std::os::unix::net::UnixStream;
-    use std::thread;
-
-    fn hello(extension_id: &str) -> ExtensionRequest {
-        ExtensionRequest::Hello {
-            extension_id: extension_id.to_string(),
-            capability_versions: BTreeMap::new(),
-        }
-    }
-
-    #[test]
-    fn extension_registry_default_grants_nothing() {
-        let registry = ExtensionRegistry::default();
-        assert!(!registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
-    }
-
-    #[test]
-    fn extension_registry_minimal_slice_grants_dom_read_but_not_dom_write() {
-        let registry = ExtensionRegistry::minimal_slice();
-        assert!(registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
-        assert!(!registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE));
-    }
-
-    #[test]
-    fn extension_registry_reports_no_capabilities_for_an_unknown_extension_id() {
-        let registry = ExtensionRegistry::minimal_slice();
-        assert!(!registry.has_capability("some-other-extension", CAPABILITY_DOM_READ));
-        assert!(!registry.has_capability("some-other-extension", CAPABILITY_DOM_WRITE));
-    }
-
-    #[test]
-    fn extension_registry_new_grants_nothing_until_granted() {
-        let mut registry = ExtensionRegistry::new();
-        assert!(!registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
-        registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
-        assert!(registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
-    }
-
-    #[test]
-    fn a_granted_dom_read_succeeds_after_handshake() {
-        let registry = ExtensionRegistry::minimal_slice();
-        let (mut client, mut server) = UnixStream::pair().unwrap();
-        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
-
-        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::HelloAck
-        );
-
-        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::DomReadResult {
-                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
-            }
-        );
-
-        drop(client);
-        handle.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn an_ungranted_dom_write_is_denied_with_the_capability_and_a_reason() {
-        let registry = ExtensionRegistry::minimal_slice();
-        let (mut client, mut server) = UnixStream::pair().unwrap();
-        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
-
-        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::HelloAck
-        );
-
-        write_extension_request(
-            &mut client,
-            &ExtensionRequest::DomWrite {
-                value: "hijacked".to_string(),
-            },
-        )
-        .unwrap();
-        match read_extension_reply(&mut client).unwrap() {
-            ExtensionReply::CapabilityDenied { capability, reason } => {
-                assert_eq!(capability, CAPABILITY_DOM_WRITE);
-                assert!(!reason.is_empty());
-            }
-            other => panic!("expected CapabilityDenied, got {other:?}"),
-        }
-
-        drop(client);
-        handle.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn a_denied_request_does_not_end_the_connection_a_later_granted_request_still_works() {
-        // Proves denial is a per-request check, not a connection-ending
-        // fault -- and, since this minimal slice has no real `Page`
-        // state for `DomWrite` to touch, this is the closest available
-        // proof that a rejected attempt has no side effect on later
-        // requests either.
-        let registry = ExtensionRegistry::minimal_slice();
-        let (mut client, mut server) = UnixStream::pair().unwrap();
-        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
-
-        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::HelloAck
-        );
-
-        write_extension_request(
-            &mut client,
-            &ExtensionRequest::DomWrite {
-                value: "x".to_string(),
-            },
-        )
-        .unwrap();
-        assert!(matches!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::CapabilityDenied { .. }
-        ));
-
-        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::DomReadResult {
-                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
-            }
-        );
-
-        drop(client);
-        handle.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn an_unrecognized_extension_id_gets_capability_denied_not_a_crash_or_a_free_pass() {
-        let registry = ExtensionRegistry::minimal_slice();
-        let (mut client, mut server) = UnixStream::pair().unwrap();
-        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
-
-        write_extension_request(&mut client, &hello("never-registered-extension")).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::HelloAck
-        );
-
-        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        match read_extension_reply(&mut client).unwrap() {
-            ExtensionReply::CapabilityDenied { capability, .. } => {
-                assert_eq!(capability, CAPABILITY_DOM_READ)
-            }
-            other => panic!("expected CapabilityDenied, got {other:?}"),
-        }
-
-        drop(client);
-        handle.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn a_non_hello_first_message_ends_the_connection_without_a_reply() {
-        let registry = ExtensionRegistry::minimal_slice();
-        let (mut client, mut server) = UnixStream::pair().unwrap();
-        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
-
-        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-
-        handle.join().unwrap().unwrap();
-        // No reply was ever written -- reading now must fail (EOF, since
-        // the connection-handling thread already exited and dropped its
-        // end of the socket), not hang or return a stray `HelloAck`.
-        assert!(read_extension_reply(&mut client).is_err());
-    }
-
-    #[test]
-    fn disconnecting_before_sending_anything_ends_the_connection_cleanly() {
-        let registry = ExtensionRegistry::minimal_slice();
-        let (client, mut server) = UnixStream::pair().unwrap();
-        drop(client);
-        assert!(handle_extension_connection(&registry, &mut server).is_ok());
-    }
-
-    #[test]
-    fn a_second_hello_is_answered_again_and_updates_which_identity_is_checked() {
-        // Mirrors `run_session`'s own "a repeat Hello is just answered
-        // again, not re-gated" handling on the external client protocol
-        // -- applied here to a long-lived extension connection that
-        // re-identifies mid-connection.
-        let registry = ExtensionRegistry::minimal_slice();
-        let (mut client, mut server) = UnixStream::pair().unwrap();
-        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
-
-        write_extension_request(&mut client, &hello("some-other-extension")).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::HelloAck
-        );
-
-        // Not yet granted anything under this first identity.
-        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert!(matches!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::CapabilityDenied { .. }
-        ));
-
-        // Re-identify as the granted extension on the same connection.
-        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::HelloAck
-        );
-
-        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::DomReadResult {
-                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
-            }
-        );
-
-        drop(client);
-        handle.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn a_malformed_frame_after_handshake_ends_the_connection_rather_than_panicking() {
-        let registry = ExtensionRegistry::minimal_slice();
-        let (mut client, mut server) = UnixStream::pair().unwrap();
-        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
-
-        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(
-            read_extension_reply(&mut client).unwrap(),
-            ExtensionReply::HelloAck
-        );
-
-        // A truncated frame: a length prefix promising more bytes than
-        // are ever sent.
-        client.write_all(&100u32.to_le_bytes()).unwrap();
-        client.write_all(b"short").unwrap();
-        drop(client);
-
-        // Must return cleanly (not panic, not hang) -- see this fn's own
-        // docs for why a malformed frame is treated the same as a plain
-        // disconnect rather than propagated as a distinguishable error.
-        handle.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn handles_two_connections_in_sequence() {
-        // Proves the accept-loop-friendly shape (one call handles
-        // exactly one connection, start to end, and returns) that
-        // `src/main.rs`'s sequential accept loop depends on.
-        for _ in 0..2 {
-            let registry = ExtensionRegistry::minimal_slice();
-            let (mut client, mut server) = UnixStream::pair().unwrap();
-            let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
-            write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-            assert_eq!(
-                read_extension_reply(&mut client).unwrap(),
-                ExtensionReply::HelloAck
-            );
-            drop(client);
-            handle.join().unwrap().unwrap();
-        }
-    }
-}
+mod tests;

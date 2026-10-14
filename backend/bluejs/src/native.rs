@@ -158,6 +158,29 @@ pub(crate) enum DateMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StreamNative {
+    Constructor(u8),
+    Locked,
+    GetReader,
+    Cancel,
+    Read,
+    Release,
+    Closed,
+    DesiredSize,
+    Enqueue,
+    Close,
+    Error,
+    ByobRequest,
+    View,
+    Respond(bool),
+    Blob(bool),
+    Tee,
+    Values,
+    IteratorNext,
+    IteratorReturn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DateSetter {
     Date,
     FullYear,
@@ -183,7 +206,146 @@ pub(crate) enum DatePart {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EventNative {
+    Constructor(u8),
+    Get(&'static str, u8),
+    SetCancellation(bool),
+    PreventDefault,
+    StopPropagation(bool),
+    ComposedPath,
+    InitEvent,
+    InitUIEvent,
+    InitMouseEvent,
+    InitCustomEvent,
+    GetModifierState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DragNative {
+    DataTransfer,
+    DragEvent,
+    IllegalConstructor,
+    Items,
+    Files,
+    Types,
+    DropEffect,
+    EffectAllowed,
+    SetEffect(bool),
+    GetData,
+    SetData,
+    ClearData,
+    SetDragImage,
+    ItemsLength,
+    ItemsAdd,
+    ItemsRemove,
+    ItemsClear,
+    ItemKind,
+    ItemType,
+    GetAsFile,
+    GetAsString,
+    EventTransfer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TargetNative {
+    Constructor,
+    Add,
+    Remove,
+    Dispatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReaderNative {
+    Constructor,
+    Ready,
+    Result,
+    Error,
+    Read(crate::heap::FileReadKind),
+    Abort,
+    Handler(&'static str, bool),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UrlNative {
+    Constructor,
+    Part(u8, bool),
+    Serialize,
+    Parse(bool),
+    Create,
+    Revoke,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AbortNative {
+    Controller,
+    Signal,
+    ControllerSignal,
+    Abort,
+    Aborted,
+    Reason,
+    ThrowIfAborted,
+    StaticAbort,
+    Any,
+    Timeout,
+    Handler(bool),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
+    WebAbort(AbortNative),
+    WebUrl(UrlNative),
+    DOMException,
+    DOMExceptionName,
+    DOMExceptionMessage,
+    DOMExceptionCode,
+    WebDrag(DragNative),
+    WebEvent(EventNative),
+    WebTarget(TargetNative),
+    WebReader(ReaderNative),
+    WebStream(StreamNative),
+    StreamIteration {
+        request: ObjectId,
+        action: u8,
+        rejected: bool,
+    },
+    StreamReaction {
+        stream: ObjectId,
+        action: u8,
+        rejected: bool,
+    },
+    TeePull {
+        tee: ObjectId,
+        branch: u8,
+    },
+    TeeCancel {
+        tee: ObjectId,
+        branch: u8,
+    },
+    TeeReaction {
+        tee: ObjectId,
+        reader: ObjectId,
+        action: u8,
+        rejected: bool,
+    },
+    Blob,
+    File,
+    BlobSize,
+    BlobType,
+    BlobSlice,
+    BlobText,
+    BlobArrayBuffer,
+    BlobBytes,
+    FileName,
+    FileLastModified,
+    FileList,
+    FileListLength,
+    FileListItem,
+    FileListIterator,
+    FileListIteratorNext,
+    HostInputFiles(u32),
+    HostSelectionCurrentTarget,
+    HostSelectionPreventDefault,
+    HostSelectionStopPropagation(bool),
     /// A realm-private embedding callback stored in [`crate::Vm`].
     Host(u32),
     /// A realm-private callback whose opaque key is materialized as a rooted
@@ -197,6 +359,7 @@ pub(crate) enum NativeFunction {
     /// VM-owned click-listener registration on one exact host-object family.
     HostClickListenerAdd(u32),
     HostClickListenerRemove(u32),
+    HostNodeDispatch(u32),
     /// Can cancel only the currently dispatching VM-owned click event.
     HostClickPreventDefault,
     /// VM-owned timer and `queueMicrotask` globals; callbacks stay rooted
@@ -817,6 +980,10 @@ impl NativeFunction {
     pub(crate) fn references(self) -> Vec<ObjectId> {
         match self {
             Self::ProxyRevoker(proxy) => vec![proxy],
+            Self::StreamReaction { stream, .. } => vec![stream],
+            Self::StreamIteration { request, .. } => vec![request],
+            Self::TeePull { tee, .. } | Self::TeeCancel { tee, .. } => vec![tee],
+            Self::TeeReaction { tee, reader, .. } => vec![tee, reader],
             Self::PromiseResolvingFunction { promise, state, .. } => vec![promise, state],
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
             Self::ArrayFromAsyncResume { state, .. } => vec![state],

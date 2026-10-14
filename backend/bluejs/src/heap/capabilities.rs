@@ -44,6 +44,16 @@ impl NativeFunction {
         matches!(
             self,
             NativeFunction::Function
+                    | NativeFunction::WebUrl(crate::native::UrlNative::Constructor)
+                    | NativeFunction::WebAbort(crate::native::AbortNative::Controller | crate::native::AbortNative::Signal)
+                    | NativeFunction::Blob
+                    | NativeFunction::File
+                    | NativeFunction::DOMException
+                    | NativeFunction::WebDrag(crate::native::DragNative::DataTransfer | crate::native::DragNative::DragEvent)
+                    | NativeFunction::WebEvent(crate::native::EventNative::Constructor(_))
+                    | NativeFunction::WebTarget(crate::native::TargetNative::Constructor)
+                    | NativeFunction::WebReader(crate::native::ReaderNative::Constructor)
+                    | NativeFunction::WebStream(crate::native::StreamNative::Constructor(_))
                     | NativeFunction::String
                     | NativeFunction::Array
                     | NativeFunction::Date

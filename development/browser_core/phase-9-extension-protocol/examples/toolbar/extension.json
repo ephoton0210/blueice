@@ -1,0 +1,11 @@
+{
+  "name": "BlueIce toolbar example",
+  "version": "0.1.0",
+  "blueice_api_version": 1,
+  "entry_point": "extension.wasm",
+  "capabilities": {
+    "declared": ["ui:inject"],
+    "optional": [],
+    "runtime_ephemeral": []
+  }
+}

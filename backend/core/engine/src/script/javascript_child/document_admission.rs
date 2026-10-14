@@ -468,7 +468,7 @@ pub(super) fn binding_contract_rejections(
 }
 
 pub(super) fn live_page_identity(page: &Page) -> Option<LiveDocument> {
-    let origin = canonical_http_origin(page.url()?).ok()?;
+    let origin = page.effective_script_origin()?;
     Some(LiveDocument {
         document_generation: page.document_generation(),
         origin,

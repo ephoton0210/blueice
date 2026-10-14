@@ -1,0 +1,209 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+import AppKit
+import SwiftUI
+
+struct BrowserView: View {
+    @ObservedObject private var localization = BrowserLocalization.shared
+    @ObservedObject var model: BrowserModel
+    @ObservedObject private var appearance: BrowserAppearance
+    @FocusState private var chromeFocused: String?
+    @StateObject private var chromeFocus = BrowserChromeFocus()
+    init(model: BrowserModel) { self.model = model; self.appearance = model.appearance }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let workspace = model.windowManager { BrowserWorkspaceNotice(workspace: workspace) }
+            BrowserTabStrip(model: model)
+            Divider()
+            if let error = model.groupError, model.groupEditor == nil {
+                HStack {
+                    Text(BrowserStrings.text(error)).accessibilityIdentifier("tab-group-notice")
+                    Spacer()
+                    button("xmark", "Dismiss tab group notice", "dismiss-tab-group-notice") { model.dismissTabGroupError() }
+                }.font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
+                Divider()
+            }
+            HStack(spacing: 12) {
+                button("chevron.left", "Back", "back") { model.action(.unit("GoBack")) }
+                    .disabled(!model.history.back)
+                button("chevron.right", "Forward", "forward") { model.action(.unit("GoForward")) }
+                    .disabled(!model.history.forward)
+                button("arrow.clockwise", "Reload", "reload") { model.reload() }
+                    .keyboardShortcut("r", modifiers: .command)
+                TextField(BrowserStrings.text("Search or enter address"), text: $model.address)
+                    .chromeFocusable("address", field: true)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel(BrowserStrings.text("Address"))
+                    .accessibilityIdentifier("address")
+                    .onSubmit { chromeFocused = nil; model.navigateAddress() }
+                button("arrow.right", "Go", "go") { model.navigateAddress() }
+                button("sparkles", "Local assistant", "assistant") { model.toggleAssistant() }
+                button("gearshape", "Settings", "settings") {
+                    model.action(.values("Navigate", ["url": .string("about:settings")]))
+                }
+                if let workspace = model.windowManager {
+                    BrowserProfileMenu(model: model, workspace: workspace)
+                    button("arrow.down.circle", "Downloads", "downloads") { model.downloadsPresented = true }
+                    button("shield.lefthalf.filled", "Permissions and assistant settings", "permissions") { model.openPermissions() }
+                        .alert(BrowserStrings.text("Permissions unavailable"), isPresented: $model.permissionsErrorPresented) {
+                            Button(BrowserStrings.text("OK"), role: .cancel) {}
+                        } message: { Text(BrowserStrings.text("This browser's permission window is unavailable.")) }
+                }
+            }
+            .disabled(!model.canInteract || model.selected == nil)
+            .padding(12)
+            Divider()
+            if model.findVisible {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").accessibilityHidden(true)
+                    FindField(model: model).frame(minWidth: 150, maxWidth: 300)
+                        .chromeTarget("find-query")
+                    Text(model.findSummary).font(.caption).accessibilityLabel(model.findSummary).accessibilityIdentifier("find-results")
+                    Spacer()
+                    Toggle(BrowserStrings.text("Match case"), isOn: Binding(get: { model.findCaseSensitive }, set: model.setFindCaseSensitive))
+                        .toggleStyle(.checkbox).accessibilityIdentifier("find-case")
+                        .chromeFocusable("find-case", activate: { model.setFindCaseSensitive(!model.findCaseSensitive) })
+                    button("chevron.up", "Previous match", "find-previous") { model.findNext(backwards: true) }
+                        .disabled(model.findResult?.matchCount ?? 0 == 0)
+                    button("chevron.down", "Next match", "find-next") { model.findNext() }
+                        .disabled(model.findResult?.matchCount ?? 0 == 0)
+                    button("xmark", "Close find", "find-close") { model.closeFind() }
+                }
+                .disabled(!model.canInteract || model.selected == nil)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                Divider()
+            }
+            HSplitView {
+                ZStack {
+                    PageViewport(model: model)
+                        .chromeTarget("page").disabled(!model.canInteract || model.selected == nil)
+                    if model.image == nil {
+                        Text(BrowserStrings.text(model.selected == nil ? "Open a new tab" : "Waiting for page…"))
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("empty-page")
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if model.assistantPresented { BrowserAssistantView(model: model, assistant: model.assistant) }
+            }
+            Divider()
+            HStack {
+                Text(model.localizedStatus).lineLimit(2).accessibilityIdentifier("status")
+                Spacer()
+                Button("\(model.zoomPercent)%") { model.setZoom(1) }
+                    .accessibilityLabel(BrowserStrings.text("Page zoom"))
+                    .accessibilityValue("\(model.zoomPercent)%")
+                    .accessibilityIdentifier("page-zoom")
+                    .help(BrowserStrings.text("Reset page zoom"))
+                    .chromeFocusable("page-zoom", activate: { model.setZoom(1) })
+                    .disabled(!model.canInteract || model.selected == nil)
+            }
+            .font(.caption).foregroundStyle(appearance.resolved.highContrast ? .primary : .secondary).padding(.horizontal, 12).padding(.vertical, 6)
+        }
+        .disabled(model.interactionSuspended)
+        .alert(BrowserStrings.text("Resend form data?"), isPresented: $model.resubmissionPresented, presenting: model.resubmission) { prompt in
+            Button(BrowserStrings.text("Resend")) { model.resolveResubmission(prompt.confirmationID, accept: true) }
+            Button(BrowserStrings.text("Cancel"), role: .cancel) { model.resolveResubmission(prompt.confirmationID, accept: false) }
+        } message: { prompt in
+            Text(BrowserStrings.format("Resending will repeat the previous form submission to %@.", URL(string: prompt.url)?.host ?? prompt.url))
+        }
+        .alert(BrowserStrings.text("Could not print"),isPresented: $model.printErrorPresented) { Button(BrowserStrings.text("OK"),role: .cancel) {} } message: { Text(BrowserStrings.text(model.printError)) }
+        .alert(BrowserStrings.text("Could not select files"),isPresented: $model.fileInputErrorPresented) { Button(BrowserStrings.text("OK"),role: .cancel) {} } message: { Text(BrowserStrings.text(model.fileInputError)) }
+        .sheet(item: $model.groupEditor) { editor in BrowserTabGroupEditor(model: model, editor: editor) }
+        .sheet(item: $model.profileEditor) { editor in
+            if let workspace = model.windowManager { BrowserProfileEditor(model: model, workspace: workspace, editor: editor) }
+        }
+        .sheet(isPresented: $model.downloadsPresented) {
+            if let workspace = model.windowManager { BrowserDownloadsView(downloads: workspace.downloads) }
+        }
+        .buttonStyle(.plain)
+        .transaction { if appearance.resolved.reducedMotion { $0.animation = nil; $0.disablesAnimations = true } }
+        .background(AppearanceWindow(settings: appearance).frame(width: 0, height: 0).accessibilityHidden(true))
+        .background(BrowserChromeWindow(navigation: chromeFocus, model: model, binding: $chromeFocused)
+            .frame(width: 0, height: 0).accessibilityHidden(true))
+        .environment(\.browserChromeBinding, $chromeFocused)
+        .environment(\.browserChromeNavigation, chromeFocus)
+        .environmentObject(chromeFocus)
+        .onPreferenceChange(BrowserChromeTargets.self) { chromeFocus.updateTargets($0) }
+        .frame(minWidth: 720, minHeight: 480)
+        .onChange(of: model.chromeFocusIntent) { _, intent in
+            if let intent { chromeFocus.command(intent) }
+        }
+    }
+
+    private func button(_ symbol: String, _ label: String, _ identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: symbol).frame(width: 24, height: 24) }
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(appearance.resolved.highContrast ? Color.primary : Color.clear, lineWidth: 1).allowsHitTesting(false).accessibilityHidden(true))
+            .help(BrowserStrings.text(label)).accessibilityLabel(BrowserStrings.text(label)).accessibilityIdentifier(identifier)
+            .chromeFocusable(identifier, activate: action)
+    }
+}
+
+private struct FindField: NSViewRepresentable {
+    @ObservedObject var model: BrowserModel
+    @EnvironmentObject private var chromeFocus: BrowserChromeFocus
+    func makeCoordinator() -> Coordinator { Coordinator(model) }
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.placeholderString = BrowserStrings.text("Find in page")
+        field.setAccessibilityLabel(BrowserStrings.text("Find in page"))
+        field.setAccessibilityIdentifier("find-query")
+        field.delegate = context.coordinator
+        field.sendsSearchStringImmediately = true
+        chromeFocus.findField = field
+        return field
+    }
+    func updateNSView(_ field: NSSearchField, context: Context) {
+        field.placeholderString = BrowserStrings.text("Find in page")
+        field.setAccessibilityLabel(BrowserStrings.text("Find in page"))
+        let coordinator = context.coordinator
+        coordinator.synchronizing = true
+        defer { coordinator.synchronizing = false }
+        let changedTab = coordinator.tab != model.selected
+        coordinator.tab = model.selected
+        if changedTab { field.abortEditing() }
+        let composing = (field.currentEditor() as? NSTextView)?.hasMarkedText() == true
+        // AppKit owns temporary marked text. A repaint must not replace a
+        // pending dead key/IME sequence with the last committed model query.
+        if !composing && field.stringValue != model.findQuery { field.stringValue = model.findQuery }
+        field.isEnabled = model.canInteract && model.selected != nil
+        guard context.coordinator.serial != model.findFocusSerial else { return }
+        context.coordinator.serial = model.findFocusSerial
+        let serial = model.findFocusSerial
+        let tab = model.selected
+        Task { @MainActor [weak field, weak model] in
+            await Task.yield()
+            guard let field, let model, model.findVisible, model.selected == tab, model.findFocusSerial == serial else { return }
+            if let window = field.window as? BrowserWindow, let navigation = window.chromeFocus,
+               let intent = model.chromeFocusIntent {
+                navigation.command(intent); return
+            }
+            field.window?.makeFirstResponder(field)
+            field.selectText(nil)
+        }
+    }
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        weak var model: BrowserModel?
+        var serial: UInt64?
+        var tab: UInt64?
+        var synchronizing = false
+        init(_ model: BrowserModel) { self.model = model }
+        func controlTextDidChange(_ notification: Notification) {
+            guard !synchronizing, let field = notification.object as? NSSearchField,
+                  (field.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
+            model?.setFindQuery(field.stringValue)
+        }
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            if selector == #selector(NSResponder.insertNewline(_:)) {
+                model?.findNext(backwards: NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
+                return true
+            }
+            if selector == #selector(NSResponder.cancelOperation(_:)) { model?.closeFind(); return true }
+            return false
+        }
+    }
+}

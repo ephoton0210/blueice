@@ -2,7 +2,9 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Design started — added at the user's request. BlueIce currently has multi-tab IPC/MCP control and a Puppeteer-driven *Chromium differential-test harness*, but it has no DevTools endpoint, page debugger, Selenium/WebDriver server, Playwright-compatible client surface, Postman-like API/SOAP client, `fetch`, `XMLHttpRequest`, or script-originated request path.
+**Status**: In progress — BlueIce has multi-tab/context IPC/MCP control, sealed compiler queries and a bounded owner-scoped BlueJS debugger endpoint with generation-fenced execution controls. Puppeteer still drives Chromium only in the differential-test harness. Complete native DevTools, Selenium/WebDriver/BiDi, Playwright/CDP adapters, API/SOAP workbench, `fetch`, `XMLHttpRequest` and the general page-originated request service remain open.
+
+> **Sequencing note (2026-10-13):** the first vertical slice of `fetch`/XHR, the page event loop, the DOM read/write surface and cookies is scheduled by [Phase 27](../phase-27-browsable-web-mvp/PLAN.md). Items it lands are checked off here, in the owning phase.
 
 ## Objective
 
@@ -12,7 +14,7 @@ This phase is feature-equivalence work, not a claim of immediate drop-in protoco
 
 ## Current-state correction
 
-Puppeteer currently drives a real Chromium only inside Phase 15's differential-testing harness. It is not an API for driving BlueIce. Likewise, BlueIce's `navigate`, DOM snapshot, screenshot, click and multi-tab MCP tools are valuable foundations, but do not yet provide locator waiting, isolated browser contexts, automation event streams, breakpoints/stepping, network observation/interception, a manual HTTP/SOAP workspace or browser Web APIs for asynchronous data exchange.
+Puppeteer currently drives a real Chromium only inside Phase 15's differential-testing harness. It is not an API for driving BlueIce. Core context identities, compiler/MCP catalog queries and bounded BlueJS debugger control are now implemented. Full storage isolation, locator waiting, standard automation streams, complete debugger/DevTools UI, network observation/interception, the HTTP/SOAP workspace and browser Web APIs for asynchronous data exchange remain separate requirements. Context identities do not establish full cookie/cache/storage partitioning.
 
 ## Decisions
 

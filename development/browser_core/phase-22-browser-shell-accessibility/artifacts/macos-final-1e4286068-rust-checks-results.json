@@ -1,0 +1,46 @@
+{
+  "source_commit": "1e4286068f000860492aee69692edcc8c94a20ed",
+  "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "steps": [
+    {
+      "name": "rust-fmt",
+      "command": [
+        "/Users/ephoton/.cargo/bin/rustup",
+        "run",
+        "1.96.0",
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "started": "2026-10-12T23:12:08.351699+00:00",
+      "finished": "2026-10-12T23:12:11.223808+00:00",
+      "log": "/private/tmp/blueice-followup-20261012/macos-final-1e4286068-rust-fmt.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "rust-clippy",
+      "command": [
+        "/Users/ephoton/.cargo/bin/rustup",
+        "run",
+        "1.96.0",
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "started": "2026-10-12T23:12:11.224242+00:00",
+      "finished": "2026-10-12T23:20:59.474212+00:00",
+      "log": "/private/tmp/blueice-followup-20261012/macos-final-1e4286068-rust-clippy.log",
+      "log_sha256": "d8935694298a6db4f7bfee16f14df26b84e36b15771bc71e537a9cba9ef74114"
+    }
+  ],
+  "complete": true
+}

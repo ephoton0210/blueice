@@ -14,16 +14,60 @@
 use blueice_dom::NodeId;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SelectOption {
+    pub node: NodeId,
+    pub label: String,
+    pub group: Option<String>,
+    pub disabled: bool,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NativeForm {
+    Button(String),
+    CheckBox(bool),
+    Radio(bool),
+    Select(String),
+    SelectList {
+        options: Vec<SelectOption>,
+        first: usize,
+        row_height: f64,
+        active: Option<NodeId>,
+    },
+    Range {
+        min: f64,
+        max: f64,
+        value: f64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum FragmentKind {
     /// A block-level box (block flow, or a block-generating box
     /// standing in for a not-yet-implemented algorithm like flex --
     /// see `phase-2-mvp-scope/PLAN.md`).
     Block,
+    /// Native control content box, resolved during layout so scrolling and
+    /// painting preserve percentage padding and keep text off the border.
+    NativeControl {
+        content_x: f64,
+        content_y: f64,
+        content_width: f64,
+        content_height: f64,
+        form: Option<NativeForm>,
+    },
     /// An anonymous line box wrapping one line's worth of inline
     /// content -- has no DOM node of its own.
     Line,
     /// A run of text within a line, in a single style context.
     Text(String),
+    /// A native control run with exact UTF-16 source offsets. The displayed
+    /// string is masked for protected controls and retains spaces/line breaks.
+    NativeText {
+        text: String,
+        source_start: u32,
+        source_end: u32,
+    },
 }
 
 /// One box in the output tree. `x`/`y` are relative to the parent

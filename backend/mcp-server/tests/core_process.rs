@@ -21,8 +21,8 @@ use blueice_ipc::compiler_catalog::{
 use blueice_launcher::control::{
     read_control_reply, write_control_request, ControlReply, ControlRequest,
 };
-use blueice_launcher::{run_broker, CoreLaunchOptions, SpawnedCore};
-use blueice_mcp_server::{BlueIceMcpServer, CoreProcess, OpenTabOutcome};
+use blueice_launcher::{run_broker, CoreLaunchOptions, SpawnedCore, SpawnedGatekeeper};
+use blueice_mcp_server::{BlueIceMcpServer, CoreProcess, OpenTabOutcome, TabGroupOutcome};
 use rmcp::model::{CallToolRequestParams, ClientInfo};
 use rmcp::{ClientHandler, ServiceExt};
 use std::os::unix::net::UnixListener;
@@ -212,11 +212,16 @@ impl LauncherManagedCore {
         let _ = std::fs::remove_file(&compiler_socket);
         let _ = std::fs::remove_dir_all(&frame_dir);
 
+        let gatekeeper =
+            SpawnedGatekeeper::spawn().expect("launcher must start its private gatekeeper");
+        let gatekeeper_socket = gatekeeper.socket_path().to_path_buf();
         let options = match catalog {
             Some(catalog) => CoreLaunchOptions::default()
+                .with_gatekeeper_socket(gatekeeper_socket.clone())
                 .with_owner_compiler_catalog_mcp_endpoint(compiler_socket.clone(), catalog)
                 .expect("owner compiler catalog must be valid"),
             None => CoreLaunchOptions::default()
+                .with_gatekeeper_socket(gatekeeper_socket.clone())
                 .with_core_closed_compiler_mcp_endpoint(compiler_socket.clone()),
         };
         let core = SpawnedCore::spawn_with_options(320.0, 200.0, &frame_dir, options)
@@ -229,8 +234,18 @@ impl LauncherManagedCore {
             .expect("launcher broker must bind its frontend rendezvous socket");
         let control_listener = UnixListener::bind(&control_socket)
             .expect("launcher broker must bind its control socket");
-        let broker =
-            thread::spawn(move || run_broker(listener, control_listener, core, 320.0, 200.0));
+        let broker = thread::spawn(move || {
+            let result = run_broker(
+                listener,
+                control_listener,
+                core,
+                320.0,
+                200.0,
+                gatekeeper_socket,
+            );
+            drop(gatekeeper);
+            result
+        });
 
         Self {
             rendezvous_socket,
@@ -342,6 +357,54 @@ fn open_tab_list_tabs_and_close_tab_round_trip_over_a_real_core() {
         after_close.iter().map(|t| t.id).collect::<Vec<_>>(),
         vec![default_tab]
     );
+}
+
+#[test]
+fn tab_groups_round_trip_through_mcp_and_a_real_core() {
+    let core =
+        CoreProcess::spawn(320, 200).expect("blueice-core must spawn and accept a connection");
+    let mut conn = core.conn.lock().unwrap();
+    let default_tab = conn.list_tabs().unwrap()[0].id;
+
+    let created = conn
+        .create_tab_group("Research", "#4f8cff")
+        .expect("create_tab_group must round-trip");
+    let TabGroupOutcome::Group(group) = created else {
+        panic!("expected group, got {created:?}")
+    };
+    assert_eq!(
+        (group.name.as_str(), group.color.as_str(), group.collapsed),
+        ("Research", "#4f8cff", false)
+    );
+
+    assert_eq!(
+        conn.set_tab_group(default_tab, Some(group.id)).unwrap(),
+        TabGroupOutcome::Assigned {
+            tab_id: default_tab,
+            group_id: Some(group.id),
+        }
+    );
+    assert_eq!(conn.list_tabs().unwrap()[0].group_id, Some(group.id));
+
+    assert!(matches!(
+        conn.set_tab_group_collapsed(group.id, true).unwrap(),
+        TabGroupOutcome::Group(ref updated) if updated.collapsed
+    ));
+    assert!(matches!(
+        conn.list_tab_groups().unwrap(),
+        Ok(groups) if groups == vec![blueice_ipc::TabGroupSummary {
+            id: group.id,
+            name: "Research".to_string(),
+            color: "#4f8cff".to_string(),
+            collapsed: true,
+        }]
+    ));
+
+    assert_eq!(
+        conn.close_tab_group(group.id).unwrap(),
+        TabGroupOutcome::Closed { group_id: group.id }
+    );
+    assert_eq!(conn.list_tabs().unwrap()[0].group_id, None);
 }
 
 #[tokio::test]

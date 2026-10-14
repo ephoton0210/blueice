@@ -54,15 +54,26 @@ pub struct Rect {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PaintCommand {
+    /// Nested document-space clipping, used by native control text.
+    PushClip {
+        rect: Rect,
+    },
+    PopClip,
     /// A solid-filled rectangle (a box's `background-color`).
-    Rect { rect: Rect, color: Color },
+    Rect {
+        rect: Rect,
+        color: Color,
+    },
     /// One border edge, drawn as a filled strip along that side of the
     /// box -- e.g. the top edge is `height: border-top-width` tall and
     /// spans the box's full `width`. No radii, no dashed/dotted pattern
     /// rendering (a `dashed`/`dotted` style still paints as solid for
     /// MVP; only `none`/`hidden` are distinguished, by not painting the
     /// edge at all).
-    BorderEdge { rect: Rect, color: Color },
+    BorderEdge {
+        rect: Rect,
+        color: Color,
+    },
     /// A run of text with no internal structure -- one command per
     /// `blueice_layout` text fragment, at that fragment's own position.
     /// `bold`/`italic` are booleans, not the full CSS value space
@@ -125,6 +136,8 @@ pub fn dump_frame(frame: &Frame) -> String {
     let mut out = String::new();
     for command in &frame.commands {
         match command {
+            PaintCommand::PushClip { rect } => out.push_str(&format!("clip {}\n", fmt_rect(*rect))),
+            PaintCommand::PopClip => out.push_str("endclip\n"),
             PaintCommand::Rect { rect, color } => {
                 out.push_str(&format!("rect {} {}\n", fmt_rect(*rect), fmt_color(*color)))
             }
@@ -249,7 +262,7 @@ fn paint_fragment(
     let y = offset_y + fragment.y;
 
     match &fragment.kind {
-        FragmentKind::Block => {
+        FragmentKind::Block | FragmentKind::NativeControl { .. } => {
             if let Some(style) = fragment.node.and_then(|n| styles.get(&n)) {
                 let opacity = style.opacity();
                 let rect = Rect {
@@ -284,7 +297,7 @@ fn paint_fragment(
             }
         }
         FragmentKind::Line => {}
-        FragmentKind::Text(text) => {
+        FragmentKind::Text(text) | FragmentKind::NativeText { text, .. } => {
             if let Some(style) = fragment.node.and_then(|n| styles.get(&n)) {
                 let bold = style.is_bold();
                 let italic = style.is_italic();
@@ -302,9 +315,165 @@ fn paint_fragment(
         }
     }
 
-    for child in &fragment.children {
-        paint_fragment(child, x, y, styles, out);
+    let clip = if let FragmentKind::NativeControl {
+        content_x,
+        content_y,
+        content_width,
+        content_height,
+        ..
+    } = fragment.kind
+    {
+        Some(Rect {
+            x: x + content_x,
+            y: y + content_y,
+            width: content_width,
+            height: content_height,
+        })
+    } else {
+        None
+    };
+    if let Some(rect) = clip {
+        out.push(PaintCommand::PushClip { rect });
     }
+    let form = match &fragment.kind {
+        FragmentKind::NativeControl { form, .. } => form.as_ref(),
+        _ => None,
+    };
+    if form.is_none() {
+        for child in &fragment.children {
+            paint_fragment(child, x, y, styles, out);
+        }
+    }
+    if let (Some(form), Some(rect), Some(style)) =
+        (form, clip, fragment.node.and_then(|id| styles.get(&id)))
+    {
+        paint_native_form(form, rect, style, out);
+    }
+    if clip.is_some() {
+        out.push(PaintCommand::PopClip);
+    }
+}
+
+fn paint_native_form(
+    form: &blueice_layout::NativeForm,
+    rect: Rect,
+    style: &ComputedStyle,
+    out: &mut Vec<PaintCommand>,
+) {
+    use blueice_layout::NativeForm;
+    let opacity = style.opacity();
+    let text = match form {
+        NativeForm::Button(label) => label.clone(),
+        NativeForm::CheckBox(checked) => if *checked { "☑" } else { "☐" }.to_string(),
+        NativeForm::Radio(checked) => if *checked { "◉" } else { "○" }.to_string(),
+        NativeForm::Select(label) => format!("{label} ▾"),
+        NativeForm::SelectList {
+            options,
+            first,
+            row_height,
+            active,
+        } => {
+            for (index, option) in options.iter().enumerate().skip(*first) {
+                let y = rect.y + (index - *first) as f64 * *row_height;
+                if y >= rect.y + rect.height {
+                    break;
+                }
+                if option.selected {
+                    out.push(PaintCommand::Rect {
+                        rect: Rect {
+                            x: rect.x,
+                            y,
+                            width: rect.width,
+                            height: *row_height,
+                        },
+                        color: apply_opacity(Color::Rgba(35, 100, 220, 255), opacity),
+                    });
+                }
+                if *active == Some(option.node) {
+                    let color = apply_opacity(Color::Rgba(20, 20, 20, 255), opacity);
+                    for border in [
+                        Rect {
+                            x: rect.x,
+                            y,
+                            width: rect.width,
+                            height: 1.0,
+                        },
+                        Rect {
+                            x: rect.x,
+                            y: y + *row_height - 1.0,
+                            width: rect.width,
+                            height: 1.0,
+                        },
+                    ] {
+                        out.push(PaintCommand::Rect {
+                            rect: border,
+                            color,
+                        });
+                    }
+                }
+                out.push(PaintCommand::Text {
+                    x: rect.x + 3.0,
+                    y,
+                    text: option.label.clone(),
+                    color: apply_opacity(
+                        if option.disabled {
+                            Color::Rgba(128, 128, 128, 255)
+                        } else if option.selected {
+                            Color::Rgba(255, 255, 255, 255)
+                        } else {
+                            style.color
+                        },
+                        opacity,
+                    ),
+                    font_size_px: style.font_size_px,
+                    bold: style.is_bold(),
+                    italic: style.is_italic(),
+                });
+            }
+            return;
+        }
+        NativeForm::Range { min, max, value } => {
+            let fraction = if max > min {
+                (value - min) / (max - min)
+            } else {
+                0.0
+            };
+            let fraction = if fraction.is_finite() {
+                fraction.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let y = rect.y + rect.height / 2.0;
+            out.push(PaintCommand::Rect {
+                rect: Rect {
+                    x: rect.x,
+                    y: y - 1.0,
+                    width: rect.width,
+                    height: 3.0,
+                },
+                color: apply_opacity(Color::Rgba(130, 130, 130, 255), opacity),
+            });
+            out.push(PaintCommand::Rect {
+                rect: Rect {
+                    x: rect.x + fraction * (rect.width - 6.0).max(0.0),
+                    y: y - 6.0,
+                    width: 6.0,
+                    height: 12.0,
+                },
+                color: apply_opacity(Color::Rgba(35, 100, 220, 255), opacity),
+            });
+            return;
+        }
+    };
+    out.push(PaintCommand::Text {
+        x: rect.x,
+        y: rect.y,
+        text,
+        color: apply_opacity(style.color, opacity),
+        font_size_px: style.font_size_px,
+        bold: style.is_bold(),
+        italic: style.is_italic(),
+    });
 }
 
 /// Builds the paint command list for `fragment` (as produced by

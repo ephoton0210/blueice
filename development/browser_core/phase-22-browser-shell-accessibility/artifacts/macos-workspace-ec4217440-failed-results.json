@@ -1,0 +1,18 @@
+{
+  "source_commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+  "session_id": 30839,
+  "exit_code": 101,
+  "passed": 7603,
+  "failed": 3,
+  "ignored": 69,
+  "groups": 516,
+  "program_files_verified": 1902,
+  "changed_inputs": [],
+  "failure_targets": [
+    "blueice-bluejs/cov_g2_final",
+    "blueice-bluejs/cov_g4_test262_binary",
+    "blueice-launcher/spawn_core"
+  ],
+  "log": "/Users/ephoton/git/blueice-downloads/frontend/macos/.build/workspace-ec4217440-20261013.log",
+  "log_sha256": "eedefe9f527a05d983e3d33db907974e708793aa2a8d7d75479ce33456698fd0"
+}

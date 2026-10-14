@@ -1,0 +1,103 @@
+{
+  "scope": "Same-source complete Windows Rust acceptance; WinUI build/protocol/desktop follow-up pending",
+  "source_commit": "83436f8461c6f681df183473ecb7dcbe83423605",
+  "source_files": 2112,
+  "program_files": 1863,
+  "rust_steps": [
+    {
+      "name": "rust-fmt",
+      "command": "& 'B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\format-workspace28.ps1'",
+      "exit_code": 0,
+      "seconds": 38.996249,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-fmt.log",
+      "log_sha256": "02a92ed809a18e00b21625860e1bd4b9f2577cfd38bb25872f2b5eab7bcc10be",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-clippy",
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc clippy --workspace --all-targets --locked -- -D warnings",
+      "exit_code": 0,
+      "seconds": 132.0144367,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-clippy.log",
+      "log_sha256": "9c247cfe2251edcd8b7b8be313d1f463a1023ecf9b37003a549c007c59f396e5",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-build",
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc build --workspace --all-targets --locked",
+      "exit_code": 0,
+      "seconds": 2377.3336096,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-build.log",
+      "log_sha256": "8b2466fa9ca6a01fcf3f4bf8babda3a599f2dc04ed3c761a70db9b6d9469afb0",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-test",
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc test --workspace --no-fail-fast --locked",
+      "exit_code": 0,
+      "seconds": 3986.8588176999997,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\rust-test.log",
+      "log_sha256": "531c8980282b582f8a1ada0c0eb3325bc30fd0d77d277e0c6319679760b847b0",
+      "rust_counts": {
+        "ignored": 64,
+        "groups": 495,
+        "failed": 0,
+        "passed": 5670
+      }
+    }
+  ],
+  "rust_result": {
+    "ignored": 64,
+    "groups": 495,
+    "failed": 0,
+    "passed": 5670
+  },
+  "winui_failure": {
+    "name": "winui-build",
+    "command": "& 'B:\\BlueIce\\workspaces\\blueice-downloads\\frontend\\winui\\build.ps1'",
+    "exit_code": 1,
+    "seconds": 49.766429099999996,
+    "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1\\winui-build.log",
+    "log_sha256": "540381194eb98165a5325b724bdb2777a728628002a7f237fe68da8eb829eea8",
+    "rust_counts": {
+      "ignored": 0,
+      "groups": 0,
+      "failed": 0,
+      "passed": 0
+    }
+  },
+  "failure_cause": "frontend/winui/build.ps1 selects +1.96.0, which resolves to the installed GNU host instead of the accepted MSVC toolchain; ring cannot find gcc.exe",
+  "correction": "Pin +1.96.0-x86_64-pc-windows-msvc; use the same frozen Rust/C# inputs through a separately hashed MSVC WinUI validation helper",
+  "previous_metadata": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-retry1",
+  "followup_metadata": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-msvc",
+  "followup_bootstrap_guest_pid": 5300,
+  "remaining_owned_ui": [],
+  "disk": {
+    "free_b": 296423079936,
+    "free_c": 7252262912,
+    "target_bytes": 16893325519,
+    "max_target_bytes": 25769803776,
+    "min_free_b": 53687091200,
+    "min_free_c": 4294967296
+  },
+  "evidence": {
+    "windows-retry1-stopped.json": "b6955a84c813de829589944af13601ea3714ce3a69f1337aecd848b62ccadf2f",
+    "windows-winui-build-retry1.log": "540381194eb98165a5325b724bdb2777a728628002a7f237fe68da8eb829eea8",
+    "windows-winui-msvc-build.ps1": "23a1a009d1613a655074660df6200f962938ceea06f0ae87dddad0f6d6336dbe"
+  }
+}

@@ -1,0 +1,173 @@
+{
+  "source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "started": "2026-10-12T20:49:59.3105969Z",
+  "finished": "2026-10-12T22:29:03.9270969Z",
+  "status": "passed",
+  "scope": "Fresh complete Windows Rust workspace/all-target build/strict Clippy/full formatter, WinUI build, actual Core protocol and logged-in desktop UI/pixels/close/cleanup. Production source remains identical through later Unix-test/macOS-UI-test/documentation commits.",
+  "source_files_verified": 2192,
+  "program_inputs_verified": 1902,
+  "manifest_sha256": "83fff99ad04c075552c0f06e919ae4b60ac9ed23073af2bd1b9c9c96d9c7cc25",
+  "steps": [
+    {
+      "name": "rust-fmt",
+      "command": "& 'B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\format-workspace28.ps1'",
+      "exit_code": 0,
+      "seconds": 29.458195399999997,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\rust-fmt.log",
+      "log_sha256": "02a92ed809a18e00b21625860e1bd4b9f2577cfd38bb25872f2b5eab7bcc10be",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-clippy",
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc clippy --workspace --all-targets --locked -- -D warnings",
+      "exit_code": 0,
+      "seconds": 83.8310882,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\rust-clippy.log",
+      "log_sha256": "0e9125ab22fdef170d1a4fa6b381a48b2da417c4c0399e7c76b1030824be6298",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-build",
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc build --workspace --all-targets --locked",
+      "exit_code": 0,
+      "seconds": 1154.6046425,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\rust-build.log",
+      "log_sha256": "e05c2380cc92e52bd6c38bf9bd32cc0e4015f8ce357e0634e96a2905b8740fb1",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "rust-test",
+      "command": "& cargo +1.96.0-x86_64-pc-windows-msvc test --workspace --no-fail-fast --locked",
+      "exit_code": 0,
+      "seconds": 4046.200144,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\rust-test.log",
+      "log_sha256": "820c57a84ca31b1ee84c15a1257d942ba0a62c55f9b270ed13bb28c045b42a0b",
+      "rust_counts": {
+        "ignored": 64,
+        "groups": 516,
+        "failed": 0,
+        "passed": 5770
+      }
+    },
+    {
+      "name": "winui-build",
+      "command": "& 'B:\\BlueIce\\workspaces\\blueice-downloads\\frontend\\winui\\build.ps1'",
+      "exit_code": 0,
+      "seconds": 485.47490589999995,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\winui-build.log",
+      "log_sha256": "8eda05b4a96f0f810c6319436657986107893fefe8bfe30a76d7ce8f70da4ab5",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    },
+    {
+      "name": "winui-protocol",
+      "command": "& dotnet run --project 'B:\\BlueIce\\workspaces\\blueice-downloads\\frontend\\winui\\tests\\ProtocolTests.csproj' -- 'B:\\BlueIce\\workspaces\\blueice-downloads\\target\\debug\\blueice-core.exe'",
+      "exit_code": 0,
+      "seconds": 9.8945279,
+      "log": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\winui-protocol.log",
+      "log_sha256": "d243f3f4f6aa856efeb7851dc530cb384887a35bd7798597ec2751e4b02143fb",
+      "rust_counts": {
+        "ignored": 0,
+        "groups": 0,
+        "failed": 0,
+        "passed": 0
+      }
+    }
+  ],
+  "rust_passed": 5770,
+  "rust_failed": 0,
+  "rust_ignored": 64,
+  "rust_result_groups": 516,
+  "ui_protocol_exit_code": 0,
+  "desktop_passed": 7,
+  "desktop_task_exit_code": 0,
+  "desktop_helper_exit_code": 0,
+  "bootstrap_exit_code": 0,
+  "desktop_session": 1,
+  "desktop_results": "PASS real WinUI window and core-rendered credits\r\nPASS reload preserves the committed URL\r\nPASS settings, back and forward\r\nPASS create, select and close tabs\r\nPASS external navigation fails closed visibly\r\nPAGE_BOUNDS=28,145,944,488\r\nADDRESS_BOUNDS=178,107,650,32\r\nPASS visible rendered page pixels (2999 dark samples)\r\nPASS window close stops core and removes frames\r\n",
+  "ui_artifacts": {
+    "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\winui-desktop.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\winui-artifacts\\results.txt": "46f0b45c987bf968f9c38eb0289b9502e4344dbc6ba97b760ba3d04555bd1104",
+    "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924\\winui-artifacts\\window.png": "c550ba991007f35085cd92093f2acac0b96bce10161534dd9981de35e0f26520"
+  },
+  "source_unchanged": true,
+  "fmt_workspace_packages": 25,
+  "fmt_workspace_targets": 495,
+  "final_audit": {
+    "utc": "2026-10-12T22:34:56.9255226Z",
+    "source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "status": "final-source-log-and-runtime-audit-passed",
+    "verified_archived_files": 2192,
+    "verified_program_inputs": 1902,
+    "verified_gate_logs": 6,
+    "verified_ui_and_format_artifacts": 56,
+    "corpus_junction": "B:\\BlueIce\\corpora\\test262-72faf8ec-verified",
+    "rust_exit_code": 0,
+    "rust_counts": {
+      "ignored": 64,
+      "groups": 516,
+      "failed": 0,
+      "passed": 5770
+    },
+    "desktop_passed": 7,
+    "desktop_task_exit_code": 0,
+    "desktop_session": 1,
+    "controller_gone": true,
+    "owned_runtime_gone": true,
+    "owned_task_gone": true,
+    "execution_policies_unchanged": true,
+    "toolchains_unchanged": true,
+    "volumes": [
+      {
+        "DriveLetter": "C",
+        "FileSystemLabel": "",
+        "Size": 150323851264,
+        "SizeRemaining": 7194824704
+      },
+      {
+        "DriveLetter": "B",
+        "FileSystemLabel": "BlueIceTests320",
+        "Size": 343579553792,
+        "SizeRemaining": 280680800256
+      }
+    ]
+  },
+  "task_removed": true,
+  "owned_processes_absent": true,
+  "toolchains_unchanged": true,
+  "persistent_execution_policies_unchanged": true,
+  "final_state_sha256": "866ee811c3a780fb0743146cdef6cb5561409d32e362c742551952077867d796",
+  "final_audit_status_sha256": "787970e2ca393b4a0b077ff50fd8db1bf4162f9aacc8b95163c3129b2d0569db",
+  "bootstrap_status_sha256": "7a41cc6baa8ce280c26f1e7551dc6d5641c6e5d0d6ee8468f8b2f76523b3a46b",
+  "remaining": "Physical IME/VoiceOver/display/printer and corrected complete macOS native gate remain required by the overall goal; this result completes current-production-source Windows acceptance only.",
+  "protocol_cases_passed": 5,
+  "protocol_case_results": [
+    "PASS canonical Rust envelope and UTF-8 text",
+    "PASS fragmented prefix and payload",
+    "PASS oversized and truncated frames",
+    "PASS frame pixels, exact byte length and path boundary",
+    "PASS native core process renders through the C# adapter"
+  ],
+  "local_window_image": "/private/tmp/blueice-followup-20261012/windows-504eeb924-winui-window.png",
+  "local_window_image_sha256": "c550ba991007f35085cd92093f2acac0b96bce10161534dd9981de35e0f26520",
+  "retained_window_image": "windows-504eeb924-winui-window.png"
+}

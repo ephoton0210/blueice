@@ -1,0 +1,143 @@
+{
+  "scope": "Direct read-only capabilities and prepared tools; physical acceptance remains unproven",
+  "utc": "2026-10-12T19:48:39.926054+00:00",
+  "display_identities": {
+    "displays": [
+      {
+        "bounds": [
+          0,
+          0,
+          1920,
+          1080
+        ],
+        "builtin": false,
+        "id": 2,
+        "mirrored": false,
+        "model": 10209,
+        "name": "PA279CRV",
+        "online": true,
+        "scale": 2,
+        "serial": 335544320,
+        "vendor": 1715
+      }
+    ],
+    "initial_query_result": 0,
+    "list_query_result": 0,
+    "physical_transition_accepted": false,
+    "scope": "Read-only current display identity; no physical display transition performed"
+  },
+  "online_display_count": 1,
+  "current_mode": {
+    "id": 89,
+    "logical_height": 1080,
+    "logical_width": 1920,
+    "pixel_height": 2160,
+    "pixel_width": 3840,
+    "refresh_rate": 60
+  },
+  "supported_mode_count": 101,
+  "prepared_transition": {
+    "source_sha256": "a76b4706deacac73659c30608f59d4edb38b88f7a96f1e31dcab3c1b20edec1b",
+    "binary_sha256": "ce7905c47b2077b088c2f537dccd517fb8b98f95e1027eeb15570fdc67c350de",
+    "build_exit": 0,
+    "describe_exit": 0,
+    "initial_mode": {
+      "height": 1080,
+      "id": 89,
+      "pixel_height": 2160,
+      "pixel_width": 3840,
+      "refresh_rate": 60,
+      "width": 1920
+    },
+    "candidate_1x_modes": [
+      {
+        "height": 2160,
+        "id": 159,
+        "pixel_height": 2160,
+        "pixel_width": 3840,
+        "refresh_rate": 60,
+        "width": 3840
+      }
+    ],
+    "lease_seconds": 15,
+    "restore_triggers": [
+      "controller stdin completion/EOF",
+      "15-second deadline"
+    ],
+    "guards": [
+      "identified display vendor/model",
+      "no existing native UI Runner",
+      "exact owned foreground BlueIce PID, bundle ID and normalized bundle path"
+    ]
+  },
+  "actual_readonly_viewport": {
+    "backing_scale": 2.0,
+    "css_height": 680.0,
+    "css_width": 1120.0,
+    "device_scale": 2.0,
+    "frame_generation": 4,
+    "frame_source": 14982869982905099806,
+    "height": 680.0,
+    "pixel_height": 1360,
+    "pixel_width": 2240,
+    "tab_id": 1,
+    "width": 1120.0,
+    "zoom": 1.0
+  },
+  "printer": {
+    "command": "lpstat -p -d",
+    "sandbox_attempt": "Bad file descriptor; excluded as hardware evidence",
+    "unsandboxed_exit_code": 1,
+    "unsandboxed_output": "lpstat: 沒有加入目標。\n沒有系統預設目標\n",
+    "conclusion": "No CUPS destination/default configured; physical printer absence is not established"
+  },
+  "voiceover": {
+    "scope": "Read-only installed VoiceOver scripting capability, no screen reader started or controlled",
+    "app": "/System/Library/CoreServices/VoiceOver.app",
+    "bundle_identifier": "com.apple.VoiceOver",
+    "sdef_sha256": "393ade36b8b9e18ee954484f4a89e6ca715a75273323756fb8f6a91d21549e53",
+    "supported_commands": {
+      "move": "coremove",
+      "perform action": "VOASpera",
+      "perform command": "VOASperC"
+    },
+    "readable_properties": {
+      "vo cursor": "r",
+      "text under cursor": "r",
+      "last phrase": "r",
+      "content": "r",
+      "bounds": "r"
+    },
+    "official_permission_reference": "https://support.apple.com/guide/voiceover/cpvougen/mac",
+    "permission_requirement": "VoiceOver Utility General allows VoiceOver to be controlled with AppleScript; availability/enabled state is not yet proven",
+    "actual_voiceover_accepted": false,
+    "next": "After current native UI run cleanup, test actual VoiceOver against only an owned BlueIce fixture; preserve navigation/action/speech evidence and restore initial state. Keep ordinary Runner Accessibility and physical device requirements explicit."
+  },
+  "voiceover_driver": {
+    "source": "/private/tmp/blueice-followup-20261012/owned-voiceover-driver.applescript",
+    "sha256": "2852de7bc295e3441a7a82f6f0dea69903efb1ce08baa670b086e6e973af9a39",
+    "compile_exit": 0,
+    "executed": false,
+    "guards": [
+      "Exact owned BlueIce foreground PID",
+      "Exact BlueIce bundle identifier and resolved path",
+      "Exactly one already-running system VoiceOver",
+      "Exact expected fixture cursor text before action"
+    ],
+    "actual_navigation_action_speech_accepted": false
+  },
+  "physical_completion": {
+    "physical_display_transition": false,
+    "multi_monitor_handoff": false,
+    "actual_voiceover": false,
+    "actual_ime": false,
+    "physical_printer_transition": false
+  },
+  "full_capability_receipt_sha256": "4a863ed6b6ed241bbca4b76825c3921b9d56234c475ce64cb85706ab0fe12b44",
+  "transition_readiness_sha256": "1026a3b2072932c867ffa73ab60b647704928084b6dff50197694c18ecc08cb1",
+  "pending_user_inputs": [
+    "Actual new BrowserUITests-Runner Accessibility grant for physical Zhuyin",
+    "Physical printer model and network/USB connection information"
+  ],
+  "actual_mode_transition_performed": false
+}

@@ -11,12 +11,13 @@
 //! inventing a separate coordinator role.
 //!
 //! Deliberately one registry keyed by role name and one small policy
-//! enum, not a special case per process: `core` is `AlwaysResident`
-//! today, `mcp-server` is registered as a typed `IdleTeardown` slot
-//! (real in the data model, not yet wired to an automatic spawn path --
-//! see this crate's own module docs), and `extension`/`ai-assistant`/
-//! `downloads` need no code changes here at all once they exist as real
-//! processes -- each is one `register` call away.
+//! enum, not a special case per process: `core` and `ai-gatekeeper` are
+//! `AlwaysResident` today and `mcp-server` is registered as a typed
+//! `IdleTeardown` slot (real in the data model, not yet wired to an
+//! automatic spawn path -- see this crate's own module docs). `downloads`
+//! is deliberately *not* registered until its transfer-aware idle query
+//! and graceful shutdown protocol are wired: a generic time-only kill
+//! could lose active work.
 
 use std::collections::HashMap;
 use std::process::Child;
@@ -75,6 +76,40 @@ impl ProcessRegistry {
         ProcessRegistry {
             entries: HashMap::new(),
         }
+    }
+
+    /// The roles `blueice-launcher` supervises today, in one place so the
+    /// launcher binary and its tests agree on them:
+    ///
+    /// * `core` -- `AlwaysResident`, with no child held here (its real
+    ///   child is owned and torn down by `SpawnedCore`; see
+    ///   [`Self::is_resident`]).
+    /// * `ai-gatekeeper` -- also `AlwaysResident`, with its real child
+    ///   owned by `SpawnedGatekeeper`; a fail-closed checkpoint must not
+    ///   be idle-torn down.
+    /// * `mcp-server` -- a typed, inert `IdleTeardown` slot with no
+    ///   automatic spawn path yet (`phase-8-live-core-hotswap/PLAN.md`'s
+    ///   follow-up).
+    /// * `ai-assistant` -- not in this default set: `AssistantSupervisor`
+    ///   registers it (`OnDemand`) at launcher start, only when an assistant
+    ///   is configured.
+    /// * `downloads` -- intentionally absent. Its clients still use
+    ///   connect-or-spawn, but this generic registry must not own or kill
+    ///   it until it can ask the manager whether both active and queued
+    ///   transfer counts are zero and request an orderly shutdown.
+    pub fn default_fleet(now: Instant) -> Self {
+        let mut registry = ProcessRegistry::new();
+        registry.register("core", ProcessPolicy::AlwaysResident, None, now);
+        registry.register("ai-gatekeeper", ProcessPolicy::AlwaysResident, None, now);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(300),
+            },
+            None,
+            now,
+        );
+        registry
     }
 
     /// Registers `role` under `policy`. `resident` is `Some` if a
@@ -161,6 +196,49 @@ impl ProcessRegistry {
             .collect()
     }
 
+    /// Replaces `role`'s policy (for example a changed idle timeout). Returns
+    /// whether the role was registered; a resident process is left running.
+    pub fn set_policy(&mut self, role: &str, policy: ProcessPolicy) -> bool {
+        match self.entries.get_mut(role) {
+            Some(entry) => {
+                entry.policy = policy;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The OS pid of `role`'s resident process, if this registry holds one.
+    pub fn resident_pid(&self, role: &str) -> Option<u32> {
+        self.entries
+            .get(role)
+            .and_then(|entry| entry.resident.as_ref())
+            .map(Child::id)
+    }
+
+    /// Notices a resident process that exited on its own (a crash, or a
+    /// resource-limit kill) and forgets it, so the role reads as not resident
+    /// and an on-demand caller respawns it instead of relaying to a dead
+    /// process. Returns whether it reaped one.
+    pub fn reap_exited(&mut self, role: &str) -> bool {
+        let Some(entry) = self.entries.get_mut(role) else {
+            return false;
+        };
+        let exited = match entry.resident.as_mut() {
+            // `try_wait` failing means the child cannot be inspected any more;
+            // treating it as gone is safer than relaying to it.
+            Some(child) => child
+                .try_wait()
+                .map(|status| status.is_some())
+                .unwrap_or(true),
+            None => false,
+        };
+        if exited {
+            entry.resident = None;
+        }
+        exited
+    }
+
     /// Kills and reaps `role`'s resident process, if any, then marks it
     /// no-longer-resident -- the registry entry (and its policy) stays,
     /// so a future respawn can reuse it. A no-op if `role` isn't
@@ -187,6 +265,90 @@ mod tests {
     /// scale that still exercises a genuine OS process.
     fn spawn_dummy_child() -> Child {
         Command::new("sleep").arg("300").spawn().unwrap()
+    }
+
+    #[test]
+    fn a_policy_can_be_replaced_and_changes_when_a_role_becomes_eligible() {
+        let mut registry = ProcessRegistry::new();
+        let start = Instant::now();
+        let timeout = |secs| ProcessPolicy::OnDemand {
+            idle_timeout: Duration::from_secs(secs),
+        };
+        registry.register("ai-assistant", timeout(600), None, start);
+        assert!(registry
+            .set_resident("ai-assistant", spawn_dummy_child(), start)
+            .is_none());
+        let later = start + Duration::from_secs(100);
+        assert!(registry.idle_eligible_for_teardown(later).is_empty());
+        assert!(registry.set_policy("ai-assistant", timeout(30)));
+        assert_eq!(registry.idle_eligible_for_teardown(later), ["ai-assistant"]);
+        assert!(
+            registry.is_resident("ai-assistant"),
+            "the process keeps running"
+        );
+        assert!(!registry.set_policy("nobody", timeout(30)));
+        registry.teardown("ai-assistant");
+    }
+
+    #[test]
+    fn the_resident_pid_is_reported_only_while_a_process_is_held() {
+        let mut registry = ProcessRegistry::new();
+        let start = Instant::now();
+        registry.register(
+            "ai-assistant",
+            ProcessPolicy::OnDemand {
+                idle_timeout: Duration::from_secs(60),
+            },
+            None,
+            start,
+        );
+        assert_eq!(registry.resident_pid("ai-assistant"), None);
+        assert_eq!(registry.resident_pid("nobody"), None);
+        let child = spawn_dummy_child();
+        let pid = child.id();
+        assert!(registry
+            .set_resident("ai-assistant", child, start)
+            .is_none());
+        assert_eq!(registry.resident_pid("ai-assistant"), Some(pid));
+        registry.teardown("ai-assistant");
+        assert_eq!(registry.resident_pid("ai-assistant"), None);
+    }
+
+    #[test]
+    fn a_process_that_exited_on_its_own_is_reaped_and_a_live_one_is_not() {
+        let mut registry = ProcessRegistry::new();
+        let start = Instant::now();
+        registry.register(
+            "ai-assistant",
+            ProcessPolicy::OnDemand {
+                idle_timeout: Duration::from_secs(60),
+            },
+            None,
+            start,
+        );
+        // Nothing resident yet, and an unknown role, reap nothing.
+        assert!(!registry.reap_exited("ai-assistant"));
+        assert!(!registry.reap_exited("nobody"));
+
+        // A live process stays resident.
+        assert!(registry
+            .set_resident("ai-assistant", spawn_dummy_child(), start)
+            .is_none());
+        assert!(!registry.reap_exited("ai-assistant"));
+        assert!(registry.is_resident("ai-assistant"));
+        registry.teardown("ai-assistant");
+
+        // One that has already exited is noticed.
+        let quick = Command::new("true").spawn().unwrap();
+        assert!(registry
+            .set_resident("ai-assistant", quick, start)
+            .is_none());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !registry.reap_exited("ai-assistant") {
+            assert!(Instant::now() < deadline, "the exit was never noticed");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!registry.is_resident("ai-assistant"));
     }
 
     #[test]
@@ -281,6 +443,47 @@ mod tests {
         );
         assert_eq!(
             registry.idle_eligible_for_teardown(start + Duration::from_secs(61)),
+            vec!["mcp-server".to_string()]
+        );
+
+        registry.teardown("mcp-server");
+    }
+
+    #[test]
+    fn the_default_fleet_leaves_downloads_out_until_it_has_an_idle_protocol() {
+        let start = Instant::now();
+        let mut registry = ProcessRegistry::default_fleet(start);
+
+        assert!(registry.is_resident("core"), "core is AlwaysResident");
+        assert!(
+            registry.is_resident("ai-gatekeeper"),
+            "ai-gatekeeper is an always-resident fail-closed checkpoint"
+        );
+        assert!(
+            registry
+                .idle_eligible_for_teardown(start + Duration::from_secs(1_000_000))
+                .is_empty(),
+            "nothing is resident to tear down yet"
+        );
+
+        // `mcp-server` is the one inert teardown slot. `downloads` is
+        // deliberately not a slot until a transfer-aware idle query can
+        // protect active and queued work from generic SIGKILL teardown.
+        assert!(!registry.is_resident("mcp-server"));
+        assert!(registry
+            .set_resident("mcp-server", spawn_dummy_child(), start)
+            .is_none());
+        assert!(registry.is_resident("mcp-server"));
+        let mut unowned_downloads = registry
+            .set_resident("downloads", spawn_dummy_child(), start)
+            .expect("downloads must not be accepted by a time-only teardown registry");
+        let _ = unowned_downloads.kill();
+        let _ = unowned_downloads.wait();
+        assert!(registry
+            .idle_eligible_for_teardown(start + Duration::from_secs(299))
+            .is_empty());
+        assert_eq!(
+            registry.idle_eligible_for_teardown(start + Duration::from_secs(301)),
             vec!["mcp-server".to_string()]
         );
 

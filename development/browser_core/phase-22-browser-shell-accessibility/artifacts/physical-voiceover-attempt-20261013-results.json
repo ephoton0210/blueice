@@ -1,0 +1,22 @@
+{
+  "utc": "2026-10-12T23:04:20.332373+00:00",
+  "owned_blueice_pid": 6713,
+  "voiceover_enabled_after_standard_command_f5": true,
+  "first_start_ui": "Exact newly started VoiceOver QuickstartPID8661 window旁白 button使用「旁白」 selected through normal authorizedSystemEvents",
+  "actual_reader_pid": 10659,
+  "actual_reader_bundle": "com.apple.VoiceOver",
+  "guarded_observation_failed": true,
+  "observation_error": "VoiceOver AppleEvent timed out(-1712) after text under cursor initialnotfound(-1728)",
+  "driver_path_normalization_fixed": "Both supplied/actual bundlepaths normalizedFoundation resolvingSymlinks (/private/tmp and/tmp alias), exactPID/BID/pathguardpreserved",
+  "actual_navigation_action_speech_accepted": false,
+  "reader_initial_enabled": false,
+  "restore_command_f5_exit_code": 0,
+  "reader_restored_enabled_false_observed": true,
+  "reader_process_shutdown_still_needs_verification": false,
+  "physical_mode89_restored": true,
+  "reader_process_shutdown_verified": true,
+  "voiceover_restored": {
+    "enabled": false,
+    "readerCount": 0
+  }
+}

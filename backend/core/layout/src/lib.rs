@@ -18,9 +18,14 @@
 
 mod block;
 mod fragment;
+mod native_text;
 mod text;
 
-pub use fragment::{Constraints, Fragment, FragmentKind};
+pub use block::update_select_option_bounds;
+pub use fragment::{Constraints, Fragment, FragmentKind, NativeForm, SelectOption};
+pub use native_text::{
+    input_button_label, input_range_values, select_display_size, select_options,
+};
 
 use blueice_css::ComputedStyle;
 use blueice_dom::{Document, NodeId};

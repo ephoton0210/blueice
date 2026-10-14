@@ -7,6 +7,13 @@
 //! wrapper. Neither a heap object handle nor the key is serialized to script.
 
 use super::*;
+mod drag_events;
+mod file_selection_events;
+mod node_events;
+pub use drag_events::{
+    HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragImage, HostDragItem,
+};
+pub use file_selection_events::HostFileSelectionEvent;
 
 /// A fixed bound on permanently rooted wrappers in one host-object family.
 /// The bound includes unreachable wrappers because retaining their identity
@@ -126,7 +133,14 @@ pub(super) struct HostObjectFamilyState {
     _prototype_root: RootId,
     wrappers: HashMap<HostObjectKey, (ObjectId, RootId)>,
     keys_by_wrapper: HashMap<ObjectId, HostObjectKey>,
+    event_target: bool,
+    file_events: bool,
+    drag_events: bool,
+    element_validator: Option<Box<dyn Fn(HostObjectKey) -> bool>>,
+    event_path: Option<Box<NodeEventPath>>,
 }
+
+type NodeEventPath = dyn FnMut(HostObjectKey) -> Result<Vec<HostObjectKey>, HostFunctionError>;
 
 pub(super) struct HostObjectFactoryRegistration {
     family_index: u32,
@@ -144,19 +158,124 @@ pub(super) struct HostObjectPairMethodRegistration {
     method: Box<dyn HostObjectPairMethod>,
 }
 
+#[derive(Clone)]
 pub(super) struct HostClickListener {
+    serial: u64,
     family_index: u32,
     key: HostObjectKey,
     callback: ObjectId,
     root: RootId,
+    signal: Option<(ObjectId, RootId)>,
+    selection: Option<HostFileSelectionEvent>,
+    drag: Option<HostDragEventKind>,
+    capture: bool,
+    once: bool,
+    passive: bool,
+    event_type: JsString,
+    type_root: Option<RootId>,
 }
 
 pub(super) struct ActiveHostClickEvent {
     object: ObjectId,
     default_prevented: bool,
+    propagation_stopped: bool,
+    immediate_stopped: bool,
+    passive: bool,
+}
+
+fn listener_phases(length: usize) -> Vec<(usize, bool)> {
+    (0..length)
+        .rev()
+        .map(|index| (index, true))
+        .chain((0..length).map(|index| (index, false)))
+        .collect()
 }
 
 impl Vm {
+    /// The embedding owner classifies opaque DOM identities; page properties
+    /// cannot impersonate an Element or reclassify a text/document wrapper.
+    pub fn install_host_element_validator(
+        &mut self,
+        family: HostObjectFamily,
+        validator: impl Fn(HostObjectKey) -> bool + 'static,
+    ) -> Result<(), RuntimeError> {
+        self.host_family_prototype(family)?;
+        self.host_object_families[family.index as usize].element_validator =
+            Some(Box::new(validator));
+        Ok(())
+    }
+    pub(super) fn is_host_element(&self, object: ObjectId) -> bool {
+        self.host_object_families.iter().any(|family| {
+            family.keys_by_wrapper.get(&object).is_some_and(|key| {
+                family
+                    .element_validator
+                    .as_ref()
+                    .is_some_and(|check| check(*key))
+            })
+        })
+    }
+    pub(super) fn is_host_event_target(&self, object: ObjectId) -> bool {
+        self.heap.web_event_target(object).is_ok()
+            || self
+                .host_object_families
+                .iter()
+                .any(|family| family.event_target && family.keys_by_wrapper.contains_key(&object))
+    }
+    /// Installs one minted wrapper as a global while preserving its family
+    /// identity. Its opaque owner key remains inaccessible to JavaScript.
+    pub fn install_host_family_object(
+        &mut self,
+        name: &str,
+        family: HostObjectFamily,
+        key: HostObjectKey,
+    ) -> Result<HostObject, RuntimeError> {
+        self.host_family_prototype(family)?;
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("global object");
+        if !host_property_name_is_valid(name) || self.heap.get_own(global, name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "Host global already defined".into(),
+            ));
+        }
+        let object = self.mint_host_wrapper(family.index as usize, key)?;
+        self.define_data(global, name, Value::Object(object), false, false, false)?;
+        Ok(HostObject(object))
+    }
+
+    pub(super) fn host_family_prototype(
+        &self,
+        family: HostObjectFamily,
+    ) -> Result<ObjectId, RuntimeError> {
+        if family.heap != self.object_prototype.heap {
+            return Err(RuntimeError::TypeError(
+                "Host family belongs to another realm".into(),
+            ));
+        }
+        self.host_object_families
+            .get(family.index as usize)
+            .map(|state| state.prototype)
+            .ok_or_else(|| RuntimeError::TypeError("Host family is unavailable".into()))
+    }
+
+    pub(super) fn host_receiver_key(
+        &self,
+        family: HostObjectFamily,
+        receiver: &Value,
+    ) -> Result<HostObjectKey, RuntimeError> {
+        self.host_family_prototype(family)?;
+        receiver
+            .object_id()
+            .and_then(|id| {
+                self.host_object_families[family.index as usize]
+                    .keys_by_wrapper
+                    .get(&id)
+                    .copied()
+            })
+            .ok_or_else(|| RuntimeError::TypeError("Invalid host object receiver".into()))
+    }
+
     /// Installs only the exact `click` add/remove listener pair on one private
     /// wrapper family. JavaScript callbacks stay in this VM's rooted table;
     /// neither a function object nor a numeric function handle reaches the
@@ -212,7 +331,9 @@ impl Vm {
                 .delete(prototype, "addEventListener")
                 .expect("the retained ordinary prototype owns a configurable method"));
         }
-        result
+        result?;
+        self.host_object_families[family.index as usize].event_target = true;
+        Ok(())
     }
 
     /// Dispatches one host-authorized click to an exact minted wrapper. The
@@ -231,31 +352,50 @@ impl Vm {
                 "host-object family belongs to a different realm".into(),
             ));
         }
-        let state = self
-            .host_object_families
-            .get(family.index as usize)
-            .expect("this opaque same-heap family belongs to the append-only VM registry");
+        let Some(state) = self.host_object_families.get(family.index as usize) else {
+            return Err(RuntimeError::TypeError(
+                "host-object family is unavailable".into(),
+            ));
+        };
+        if state.event_path.is_some() {
+            if self.active_host_click_event.is_some() || self.active_host_drag_event.is_some() {
+                return Err(RuntimeError::TypeError(
+                    "An event is already dispatching".into(),
+                ));
+            }
+            let path = self.host_node_event_path(family.index, key)?;
+            self.remaining_instructions = self.config.instruction_budget;
+            let result =
+                self.dispatch_native_node_event(family.index, &path, "click", true, true)?;
+            return Ok(result == Value::Bool(false));
+        }
         let Some(&(wrapper, _)) = state.wrappers.get(&key) else {
             return Ok(false);
         };
-        // An exclusive VM borrow and the primitive-only host callback ABI
-        // prevent script from reentering this host-authorized dispatch.
-        self.active_host_click_event
-            .is_none()
-            .then_some(())
-            .expect("exclusive host dispatch cannot replace an active event");
-        let callbacks = self
+        if self.active_host_click_event.is_some() || self.active_host_drag_event.is_some() {
+            return Err(RuntimeError::TypeError(
+                "host click dispatch is already active".into(),
+            ));
+        }
+        let mut callbacks = self
             .host_click_listeners
             .iter()
-            .filter(|listener| listener.family_index == family.index && listener.key == key)
-            .map(|listener| listener.callback)
+            .filter(|listener| {
+                listener.family_index == family.index
+                    && listener.key == key
+                    && listener.selection.is_none()
+                    && listener.drag.is_none()
+                    && listener.event_type == "click"
+            })
+            .cloned()
             .collect::<Vec<_>>();
+        callbacks.sort_by_key(|listener| !listener.capture);
         if callbacks.is_empty() {
             return Ok(false);
         }
         let mut snapshot_roots = Vec::with_capacity(callbacks.len());
         for callback in &callbacks {
-            match self.heap.root(*callback) {
+            match self.heap.root(callback.callback) {
                 Ok(root) => snapshot_roots.push(root),
                 Err(error) => {
                     for root in snapshot_roots {
@@ -267,7 +407,7 @@ impl Vm {
                 }
             }
         }
-        let outcome = self.dispatch_rooted_host_click(family.index, key, wrapper, &callbacks);
+        let outcome = self.dispatch_rooted_host_click(wrapper, &callbacks);
         for root in snapshot_roots {
             self.heap
                 .unroot(root)
@@ -278,10 +418,8 @@ impl Vm {
 
     fn dispatch_rooted_host_click(
         &mut self,
-        family_index: u32,
-        key: HostObjectKey,
         wrapper: ObjectId,
-        callbacks: &[ObjectId],
+        callbacks: &[HostClickListener],
     ) -> Result<bool, RuntimeError> {
         self.remaining_instructions = self.config.instruction_budget;
         let object_prototype = self.object_prototype;
@@ -315,22 +453,13 @@ impl Vm {
             self.active_host_click_event = Some(ActiveHostClickEvent {
                 object: event,
                 default_prevented: false,
+                propagation_stopped: false,
+                immediate_stopped: false,
+                passive: false,
             });
             let mut result = Ok(());
             for callback in callbacks {
-                if !self.host_click_listeners.iter().any(|listener| {
-                    listener.family_index == family_index
-                        && listener.key == key
-                        && listener.callback == *callback
-                }) {
-                    continue;
-                }
-                if let Err(error) = self.call_native(
-                    Value::Object(*callback),
-                    Value::Object(wrapper),
-                    vec![Value::Object(event)],
-                    false,
-                ) {
+                if let Err(error) = self.invoke_host_listener(callback, wrapper, event) {
                     // An uncaught page exception ends this callback, not the
                     // event task. The source-free child reply still carries
                     // only the cancellation bit. Resource failures remain
@@ -371,9 +500,9 @@ impl Vm {
         construct: bool,
         add: bool,
     ) -> Result<Value, RuntimeError> {
-        if construct || args.len() != 2 || args[0] != Value::String("click".into()) {
+        if construct || args.len() < 2 {
             return Err(RuntimeError::TypeError(
-                "host listener method requires a click type and one callback".into(),
+                "host listener requires a type and callback".into(),
             ));
         }
         let family = self
@@ -384,18 +513,69 @@ impl Vm {
             .object_id()
             .and_then(|object| family.keys_by_wrapper.get(&object).copied())
             .ok_or_else(|| RuntimeError::TypeError("invalid host-object receiver".into()))?;
-        if !self.is_callable(&args[1])? {
+        let (file_events, drag_events, node_events) = (
+            family.file_events,
+            family.drag_events,
+            family.event_path.is_some(),
+        );
+        let name = self.coerce_string(&args[0])?;
+        let event_type = Value::String(name.clone());
+        let (selection, drag) = if event_type == Value::String("click".into()) {
+            (None, None)
+        } else if drag_events && HostDragEventKind::from_value(&event_type).is_some() {
+            (None, HostDragEventKind::from_value(&event_type))
+        } else if file_events && HostFileSelectionEvent::from_value(&event_type).is_ok() {
+            (Some(HostFileSelectionEvent::from_value(&event_type)?), None)
+        } else if node_events {
+            (None, None)
+        } else {
             return Err(RuntimeError::TypeError(
-                "host click listener must be callable".into(),
+                "host listener requires an admitted event type".into(),
             ));
+        };
+        let callback =
+            if args[1] == Value::Null || args[1] == Value::Undefined {
+                None
+            } else {
+                Some(args[1].object_id().ok_or_else(|| {
+                    RuntimeError::TypeError("EventListener must be an object".into())
+                })?)
+            };
+        let options = native::argument(args, 2);
+        let (mut capture, mut once, mut passive) = (false, false, false);
+        let mut signal = None;
+        if options.object_id().is_some() {
+            let value = self.get_property(options, &"capture".into())?;
+            capture = self.to_boolean(&value)?;
+            if add {
+                let value = self.get_property(options, &"once".into())?;
+                once = self.to_boolean(&value)?;
+                let value = self.get_property(options, &"passive".into())?;
+                passive = self.to_boolean(&value)?;
+                let value = self.get_property(options, &"signal".into())?;
+                signal = self.abort_signal_argument(&value)?;
+            }
+        } else if *options != Value::Null && *options != Value::Undefined {
+            capture = self.to_boolean(options)?;
         }
-        let callback = args[1]
-            .object_id()
-            .expect("a successfully classified callable value is an object");
+        let Some(callback) = callback else {
+            return Ok(Value::Undefined);
+        };
+        if signal.is_some_and(|signal| {
+            self.heap
+                .abort_signal(signal)
+                .is_ok_and(|state| state.aborted())
+        }) {
+            return Ok(Value::Undefined);
+        }
         let existing = self.host_click_listeners.iter().position(|listener| {
             listener.family_index == family_index
                 && listener.key == key
                 && listener.callback == callback
+                && listener.selection == selection
+                && listener.drag == drag
+                && listener.capture == capture
+                && listener.event_type == name
         });
         if add {
             if existing.is_none() {
@@ -404,26 +584,142 @@ impl Vm {
                     .iter()
                     .filter(|listener| listener.family_index == family_index)
                     .count();
-                if count >= MAX_HOST_CLICK_LISTENERS_PER_FAMILY {
+                if count >= MAX_HOST_CLICK_LISTENERS_PER_FAMILY
+                    || signal.is_some_and(|signal| {
+                        self.heap
+                            .abort_signal(signal)
+                            .is_ok_and(|state| state.hooks.len() >= 4096)
+                    })
+                {
                     return Err(RuntimeError::RangeError(
                         "host click listener limit exceeded".into(),
                     ));
                 }
+                let serial = self
+                    .next_host_listener_serial
+                    .checked_add(1)
+                    .ok_or_else(|| {
+                        RuntimeError::RangeError("listener identity exhausted".into())
+                    })?;
                 let root = self.heap.root(callback)?;
+                let signal_root = match signal.map(|signal| self.heap.root(signal)).transpose() {
+                    Ok(root) => root,
+                    Err(error) => {
+                        self.heap.unroot(root)?;
+                        return Err(error.into());
+                    }
+                };
+                let type_root = if node_events {
+                    match self.root_host_event_type(name.clone()) {
+                        Ok(root) => Some(root),
+                        Err(error) => {
+                            self.heap.unroot(root)?;
+                            if let Some(root) = signal_root {
+                                self.heap.unroot(root)?;
+                            }
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    None
+                };
+                self.next_host_listener_serial = serial;
                 self.host_click_listeners.push(HostClickListener {
+                    serial,
                     family_index,
                     key,
                     callback,
                     root,
+                    signal: signal.zip(signal_root),
+                    selection,
+                    drag,
+                    capture,
+                    once,
+                    passive,
+                    event_type: name,
+                    type_root,
                 });
+                if let Some(signal) = signal {
+                    if let Err(error) =
+                        self.attach_abort_hook(signal, crate::heap::AbortHook::Host { serial })
+                    {
+                        self.remove_host_listener_serial(serial)?;
+                        return Err(error);
+                    }
+                }
             }
         } else if let Some(index) = existing {
-            let listener = self.host_click_listeners.remove(index);
-            self.heap
-                .unroot(listener.root)
-                .expect("the removed listener exclusively owns this registration");
+            let serial = self.host_click_listeners[index].serial;
+            self.remove_host_listener_serial(serial)?;
         }
         Ok(Value::Undefined)
+    }
+
+    pub(super) fn remove_host_listener_serial(&mut self, serial: u64) -> Result<(), RuntimeError> {
+        if let Some(index) = self
+            .host_click_listeners
+            .iter()
+            .position(|listener| listener.serial == serial)
+        {
+            let listener = self.host_click_listeners.remove(index);
+            self.heap.unroot(listener.root)?;
+            if let Some(root) = listener.type_root {
+                self.heap.unroot(root)?;
+            }
+            if let Some((signal, root)) = listener.signal {
+                self.detach_abort_hook(signal, crate::heap::AbortHook::Host { serial })?;
+                self.heap.unroot(root)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn invoke_host_listener(
+        &mut self,
+        listener: &HostClickListener,
+        current: ObjectId,
+        event: ObjectId,
+    ) -> Result<Value, RuntimeError> {
+        let Some(index) = self
+            .host_click_listeners
+            .iter()
+            .position(|entry| entry.serial == listener.serial)
+        else {
+            return Ok(Value::Undefined);
+        };
+        if listener.once {
+            let serial = self.host_click_listeners[index].serial;
+            self.remove_host_listener_serial(serial)?;
+        }
+        if self.heap.drag_event(event).is_ok() {
+            let mut state = self.heap.drag_event(event)?.clone();
+            state.passive = listener.passive;
+            self.with_roots(|heap| heap.set_drag_event_state(event, state))?;
+        } else if let Some(active) = self.active_host_click_event.as_mut() {
+            active.passive = listener.passive;
+        }
+        let result = (|| {
+            let callback = Value::Object(listener.callback);
+            if self.is_callable(&callback)? {
+                self.call_native(
+                    callback,
+                    Value::Object(current),
+                    vec![Value::Object(event)],
+                    false,
+                )
+            } else {
+                let function = self.get_property(&callback, &"handleEvent".into())?;
+                self.call_native(function, callback, vec![Value::Object(event)], false)
+            }
+        })();
+        if self.heap.drag_event(event).is_ok() {
+            let mut state = self.heap.drag_event(event)?.clone();
+            state.passive = false;
+            self.with_roots(|heap| heap.set_drag_event_state(event, state))?;
+        } else if let Some(active) = self.active_host_click_event.as_mut() {
+            active.passive = false;
+        }
+        result
     }
 
     pub(super) fn host_click_prevent_default(
@@ -447,32 +743,34 @@ impl Vm {
                 "invalid click event receiver".into(),
             ));
         }
-        active.default_prevented = true;
+        if !active.passive {
+            active.default_prevented = true;
+        }
         Ok(Value::Undefined)
     }
 
     /// Creates a realm-local prototype and identity table. The prototype is
     /// kept alive even before a wrapper exists; all roots die with the VM.
     pub fn create_host_object_family(&mut self) -> Result<HostObjectFamily, RuntimeError> {
-        host_registration_index(
-            self.host_object_families.len(),
-            0,
-            "too many host-object families",
-        )
-        .and_then(|index| {
-            let object_prototype = self.object_prototype;
-            let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-            let root = self.heap.root(prototype)?;
-            self.host_object_families.push(HostObjectFamilyState {
-                prototype,
-                _prototype_root: root,
-                wrappers: HashMap::new(),
-                keys_by_wrapper: HashMap::new(),
-            });
-            Ok(HostObjectFamily {
-                heap: self.object_prototype.heap,
-                index,
-            })
+        let index = u32::try_from(self.host_object_families.len())
+            .map_err(|_| RuntimeError::RangeError("too many host-object families".into()))?;
+        let object_prototype = self.object_prototype;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let root = self.heap.root(prototype)?;
+        self.host_object_families.push(HostObjectFamilyState {
+            prototype,
+            _prototype_root: root,
+            wrappers: HashMap::new(),
+            keys_by_wrapper: HashMap::new(),
+            event_target: false,
+            file_events: false,
+            drag_events: false,
+            element_validator: None,
+            event_path: None,
+        });
+        Ok(HostObjectFamily {
+            heap: self.object_prototype.heap,
+            index,
         })
     }
 
@@ -758,9 +1056,17 @@ impl Vm {
         else {
             return Ok(Value::Null);
         };
+        self.mint_host_wrapper(family_index, key).map(Value::Object)
+    }
+
+    fn mint_host_wrapper(
+        &mut self,
+        family_index: usize,
+        key: HostObjectKey,
+    ) -> Result<ObjectId, RuntimeError> {
         let family = &self.host_object_families[family_index];
         if let Some(&(object, _root)) = family.wrappers.get(&key) {
-            return Ok(Value::Object(object));
+            return Ok(object);
         }
         if family.wrappers.len() >= MAX_HOST_OBJECTS_PER_FAMILY {
             return Err(RuntimeError::RangeError(
@@ -776,7 +1082,7 @@ impl Vm {
         self.host_object_families[family_index]
             .keys_by_wrapper
             .insert(object, key);
-        Ok(Value::Object(object))
+        Ok(object)
     }
 
     pub(super) fn host_object_method_call(

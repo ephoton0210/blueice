@@ -212,6 +212,34 @@ pub struct BlueJsHostBindingRegistrar<'vm> {
 }
 
 impl BlueJsHostBindingRegistrar<'_> {
+    pub fn install_global_family_object(
+        &mut self,
+        name: &str,
+        family: HostObjectFamily,
+        key: HostObjectKey,
+    ) -> Result<HostObject, RuntimeError> {
+        self.vm.install_host_family_object(name, family, key)
+    }
+    /// Installs realm-owned Blob/File constructors and immutable byte slots.
+    /// This grants no filesystem or picker capability to page scripts.
+    pub fn install_web_file_api(&mut self) -> Result<(), RuntimeError> {
+        self.vm.install_web_file_api()
+    }
+
+    pub fn install_host_object_urls(
+        &mut self,
+        host: impl crate::HostObjectUrls,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_object_urls(host)
+    }
+
+    pub fn install_host_file_input_reader(
+        &mut self,
+        family: HostObjectFamily,
+        reader: impl crate::HostInputFilesReader,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_file_input_reader(family, reader)
+    }
     /// Installs one non-constructable host function as a global in this
     /// realm.
     pub fn install_global_function(
@@ -239,6 +267,13 @@ impl BlueJsHostBindingRegistrar<'_> {
     /// Creates a private, collector-rooted wrapper family for this realm.
     pub fn create_host_object_family(&mut self) -> Result<HostObjectFamily, RuntimeError> {
         self.vm.create_host_object_family()
+    }
+    pub fn install_host_element_validator(
+        &mut self,
+        family: HostObjectFamily,
+        validator: impl Fn(HostObjectKey) -> bool + 'static,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_element_validator(family, validator)
     }
 
     /// Installs a global factory that turns child-private keys into stable JS
@@ -301,6 +336,22 @@ impl BlueJsHostBindingRegistrar<'_> {
         family: HostObjectFamily,
     ) -> Result<(), RuntimeError> {
         self.vm.install_host_click_event_methods(family)
+    }
+
+    pub fn install_host_file_selection_event_methods(
+        &mut self,
+        family: HostObjectFamily,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_file_selection_event_methods(family)
+    }
+
+    pub fn install_host_node_event_methods(
+        &mut self,
+        family: HostObjectFamily,
+        path: impl FnMut(HostObjectKey) -> Result<Vec<HostObjectKey>, crate::HostFunctionError>
+            + 'static,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_node_event_methods(family, path)
     }
 
     /// Installs a private wrapper getter/setter pair with exact receiver
@@ -1069,6 +1120,53 @@ impl BlueJsPageRuntime {
             .map_err(BlueJsPageRuntimeError::Runtime)?;
         self.run_click_microtask_checkpoint(tab_id)?;
         Ok(default_prevented)
+    }
+
+    pub fn dispatch_host_file_selection_event(
+        &mut self,
+        tab_id: u64,
+        family: HostObjectFamily,
+        path: &[HostObjectKey],
+        kind: crate::HostFileSelectionEvent,
+    ) -> Result<(), BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .dispatch_host_file_selection_event(family, path, kind)
+            .map_err(BlueJsPageRuntimeError::Runtime)?;
+        self.run_click_microtask_checkpoint(tab_id)
+    }
+
+    pub fn dispatch_host_drag_event(
+        &mut self,
+        tab_id: u64,
+        family: HostObjectFamily,
+        path: &[HostObjectKey],
+        event: &crate::HostDragEventData,
+    ) -> Result<crate::HostDragEventOutcome, BlueJsPageRuntimeError> {
+        let result = self
+            .realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .dispatch_host_drag_event(family, path, event)
+            .map_err(BlueJsPageRuntimeError::Runtime)?;
+        self.run_click_microtask_checkpoint(tab_id)?;
+        Ok(result)
+    }
+
+    /// One browser turn, after document scripts or the enclosing native default
+    /// action. The private transport retains its earlier drag-task name.
+    /// Pending reads survive a bounded yield or a debugger pause.
+    pub fn flush_drag_tasks(&mut self, tab_id: u64) -> Result<(), BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .run_browser_task_turn(64)
+            .map(|_| ())
+            .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
     /// Completes the same bounded checkpoint for a click in a realm with no

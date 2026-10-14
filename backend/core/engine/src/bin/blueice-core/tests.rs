@@ -231,6 +231,7 @@ fn every_flag_is_parsed() {
             out_of_process_bluejs_socket: None,
             out_of_process_bluejs_token: None,
             out_of_process_bluejs_page_script_profile: None,
+            ..Args::default()
         }
     );
 }

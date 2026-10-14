@@ -18,13 +18,19 @@ use blueice_ipc::compiler_catalog::{CompilerCatalogBootstrap, MAX_COMPILER_CATAL
 #[cfg(unix)]
 use blueice_ipc::owner_bootstrap::{OwnerHttpPolicyBootstrap, MAX_OWNER_HTTP_POLICY_BYTES};
 #[cfg(unix)]
+use blueice_launcher::assistant::{sibling_assistant_binary, AssistantSupervisor};
+#[cfg(unix)]
+use blueice_launcher::assistant_settings_service::AssistantSettingsService;
+#[cfg(unix)]
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 #[cfg(unix)]
-use blueice_launcher::supervisor::{ProcessPolicy, ProcessRegistry};
+use blueice_launcher::supervisor::ProcessRegistry;
+#[cfg(unix)]
+use blueice_launcher::AssistantWiring;
 #[cfg(unix)]
 use blueice_launcher::{
-    default_control_socket_path, default_rendezvous_socket_path, run_broker, CoreLaunchOptions,
-    SpawnedCore,
+    default_control_socket_path, default_rendezvous_socket_path, run_broker_with_options,
+    BrokerOptions, CoreLaunchOptions, SpawnedCore, SpawnedGatekeeper, SpawnedTrustedWindow,
 };
 #[cfg(unix)]
 use std::io::Read;
@@ -42,6 +48,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
+#[path = "blueice-launcher/owner_lifetime.rs"]
+mod owner_lifetime;
+
+#[cfg(unix)]
 #[derive(Debug, PartialEq)]
 struct Args {
     rendezvous_socket: PathBuf,
@@ -54,14 +64,28 @@ struct Args {
     width: f64,
     height: f64,
     frame_dir: Option<PathBuf>,
+    /// One installed package is validated and hosted by each core generation.
+    /// Optional grants remain process-lifetime and do not cross a cutover.
+    extension_manifest: Option<PathBuf>,
+    /// Spawn the exact sibling native frontend with private anonymous pipes.
+    /// Its native confirmation panel may change installed optional grants;
+    /// neither shared browser IPC nor the operator socket gains that route.
+    trusted_frontend: bool,
+    /// Opt-in lifetime pipe: EOF on stdin requests normal broker shutdown.
+    exit_on_stdin_eof: bool,
     /// Optional owner-selected gatekeeper endpoint for the core child. This
     /// is unrelated to the private BlueJS child-host capability and exists so
     /// an operator can keep the core's existing gatekeeper routing explicit.
     gatekeeper_socket: Option<PathBuf>,
+    /// Selects the launcher's own checkpoint address so other owner-managed
+    /// services can share it. This does not attach to an existing checkpoint.
+    owned_gatekeeper_socket: Option<PathBuf>,
     /// Explicitly asks the launcher to create and supervise one isolated
     /// BlueJS page-host child for each core generation. The endpoint/token
     /// are generated internally and are never CLI values.
     out_of_process_bluejs: bool,
+    /// Enables bounded live DOM bindings in the owned page host.
+    page_dom_bindings: bool,
     /// Explicit opt-in compiler MCP attachment endpoint. Without an owner
     /// catalog file, the launcher passes its fixed core-owned fixture.
     compiler_mcp_socket: Option<PathBuf>,
@@ -150,6 +174,18 @@ struct Args {
     /// -- the real default (10s) would make an integration test wait
     /// that long to observe a single poll.
     memory_poll_interval: Duration,
+    /// Supervise `blueice-ai-assistant` (`phase-7-local-ai/PLAN.md`, step R2),
+    /// configured by this settings file. `--assistant` selects the default
+    /// path. Without either, no assistant is supervised and `core` is given
+    /// no assistant socket.
+    assistant_settings: Option<PathBuf>,
+    /// Test/debug-only override of the assistant binary; by default it is the
+    /// sibling of this launcher.
+    assistant_bin: Option<PathBuf>,
+    /// Poll the `blueice-core` binary this often (in seconds) and cut over to a
+    /// newer one automatically (`phase-8-live-core-hotswap/PLAN.md`). Off by
+    /// default, so upgrading never changes a running deployment's behavior.
+    auto_update: Option<Duration>,
 }
 
 /// Takes an injectable argument iterator for the same reason
@@ -163,8 +199,13 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut width = 800.0;
     let mut height = 600.0;
     let mut frame_dir = None;
+    let mut extension_manifest = None;
+    let mut trusted_frontend = false;
+    let mut exit_on_stdin_eof = false;
     let mut gatekeeper_socket = None;
+    let mut owned_gatekeeper_socket = None;
     let mut out_of_process_bluejs = false;
+    let mut page_dom_bindings = false;
     let mut compiler_mcp_socket = None;
     let mut compiler_catalog_file = None;
     let mut page_http_policy_file = None;
@@ -192,6 +233,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_scope_relation = false;
     let mut simulate_low_memory = false;
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
+    let mut assistant_settings = None;
+    let mut assistant_bin = None;
+    let mut auto_update = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -210,8 +254,27 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                     .map_err(|_| "--height must be a number".to_string())?
             }
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
+            "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
+            "--trusted-frontend" => trusted_frontend = true,
+            "--exit-on-stdin-eof" => exit_on_stdin_eof = true,
+            "--assistant" => {
+                assistant_settings
+                    .get_or_insert_with(blueice_assistant_settings::default_settings_path);
+            }
+            "--assistant-settings" => assistant_settings = Some(PathBuf::from(value()?)),
+            "--assistant-bin" => assistant_bin = Some(PathBuf::from(value()?)),
+            "--auto-update-secs" => {
+                let secs: u64 = value()?
+                    .parse()
+                    .ok()
+                    .filter(|secs| *secs > 0)
+                    .ok_or_else(|| "--auto-update-secs must be a positive number".to_string())?;
+                auto_update = Some(Duration::from_secs(secs));
+            }
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
+            "--owned-gatekeeper-socket" => owned_gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--out-of-process-bluejs" => out_of_process_bluejs = true,
+            "--page-dom-bindings" => page_dom_bindings = true,
             "--compiler-mcp-socket" => compiler_mcp_socket = Some(PathBuf::from(value()?)),
             "--compiler-catalog-file" => compiler_catalog_file = Some(PathBuf::from(value()?)),
             "--page-http-policy-file" => page_http_policy_file = Some(PathBuf::from(value()?)),
@@ -532,14 +595,25 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if page_http_policy_file.is_some() && !out_of_process_bluejs {
         return Err("--page-http-policy-file requires --out-of-process-bluejs".to_string());
     }
+    if page_dom_bindings && !out_of_process_bluejs {
+        return Err("--page-dom-bindings requires --out-of-process-bluejs".to_string());
+    }
+    if gatekeeper_socket.is_some() && owned_gatekeeper_socket.is_some() {
+        return Err("Select an owned gatekeeper endpoint or an external override, not both".into());
+    }
     Ok(Args {
         rendezvous_socket,
         control_socket,
         width,
         height,
         frame_dir,
+        extension_manifest,
+        trusted_frontend,
+        exit_on_stdin_eof,
         gatekeeper_socket,
+        owned_gatekeeper_socket,
         out_of_process_bluejs,
+        page_dom_bindings,
         compiler_mcp_socket,
         compiler_catalog_file,
         page_http_policy_file,
@@ -567,6 +641,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_scope_relation,
         simulate_low_memory,
         memory_poll_interval,
+        assistant_settings,
+        assistant_bin,
+        auto_update,
     })
 }
 
@@ -584,12 +661,89 @@ fn main() -> ExitCode {
         std::env::temp_dir().join(format!("blueice-launcher-frames-{}", std::process::id()))
     });
 
-    let mut core_options = CoreLaunchOptions::default();
-    if let Some(gatekeeper_socket) = args.gatekeeper_socket.clone() {
-        core_options = core_options.with_gatekeeper_socket(gatekeeper_socket);
+    // The launcher owns the mandatory gatekeeper checkpoint for its whole
+    // lifetime and every core generation shares it. An explicit
+    // `--gatekeeper-socket` is an owner override of that private default.
+    let gatekeeper = match args
+        .owned_gatekeeper_socket
+        .clone()
+        .map_or_else(SpawnedGatekeeper::spawn, SpawnedGatekeeper::spawn_at)
+    {
+        Ok(gatekeeper) => gatekeeper,
+        Err(e) => {
+            eprintln!("blueice-launcher: failed to spawn blueice-ai-gatekeeper: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let gatekeeper_socket = args
+        .gatekeeper_socket
+        .clone()
+        .unwrap_or_else(|| gatekeeper.socket_path().to_path_buf());
+
+    // The registry exists before `core` so the assistant supervisor can register
+    // itself first: `core` is started knowing the assistant's public socket.
+    // `phase-8-live-core-hotswap/PLAN.md`'s fleet-memory-supervisor minimal
+    // first slice: the roles this launcher supervises are registered in one
+    // place (`ProcessRegistry::default_fleet`: `core` and `ai-gatekeeper`
+    // `AlwaysResident`; `mcp-server` an inert `IdleTeardown` slot), plus
+    // `ai-assistant` `OnDemand` when configured. Downloads stays outside this
+    // generic time-only supervisor until it exposes an idle query that proves
+    // no transfer is active or queued.
+    let registry = Arc::new(Mutex::new(ProcessRegistry::default_fleet(Instant::now())));
+
+    // The supervisor and the service that owns its settings. (The service holds
+    // only a weak reference, so `drop(assistant)` below really stops the child.)
+    let mut assistant_settings_service = None;
+    let assistant = match args.assistant_settings.as_deref() {
+        None => None,
+        Some(path) => {
+            let settings = match blueice_assistant_settings::load(path) {
+                Ok(settings) => settings,
+                Err(message) => {
+                    eprintln!("blueice-launcher: {message}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let binary = args.assistant_bin.clone().unwrap_or_else(|| {
+                sibling_assistant_binary(&std::env::current_exe().unwrap_or_default())
+            });
+            match AssistantSupervisor::start(&settings, binary, Arc::clone(&registry)) {
+                Ok(assistant) => {
+                    let assistant = Arc::new(assistant);
+                    assistant_settings_service = Some(Arc::new(AssistantSettingsService::new(
+                        path.to_path_buf(),
+                        settings.clone(),
+                        Arc::downgrade(&assistant),
+                    )));
+                    Some(assistant)
+                }
+                Err(e) => {
+                    eprintln!("blueice-launcher: could not supervise the assistant: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+    };
+
+    // What every core (v1 and each cutover's replacement) is told about it.
+    let assistant_wiring = assistant.as_ref().map(|supervisor| AssistantWiring {
+        socket: supervisor.public_socket().to_path_buf(),
+        settings_file: args.assistant_settings.clone(),
+    });
+
+    let mut core_options =
+        CoreLaunchOptions::default().with_gatekeeper_socket(gatekeeper_socket.clone());
+    if let Some(manifest) = args.extension_manifest.clone() {
+        core_options = core_options.with_extension_manifest(manifest);
+    }
+    if let Some(wiring) = assistant_wiring.clone() {
+        core_options = core_options.with_assistant(wiring);
     }
     if args.out_of_process_bluejs {
         core_options = core_options.supervise_out_of_process_bluejs();
+    }
+    if args.page_dom_bindings {
+        core_options = core_options.supervise_out_of_process_bluejs_with_page_dom();
     }
     if let Some(compiler_mcp_socket) = args.compiler_mcp_socket.clone() {
         core_options = if let Some(path) = args.compiler_catalog_file.as_deref() {
@@ -705,32 +859,6 @@ fn main() -> ExitCode {
             }
         };
 
-    // `phase-8-live-core-hotswap/PLAN.md`'s fleet-memory-supervisor
-    // minimal first slice: `core` is registered `AlwaysResident` with
-    // `resident: None` (its real child is owned and torn down by
-    // `SpawnedCore` above, not this registry -- see `ProcessRegistry::
-    // is_resident`'s own docs for why an `AlwaysResident` role never
-    // needs the registry to hold the child at all). `mcp-server` is
-    // registered as a typed but inert `IdleTeardown` slot: real in the
-    // data model and exercised in tests, but with no automatic spawn
-    // path yet (see `phase-8-live-core-hotswap/PLAN.md`'s own follow-up
-    // item for why that's a separate, still-open transport question).
-    let registry = Arc::new(Mutex::new(ProcessRegistry::new()));
-    {
-        let mut registry = registry
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let now = Instant::now();
-        registry.register("core", ProcessPolicy::AlwaysResident, None, now);
-        registry.register(
-            "mcp-server",
-            ProcessPolicy::IdleTeardown {
-                idle_timeout: Duration::from_secs(300),
-            },
-            None,
-            now,
-        );
-    }
     let memory_source: Arc<dyn memory_pressure::MemorySource> = if args.simulate_low_memory {
         Arc::new(memory_pressure::FixedMemorySource(0.0))
     } else {
@@ -777,14 +905,45 @@ fn main() -> ExitCode {
         }
     };
 
-    // `run_broker` takes full ownership of `core` from here on --
+    let trusted_window = if args.trusted_frontend {
+        match SpawnedTrustedWindow::spawn(&args.rendezvous_socket) {
+            Ok(window) => Some(window),
+            Err(error) => {
+                eprintln!("blueice-launcher: could not start trusted frontend: {error}");
+                let _ = std::fs::remove_file(&args.rendezvous_socket);
+                let _ = std::fs::remove_file(&args.control_socket);
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
+
+    // The broker takes full ownership of `core` from here on --
     // including spawning/health-checking/swapping in a fresh v2 on a
     // `Cutover` control request, and tearing down whichever `core` is
     // currently active before it returns.
-    let result = run_broker(listener, control_listener, core, args.width, args.height);
+    if args.exit_on_stdin_eof {
+        owner_lifetime::stop_on_stdin_eof(args.rendezvous_socket.clone());
+    }
+    let result = run_broker_with_options(
+        listener,
+        control_listener,
+        core,
+        args.width,
+        args.height,
+        gatekeeper_socket,
+        BrokerOptions {
+            trusted_window,
+            auto_update_interval: args.auto_update,
+            assistant_settings: assistant_settings_service,
+        },
+    );
 
     let _ = std::fs::remove_file(&args.rendezvous_socket);
     let _ = std::fs::remove_file(&args.control_socket);
+    drop(assistant);
+    drop(gatekeeper);
 
     match result {
         Ok(()) => ExitCode::SUCCESS,

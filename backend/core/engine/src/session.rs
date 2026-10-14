@@ -50,9 +50,12 @@
 //! around the loop again," never as a disconnect (every *other* read
 //! error still means disconnect, exactly as before gating existed).
 
+use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsView};
 use crate::gatekeeper_client::{self, NavOutcome};
+use crate::navigation_request::BrowserNavigation;
 #[cfg(unix)]
 use crate::script::javascript_child::{OutOfProcessJavaScriptPageExecutor, PageHostConnection};
+use crate::tabs::{extension_navigation_rules_block_url, HistoryDestination, HistoryDirection};
 use crate::{
     compiler_ipc::{CompilerServiceIpcRequestReceiver, CoreCompilerServiceSession},
     debugger::DebuggerRequestReceiver,
@@ -64,22 +67,24 @@ use crate::{
         },
         ScriptRequestReceiver,
     },
-    Page, TabId, TabManager,
 };
+use crate::{GroupId, Page, TabGroup, TabId, TabManager};
 use blueice_bluets::RuntimePolicy;
 use blueice_dom::NodeId;
+use blueice_ipc::downloads::TransferInfo;
+use blueice_ipc::extension::ExtensionRuntimeEvent;
 use blueice_ipc::{
     shm, BlueJsScriptExecutionOutcome, BlueJsScriptExecutionReport, BlueJsScriptKind,
     BlueTsScriptExecutionOutcome, BlueTsScriptExecutionReport, BlueTsScriptKind,
-    BlueTsScriptRuntimePolicy, BlueTsScriptSourcePosition, ClientMessage, NodeAction,
-    ServerMessage, TabSummary,
+    BlueTsScriptRuntimePolicy, BlueTsScriptSourcePosition, ClientMessage, ExtensionPopup,
+    NodeAction, ServerMessage, TabGroupSummary, TabSummary,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// How long `run_session`'s read blocks waiting for the next client
 /// message before giving up and polling the completion channel instead
@@ -87,6 +92,7 @@ use std::time::Duration;
 /// is noticed promptly, long enough that the loop doesn't busy-spin
 /// between real messages.
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
+const OPTIONAL_REVOKE_ACK_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// A small seam over `std::os::unix::net::UnixStream::set_read_timeout`
 /// so `run_session` can require it as a trait bound rather than
@@ -96,6 +102,200 @@ const POLL_INTERVAL: Duration = Duration::from_millis(25);
 /// practice.
 pub trait ReadTimeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
+}
+
+pub mod message_pipe;
+
+/// A request from the extension-protocol listener into the one thread that
+/// owns `TabManager` and all live [`Page`] state. Keeping the reply channel
+/// with the request means an extension handler can wait for a bounded answer
+/// without ever sharing `Page` across threads or taking a mutable lock around
+/// the render pipeline.
+///
+/// DOM version 1 requests leave `tab_id` absent and therefore preserve the
+/// default-tab behavior. DOM versions 2 through 9 carry an explicit tab and a
+/// stable target node ID for their constrained write operations. The separately
+/// versioned network rule carries no page target. The session validates each
+/// operation against its live `TabManager`/`Page` state before changing it.
+pub enum ExtensionPageRequest {
+    /// Core-internal completion barrier after an optional grant has already
+    /// been revoked in the registry. The session retires all stale published
+    /// effects and writes native UI removal messages before acknowledging.
+    /// No extension wire request or ordinary frontend client maps to this.
+    SynchronizeRevokedEffects { reply: mpsc::Sender<()> },
+    /// Private parent-pipe read of the current document identity. A later
+    /// native gesture must bind to this exact tab and epoch; public clients
+    /// and extension guests cannot issue this internal request.
+    InspectDocument {
+        tab_id: u64,
+        reply: mpsc::Sender<Result<(u64, Option<String>), String>>,
+    },
+    ReadRepresentation {
+        tab_id: Option<u64>,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    ReadEphemeralRepresentation {
+        tab_id: u64,
+        ticket: String,
+        reply: mpsc::Sender<Result<String, String>>,
+    },
+    ReadNetworkResponse {
+        tab_id: u64,
+        reply: mpsc::Sender<Result<Option<blueice_ipc::extension::NetworkResponseInfo>, String>>,
+    },
+    ReadNetworkTrace {
+        tab_id: u64,
+        reply: mpsc::Sender<Result<Option<blueice_ipc::extension::NetworkTraceInfo>, String>>,
+    },
+    SetToolbarButton {
+        connection_id: u64,
+        grant_generation: u64,
+        label: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    ClearToolbarButton {
+        connection_id: u64,
+        reply: mpsc::Sender<()>,
+    },
+    ShowPopup {
+        connection_id: u64,
+        grant_generation: u64,
+        popup: ExtensionPopup,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    ClearPopup {
+        connection_id: u64,
+        reply: mpsc::Sender<()>,
+    },
+    SetTextInputValue {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+        grant_generation: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    SetCheckboxChecked {
+        tab_id: u64,
+        node_id: u64,
+        checked: bool,
+        grant_generation: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    SetTextareaValue {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+        grant_generation: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    SetVisibleLeafText {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+        grant_generation: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    SetVisibleTextContent {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+        grant_generation: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Sets one integer value on an explicit range input after core derives
+    /// and validates that control's live constraints.
+    SetRangeInputValue {
+        tab_id: u64,
+        node_id: u64,
+        value: i64,
+        grant_generation: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Selects one explicit radio while core owns the group-membership and
+    /// mutual-exclusion semantics.
+    SetRadioChecked {
+        tab_id: u64,
+        node_id: u64,
+        grant_generation: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Selects one explicit option while core owns the live single-select
+    /// validation and the corresponding sibling deselection.
+    SelectOption {
+        tab_id: u64,
+        node_id: u64,
+        grant_generation: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Adds one core-validated, connection-scoped exact navigation block rule
+    /// evaluated for the initial request and later redirect hops. The opaque
+    /// connection ID is allocated by `blueice-core`, never supplied by an
+    /// extension. `grant_generation` is captured by the trusted host before
+    /// Gatekeeper review and checked again by this session at the actual
+    /// write, so a timed-out queued request cannot borrow a newer grant.
+    RegisterNetworkBlockUrl {
+        connection_id: u64,
+        grant_generation: u64,
+        url: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Adds one core-validated, connection-scoped ASCII host/subdomain rule.
+    RegisterNetworkBlockHost {
+        connection_id: u64,
+        grant_generation: u64,
+        host: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Adds one core-validated, connection-scoped literal host/path-prefix
+    /// rule without granting the guest a callback or arbitrary URL pattern.
+    RegisterNetworkBlockPathPrefix {
+        connection_id: u64,
+        grant_generation: u64,
+        host: String,
+        path_prefix: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Adds one exact same-origin navigation rewrite after core validation.
+    RegisterNetworkRedirectUrl {
+        connection_id: u64,
+        grant_generation: u64,
+        source_url: String,
+        target_url: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Clears the rule set when the associated extension socket disconnects.
+    /// The acknowledgement makes disconnect cleanup ordered with respect to
+    /// subsequent frontend navigation work on this session thread.
+    ClearNetworkBlockUrls {
+        connection_id: u64,
+        reply: mpsc::Sender<()>,
+    },
+}
+
+/// Core-internal revoke transaction for a future authenticated human-control
+/// channel. The grant is withdrawn first, blocking new effects immediately;
+/// only then does the caller wait for the session owner to retire previously
+/// published UI and network rules. A timeout leaves the grant revoked and is
+/// an error, never an implicit cleanup success. This is not mapped from the
+/// public frontend, MCP, or extension wire protocols. Call only from a
+/// separate trusted control worker, never from the session thread itself.
+pub fn revoke_optional_and_wait_for_cleanup(
+    registry: &blueice_extension_host::ExtensionRegistry,
+    extension_id: &str,
+    capability: &str,
+    session_requests: &mpsc::Sender<ExtensionPageRequest>,
+) -> Result<bool, String> {
+    let changed = registry.revoke_optional(extension_id, capability)?;
+    let (reply, completed) = mpsc::channel();
+    session_requests.send(ExtensionPageRequest::SynchronizeRevokedEffects { reply })
+        .map_err(|_| format!(
+            "optional {capability} grant was revoked, but the core session is unavailable for cleanup"
+        ))?;
+    completed.recv_timeout(OPTIONAL_REVOKE_ACK_TIMEOUT)
+        .map_err(|_| format!(
+            "optional {capability} grant was revoked, but the core session did not acknowledge cleanup"
+        ))?;
+    Ok(changed)
 }
 
 /// Optional worker-to-session request channels for one core connection. The
@@ -110,6 +310,10 @@ pub struct CoreSessionRequests<'a> {
     /// core-owned catalog. Neither field is present in the ordinary browser
     /// session, and the listener never receives the catalog itself.
     pub compiler: Option<CoreCompilerSessionRequests<'a>>,
+    /// The private extension listener's request channel and its bounded
+    /// lifecycle-event sender (Phase 9). Absent in an ordinary session.
+    pub extension: Option<&'a mpsc::Receiver<ExtensionPageRequest>>,
+    pub extension_events: Option<&'a mpsc::SyncSender<ExtensionRuntimeEvent>>,
 }
 
 /// Compiler-specific half of [`CoreSessionRequests`]. Keeping the mutable
@@ -145,13 +349,12 @@ fn is_timeout(err: &io::Error) -> bool {
 
 /// Runs the message loop for one client connection until it sends
 /// `Shutdown` or disconnects. `frame_dir` is where this session's
-/// frames are written (see [`blueice_ipc::shm`]); `generation` is a
-/// single, session-wide frame-sequence counter shared across every tab
-/// (not one per tab) -- every tab's `FrameReady` still gets the next
-/// global monotonic number, so `blueice_ipc::shm` needs no per-tab
-/// awareness at all (filenames stay collision-free by construction),
-/// and the AI-facing "same generation = same render pass" property
-/// still holds across tabs. `gatekeeper_socket` is where a gated
+/// frames are written (see [`blueice_ipc::shm`]); `generation` counts
+/// all frame writes in this session for legacy diagnostics, while every
+/// [`Page`] owns the generation sent in its own `FrameReady` and
+/// representation. That per-tab pairing means one tab's live refresh
+/// cannot make another tab's current representation claim a different
+/// render pass. `gatekeeper_socket` is where a gated
 /// navigation's background thread connects to review a URL/fetched
 /// page -- production code passes `blueice_ipc::gatekeeper::
 /// default_gatekeeper_socket_path()`; tests thread their own
@@ -173,19 +376,21 @@ fn is_timeout(err: &io::Error) -> bool {
 /// client's session too.
 ///
 /// **Multi-tab addressing** (`phase-16-multi-tab-and-tab-groups/
-/// PLAN.md`'s minimal first slice): every per-tab-scoped message
-/// (`Navigate`, `Resize`, `Click`, `Hover`, `Scroll`,
-/// `GetRepresentation`, `ActOn`, `Highlight`, `GetDom`,
-/// `GetBlueTsScriptReports`, `CloseTab`) is
+/// PLAN.md`): every per-tab-scoped message
+/// (`Navigate`, `GoBack`, `GoForward`, `Resize`, `Click`, `Hover`, `Scroll`,
+/// `GetRepresentation`, `ActOn`, `Highlight`, `GetDom`, `CloseTab`) is
 /// addressed by the envelope's `tab_id` -- `None` resolves to
 /// [`TabManager::default_tab`], reproducing pre-Phase-16 single-`Page`
 /// behavior byte-for-byte for a client that never sends `OpenTab`. A
 /// `tab_id` (explicit or defaulted) that doesn't resolve to a live tab
 /// replies [`ServerMessage::Error`] -- a protocol-addressing error, not
 /// the harmless no-op a stale `NodeId` already gets in [`Page::act`].
-/// `OpenTab`/`ListTabs` aren't scoped to an existing tab at all (there's
-/// no "current tab" concept `core` tracks -- see [`TabManager`]'s own
-/// docs for why) and ignore any `tab_id` on the envelope.
+/// `Resize` still validates its addressed tab, but then eagerly relayouts all
+/// live tabs for the one physical frontend viewport. Tab/group list and
+/// group-property operations aren't scoped to an existing tab at all (there's
+/// no "current tab" concept `core` tracks -- see [`TabManager`]'s own docs
+/// for why) and ignore any `tab_id` on the envelope; only `SetTabGroup` is
+/// explicitly tab-addressed.
 pub fn run_session<S: Read + Write + ReadTimeout>(
     tabs: &mut TabManager,
     stream: &mut S,
@@ -194,6 +399,55 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
     gatekeeper_socket: &Path,
 ) -> io::Result<()> {
     run_session_with_script_requests(tabs, stream, frame_dir, generation, gatekeeper_socket, None)
+}
+
+/// Like [`run_session`], with an optional extension-to-core request channel.
+/// The ordinary frontend IPC loop and every existing test remain on the
+/// `None` path; `blueice-core --extension-socket --extension-manifest` passes
+/// its private extension listener's receiver here.
+pub fn run_session_with_extension_requests<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    extension_requests: &mpsc::Receiver<ExtensionPageRequest>,
+) -> io::Result<()> {
+    run_session_with_extension_requests_and_events(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        extension_requests,
+        None,
+    )
+}
+
+/// Like [`run_session_with_extension_requests`], with an optional bounded
+/// sender for core-defined extension lifecycle events. The session uses
+/// `try_send`, so a delayed extension can never stall page ownership.
+pub fn run_session_with_extension_requests_and_events<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    extension_requests: &mpsc::Receiver<ExtensionPageRequest>,
+    extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
+) -> io::Result<()> {
+    run_session_with_core_session_requests(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        CoreSessionRequests {
+            extension: Some(extension_requests),
+            extension_events,
+            ..CoreSessionRequests::default()
+        },
+    )
 }
 
 /// Like [`run_session`], while dispatching each pending external script
@@ -244,6 +498,8 @@ pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + R
             script: script_requests,
             debugger: None,
             compiler: None,
+            extension: None,
+            extension_events: None,
         },
         PageScriptRuntime {
             direct_page_host,
@@ -277,6 +533,8 @@ pub fn run_session_with_script_requests_and_inline_page_executor<S: Read + Write
             script: script_requests,
             debugger: None,
             compiler: None,
+            extension: None,
+            extension_events: None,
         },
         PageScriptRuntime {
             direct_page_host: None,
@@ -309,6 +567,8 @@ pub fn run_session_with_script_and_debugger_requests<S: Read + Write + ReadTimeo
             script: script_requests,
             debugger: debugger_requests,
             compiler: None,
+            extension: None,
+            extension_events: None,
         },
         PageScriptRuntime {
             direct_page_host: None,
@@ -439,704 +699,221 @@ pub fn run_session_with_script_and_debugger_requests_and_out_of_process_javascri
     )
 }
 
-/// Shared session implementation for the observer-only direct host and the
-/// explicitly enabled inline runners. [`PageScriptRuntime`] rejects multiple
-/// hosts at once: independent hosts would allocate separate page realms for
-/// one page.
-fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
-    tabs: &mut TabManager,
-    stream: &mut S,
-    frame_dir: &Path,
-    generation: &mut u64,
-    gatekeeper_socket: &Path,
-    requests: CoreSessionRequests<'_>,
-    mut page_script_runtime: PageScriptRuntime<'_>,
-) -> io::Result<()> {
-    if [
-        page_script_runtime.direct_page_host.is_some(),
-        page_script_runtime.inline_page_executor.is_some(),
-        page_script_runtime.javascript_executor.is_some(),
-    ]
-    .into_iter()
-    .filter(|enabled| *enabled)
-    .count()
-        > 1
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "page-script runtime owners cannot share one session",
-        ));
-    }
-    // Best-effort: on at least one real platform, setting a read
-    // timeout on a Unix domain socket whose peer has *already*
-    // disconnected (a client that connects and drops the connection
-    // before this thread even starts) can itself fail with `EINVAL`,
-    // even though nothing is actually wrong with the connection from
-    // this session's own perspective -- the very next read below
-    // simply returns immediately with a real disconnect error either
-    // way. Propagating that failure via `?` here would turn a client
-    // that never sent anything at all into a spurious session error,
-    // instead of the ordinary clean-disconnect outcome every other
-    // never-sent-anything case already gets. A failure here just means
-    // the loop falls back to plain blocking reads (no completion-
-    // draining poll tick between messages) rather than ending the
-    // session outright.
-    let _ = stream.set_read_timeout(Some(POLL_INTERVAL));
-    if !perform_handshake(stream)? {
-        return Ok(());
-    }
-    synchronize_page_script_runtime(&mut page_script_runtime, tabs, requests.script)?;
-
-    let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
-    let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
-
-    let mut requests = requests;
-    loop {
-        match blueice_ipc::read_client_message_with_ids(stream) {
-            Ok((tab_id, request_id, msg)) => {
-                let target = tab_id
-                    .map(TabId::from_u64)
-                    .unwrap_or_else(|| tabs.default_tab());
-                // Every per-tab reply below echoes `Some(target.as_u64())`,
-                // the *resolved* tab -- not the raw (possibly `None`, if
-                // the request left it defaulted) `tab_id` the request
-                // carried. Echoing the ambiguous original back would
-                // defeat the whole point of this field: a client watching
-                // a shared, multi-tab, broadcast connection (`blueice-
-                // launcher`'s broker) needs every reply to self-disclose
-                // which concrete tab it's about, including one produced
-                // by a request that left it implicit.
-                let reply_tab = Some(target.as_u64());
-                match msg {
-                    ClientMessage::Hello { protocol_version } => {
-                        reply_hello(stream, request_id, protocol_version)?
-                    }
-                    ClientMessage::Navigate { url } => match tabs.get_mut(target) {
-                        Some(page) => begin_gated_navigation(
-                            page,
-                            stream,
-                            frame_dir,
-                            generation,
-                            reply_tab,
-                            request_id,
-                            target,
-                            url,
-                            PendingKind::Navigate,
-                            &mut pending_nav_seq,
-                            &completion_tx,
-                            gatekeeper_socket,
-                        )?,
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
-                    ClientMessage::Resize { width, height } => {
-                        tabs.set_window_size(width as f64, height as f64);
-                        match tabs.get_mut(target) {
-                            Some(page) => {
-                                page.resize(width as f64, height as f64);
-                                send_frame(
-                                    page, stream, frame_dir, generation, reply_tab, request_id,
-                                )?;
-                            }
-                            None => write_unknown_tab_error(stream, request_id, target)?,
-                        }
-                    }
-                    ClientMessage::Click { x, y } => {
-                        if let Some((node, clicked_generation)) =
-                            tabs.get(target).and_then(|page| {
-                                page.click_event_target(x, y)
-                                    .map(|node| (node, page.document_generation()))
-                            })
-                        {
-                            let dispatch = dispatch_click_before_default(
-                                &mut page_script_runtime.javascript_executor,
-                                tabs,
-                                target,
-                                node,
-                                requests.script,
-                            );
-                            match dispatch {
-                                Err(_) => write_error(
-                                    stream,
-                                    reply_tab,
-                                    request_id,
-                                    "page click listener unavailable".to_string(),
-                                )?,
-                                Ok(prevented) => {
-                                    let page =
-                                        tabs.get_mut(target).expect("hit-tested tab is live");
-                                    if page.document_generation() != clicked_generation
-                                        || prevented == Some(true)
-                                    {
-                                        send_frame(
-                                            page, stream, frame_dir, generation, reply_tab,
-                                            request_id,
-                                        )?;
-                                    } else if let Some(href) = page.act(node, NodeAction::Click) {
-                                        begin_gated_navigation(
-                                            page,
-                                            stream,
-                                            frame_dir,
-                                            generation,
-                                            reply_tab,
-                                            request_id,
-                                            target,
-                                            href,
-                                            PendingKind::Navigate,
-                                            &mut pending_nav_seq,
-                                            &completion_tx,
-                                            gatekeeper_socket,
-                                        )?;
-                                    } else if prevented.is_some() {
-                                        send_frame(
-                                            page, stream, frame_dir, generation, reply_tab,
-                                            request_id,
-                                        )?;
-                                    }
-                                }
-                            }
-                        } else if tabs.get(target).is_none() {
-                            write_unknown_tab_error(stream, request_id, target)?;
-                        }
-                    }
-                    ClientMessage::Scroll { delta_y } => match tabs.get_mut(target) {
-                        Some(page) => {
-                            page.scroll_by(delta_y);
-                            send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
-                        }
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
-                    ClientMessage::Hover { x, y } => {
-                        if let Some(page) = tabs.get_mut(target) {
-                            page.hover_at(x, y);
-                        } else {
-                            write_unknown_tab_error(stream, request_id, target)?;
-                        }
-                    }
-                    ClientMessage::GetRepresentation => match tabs.get_mut(target) {
-                        Some(page) => {
-                            let snapshot = page.snapshot(*generation, target.as_u64());
-                            blueice_ipc::write_server_message_with_ids(
-                                stream,
-                                reply_tab,
-                                request_id,
-                                &ServerMessage::Representation(snapshot),
-                            )?;
-                        }
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
-                    ClientMessage::GetDom => match tabs.get_mut(target) {
-                        Some(page) => blueice_ipc::write_server_message_with_ids(
-                            stream,
-                            reply_tab,
-                            request_id,
-                            &ServerMessage::Dom(page.dom_dump()),
-                        )?,
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
-                    ClientMessage::GetBlueTsScriptReports => match tabs.get(target) {
-                        Some(_) => {
-                            if let Some(executor) =
-                                page_script_runtime.inline_page_executor.as_deref_mut()
-                            {
-                                blueice_ipc::write_server_message_with_ids(
-                                    stream,
-                                    reply_tab,
-                                    request_id,
-                                    &ServerMessage::BlueTsScriptReports(inline_execution_reports(
-                                        executor.drain_reports_for_tab(target),
-                                    )),
-                                )?;
-                            } else if let Some(executor) =
-                                page_script_runtime.javascript_executor.as_deref_mut()
-                            {
-                                if executor.supports_blue_ts_page_execution() {
-                                    blueice_ipc::write_server_message_with_ids(
-                                        stream,
-                                        reply_tab,
-                                        request_id,
-                                        &ServerMessage::BlueTsScriptReports(
-                                            child_blue_ts_execution_reports(
-                                                executor.drain_blue_ts_reports_for_tab(target),
-                                            ),
-                                        ),
-                                    )?;
-                                } else {
-                                    write_error(
-                                        stream,
-                                        reply_tab,
-                                        request_id,
-                                        "inline BlueTS execution is not enabled".to_string(),
-                                    )?;
-                                }
-                            } else {
-                                write_error(
-                                    stream,
-                                    reply_tab,
-                                    request_id,
-                                    "inline BlueTS execution is not enabled".to_string(),
-                                )?;
-                            }
-                        }
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
-                    ClientMessage::GetBlueJsScriptReports => match tabs.get(target) {
-                        Some(_) => match page_script_runtime.javascript_executor.as_deref_mut() {
-                            Some(executor) => blueice_ipc::write_server_message_with_ids(
-                                stream,
-                                reply_tab,
-                                request_id,
-                                &ServerMessage::BlueJsScriptReports(
-                                    inline_javascript_execution_reports(
-                                        executor.drain_reports_for_tab(target),
-                                    ),
-                                ),
-                            )?,
-                            None => write_error(
-                                stream,
-                                reply_tab,
-                                request_id,
-                                "inline JavaScript execution is not enabled".to_string(),
-                            )?,
-                        },
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
-                    ClientMessage::ActOn { id, action } => {
-                        let node = NodeId::from_u64(id);
-                        let is_click = matches!(action, NodeAction::Click);
-                        let clicked_generation = if is_click {
-                            tabs.get(target).map(Page::document_generation)
-                        } else {
-                            None
-                        };
-                        let dispatch = if is_click {
-                            tabs.get(target)
-                                .and_then(|page| page.event_element_target(node))
-                                .map(|event_node| {
-                                    dispatch_click_before_default(
-                                        &mut page_script_runtime.javascript_executor,
-                                        tabs,
-                                        target,
-                                        event_node,
-                                        requests.script,
-                                    )
-                                })
-                        } else {
-                            None
-                        };
-                        if matches!(dispatch, Some(Err(_))) {
-                            write_error(
-                                stream,
-                                reply_tab,
-                                request_id,
-                                "page click listener unavailable".to_string(),
-                            )?;
-                        } else if let Some(page) = tabs.get_mut(target) {
-                            let prevented = dispatch.and_then(Result::ok).flatten();
-                            if (is_click && clicked_generation != Some(page.document_generation()))
-                                || prevented == Some(true)
-                            {
-                                send_frame(
-                                    page, stream, frame_dir, generation, reply_tab, request_id,
-                                )?;
-                            } else {
-                                match page.act(node, action) {
-                                    Some(href) => begin_gated_navigation(
-                                        page,
-                                        stream,
-                                        frame_dir,
-                                        generation,
-                                        reply_tab,
-                                        request_id,
-                                        target,
-                                        href,
-                                        PendingKind::Navigate,
-                                        &mut pending_nav_seq,
-                                        &completion_tx,
-                                        gatekeeper_socket,
-                                    )?,
-                                    // A Click that didn't land on a link is a
-                                    // no-op, same as a coordinate Click
-                                    // elsewhere -- no reply.
-                                    None if is_click && prevented.is_none() => {}
-                                    None if is_click => send_frame(
-                                        page, stream, frame_dir, generation, reply_tab, request_id,
-                                    )?,
-                                    None => send_frame(
-                                        page, stream, frame_dir, generation, reply_tab, request_id,
-                                    )?,
-                                }
-                            }
-                        } else {
-                            write_unknown_tab_error(stream, request_id, target)?;
-                        }
-                    }
-                    ClientMessage::Highlight { id } => match tabs.get_mut(target) {
-                        Some(page) => {
-                            page.set_highlight(id.map(NodeId::from_u64));
-                            send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
-                        }
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
-                    ClientMessage::OpenTab { url } => handle_open_tab(
-                        tabs,
-                        stream,
-                        frame_dir,
-                        generation,
-                        request_id,
-                        url,
-                        &mut pending_nav_seq,
-                        &completion_tx,
-                        gatekeeper_socket,
-                    )?,
-                    ClientMessage::CloseTab => {
-                        if tabs.close_tab(target) {
-                            blueice_ipc::write_server_message_with_ids(
-                                stream,
-                                reply_tab,
-                                request_id,
-                                &ServerMessage::TabClosed {
-                                    tab_id: target.as_u64(),
-                                },
-                            )?;
-                        } else {
-                            write_unknown_tab_error(stream, request_id, target)?;
-                        }
-                    }
-                    ClientMessage::ListTabs => {
-                        let summaries: Vec<TabSummary> = tabs
-                            .ids()
-                            .map(|id| TabSummary {
-                                id: id.as_u64(),
-                                url: tabs.get(id).and_then(Page::url).map(str::to_string),
-                            })
-                            .collect();
-                        blueice_ipc::write_server_message_with_id(
-                            stream,
-                            request_id,
-                            &ServerMessage::Tabs(summaries),
-                        )?;
-                    }
-                    // Chrome commands (window show/hide) operate on
-                    // `frontend`'s own window, not on anything `core`
-                    // owns -- see module docs.
-                    ClientMessage::Chrome(_) => {}
-                    ClientMessage::Shutdown => return Ok(()),
-                    // Forward-compatibility fallback (plan §3): a variant
-                    // this build doesn't recognize is ignored rather than
-                    // treated as a protocol violation.
-                    ClientMessage::Unknown => {}
-                }
-            }
-            Err(e) if is_timeout(&e) => {} // no message yet -- fall through to drain completions
-            Err(_) => return Ok(()),       // client disconnected without an explicit Shutdown
-        }
-
-        let mut synchronized_after_completion = false;
-        while let Ok(completion) = completion_rx.try_recv() {
-            synchronized_after_completion |= apply_completion(
-                tabs,
-                stream,
-                frame_dir,
-                generation,
-                &pending_nav_seq,
-                completion,
-                &mut page_script_runtime,
-                requests.script,
-            )?;
-        }
-        if let Some(script_requests) = requests.script {
-            script_requests.dispatch_pending(tabs);
-        }
-        if let Some(debugger_requests) = requests.debugger {
-            let debugger_executor = page_script_runtime.javascript_executor.as_deref_mut();
-            debugger_requests.dispatch_pending(tabs, debugger_executor);
-        }
-        if let Some(compiler_requests) = requests.compiler.as_mut() {
-            compiler_requests
-                .service
-                .dispatch_pending(compiler_requests.receiver);
-        }
-        // `apply_completion` already synchronized the just-admitted document
-        // before publishing its navigation reply. Do not immediately run a
-        // second lifecycle turn here: that would make a newly admitted
-        // root-entry debugger program execute before its peer can even ask
-        // for the opaque location needed to arm it.
-        if !synchronized_after_completion {
-            synchronize_page_script_runtime(&mut page_script_runtime, tabs, requests.script)?;
-        }
+fn tab_group_summary(group: &TabGroup) -> TabGroupSummary {
+    TabGroupSummary {
+        id: group.id().as_u64(),
+        name: group.name().to_string(),
+        color: group.color().to_string(),
+        collapsed: group.collapsed(),
     }
 }
 
-/// Converts core-owned direct-page execution records into the public IPC
-/// observation format. Deliberately map only the fixed report category: page
-/// source, compiler diagnostics, and runtime values never cross this boundary.
-mod script_runtime;
-use script_runtime::*;
-
-/// Which reply variant a background gated navigation's eventual
-/// success produces: `Navigate`/`Click`/`ActOn`'s href-resolution sites
-/// all want a plain `Navigated`; `OpenTab` wants `TabOpened` instead --
-/// threaded through the whole async path (spawned thread ->
-/// [`Completion`] -> the poll loop's reply-writing) purely to pick the
-/// right variant once the outcome is known.
-enum PendingKind {
-    Navigate,
-    OpenTab,
+/// Group names are rendered into the native tab strip, so normalize away
+/// accidental surrounding whitespace and keep the label compact enough for
+/// that chrome. The raw pages those tabs show remain entirely unrelated to
+/// this metadata.
+fn validate_group_name(name: String) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("tab group name must not be empty".to_string());
+    }
+    if name.chars().count() > 80 {
+        return Err("tab group name must be at most 80 characters".to_string());
+    }
+    Ok(name.to_string())
 }
 
-/// One background gated-navigation's eventual result, delivered over
-/// the loop's completion channel -- always tagged with the *original*
-/// `tab_id`/`request_id`/`seq` captured when the async op began, since
-/// none of those can be assumed still "current" by the time this
-/// arrives (see [`apply_completion`]).
-struct Completion {
+/// Groups use a small canonical color form rather than a frontend-specific
+/// palette index or arbitrary CSS. That keeps the shared core state portable
+/// between this reference frontend and future native frontends.
+fn validate_group_color(color: String) -> Result<String, String> {
+    let color = color.trim();
+    let valid = color.len() == 7
+        && color.starts_with('#')
+        && color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit);
+    if !valid {
+        return Err("tab group color must be a CSS #RRGGBB value".to_string());
+    }
+    Ok(color.to_ascii_lowercase())
+}
+
+/// How often a tab showing `about:downloads` asks the downloads process for
+/// its list.
+const DOWNLOADS_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
+
+/// Do not replace a useful rendered list with an outage page for one
+/// transient failed poll.  A second consecutive failure makes the outage
+/// actionable while still allowing a later successful poll to recover.
+const DOWNLOADS_UNAVAILABLE_AFTER_FAILURES: u8 = 2;
+
+/// One background read of the downloads list, on its way back to the loop.
+struct DownloadsListing {
     tab_id: TabId,
-    seq: u64,
-    request_id: Option<u64>,
-    kind: PendingKind,
-    outcome: NavOutcome,
-}
-
-/// Starts a gated navigation to `url` for `tab_id`. Built-in `about:`
-/// pages ([`crate::page::built_in_page`]) are handled entirely
-/// synchronously here -- loaded directly and replied to before this
-/// returns, and *never* going
-/// through the gatekeeper at all (per `phase-7-local-ai/PLAN.md`, these
-/// are BlueIce's own trusted pages, never fetched). A syntactically
-/// invalid scheme is also rejected synchronously, with no thread
-/// spawned -- this must happen *before* any gatekeeper round trip, not
-/// be deferred into the background thread's own fetch attempt: a test
-/// double (or a genuinely down) gatekeeper would otherwise turn an
-/// ordinary "invalid URL" error into a fail-closed `GatekeeperBlocked`,
-/// which is the wrong outcome for a request that was never going to
-/// reach the network either way.
-///
-/// Every navigation bumps `tab_id`'s entry in `pending_nav_seq` before
-/// choosing its synchronous or asynchronous path. That makes a built-in
-/// page or invalid-URL response supersede an older fetch just as an http(s)
-/// navigation does. A well-formed http(s) URL then hands the rest of the
-/// work (both gatekeeper stages, the fetch) to a background thread tagged
-/// with the sequence number just bumped to -- this is what lets
-/// [`apply_completion`] later recognize and discard a stale completion.
-#[allow(clippy::too_many_arguments)]
-fn begin_gated_navigation<S: Write>(
-    page: &mut Page,
-    stream: &mut S,
-    frame_dir: &Path,
-    generation: &mut u64,
-    reply_tab: Option<u64>,
-    request_id: Option<u64>,
-    tab_id: TabId,
+    /// The visit token captured before the socket read began. A same-URL
+    /// navigation is still a new visit, so an older read must not repaint it.
+    visit: u64,
+    /// The URL the tab was showing when the read started -- the result is
+    /// dropped if the tab has moved on since.
     url: String,
-    kind: PendingKind,
-    pending_nav_seq: &mut HashMap<TabId, u64>,
-    completion_tx: &mpsc::Sender<Completion>,
-    gatekeeper_socket: &Path,
-) -> io::Result<()> {
-    let seq = pending_nav_seq.entry(tab_id).or_insert(0);
-    *seq += 1;
-    let this_seq = *seq;
+    outcome: Result<Vec<TransferInfo>, String>,
+}
 
-    if let Some(html) = crate::page::built_in_page(&url) {
-        page.load_html_str(&html, Some(url));
-        return reply_success(
+/// Keeps every tab that is showing `about:downloads` current
+/// (`phase-10-download-manager/PLAN.md`'s "Live updates"). Driven from the
+/// session's poll tick; the reads happen on background threads and come
+/// back over a channel, exactly like a gated navigation's result, so a slow
+/// or hung downloads process never delays another tab or client sharing
+/// this loop. A page is re-rendered -- and a fresh frame pushed -- only when
+/// what it would show actually changed.
+#[derive(Default)]
+struct DownloadsRefresher {
+    /// Tabs with a read outstanding: never more than one per tab.
+    in_flight: HashSet<TabId>,
+    /// When each tab is next due.
+    due: HashMap<TabId, Instant>,
+    /// The downloads URL each tab was last seen on. A change is a fresh
+    /// visit: read at once, and this first read may start the downloads
+    /// process (opening the panel is a legitimate reason to).
+    seen_url: HashMap<TabId, String>,
+    fresh_visit: HashSet<TabId>,
+    /// The HTML last pushed to each tab, so an identical one is skipped.
+    rendered: HashMap<TabId, String>,
+    /// Monotonically changes on every visit, including a same-URL reload.
+    /// It makes late results from an earlier visit unambiguously stale.
+    visit: HashMap<TabId, u64>,
+    /// Consecutive failed polls since the last successful list for a tab.
+    /// This is deliberately per tab and per visit: an unrelated tab's
+    /// temporary socket problem must not change this tab's presentation.
+    consecutive_failures: HashMap<TabId, u8>,
+}
+
+impl DownloadsRefresher {
+    /// A navigation to `about:downloads` always replaces the document, even
+    /// when the URL text did not change. Forget the previous render cache and
+    /// invalidate any read that began before that replacement.
+    fn begin_visit(&mut self, tab_id: TabId) {
+        let visit = self.visit.entry(tab_id).or_default();
+        *visit += 1;
+        self.seen_url.remove(&tab_id);
+        self.due.remove(&tab_id);
+        self.rendered.remove(&tab_id);
+        self.fresh_visit.remove(&tab_id);
+        self.consecutive_failures.remove(&tab_id);
+    }
+
+    fn tick(&mut self, tabs: &TabManager, tx: &mpsc::Sender<DownloadsListing>, now: Instant) {
+        let open: HashSet<TabId> = tabs.ids().collect();
+        self.seen_url.retain(|id, _| open.contains(id));
+        self.due.retain(|id, _| open.contains(id));
+        self.rendered.retain(|id, _| open.contains(id));
+        self.fresh_visit.retain(|id| open.contains(id));
+        self.visit.retain(|id, _| open.contains(id));
+        self.consecutive_failures.retain(|id, _| open.contains(id));
+
+        for id in open {
+            let Some(page) = tabs.get(id) else { continue };
+            let Some(url) = page.url().filter(|u| is_downloads_url(u)) else {
+                // Left the page (or never on it): forget it, so coming back is a fresh visit.
+                self.seen_url.remove(&id);
+                self.due.remove(&id);
+                self.rendered.remove(&id);
+                self.fresh_visit.remove(&id);
+                self.consecutive_failures.remove(&id);
+                continue;
+            };
+            let Some(source) = page.downloads_source().cloned() else {
+                continue;
+            };
+
+            if self.seen_url.get(&id).map(String::as_str) != Some(url) {
+                self.begin_visit(id);
+                self.seen_url.insert(id, url.to_string());
+                self.fresh_visit.insert(id);
+            }
+            if self.in_flight.contains(&id) || self.due.get(&id).is_some_and(|due| now < *due) {
+                continue;
+            }
+            self.in_flight.insert(id);
+            self.due.insert(id, now + DOWNLOADS_REFRESH_INTERVAL);
+            let may_start_the_service = self.fresh_visit.remove(&id);
+            let visit = self.visit.get(&id).copied().unwrap_or_default();
+            let (tx, url) = (tx.clone(), url.to_string());
+            thread::spawn(move || {
+                let outcome = if may_start_the_service {
+                    source.fetch_spawning()
+                } else {
+                    source.fetch_observing()
+                };
+                let _ = tx.send(DownloadsListing {
+                    tab_id: id,
+                    visit,
+                    url,
+                    outcome,
+                });
+            });
+        }
+    }
+
+    fn apply<S: Write>(
+        &mut self,
+        tabs: &mut TabManager,
+        stream: &mut S,
+        frame_dir: &Path,
+        generation: &mut u64,
+        listing: DownloadsListing,
+    ) -> io::Result<()> {
+        let DownloadsListing {
+            tab_id,
+            visit,
+            url,
+            outcome,
+        } = listing;
+        self.in_flight.remove(&tab_id);
+        if self.visit.get(&tab_id).copied().unwrap_or_default() != visit {
+            return Ok(()); // a same-URL navigation replaced this document
+        }
+        let Some(page) = tabs.get_mut(tab_id) else {
+            return Ok(());
+        };
+        if page.url() != Some(url.as_str()) {
+            return Ok(()); // the tab moved on while the read was in flight
+        }
+        let locale = crate::credits::locale_from_url(&url);
+        let html = match outcome {
+            Ok(transfers) => {
+                self.consecutive_failures.remove(&tab_id);
+                downloads_html(&DownloadsView::Transfers(&transfers), locale)
+            }
+            Err(_) => {
+                let failures = self.consecutive_failures.entry(tab_id).or_default();
+                *failures = failures.saturating_add(1);
+                if self.rendered.contains_key(&tab_id)
+                    && *failures < DOWNLOADS_UNAVAILABLE_AFTER_FAILURES
+                {
+                    return Ok(());
+                }
+                downloads_html(&DownloadsView::Unavailable, locale)
+            }
+        };
+        if self.rendered.get(&tab_id) == Some(&html) {
+            return Ok(());
+        }
+        page.refresh_html(&html);
+        self.rendered.insert(tab_id, html);
+        send_frame(
             page,
             stream,
             frame_dir,
             generation,
-            reply_tab,
-            request_id,
-            &kind,
-            tab_id.as_u64(),
-        );
-    }
-    if let Err(e) = blueice_net::validate_url_scheme(&url) {
-        return write_error(stream, reply_tab, request_id, e.to_string());
-    }
-
-    let tx = completion_tx.clone();
-    let socket = gatekeeper_socket.to_path_buf();
-    thread::spawn(move || {
-        let outcome = gatekeeper_client::check_and_fetch(tab_id, url, &socket);
-        let _ = tx.send(Completion {
-            tab_id,
-            seq: this_seq,
-            request_id,
-            kind,
-            outcome,
-        });
-    });
-    Ok(())
-}
-
-/// Writes the success reply for a gated navigation -- `Navigated` or
-/// `TabOpened`, per `kind` -- followed by a fresh frame. Shared between
-/// [`begin_gated_navigation`]'s synchronous built-in-page path and
-/// [`apply_completion`]'s asynchronous cleared-navigation path so the
-/// two can never disagree about what a successful navigation's reply
-/// looks like.
-#[allow(clippy::too_many_arguments)]
-fn reply_success<S: Write>(
-    page: &Page,
-    stream: &mut S,
-    frame_dir: &Path,
-    generation: &mut u64,
-    reply_tab: Option<u64>,
-    request_id: Option<u64>,
-    kind: &PendingKind,
-    tab_id: u64,
-) -> io::Result<()> {
-    match kind {
-        PendingKind::Navigate => reply_navigated(page, stream, reply_tab, request_id)?,
-        PendingKind::OpenTab => blueice_ipc::write_server_message_with_ids(
-            stream,
-            reply_tab,
-            request_id,
-            &ServerMessage::TabOpened {
-                tab_id,
-                url: page.url().map(str::to_string),
-            },
-        )?,
-    }
-    send_frame(page, stream, frame_dir, generation, reply_tab, request_id)
-}
-
-/// Applies one background gated-navigation's [`Completion`], if it's
-/// still current: discarded silently (no reply, no state change) if
-/// `completion`'s tab has since closed, or if a *newer* navigation to
-/// the same tab has since superseded it (`pending_nav_seq`'s entry for
-/// that tab no longer matches the sequence number this completion was
-/// tagged with) -- matching ordinary browser "a new navigation cancels
-/// the in-flight one" behavior. The background thread that produced
-/// `completion` never touched `Page`/`TabManager` state itself; this
-/// (called only from the main loop) is the one place a gated
-/// navigation's result actually lands.
-#[allow(clippy::too_many_arguments)] // Navigation reply state and script dispatch stay on this session thread.
-fn apply_completion<S: Write>(
-    tabs: &mut TabManager,
-    stream: &mut S,
-    frame_dir: &Path,
-    generation: &mut u64,
-    pending_nav_seq: &HashMap<TabId, u64>,
-    completion: Completion,
-    page_script_runtime: &mut PageScriptRuntime<'_>,
-    script_requests: Option<&ScriptRequestReceiver>,
-) -> io::Result<bool> {
-    let Completion {
-        tab_id,
-        seq,
-        request_id,
-        kind,
-        outcome,
-    } = completion;
-    if pending_nav_seq.get(&tab_id) != Some(&seq) {
-        return Ok(false); // superseded by a later navigation to this tab
-    }
-    if tabs.get(tab_id).is_none() {
-        return Ok(false); // the tab closed while this navigation was pending
-    }
-    let reply_tab = Some(tab_id.as_u64());
-    match outcome {
-        NavOutcome::Cleared {
-            clearance,
-            final_url,
-            html,
-        } => {
-            tabs.get_mut(tab_id)
-                .expect("the checked live tab must remain available on this session thread")
-                .apply_fetched(clearance, &final_url, &html);
-            // A configured runner observes the loaded document before its
-            // first success reply/frame. This preserves future DOM script
-            // semantics while the default session has no runner at all.
-            synchronize_page_script_runtime(page_script_runtime, tabs, script_requests)?;
-            let page = tabs
-                .get(tab_id)
-                .expect("the session thread exclusively owns the checked tab");
-            reply_success(
-                page,
-                stream,
-                frame_dir,
-                generation,
-                reply_tab,
-                request_id,
-                &kind,
-                tab_id.as_u64(),
-            )?;
-            Ok(true)
-        }
-        NavOutcome::GatekeeperBlocked {
-            reason,
-            category,
-            url,
-        } => blueice_ipc::write_server_message_with_ids(
-            stream,
-            reply_tab,
-            request_id,
-            &ServerMessage::GatekeeperBlocked {
-                reason,
-                category,
-                url,
-            },
+            Some(tab_id.as_u64()),
+            None,
         )
-        .map(|()| false),
-        NavOutcome::FetchFailed { message } => {
-            write_error(stream, reply_tab, request_id, message).map(|()| false)
-        }
     }
 }
 
-/// `OpenTab`'s handler: always creates the tab (there's no failure mode
-/// for that itself); a requested navigation then goes through the same
-/// gated two-phase path every other navigate-capable action does (see
-/// module docs) -- so, unlike before gating existed, this function
-/// itself no longer necessarily writes `OpenTab`'s own success/failure
-/// reply: a blank tab (`url: None`) still gets an immediate
-/// `TabOpened`, but a requested navigation's `TabOpened`/`Error`/
-/// `GatekeeperBlocked` reply is deferred to [`apply_completion`] (or,
-/// for a built-in page/invalid scheme, written synchronously inside
-/// [`begin_gated_navigation`] itself).
-#[allow(clippy::too_many_arguments)]
-fn handle_open_tab<S: Write>(
-    tabs: &mut TabManager,
-    stream: &mut S,
-    frame_dir: &Path,
-    generation: &mut u64,
-    request_id: Option<u64>,
-    url: Option<String>,
-    pending_nav_seq: &mut HashMap<TabId, u64>,
-    completion_tx: &mpsc::Sender<Completion>,
-    gatekeeper_socket: &Path,
-) -> io::Result<()> {
-    let new_id = tabs.open_tab();
-    let Some(url) = url else {
-        return blueice_ipc::write_server_message_with_ids(
-            stream,
-            Some(new_id.as_u64()),
-            request_id,
-            &ServerMessage::TabOpened {
-                tab_id: new_id.as_u64(),
-                url: None,
-            },
-        );
-    };
-    let page = tabs
-        .get_mut(new_id)
-        .expect("a tab this function just created must exist");
-    begin_gated_navigation(
-        page,
-        stream,
-        frame_dir,
-        generation,
-        Some(new_id.as_u64()),
-        request_id,
-        new_id,
-        url,
-        PendingKind::OpenTab,
-        pending_nav_seq,
-        completion_tx,
-        gatekeeper_socket,
-    )
-}
+mod native_drag;
+mod script_runtime;
+use script_runtime::*;
 
 /// Gates entry to the main loop on a valid `Hello` as the connection's
 /// very first message, per `run_session`'s own docs. Returns `Ok(true)`
@@ -1219,7 +996,7 @@ fn reply_navigated<S: Write>(
 }
 
 fn send_frame<S: Write>(
-    page: &Page,
+    page: &mut Page,
     stream: &mut S,
     frame_dir: &Path,
     generation: &mut u64,
@@ -1227,19 +1004,42 @@ fn send_frame<S: Write>(
     request_id: Option<u64>,
 ) -> io::Result<()> {
     let pixmap = page.render_visible();
+    let tab_id = tab_id.expect("every rendered page has a concrete tab id");
+    let frame_generation = page.advance_frame_generation();
     *generation += 1;
-    let path = shm::write_frame(frame_dir, *generation, &pixmap.pixels)?;
+    let path = shm::write_frame(frame_dir, tab_id, frame_generation, &pixmap.pixels)?;
     blueice_ipc::write_server_message_with_ids(
         stream,
-        tab_id,
+        Some(tab_id),
         request_id,
         &ServerMessage::FrameReady {
             shm_path: path.to_string_lossy().into_owned(),
             width: pixmap.width,
             height: pixmap.height,
-            generation: *generation,
+            generation: frame_generation,
         },
-    )
+    )?;
+    if page.display_viewport.is_some() {
+        blueice_ipc::write_server_message_with_ids(
+            stream,
+            Some(tab_id),
+            request_id,
+            &ServerMessage::ViewportState(
+                page.viewport_state(shm::frame_source_id(frame_dir), tab_id),
+            ),
+        )?;
+    }
+    if page.display_preferences.is_some() {
+        blueice_ipc::write_server_message_with_ids(
+            stream,
+            Some(tab_id),
+            request_id,
+            &ServerMessage::DisplayPreferencesState(
+                page.display_preferences_state(shm::frame_source_id(frame_dir), tab_id),
+            ),
+        )?;
+    }
+    Ok(())
 }
 
 fn write_error<S: Write>(
@@ -1277,3 +1077,20 @@ fn write_unknown_tab_error<S: Write>(
 #[cfg(all(test, unix))]
 #[path = "session/tests.rs"]
 mod tests;
+
+#[cfg(all(test, unix))]
+mod feature_tests;
+
+mod run_loop;
+use run_loop::*;
+mod extension_bridge;
+use extension_bridge::*;
+mod contexts;
+mod navigation;
+mod response_downloads;
+mod windows;
+use navigation::*;
+mod assistant_tasks;
+use assistant_tasks::*;
+
+mod printing;

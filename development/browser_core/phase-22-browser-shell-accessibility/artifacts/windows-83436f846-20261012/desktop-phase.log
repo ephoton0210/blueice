@@ -1,0 +1,8 @@
+2026-10-12T14:54:36.8934973Z started apartment=MTA
+2026-10-12T14:54:36.9412019Z before-smoke
+2026-10-12T14:54:52.7372787Z smoke-returned
+2026-10-12T14:54:52.7372787Z before-results-read
+2026-10-12T14:54:52.7448973Z results-read
+2026-10-12T14:54:52.9439557Z before-publish
+2026-10-12T14:54:53.0089543Z serialized
+2026-10-12T14:54:53.0413430Z result-published

@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Not started
+**Status**: Done
 
 ## Objective
 
@@ -20,20 +20,78 @@ trait TransferBackend {
 }
 ```
 
-HTTP (Phase 10) implements this via `reqwest`; FTP via `suppaftp` or `async-ftp`; SFTP via an `ssh2`- or `russh`-based crate — Phase 10's chunking/resume logic calls through this trait rather than knowing which protocol it's talking to.
+HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; SFTP via an `ssh2`- or `russh`-based crate — Phase 10's chunking/resume logic calls through this trait rather than knowing which protocol it's talking to.
 
-**Credentials**: FTP/SFTP need stored auth (username/password, or an SSH key for SFTP) that HTTP downloads mostly don't — this needs a secure local credential store (ideally OS-keychain integration per platform eventually; an encrypted local vault as a nearer-term fallback). Not yet in the checklist below; flagging it here since it's easy to overlook until someone actually tries to save an SFTP password.
+**Credentials**: FTP/SFTP need stored auth (username/password, or an SSH key for SFTP) that HTTP downloads mostly don't. BlueIce uses the platform credential store for passwords and encrypted private-key passphrases; key paths remain process-local configuration, never transfer state.
 
-## Open questions
+## Decisions
 
-- **Protocol scope**: FTP and SFTP are named explicitly; whether this also covers FTPS, WebDAV, or others is undecided.
-- **Relationship to Phase 10**: same transfer-manager subsystem with a pluggable protocol-backend interface (this phase supplies FTP/SFTP backends, Phase 10 supplies the HTTP backend and the shared chunking/resume/UI machinery), or a fully separate component — needs to be decided together with Phase 10, not independently.
-- **Crate evaluation**: candidates exist (`suppaftp`/`async-ftp` for FTP, `russh`- or `ssh2`-based crates for SFTP) but haven't been evaluated against this project's actual needs (async support, maintenance status, licensing compatibility with MPL-2.0).
+- **Shared download-only interface**: `TransferBackend` has `probe` and
+  `get(range)`. It returns an owned byte stream and proves that any requested
+  range is exactly the range of the resource that was probed. The common
+  scheduler owns splitting, retries, writes, checkpointing, and resume. This
+  is intentionally not a premature remote-files API: list/upload require a
+  separate user-facing capability and authorization model.
+- **Protocol scope**: HTTP(S) remains the existing backend; SFTP is the first
+  additional backend. FTP is a legacy compatibility protocol, while explicit
+  FTPS is the only password-bearing FTP mode that BlueIce will offer. Plain
+  FTP is restricted to anonymous downloads; WebDAV is deferred.
+- **SFTP candidate**: use the synchronous `ssh2` binding (MIT licensed,
+  binding to libssh2). Its blocking `Read + Seek` SFTP files fit the transfer
+  workers directly; a Tokio-only client would add a second scheduler just to
+  bridge to this engine.
+- **FTP candidate**: use `suppaftp` 12.0.1 with its synchronous
+  `native-tls` feature. [RUSTSEC-2026-0271](https://rustsec.org/advisories/RUSTSEC-2026-0271.html)
+  was corrected in 10.0.2, and this version is newer; BlueIce additionally
+  rejects control characters after URL decoding before any FTP argument is
+  sent. Plain FTP is anonymous-only. `ftps://` means explicit RFC 4217 TLS:
+  it uses the platform trust store and hostname verification, then protects
+  both control and data channels. Deprecated implicit FTPS is not offered.
+- **FTP transfer shape**: FTP `REST` specifies only a starting offset, not an
+  exclusive end, so it cannot meet this subsystem's exact-range invariant.
+  FTP/FTPS therefore deliberately run as one checked stream, with `SIZE` and
+  optional `MDTM` same-run mutation checks; they discard partial files across
+  pauses/restarts rather than splice unproved bytes. The body is not counted
+  complete until its final FTP control response succeeds. Passive mode keeps
+  the control connection's peer IP and accepts only the port from a PASV/EPSV
+  response, so an FTP server cannot redirect the client to an unrelated TCP
+  destination.
+- **SFTP transfer shape**: each requested range owns a separately verified
+  SSH/SFTP connection. SFTP can therefore use the common scheduler's
+  independent segments, but its seconds-resolution `mtime` is insufficient
+  for restart-safe partial-file retention; a paused SFTP transfer starts from
+  the beginning on a later process run.
+- **Credential boundary**: URLs may select an endpoint and optional username,
+  but never carry a password or private-key material. A normalized
+  `(scheme, host, port, username)` reference is derived at authentication
+  time; the secret itself lives only in the OS credential store. The IPC uses
+  that opaque reference after a local credential has been saved, so transfer
+  records, logs, sidecars, and MCP output never contain a secret. MCP never
+  accepts a secret-bearing tool argument: save a credential locally through
+  `blueice-downloads credential set <sftp-password|sftp-key-passphrase|ftps-password> --host HOST --username USER --secret-stdin`, which reads the
+  secret only from stdin and forwards it over the private Unix socket. SSH host
+  keys must be checked against a known-hosts store before SFTP authentication.
+  `keyring` provides the platform store (macOS Keychain, Windows Credential
+  Manager, and Secret Service where available). The local Unix socket is
+  explicitly mode `0600`; only the local stdin command creates the IPC request
+  that carries a secret, and it receives only `Ok`, after which workers derive
+  the reference from the URL. The SFTP backend tries SSH agent authentication first and opens the
+  credential store only after host-key verification has succeeded. The
+  explicit-FTPS backend similarly opens its credential only after the TLS
+  handshake has verified the certificate and hostname. An SFTP private key is
+  selected only with `blueice-downloads --sftp-private-key PATH`; its
+  passphrase is a distinct keychain entry set through the local stdin command.
+  Authentication tries SSH agent, then that
+  configured key, then a saved password, all after host-key verification.
 
 ## Checklist
 
-- [ ] Decide relationship to Phase 10 (shared subsystem vs. separate) — do this together with Phase 10, not in isolation
-- [ ] Confirm protocol scope (FTP, SFTP, and what else if anything)
-- [ ] Evaluate candidate Rust crates for each protocol
-- [ ] Define the common transfer-backend interface these protocols implement, shared with Phase 10's HTTP backend (see the `TransferBackend` sketch above)
-- [ ] Design the credential storage mechanism for FTP/SFTP auth
+- [x] Decide relationship to Phase 10 (shared subsystem vs. separate) — decided with Phase 10: one shared subsystem, with this phase supplying FTP/SFTP backends. The `TransferBackend` trait itself is deliberately not defined yet (with one implementation its shape would be a guess); Phase 10's engine keeps its ranged fetch behind one function boundary (`blueice_net::download::http`) so extracting it is mechanical once a second backend exists
+- [x] Confirm protocol scope (FTP, SFTP, and what else if anything)
+- [x] Evaluate candidate Rust crates for each protocol
+- [x] Define the common transfer-backend interface these protocols implement, shared with Phase 10's HTTP backend (see the `TransferBackend` sketch above)
+- [x] Design the credential storage mechanism for FTP/SFTP auth
+- [x] Implement the SFTP backend, known-host verification, and SSH-agent authentication (no password is accepted in a URL or recorded in transfer state)
+- [x] Add OS-keychain credential references for SFTP passwords, with a local stdin/IPC set path and MCP removal path that does not echo secrets
+- [x] Add OS-keychain references for encrypted private-key passphrases, with `--sftp-private-key`, a local stdin/IPC set path, MCP removal, and post-host-verification authentication wiring
+- [x] Add an explicit-FTPS backend using `suppaftp` 12.0.1; plain FTP is anonymous-only and both are safe single-stream transfers

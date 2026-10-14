@@ -23,9 +23,10 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 #[path = "core_binary/compiler_debugger.rs"]
@@ -92,6 +93,14 @@ fn unique_socket_path(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("bicb-{label}-{}.sock", std::process::id()))
 }
 
+/// Extension listeners are intentionally bound only below a directory the
+/// current user owns. Keep these test paths short for Darwin's Unix-domain
+/// socket limit while exercising that same production invariant.
+fn unique_private_extension_socket_path(label: &str) -> PathBuf {
+    blueice_ipc::local_socket::default_socket_dir()
+        .join(format!("core-ext-{label}-{}.sock", std::process::id()))
+}
+
 /// A gated `Navigate`/`OpenTab{url}` sent to the real subprocess needs
 /// *some* `ai-gatekeeper` behind the `--gatekeeper-socket` path it's
 /// given -- a genuinely unreachable one fails closed
@@ -124,6 +133,528 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
         thread::sleep(Duration::from_millis(20));
     }
     false
+}
+
+/// These tests start real core processes with short readiness deadlines.
+/// Launching every case at once can saturate a development machine and turn
+/// an otherwise healthy core startup into a spurious timeout. The guard is
+/// process-local: a probe child running this test binary has its own lock.
+fn core_process_test_guard() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn core_extension_host_probe_script(root: &Path, test_name: &str) -> PathBuf {
+    fn shell_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+
+    let script = root.join("extension-host-probe.sh");
+    let test_binary = std::env::current_exe().unwrap();
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nBLUEICE_TEST_EXTENSION_SOCKET=\"$2\"\nBLUEICE_TEST_EXTENSION_MANIFEST=\"$4\"\nexport BLUEICE_TEST_EXTENSION_SOCKET BLUEICE_TEST_EXTENSION_MANIFEST\nexec {} --exact {} --nocapture\n",
+            shell_quote(test_binary.to_str().unwrap()),
+            shell_quote(test_name)
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+    script
+}
+
+/// `blueice-core` owns the child lifecycle and invokes a host executable with
+/// `--connect`/`--manifest`. This test-only process is deliberately tiny: it
+/// verifies that public invocation contract and its runtime-start sequencing
+/// without relying on a sibling package's already-built binary. The real
+/// `blueice-extension-host --connect` WASM path is tested in that package's
+/// own binary integration test.
+#[test]
+fn extension_host_probe_child_authenticates_to_core() {
+    let _guard = core_process_test_guard();
+    let Ok(socket) = std::env::var("BLUEICE_TEST_EXTENSION_SOCKET") else {
+        return;
+    };
+    let manifest = std::env::var("BLUEICE_TEST_EXTENSION_MANIFEST").unwrap();
+    let authentication = std::env::var("BLUEICE_EXTENSION_AUTH_TOKEN").unwrap();
+    let installed = blueice_extension_host::load_installed_extension(&manifest).unwrap();
+    let capability_versions = installed
+        .manifest()
+        .capabilities()
+        .declared()
+        .iter()
+        .map(|capability| (capability.clone(), 1))
+        .collect();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    blueice_ipc::extension::write_extension_request(
+        &mut stream,
+        &blueice_ipc::extension::ExtensionRequest::HelloAuthenticated {
+            extension_id: installed.extension_id().to_string(),
+            capability_versions,
+            authentication,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::extension::read_extension_reply(&mut stream).unwrap(),
+        blueice_ipc::extension::ExtensionReply::HelloAck { .. }
+    ));
+    blueice_ipc::extension::write_extension_request(
+        &mut stream,
+        &blueice_ipc::extension::ExtensionRequest::RuntimeReady,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_reply(&mut stream).unwrap(),
+        blueice_ipc::extension::ExtensionReply::RuntimeStart
+    );
+    blueice_ipc::extension::write_extension_request(
+        &mut stream,
+        &blueice_ipc::extension::ExtensionRequest::NextRuntimeEvent,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_reply(&mut stream).unwrap(),
+        blueice_ipc::extension::ExtensionReply::RuntimeEventStreamClosed
+    );
+}
+
+/// This test-only host is the peer of the compiled-core parent-pipe test. It
+/// authenticates exactly like the installed child but has a separate private
+/// test socket for asking it to attempt optional storage and one-shot DOM
+/// reads without giving the extension any permission-control authority.
+#[test]
+fn extension_host_probe_child_observes_optional_and_ephemeral_grants() {
+    let _guard = core_process_test_guard();
+    let Ok(probe_socket) = std::env::var("BLUEICE_TEST_PROBE_SOCKET") else {
+        return;
+    };
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+
+    let socket = std::env::var("BLUEICE_TEST_EXTENSION_SOCKET").unwrap();
+    let manifest = std::env::var("BLUEICE_TEST_EXTENSION_MANIFEST").unwrap();
+    let authentication = std::env::var("BLUEICE_EXTENSION_AUTH_TOKEN").unwrap();
+    let installed = blueice_extension_host::load_installed_extension(manifest).unwrap();
+    let mut extension = UnixStream::connect(socket).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::HelloAuthenticated {
+            extension_id: installed.extension_id().to_string(),
+            capability_versions: BTreeMap::from([
+                ("storage".to_string(), 1),
+                ("dom:read".to_string(), 3),
+            ]),
+            authentication,
+        },
+    )
+    .unwrap();
+    assert!(matches!(read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck { unsupported_capabilities } if unsupported_capabilities.is_empty()));
+    write_extension_request(&mut extension, &ExtensionRequest::RuntimeReady).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::RuntimeStart
+    );
+
+    let mut probe = UnixStream::connect(probe_socket).unwrap();
+    loop {
+        let mut command = [0_u8; 1];
+        if probe.read_exact(&mut command).is_err() || command[0] == b'q' {
+            break;
+        }
+        let result = match command[0] {
+            b'e' => {
+                let mut trusted_ticket = None;
+                for _ in 0..4 {
+                    write_extension_request(&mut extension, &ExtensionRequest::NextRuntimeEvent)
+                        .unwrap();
+                    match read_extension_reply(&mut extension).unwrap() {
+                        ExtensionReply::RuntimeEvent(
+                            blueice_ipc::extension::ExtensionRuntimeEvent::TrustedEphemeralDomRead {
+                                tab_id: 1, document_epoch: 2, ticket,
+                            }
+                        ) => {
+                            trusted_ticket = Some(ticket);
+                            break;
+                        }
+                        ExtensionReply::RuntimeEvent(
+                            blueice_ipc::extension::ExtensionRuntimeEvent::NavigationCommitted { tab_id: 1 }
+                        ) => {}
+                        other => panic!("unexpected event while waiting for a trusted DOM read: {other:?}"),
+                    }
+                }
+                let ticket = trusted_ticket.expect("core must deliver its parent-armed event");
+                assert_eq!(ticket.len(), 64);
+                probe.write_all(b"E").unwrap();
+                probe.write_all(ticket.as_bytes()).unwrap();
+                continue;
+            }
+            b'g' => {
+                write_extension_request(
+                    &mut extension,
+                    &ExtensionRequest::StorageGet {
+                        key: "sample".into(),
+                    },
+                )
+                .unwrap();
+                match read_extension_reply(&mut extension).unwrap() {
+                    ExtensionReply::StorageGetResult { value: None } => b'A',
+                    ExtensionReply::CapabilityDenied { capability, .. }
+                        if capability == "storage" =>
+                    {
+                        b'D'
+                    }
+                    other => panic!("unexpected optional storage result: {other:?}"),
+                }
+            }
+            b'r' | b's' | b'v' | b'w' => {
+                let request = match command[0] {
+                    b'r' | b's' => {
+                        let mut bytes = [0_u8; 64];
+                        probe.read_exact(&mut bytes).unwrap();
+                        ExtensionRequest::DomReadTabEphemeral {
+                            tab_id: if command[0] == b'r' { 1 } else { 2 },
+                            ticket: String::from_utf8(bytes.to_vec()).unwrap(),
+                        }
+                    }
+                    b'v' => ExtensionRequest::DomReadTab { tab_id: 1 },
+                    _ => ExtensionRequest::DomRead,
+                };
+                write_extension_request(&mut extension, &request).unwrap();
+                match read_extension_reply(&mut extension).unwrap() {
+                    ExtensionReply::DomReadResult { value } => {
+                        let snapshot: blueice_ipc::AiSnapshot =
+                            serde_json::from_str(&value).unwrap();
+                        assert_eq!(snapshot.tab_id, 1);
+                        b'A'
+                    }
+                    ExtensionReply::CapabilityDenied { capability, .. }
+                        if capability == "dom:read" =>
+                    {
+                        b'D'
+                    }
+                    other => panic!("unexpected ephemeral DOM read result: {other:?}"),
+                }
+            }
+            other => panic!("unexpected probe command: {other}"),
+        };
+        probe.write_all(&[result]).unwrap();
+    }
+}
+
+/// Authenticated child for the real-process published-effect revocation test.
+/// Only the parent test's private probe socket tells it when to attempt the
+/// two optional actions; the extension cannot grant itself either capability.
+#[test]
+fn extension_host_probe_child_publishes_optional_effects() {
+    let _guard = core_process_test_guard();
+    let Ok(probe_socket) = std::env::var("BLUEICE_TEST_PROBE_SOCKET") else {
+        return;
+    };
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+
+    let socket = std::env::var("BLUEICE_TEST_EXTENSION_SOCKET").unwrap();
+    let manifest = std::env::var("BLUEICE_TEST_EXTENSION_MANIFEST").unwrap();
+    let authentication = std::env::var("BLUEICE_EXTENSION_AUTH_TOKEN").unwrap();
+    let rule_url = std::env::var("BLUEICE_TEST_RULE_URL").unwrap();
+    let installed = blueice_extension_host::load_installed_extension(manifest).unwrap();
+    let mut extension = UnixStream::connect(socket).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::HelloAuthenticated {
+            extension_id: installed.extension_id().to_string(),
+            capability_versions: BTreeMap::from([
+                ("ui:inject".to_string(), 3),
+                ("network:intercept".to_string(), 2),
+            ]),
+            authentication,
+        },
+    )
+    .unwrap();
+    assert!(matches!(read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck { unsupported_capabilities } if unsupported_capabilities.is_empty()));
+    write_extension_request(&mut extension, &ExtensionRequest::RuntimeReady).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::RuntimeStart
+    );
+
+    let mut probe = UnixStream::connect(probe_socket).unwrap();
+    probe.write_all(b"S").unwrap();
+    loop {
+        let mut command = [0_u8; 1];
+        if probe.read_exact(&mut command).is_err() || command[0] == b'q' {
+            break;
+        }
+        assert!(matches!(command[0], b'p' | b'd'));
+        let published = command[0] == b'p';
+        for (request, capability, allowed_reply) in [
+            (
+                ExtensionRequest::SetToolbarButton {
+                    label: "Optional Notes".into(),
+                },
+                "ui:inject",
+                ExtensionReply::UiInjectAck,
+            ),
+            (
+                ExtensionRequest::RegisterNetworkBlockUrl {
+                    url: rule_url.clone(),
+                },
+                "network:intercept",
+                ExtensionReply::NetworkInterceptAck,
+            ),
+        ] {
+            write_extension_request(&mut extension, &request).unwrap();
+            let reply = read_extension_reply(&mut extension).unwrap();
+            if published {
+                assert_eq!(
+                    reply, allowed_reply,
+                    "a granted optional action must publish"
+                );
+            } else {
+                assert!(
+                    matches!(reply, ExtensionReply::CapabilityDenied { capability: actual, .. } if actual == capability),
+                    "an ungranted optional action must be denied as {capability}"
+                );
+            }
+        }
+        probe
+            .write_all(if published { b"P" } else { b"D" })
+            .unwrap();
+    }
+}
+
+#[test]
+fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
+    let _guard = core_process_test_guard();
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+        ExtensionRuntimeEvent,
+    };
+    use std::collections::BTreeMap;
+
+    let Ok(socket) = std::env::var("BLUEICE_TEST_EXTENSION_SOCKET") else {
+        return;
+    };
+    let manifest = std::env::var("BLUEICE_TEST_EXTENSION_MANIFEST").unwrap();
+    let authentication = std::env::var("BLUEICE_EXTENSION_AUTH_TOKEN").unwrap();
+    let installed = blueice_extension_host::load_installed_extension(manifest).unwrap();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::HelloAuthenticated {
+            extension_id: installed.extension_id().to_string(),
+            capability_versions: BTreeMap::from([("ui:inject".to_string(), 3)]),
+            authentication,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(&mut stream, &ExtensionRequest::RuntimeReady).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::RuntimeStart
+    );
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::SetToolbarButton {
+            label: "Enter password".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::GatekeeperBlocked { category, .. }
+            if category == "extension-toolbar-social-engineering"
+    ));
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::SetToolbarButton {
+            label: "Notes".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
+    write_extension_request(&mut stream, &ExtensionRequest::NextRuntimeEvent).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::ToolbarActivated {
+            tab_id: 1,
+            grant_generation: 0
+        })
+    );
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::SetToolbarButton {
+            label: "Clicked".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::ShowPopup {
+            tab_id: 1,
+            title: "Notes".to_string(),
+            body: "Saved locally".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
+    write_extension_request(&mut stream, &ExtensionRequest::ClearPopup).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::ShowPopupAction {
+            tab_id: 1,
+            title: "Notes".to_string(),
+            body: "Ready to open".to_string(),
+            action_label: "Open notes".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
+    write_extension_request(&mut stream, &ExtensionRequest::NextRuntimeEvent).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::PopupActionActivated {
+            tab_id: 1,
+            grant_generation: 0
+        })
+    );
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::SetToolbarButton {
+            label: "Actioned".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
+    write_extension_request(&mut stream, &ExtensionRequest::ClearToolbarButton).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::UiInjectAck
+    );
+}
+
+fn extension_manifest_package(
+    label: &str,
+    declared_capabilities: &[&str],
+) -> (PathBuf, PathBuf, String) {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let ordinal = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "blueice-core-extension-package-{label}-{}-{ordinal}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = root.join("extension.json");
+    let declared_capabilities = declared_capabilities
+        .iter()
+        .map(|capability| format!("\"{capability}\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    std::fs::write(
+        &manifest,
+        format!(
+            r#"{{"name":"Core bridge test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{{"declared":[{declared_capabilities}]}}}}"#
+        ),
+    )
+    .unwrap();
+    std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+    let extension_id = blueice_extension_host::load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
+    (root, manifest, extension_id)
+}
+
+trait WaitTimeoutOrKill {
+    fn wait_timeout_or_kill(&mut self) -> std::process::ExitStatus;
+}
+
+/// The downloads-page subprocess test starts two independent binaries. Keep
+/// their cleanup in a guard so an assertion failure cannot leave either one
+/// running or leave its private runtime tree behind for the next test.
+struct DownloadsPageCleanup {
+    core: Child,
+    downloads_socket: PathBuf,
+    root: PathBuf,
+}
+
+impl Drop for DownloadsPageCleanup {
+    fn drop(&mut self) {
+        if let Ok(mut raw) = UnixStream::connect(&self.downloads_socket) {
+            let _ = blueice_ipc::downloads::write_downloads_request(
+                &mut raw,
+                Some(1),
+                &blueice_ipc::downloads::DownloadsRequest::Hello {
+                    protocol_version: blueice_ipc::downloads::DOWNLOADS_PROTOCOL_VERSION,
+                },
+            );
+            let _ = blueice_ipc::downloads::read_downloads_reply(&mut raw);
+            let _ = blueice_ipc::downloads::write_downloads_request(
+                &mut raw,
+                Some(2),
+                &blueice_ipc::downloads::DownloadsRequest::Shutdown,
+            );
+            let _ = blueice_ipc::downloads::read_downloads_reply(&mut raw);
+        }
+        if self.core.try_wait().ok().flatten().is_none() {
+            let _ = self.core.kill();
+        }
+        let _ = self.core.wait();
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+impl WaitTimeoutOrKill for std::process::Child {
+    fn wait_timeout_or_kill(&mut self) -> std::process::ExitStatus {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = self.try_wait().expect("failed to poll child status") {
+                return status;
+            }
+            if Instant::now() >= deadline {
+                let _ = self.kill();
+                panic!("blueice-core did not exit within the timeout");
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
 }
 
 fn connect_with_retry(path: &std::path::Path, timeout: Duration) -> std::io::Result<UnixStream> {
@@ -298,22 +829,23 @@ fn wait_for_debugger_state(
     panic!("expected debugger state {expected:?}, last observed {observed:?}");
 }
 
-trait WaitTimeoutOrKill {
-    fn wait_timeout_or_kill(&mut self) -> std::process::ExitStatus;
-}
+#[path = "core_binary/extensions.rs"]
+mod extensions;
 
-impl WaitTimeoutOrKill for std::process::Child {
-    fn wait_timeout_or_kill(&mut self) -> std::process::ExitStatus {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            if let Some(status) = self.try_wait().expect("failed to poll child status") {
-                return status;
-            }
-            if Instant::now() >= deadline {
-                let _ = self.kill();
-                panic!("blueice-core did not exit within the timeout");
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-    }
-}
+#[path = "core_binary/extension_dom.rs"]
+mod extension_dom;
+
+#[path = "core_binary/extension_dom_2.rs"]
+mod extension_dom_2;
+
+#[path = "core_binary/extension_network.rs"]
+mod extension_network;
+
+#[path = "core_binary/permissions.rs"]
+mod permissions;
+
+#[path = "core_binary/extension_ui.rs"]
+mod extension_ui;
+
+#[path = "core_binary/downloads.rs"]
+mod downloads;

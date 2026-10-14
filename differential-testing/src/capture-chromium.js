@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer";
 import { dumpDomInPage } from "./dump-dom-in-page.js";
-import { FIXTURES_DIR, loadFixtures } from "./fixtures.js";
+import { FIXTURES_DIR, htmlForFixture, loadFixtures } from "./fixtures.js";
 import { serveHtml } from "./serve-fixture.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ function sanitizeForFilesystem(name) {
 }
 
 async function captureFixture(browser, fixture) {
-  const server = await serveHtml(fixture.sections.data);
+  const server = await serveHtml(htmlForFixture(fixture));
   let page;
   try {
     page = await browser.newPage();

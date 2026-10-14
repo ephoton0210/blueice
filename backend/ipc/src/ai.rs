@@ -20,9 +20,14 @@ use serde::{Deserialize, Serialize};
 /// references.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AiSnapshot {
+    /// Stable within a live core's frame directory and different for each
+    /// launcher cutover generation. Compare this together with `tab_id` and
+    /// `generation`; the counters alone can repeat after a core swap.
+    #[serde(default)]
+    pub frame_source: u64,
     /// The same counter [`crate::ServerMessage::FrameReady`] uses --
-    /// a snapshot and a frame sharing a generation number is the
-    /// concrete, checkable proof they came from the same render pass
+    /// a snapshot and a frame sharing `frame_source`, `tab_id`, and
+    /// `generation` are the checkable proof they came from the same render pass
     /// (`phase-5-ai-representation-output/PLAN.md`'s "same render
     /// pass" requirement).
     pub generation: u64,
@@ -38,6 +43,8 @@ pub struct AiSnapshot {
     pub url: Option<String>,
     pub scroll_y: f64,
     pub nodes: Vec<AiNode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accessibility: Option<crate::accessibility::AccessibilitySnapshot>,
 }
 
 /// One semantically-relevant node. Purely decorative/non-semantic
@@ -55,6 +62,12 @@ pub struct AiNode {
     pub role: Role,
     pub name: Option<String>,
     pub name_from: Option<NameFrom>,
+    /// While live translation is showing, the name this node would have from
+    /// the page's original text (`phase-7-local-ai/PLAN.md`): `name` is what
+    /// is on screen, this is what the page actually said. Present only when a
+    /// translation changed a content-derived name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_name: Option<String>,
     pub state: NodeState,
     /// Document-content coordinates (pre-scroll, the same space
     /// `blueice_layout::Fragment` already uses) -- combine with
@@ -78,6 +91,33 @@ pub struct Bounds {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct NodeState {
+    /// The current value of a supported native text input, when the
+    /// document supplies one. Keeping this in the representation makes a
+    /// successful [`NodeAction::SetValue`] observable through the same
+    /// core-owned state that the human frame renders.
+    #[serde(default)]
+    pub value: Option<String>,
+    /// Whether the current core supports ordinary focus/InsertText input on
+    /// this node. A semantic TextBox role alone does not promise editing.
+    #[serde(default)]
+    pub native_text_input: bool,
+    #[serde(default)]
+    pub native_focusable: bool,
+    /// Static ordinary drag eligibility. Selected text additionally uses the
+    /// core's current selection geometry. It never discloses source content.
+    #[serde(default)]
+    pub native_drag_source: bool,
+    #[serde(default)]
+    pub file_input: bool,
+    #[serde(default)]
+    pub radio: bool,
+    #[serde(default)]
+    pub select_list: bool,
+    #[serde(default)]
+    pub multiple: bool,
+    /// A password control; callers must not expose its value as ordinary text.
+    #[serde(default)]
+    pub protected: bool,
     pub checked: Option<bool>,
     pub disabled: bool,
     pub required: bool,
@@ -95,6 +135,17 @@ pub enum Role {
     Button,
     TextBox,
     CheckBox,
+    /// A native numeric range input. Its `NodeState::value` is the current
+    /// core-owned value, allowing a constrained extension write to remain
+    /// visible through the same representation it addressed.
+    Slider,
+    /// A native single- or multiple-choice select control. Its visible
+    /// options are represented as [`Self::Option`] children when they have
+    /// layout fragments, so a capability-constrained extension can address a
+    /// live choice through the same stable-ID representation it reads.
+    ComboBox,
+    /// One native `<option>` inside a represented select control.
+    Option,
     List,
     ListItem,
     Paragraph,
@@ -124,10 +175,9 @@ pub enum NodeAction {
     Click,
     Focus,
     /// Sets the target's `value` attribute directly (the DOM-binding
-    /// surface `phase-2-mvp-scope/PLAN.md`'s JS scope named) --
-    /// changes DOM/AI-visible state immediately, independent of
-    /// whether BlueJS has run; doesn't yet change the painted frame,
-    /// since MVP layout doesn't render an input's value as text.
+    /// surface `phase-2-mvp-scope/PLAN.md`'s JS scope named). The core
+    /// relayouts after the mutation, so supported text inputs show the
+    /// resulting value in both the rendered frame and [`NodeState`].
     SetValue(String),
     /// Scrolls the viewport so the target's top aligns with the
     /// viewport's top, clamped to the page's scrollable range -- a

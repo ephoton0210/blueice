@@ -8,6 +8,48 @@ use super::*;
 /// separate from a VM/registry prevents the core from bypassing the child's
 /// process boundary and lets focused tests use a recording child peer.
 pub trait PageHostClient {
+    /// Production peers can schedule existing realm jobs between Core turns.
+    /// Recording peers preserve their declared, smaller transport surface.
+    fn browser_tasks_available(&self) -> bool {
+        false
+    }
+    fn dispatch_drag_with_script_pump(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _nodes: Vec<u64>,
+        _event: blueice_ipc::page_host::PageHostDragEvent,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Page host does not implement drag events",
+        ))
+    }
+    fn flush_drag_tasks_with_script_pump(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Page host does not implement drag tasks",
+        ))
+    }
+    fn dispatch_file_selection_with_script_pump(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _nodes: Vec<u64>,
+        _event: blueice_ipc::page_host::PageHostFileSelectionEvent,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Page host does not implement file selection events",
+        ))
+    }
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply>;
     fn dispatch_click_with_script_pump(
         &mut self,

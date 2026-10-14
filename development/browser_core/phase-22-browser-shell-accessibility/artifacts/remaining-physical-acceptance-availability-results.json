@@ -1,0 +1,1924 @@
+{
+  "main_worktree": "/Users/ephoton/git/blueice-downloads",
+  "main_commit": "dda3e4255b67b519ca38797e044c3b57ad205ef8",
+  "main_clean": true,
+  "acceptance_source_commit": "83436f8461c6f681df183473ecb7dcbe83423605",
+  "macos_rust": {
+    "status": "passed",
+    "passed": 7507,
+    "failed": 0,
+    "ignored": 69,
+    "groups": 495,
+    "receipt": "/private/tmp/blueice-followup-20261012/macos-workspace-83436f846-passed.json"
+  },
+  "macos_native": {
+    "status": "passed-with-physical-skip",
+    "session_id": 58978,
+    "log": "frontend/macos/.build/precommit-native-final-20261012.log",
+    "xcresult": "frontend/macos/.build/precommit-native-final-20261012-1925.xcresult",
+    "last_passed": 304,
+    "last_failed": 0,
+    "source_snapshot": "/private/tmp/blueice-followup-20261012/final-native-program-inputs.json",
+    "passed": 309,
+    "failed": 0,
+    "skipped": 1,
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-native-83436f846-results.json"
+  },
+  "windows": {
+    "status": "complete-for-83436f846",
+    "bootstrap_guest_pid": 12204,
+    "metadata": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261012-winui-json",
+    "source_commit": "83436f8461c6f681df183473ecb7dcbe83423605",
+    "completed": [
+      "rust-fmt",
+      "rust-clippy",
+      "rust-build",
+      "rust-test",
+      "winui-build",
+      "winui-protocol"
+    ],
+    "rust_passed": 5670,
+    "rust_ignored": 64,
+    "protocol_cases_passed": 5,
+    "current": null,
+    "helper": "/private/tmp/blueice-followup-20261012/windows-agent.py",
+    "retained_previous_result": "/private/tmp/blueice-followup-20261012/windows-retry1-stopped.json",
+    "build_script_fix_commit": "2c769a4f9",
+    "previous_desktop": {
+      "status": "stopped",
+      "passed": 6,
+      "close_failed": "UI Automation WindowPattern unsupported; controller deadline reached after helper hung",
+      "receipt": "/private/tmp/blueice-followup-20261012/windows-winui-msvc-failed-final.json",
+      "owned_residual_helper_pid": 3000,
+      "owned_residual_helper_cleaned": true
+    },
+    "close_fix": "TryGetCurrentPattern or validated HWND WM_CLOSE; all exit/core/frame-directory assertions retained",
+    "parser_exit_code": 0,
+    "last_desktop_attempt": {
+      "seven_assertions_passed": true,
+      "status": "stopped",
+      "error": "Owned UI task exceeded its execution limit",
+      "receipt": "/private/tmp/blueice-followup-20261012/windows-close-final-state.json",
+      "residual_helper_pid": 9172,
+      "residual_helper_cleaned": true
+    },
+    "close_fix_private_commit": "6bea737fb",
+    "publisher_cause": "PowerShell 5.1 Get-Content adds PSPath/PSParentPath/PSChildName/PSDrive/PSProvider/ReadCount; plain ReadAllText fixes JSON publication",
+    "plain_serializer_probe": {
+      "exit_code": 0,
+      "result_published": true,
+      "phase_log": "/private/tmp/blueice-followup-20261012/windows-serializer-plain-probe-phase.log"
+    },
+    "bootstrap_exit_code": 0,
+    "desktop_cases_passed": 7,
+    "desktop_task_exit_code": 0,
+    "source_unchanged": true,
+    "final_cleanup": "No owned task, desktop helper or app; frame cleanup passed",
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/windows-83436f846-results.json",
+    "remaining": "Fresh complete Windows acceptance for integrated object URL/AbortSignal/CustomEvent/node-event/tee/Promise-GC current source remains required.",
+    "result_commit": "22ad999080eec5d57a58226d22ca7f6b4a18e736"
+  },
+  "object_url_increment": {
+    "worktree": "/private/tmp/blueice-object-urls-83436f846",
+    "commit": "eb9bff024",
+    "clean": true,
+    "merged_into_main": true,
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/object-url-results.json",
+    "focused_passed": 70,
+    "later_core_cases_passed": 8,
+    "browser_cases_passed": 2,
+    "all_target_clippy_crates": 5,
+    "fmt": "passed",
+    "full_workspace_pending": false,
+    "main_commit": "ce308034c"
+  },
+  "pending_physical": "Current direct CoreGraphics/NSScreen evidence identifies one PA279CRV, mode89 logical1920x1080/pixels3840x2160 at2x with101supportedmodes; CUPS has no configured/default printer. Hardware absence was not established by earlier profiler. Actual transitions/Runner authorization/VoiceOver AppleScript permission still pending. Delay display/reader actions until native13079 cleanup.",
+  "abort_increment": {
+    "isolated_commit": "a0464408c",
+    "main_commit": "88c1f1438",
+    "focused_and_browser_passed": 88,
+    "failed": 0,
+    "ignored": 0,
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/abort-signal-results.json"
+  },
+  "new_macos_workspace": {
+    "status": "passed",
+    "session_id": 68740,
+    "source_commit": "88c1f1438333a00fe943d67d45e1d69b18aab2bd",
+    "snapshot": "/private/tmp/blueice-followup-20261012/workspace-88c1f1438-inputs.json",
+    "log": "frontend/macos/.build/workspace-88c1f1438-20261012.log",
+    "last_observation": {
+      "groups": 445,
+      "passed": 6969,
+      "failed": 0,
+      "ignored": 66,
+      "last": "test exceptions::launcher_refuses_exception_locations_without_owner_client_grants_or_source_receipts ... ok"
+    },
+    "exit_code": 0,
+    "passed": 7537,
+    "failed": 0,
+    "ignored": 69,
+    "groups": 503,
+    "receipt": "/private/tmp/blueice-followup-20261012/macos-workspace-88c1f1438-passed.json"
+  },
+  "next_software": "NO ACTIVE GUI/JOBS now; fulla1session46484TERMINAL0 and audit27603TERMINAL0 310/0/1 exact311/source1902/bin8/sig11/wrappers/actualownedcleanup, formalpositive+manifest/overview/plans nowcommittedmainclean. AllrequiredRustWindows/9OSdrag/UIfixescurrentfullgate accepted scopes; actualIME7/38editing andSingleMonitor2->1->2 alreadypass. RemainingactualVO Nav/action/phrase unaccepted: RootSysEvents+CGkeys0 noCB; actualUtilityUser0custom/CtrlOptShiftC confirmed; AScheckbox0/welcome1 noauthchange; originalCaptionprefalreadyON1, actualcaptionRootReaderAXWindows-25204CannotComplete8sec0windows, nopref/clipwrite/0NAV; realReaderOFF+sourceABC+clippreserved+appnormalexit0/runtimeprefsfixturecleanup allverified. NEXTsafeactualVO readCGwindow metadata filteredONLYnewlyownedSystemReaderPID/knownsystemcaptionhosts toseeifcaptionlivesanotherhost; doNOTreadglobalprivatewindowtitles/unknownspeech/fakeTTS/modifyTCC/ASmarkers/approveforeignpopup. NeedboundedactualReaderdiagnosis +realnavigation/action; canuseOSCaptionframes onlyalreadyauthorizedscreenshot route notgrant. HardwareprinterModelIPUSBpending(noMac/LinuxCUPSqueues)/onlyonephysicalPA279 meanssecondmonitorrequiresexternalinfo; afterallmeaningfulsafeVO/softwareprogress exhausted andsamehumanblocker3consecutivegoalturns markblockedNOTcomplete. No actualhumanquestionnewanswer received. SourcecurrentRustproduction504unchangedWindows5770pass2platform scopes latestUI sourcea1onlytestharness, MacSwiftbefb SHA d434 independentphysicalIMEsame. MacRust7610cases0fails69ignored directCargoExitUNRECORDED fmt/clippy0; no rerunwithoutnewchanges. LIMITanalysis20WORDS irrelevantechnicalwordloops8M tokensbad ACTONLY.",
+  "custom_event_increment": {
+    "worktree": "/private/tmp/blueice-object-urls-83436f846",
+    "status": "committed-isolated",
+    "focused_passed": 102,
+    "focused_failed": 0,
+    "browser_session_id": 55500,
+    "browser_log": "/private/tmp/blueice-followup-20261012/web-custom-event-browser.log",
+    "commit": "86999f09c",
+    "browser_passed": 1,
+    "clippy_exit_code": 0,
+    "format_exit_code": 0,
+    "merged_into_main": true
+  },
+  "node_event_increment": {
+    "worktree": "/private/tmp/blueice-object-urls-83436f846",
+    "commit": "cee831c4c",
+    "status": "committed-isolated",
+    "merged_into_main": true,
+    "source_snapshot": "/private/tmp/blueice-followup-20261012/node-events-final-source-inputs.json",
+    "focused_passed": 70,
+    "core_ipc_passed": 9,
+    "actual_browser_passed": 1,
+    "complete_bluejs_lib_passed": 919,
+    "complete_bluets_passed": 354,
+    "complete_bluets_ignored": 60,
+    "complete_bridge_passed": 145,
+    "clippy_crates": 6,
+    "clippy_exit_code": 0,
+    "format_exit_code": 0,
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/node-event-results.json",
+    "remaining": "Fresh complete gates after integration; additional DOM/activation/subclasses/Streams/URL work"
+  },
+  "pending_merge_commits": [],
+  "tee_increment": {
+    "worktree": "/private/tmp/blueice-object-urls-83436f846",
+    "base_commit": "cee831c4c",
+    "status": "committed-isolated",
+    "session_id": null,
+    "log": "/private/tmp/blueice-followup-20261012/tee-browser-final.log",
+    "source_snapshot": "/private/tmp/blueice-followup-20261012/tee-gc-final-source-inputs.json",
+    "gc_red": {
+      "passed": 2,
+      "failed": 2
+    },
+    "gc_first": {
+      "passed": 4,
+      "failed": 0
+    },
+    "tee_first_after_gc": {
+      "passed": 13,
+      "failed": 1,
+      "failure": "Queue quota failure stalled other branch; now fixed, awaiting final tests"
+    },
+    "typing_profile": "core-script-dom-stream-tee-v9",
+    "bindings": 39,
+    "remaining_gates": [
+      "Integrated full Rust/native/Windows terminal acceptance"
+    ],
+    "library_first": {
+      "passed": 919,
+      "failed": 0
+    },
+    "wider_first_failures": [
+      "async Promise wrapper allocated before rooting (fixed)",
+      "active async return capability not rooted across body (fixed)",
+      "active job operand roots lost when module/async replaced the stack (fixed)",
+      "module/deferred import waiter promises missing explicit VM roots (fixed)"
+    ],
+    "stream_after_queue_fix": {
+      "passed": 34,
+      "failed": 0
+    },
+    "gc_after_first_fixes": {
+      "passed": 6,
+      "failed": 0
+    },
+    "bluejs_library_and_related": {
+      "passed": 1093,
+      "failed": 0,
+      "ignored": 0,
+      "groups": 18,
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/tee-gc-library-focused-second.log"
+    },
+    "bridge": {
+      "passed": 146,
+      "failed": 0,
+      "ignored": 0,
+      "groups": 9,
+      "exit_code": 0,
+      "log": "/private/tmp/blueice-followup-20261012/tee-bridge-final.log"
+    },
+    "browser_build_exit": 0,
+    "fmt_exit": 0,
+    "commit": "aec87832e187c0f3a76081c10b950411e7dc06d5",
+    "clean": true,
+    "merged_into_main": true,
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/stream-tee-results.json",
+    "browser": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "exit_code": 0
+    },
+    "strict_clippy_crates": 4,
+    "clippy_exit": 0,
+    "source_verified_files": 23
+  },
+  "pending_private_commits": [],
+  "iteration_increment": {
+    "base_commit": "aec87832e187c0f3a76081c10b950411e7dc06d5",
+    "worktree": "/private/tmp/blueice-object-urls-83436f846",
+    "status": "committed-isolated-and-integrated-scratch",
+    "session_id": null,
+    "log": "/private/tmp/blueice-followup-20261012/stream-iteration-browser-final.log",
+    "snapshot": "/private/tmp/blueice-followup-20261012/stream-iteration-final-source-inputs.json",
+    "missing_method_red": {
+      "passed": 0,
+      "failed": 10
+    },
+    "first": {
+      "passed": 9,
+      "failed": 1,
+      "failure": "for await break does not wait for cancellation Promise"
+    },
+    "new_iteration_cases": 17,
+    "implemented": [
+      "values and asyncIterator alias with inherited AsyncIterator prototype",
+      "serialized next and return with exact raw chunk/return identity",
+      "EOF/error unlock, cancel/preventCancel, finished/ignored-value GC",
+      "compiler for-await whole-loop awaited finalizer, throw precedence, failed-next skips return",
+      "V10 checked 40-binding host profile",
+      "repair stale V7 verifier in BlueTS classic/module options",
+      "actual Core Blob for-await DOM update with EOF unlock"
+    ],
+    "remaining_gates": [
+      "Integrated full Rust/native/Windows terminal acceptance"
+    ],
+    "bluejs_passed": 1110,
+    "bluejs_failed": 0,
+    "bridge_passed": 148,
+    "bridge_failed": 0,
+    "compiler_passed": 357,
+    "compiler_failed": 0,
+    "compiler_ignored": 60,
+    "module_profile_passed": 1,
+    "known_language_limit": "Anonymous arrows remain unsupported; typed native return regression uses a named callback while preserving the same .return operation.",
+    "fmt_session_id": null,
+    "browser_build_exit": 0,
+    "fmt_exit": 0,
+    "commit": "6e64af160d7738b170a78e9681a7e49f28d005fe",
+    "clean": true,
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/stream-iteration-results.json",
+    "browser_passed": 1,
+    "clippy_exit": 0,
+    "strict_clippy_crates": 5,
+    "source_verified_files": 20,
+    "merged_into_main": true
+  },
+  "integration_checkout": {
+    "worktree": "/private/tmp/blueice-followup-integration-20261013",
+    "commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+    "base_main_commit": "2b327e45b33b9592bb2566b276967d897ca3f6b3",
+    "clean": true,
+    "integrated_private_commits": [
+      "6bea737fb",
+      "86999f09c",
+      "cee831c4c",
+      "aec87832e",
+      "6e64af160d7738b170a78e9681a7e49f28d005fe"
+    ],
+    "integration_commits": [
+      "a0b9c2b60",
+      "303fdd9ba",
+      "52de99362",
+      "b8f3830bd",
+      "ec421744015eac64793dae147d4b4bd0043b8fc6"
+    ],
+    "all_1790_backend_files_match_verified_private_head": true,
+    "msvc_build_script": "frontend/winui/build.ps1",
+    "msvc_build_script_sha256": "745d13273db180d6119912e7517ff94ff5d7619e866e479a3adebfdd399b47c5",
+    "main_windows_acceptance_and_physical_docs_retained": true,
+    "merged_into_main": true,
+    "windows_current_source_acceptance_started": true,
+    "integration_method": "ff-only after old gate terminal 0 and 1882 input hashes matched"
+  },
+  "windows_current_source": {
+    "status": "failed-complete-before-restaging",
+    "source_commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+    "root": "B:\\BlueIce\\workspaces\\blueice-downloads",
+    "metadata": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-ec4217440-retry1",
+    "bootstrap_guest_pid": 9608,
+    "controller_guest_pid": 10436,
+    "child_last_observed": 13564,
+    "current": "rust-test",
+    "completed": [
+      "rust-fmt",
+      "rust-clippy",
+      "rust-build"
+    ],
+    "source_files": 2186,
+    "program_files": 1902,
+    "source_staging_exit": 0,
+    "local_manifest": "/private/tmp/blueice-followup-20261012/windows-source-ec421744015e-manifest.json",
+    "source_staging_receipt": "/private/tmp/blueice-followup-20261012/windows-staging-ec4217440-receipt.json",
+    "controller_local": "/private/tmp/blueice-followup-20261012/windows-ec4217440-retry1-controller.ps1",
+    "source_server_session": 9985,
+    "source_server_pid": 1656851,
+    "source_server_exit": 0,
+    "progress_probe": "/private/tmp/blueice-followup-20261012/windows-progress-ec4217440-retry1.ps1",
+    "helper": "/private/tmp/blueice-followup-20261012/windows-agent.py",
+    "disk_guard": {
+      "min_b_gib": 50,
+      "min_c_gib": 4,
+      "max_target_gib": 60
+    },
+    "remaining": [
+      "rust-build",
+      "rust-test",
+      "winui-build",
+      "winui-protocol",
+      "all seven desktop cases and cleanup"
+    ],
+    "fmt_packages": 25,
+    "fmt_targets": 495,
+    "controller_live_verified": false,
+    "controller_last_verified_utc": "2026-10-12T20:36:29.8392680Z",
+    "live_child_last_observed": 9372,
+    "live_cargo_pid": 12372,
+    "live_rustc_pids": [
+      6188,
+      7216,
+      6340,
+      11692
+    ],
+    "first_attempt": {
+      "status": "stopped",
+      "reason": "Target grew beyond 24 GiB; build not completed",
+      "receipt": "/private/tmp/blueice-followup-20261012/windows-ec4217440-first-stopped.json",
+      "owned_runtime_gone_verified": true
+    },
+    "reused_source_gates": [
+      "rust-fmt",
+      "rust-clippy"
+    ],
+    "bootstrap_pid_evidence": "Controller ParentProcessId in matching live CIM tree; unique helper syntax receipt pending retrieval",
+    "last_disk": {
+      "free_b": 280890871808,
+      "free_c": 7246499840,
+      "target_bytes": 31999430463,
+      "max_target_bytes": 64424509440,
+      "min_free_b": 53687091200,
+      "min_free_c": 4294967296
+    },
+    "latest_probe_receipt": "/private/tmp/blueice-followup-20261012/windows-ec4217440-retry1-progress-2034.json",
+    "last_live_counts": {
+      "groups": 516,
+      "passed": 5764,
+      "failed": 2,
+      "ignored": 64,
+      "scope": "Completed result groups in an active test run"
+    },
+    "last_live_counts_scope": "Partial completed result groups; full run still active.",
+    "known_rust_failures": [
+      "failures:\n\n---- array_from_async_allocations_after_a_user_hook stdout ----\n\nthread 'array_from_async_allocations_after_a_user_hook' (13796) panicked at backend\\bluejs\\tests\\cov_g2_sweep\\mod.rs:262:9:\nceiling 376704: (function () { var iterable = { [Symbol.asyncIterator]() { return {\n    next() { return Promise.resolve({ value: 1, done: false }); }, return() { return {}; } }; } }; var big = 'e'.repeat(1500);\n             b(); Array.fromAsync(5); b(); Array.fromAsync(true);\n             b(); Array.fromAsync(iterable, () => { b(); throw big; });\n             return true; })(): Err(Heap(InvalidObject(ObjectId { heap: 16643, serial: 307 })))\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    array_from_async_allocations_after_a_user_hook\n\ntest result: FAILED. 28 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 141.85s",
+      "failures:\n\n---- atomics_wait_async stdout ----\nbuilt-ins/Atomics/waitAsync: ran 134, skipped 64, failed 4\n\nthread 'atomics_wait_async' (6288) panicked at backend\\bluejs\\tests\\cov_g4_test262_binary.rs:12:5:\nbuilt-ins/Atomics/waitAsync\\bigint\\undefined-for-timeout.js [sloppy]: TypeError: invalid Promise receiver\nbuilt-ins/Atomics/waitAsync\\bigint\\undefined-for-timeout.js [strict]: TypeError: invalid Promise receiver\nbuilt-ins/Atomics/waitAsync\\undefined-for-timeout.js [sloppy]: TypeError: invalid Promise receiver\nbuilt-ins/Atomics/waitAsync\\undefined-for-timeout.js [strict]: TypeError: invalid Promise receiver\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    atomics_wait_async\n\ntest result: FAILED. 7 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 912.62s"
+    ],
+    "finished": "2026-10-12T20:28:36.3296293Z",
+    "controller_gone": true,
+    "related_runtime_gone": true,
+    "full_rust_passed": 5764,
+    "full_rust_failed": 2,
+    "full_rust_ignored": 64,
+    "full_rust_groups": 516,
+    "source_unchanged_verified_files": 2186,
+    "receipt": "/private/tmp/blueice-followup-20261012/windows-ec4217440-retry1-failed-final.json",
+    "final_source_and_log_audit": "/private/tmp/blueice-followup-20261012/windows-ec4217440-prestage-audit-results.json",
+    "bootstrap_status": "QGA handle missing; final matchingcontroller/process/source audit proves oldwork terminal/idle"
+  },
+  "integrated_macos_native": {
+    "status": "failed-complete",
+    "source_commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+    "worktree": "/private/tmp/blueice-followup-integration-20261013",
+    "backend_source_worktree": "/private/tmp/blueice-object-urls-83436f846",
+    "backend_source_commit": "6e64af160d7738b170a78e9681a7e49f28d005fe",
+    "backend_content_matches_integrated_commit": true,
+    "backend_target": "/private/tmp/blueice-object-urls-target",
+    "backend_build_session": 27937,
+    "backend_build_exit": 0,
+    "app_build_exit": 0,
+    "drag_fixture_build_exit": 0,
+    "source_snapshot": "/private/tmp/blueice-followup-20261012/native-ec4217440-source-inputs.json",
+    "source_files": 1902,
+    "log": "/private/tmp/blueice-followup-20261012/native-ec4217440-20261013.log",
+    "xcresult": "/private/tmp/blueice-followup-20261012/native-ec4217440-20261013.xcresult",
+    "session_id": 13079,
+    "scope": "Full ProtocolTests and BrowserUITests through owned live SFTP/update wrappers, including actual drags/system Zhuyin; physical skips must remain explicit.",
+    "last_passed": 265,
+    "last_failed": 12,
+    "failures": [
+      "testBrowserServiceRecoveryDiscardsPendingAssistantResultAndInstruction",
+      "testBrowserServiceRecoveryNeverReplaysPostOrRestoresItsPrivateBody",
+      "testBrowserServiceRestartRestoresVolatileWindowsHistoryAndZoomWithoutSaving",
+      "testChromeKeyboardActionsStayInActiveWindowAndOpenOwnedPermissions",
+      "testNativeAssistantLoopbackEditorAndClosingUnconfirmedChanges",
+      "testNativeAssistantProposalCannotApplyWithoutExactHumanConfirmation",
+      "testNativeAssistantSettingsReviewCancelApplyAndRelaunch",
+      "testNativeOneShotLongURLKeepsConfirmationReachable",
+      "testNativeOneShotReviewCancelAndStaleDocumentRejection",
+      "testNativePermissionChildExitClosesTheOwnedServiceConnection",
+      "testNativePermissionGrantCancelRevokeAndRefreshRetainPage",
+      "testNativePermissionPanelEmptyStateAndCloseKeepBrowserAlive"
+    ],
+    "last_methods": [
+      "Test Case '-[BrowserUITests.BrowserUITests testResizePublishesNewCoreFrame]' started.",
+      "Test Case '-[BrowserUITests.BrowserUITests testResizePublishesNewCoreFrame]' passed (13.343 seconds).",
+      "Test Case '-[BrowserUITests.BrowserUITests testResizingSecondWindowPreservesFirstViewportAndAddressDraft]' started."
+    ],
+    "failure_diagnosis": {
+      "symptom": "Four early UI methods fail to see permissions-window; 178 ProtocolTests passed.",
+      "read_only_probe": "/private/tmp/blueice-followup-20261012/probe-native-panel-paths.swift",
+      "probe_result": "Exact live Panels resolved bundle URL equals expected child app URL; matching own process group observed. No global activation or TCC changes attempted.",
+      "system_log": "/private/tmp/blueice-followup-20261012/native-ec4217440-activation-system.log",
+      "next": "Let complete native run terminate; retain failed result and cleanup. Focus-repeat exact failures with captured app/launcher logs after cleanup. Consider same-source app at regular main path only if path-related evidence justifies it. Do not weaken owner-group/bundle checks or UI assertions."
+    },
+    "exit_code": 65,
+    "passed": 295,
+    "failed": 14,
+    "skipped": 1,
+    "receipt": "/private/tmp/blueice-followup-20261012/native-ec4217440-failed-complete-results.json",
+    "summary": "/private/tmp/blueice-followup-20261012/native-ec4217440-final-summary.json",
+    "source_unchanged": true,
+    "wrappers_cleanup_verified": true,
+    "owned_process_absence_verified": true
+  },
+  "integrated_macos_workspace": {
+    "status": "failed-complete",
+    "session_id": 30839,
+    "source_commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+    "snapshot": "/private/tmp/blueice-followup-20261012/workspace-ec4217440-inputs.json",
+    "log": "frontend/macos/.build/workspace-ec4217440-20261013.log",
+    "cargo_pid": 41668,
+    "live_child_compile_verified": true,
+    "last_observation": {
+      "groups": 458,
+      "passed": 7036,
+      "failed": 2,
+      "ignored": 66,
+      "last": [
+        "test source_breakpoints::launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints ... ok",
+        "test source_breakpoints::launcher_steps_only_receipted_paused_bluets_source_spans ... ok",
+        "test runtime_values::launcher_reads_granted_classic_and_module_root_and_nested_bluets_values ... ok"
+      ]
+    },
+    "long_case_observation": {
+      "target": "cov_g4_test262_binary",
+      "case": "atomics_wait_async",
+      "status": "active; not restarted",
+      "source_evidence": "backend/bluejs/tests/cov_g4_common/test262.rs: run_bounded uses 15-second per-mode recv_timeout and directories process fixtures sequentially",
+      "interpretation": "A directory-level case can take many bounded fixture waits. Its over-60s message is not terminal/hang proof."
+    },
+    "exit_code": 101,
+    "passed": 7603,
+    "failed": 3,
+    "ignored": 69,
+    "groups": 516,
+    "source_unchanged": true,
+    "receipt": "/private/tmp/blueice-followup-20261012/macos-workspace-ec4217440-failed-complete-results.json"
+  },
+  "native_panel_test_fix": {
+    "worktree": "/private/tmp/blueice-native-panel-fix-20261013",
+    "commit": "ff4479d8406ce00f02ed8f5bfd541777ce123f97",
+    "clean": true,
+    "status": "committed-isolated-awaiting-native-gates",
+    "program_file_delta": [
+      "frontend/macos/UITests/BrowserUITests.swift"
+    ],
+    "product_sources_changed": false,
+    "diagnosis": "/private/tmp/blueice-followup-20261012/native-ec4217440-panel-path-diagnosis.json",
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-panel-path-diagnosis-ec4217440.json",
+    "swift_parse_exit": 0,
+    "diff_check_exit": 0,
+    "source_sha256": "67991eb857312e86b1cb85521acf4237543528f7e0b8e5374f582719426c7701",
+    "remaining": [
+      "App/drag build and signed products",
+      "14 focused permission/recovery methods",
+      "Full native+current-source drag video",
+      "Later merge after mainRustterminal"
+    ],
+    "latest_worktree_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "focused_plan": "/private/tmp/blueice-followup-20261012/corrected-native-panel-focus-504eeb924-plan.json",
+    "focused_methods_count": 14
+  },
+  "array_from_async_gc_fix": {
+    "worktree": "/private/tmp/blueice-native-panel-fix-20261013",
+    "base_commit": "ff4479d8406ce00f02ed8f5bfd541777ce123f97",
+    "status": "committed-isolated-focused-passed",
+    "cache": "/private/tmp/blueice-array-from-async-target",
+    "red_existing": {
+      "session_id": 17543,
+      "exit_code": 101,
+      "failed": 1,
+      "log": "/private/tmp/blueice-followup-20261012/array-from-async-heap-red.log",
+      "ceiling_bytes": 376704,
+      "invalid_object_serial": 307
+    },
+    "red_new_semantic_case": {
+      "session_id": 12068,
+      "exit_code": 0,
+      "passed": 1,
+      "log": "/private/tmp/blueice-followup-20261012/array-from-async-close-result-red.log",
+      "note": "This validates public close/reason/then-getter semantics and passed before correction; the existing allocation sweep is the regression that failed."
+    },
+    "green_session_id": 47684,
+    "green_log": "/private/tmp/blueice-followup-20261012/array-from-async-close-result-first.log",
+    "changed_files": [
+      "backend/bluejs/src/vm/builtins/array_from_async.rs",
+      "backend/bluejs/tests/array_from_async.rs"
+    ],
+    "candidate": "Root fresh iterator return result while storing original error before fa_await adopts it; existing 376704-byte ceiling regression now passes in active cohort",
+    "remaining": [
+      "Finish frozen ec421 Mac/Windows complete runs and record all failures",
+      "Integrate committed descendants after source verification at terminal",
+      "Corrected-source full Rust/native/Windows acceptance"
+    ],
+    "fmt_exit": 0,
+    "existing_red_case_now_passed_in_active_cohort": true,
+    "green_exit": 0,
+    "green_passed": 48,
+    "green_failed": 0,
+    "focused_receipt": "/private/tmp/blueice-followup-20261012/array-from-async-focused-passed.json",
+    "commit": "33dfdb3b78150a470c07b99d4941e6651a9833ae",
+    "clean": true,
+    "clippy_session_id": 92083,
+    "clippy_exit": 0,
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/array-from-async-gc-results.json"
+  },
+  "corrected_backend_build": {
+    "status": "historical-source33-build-passed-new-runtime-change-pending",
+    "session_id": 65220,
+    "source_commit": "33dfdb3b78150a470c07b99d4941e6651a9833ae",
+    "worktree": "/private/tmp/blueice-native-panel-fix-20261013",
+    "target": "/private/tmp/blueice-array-from-async-target",
+    "log": "/private/tmp/blueice-followup-20261012/corrected-backend-build-33dfdb3b7.log",
+    "program_snapshot": "/private/tmp/blueice-followup-20261012/corrected-33dfdb3b7-program-inputs.json",
+    "command": "CARGO_TARGET_DIR=/private/tmp/blueice-array-from-async-target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 rustup run1.96.0 cargo build --workspace --bins --locked",
+    "note": "Current native13079 continues to use untouched old private cache blueice-object-urls-target; corrected bins are separate.",
+    "exit_code": 0,
+    "receipt": "/private/tmp/blueice-followup-20261012/corrected-backend-build-33dfdb3b7-results.json",
+    "program_files_verified": 1902,
+    "binaries": {
+      "blueice-core": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-core",
+        "bytes": 87734528,
+        "sha256": "c5c265e679faed1d85fffd4c69551ff5b00637ec4b0f5466f650c2168692b3cc"
+      },
+      "blueice-launcher": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-launcher",
+        "bytes": 8450768,
+        "sha256": "2cd95492000a24ad62e68aef471ac0937e70fa75e100cc65fad6dd4fe4002b42"
+      },
+      "blueice-bluejs-host": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-bluejs-host",
+        "bytes": 45176912,
+        "sha256": "e3d9ed8f03debce762caadeba61d3f49a7195bc78608c73293501a7ef508017a"
+      },
+      "bluejs-regexp-worker": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/bluejs-regexp-worker",
+        "bytes": 1718880,
+        "sha256": "72e27cbcff92b052aa8a89e70d21412084563ad03b9c8c2957dc37c7893876e4"
+      },
+      "blueice-ai-gatekeeper": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-ai-gatekeeper",
+        "bytes": 5083712,
+        "sha256": "3268ba6046e09bfc80fbb7a00bad05b95ea2663a8dd8a86f06a8a0ddaa805f8d"
+      },
+      "blueice-downloads": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-downloads",
+        "bytes": 9294880,
+        "sha256": "e50d859ba6bae28bd8b5e2d144f295fa4ee4a60d3b8d82947af1871fbf34b02a"
+      },
+      "blueice-extension-host": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-extension-host",
+        "bytes": 16272896,
+        "sha256": "ec19b4b96f737fa5f7f8da85724fbd30f856fa1232a780b757d965c95bb60885"
+      },
+      "blueice-ai-assistant": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-ai-assistant",
+        "bytes": 4488464,
+        "sha256": "1e67ed01190c27497cc4e4111a67548a11e25de2966aa66c92376b1104b8547c"
+      }
+    }
+  },
+  "corrected_windows_preparation": {
+    "source_commit": "33dfdb3b78150a470c07b99d4941e6651a9833ae",
+    "archive": "/private/tmp/blueice-followup-20261012/windows-source-33dfdb3b7815.tar",
+    "manifest": "/private/tmp/blueice-followup-20261012/windows-source-33dfdb3b7815-manifest.json",
+    "source_files": 2190,
+    "program_files": 1902,
+    "source_delta": "/private/tmp/blueice-followup-20261012/corrected-source-ec421-to-33dfdb3b7-delta.json",
+    "host_upload_exit": 0,
+    "staged_to_vm": false,
+    "remote_helper_directory": "B:\\BlueIce\\results\\prepared-33dfdb3b7",
+    "helper_upload_in_progress": false,
+    "parser_validation_pending": false,
+    "controller_max_target_gib": 60,
+    "reuse_rust_gates": false,
+    "prepared_scripts_passed": 9,
+    "prepared_syntax_receipt": "/private/tmp/blueice-followup-20261012/windows-33dfdb3b7-prepared-syntax-results.json",
+    "staging_template": "/private/tmp/blueice-followup-20261012/windows-stage-33dfdb3b7-template.ps1",
+    "staging_template_transport_placeholder_unfilled": true,
+    "bootstrap_local": "/private/tmp/blueice-followup-20261012/windows-start-33dfdb3b7.ps1",
+    "progress_probe_local": "/private/tmp/blueice-followup-20261012/windows-progress-33dfdb3b7.ps1",
+    "controller_local": "/private/tmp/blueice-followup-20261012/windows-33dfdb3b7-controller.ps1",
+    "status": "prepared-33-obsolete-after-new-Atomics-regression",
+    "must_not_deploy_known_incomplete_33_source": true
+  },
+  "physical_current_capabilities": {
+    "receipt": "/private/tmp/blueice-followup-20261012/physical-system-capabilities-20261013.json",
+    "online_monitors": 1,
+    "display_name": "PA279CRV",
+    "display_id": 2,
+    "current_mode": 89,
+    "pixels": [
+      3840,
+      2160
+    ],
+    "points": [
+      1920,
+      1080
+    ],
+    "scale": 2,
+    "mode_count": 101,
+    "configured_printers": 0,
+    "voiceover_driver_compile_exit": 0,
+    "voiceover_driver_executed": false,
+    "physical_acceptance": false,
+    "remaining": "Actual display transition/restore, multi-monitor if required, actual system VoiceOver/IME and printer transitions; do not treat capability inventory or compiled script as accepted."
+  },
+  "physical_display_readiness": {
+    "receipt": "/private/tmp/blueice-followup-20261012/physical-display-test-readiness-20261013.json",
+    "driver": "/private/tmp/blueice-followup-20261012/owned-display-transition",
+    "driver_source": "/private/tmp/blueice-followup-20261012/owned-display-transition.swift",
+    "observer": "/private/tmp/blueice-followup-20261012/observe-owned-viewport.py",
+    "compile_exit": 0,
+    "describe_exit": 0,
+    "live_observer_exit": 0,
+    "candidate_modes": [
+      {
+        "height": 2160,
+        "id": 159,
+        "pixel_height": 2160,
+        "pixel_width": 3840,
+        "refresh_rate": 60,
+        "width": 3840
+      }
+    ],
+    "mode_transition_performed": false
+  },
+  "last_goal_turn_classification": "progress: fullcurrent311 terminal0/Audit0 verifiedandformalrecord970258 committed; actualReaderCGmetadata now3ownWindows2visible whileAXCannotComplete andScreenCapturepreflightfalse, no capturegrant; Reader/input/clip/app/runtimeprefsfixture restore0 proof. RecheckedMacCUPSnone/singlePA2792x. Missingprinter/secondmonitor/manualVO informationaskedasync; hardware/VO remain unaccepted. First resumed blocking audit notyetthreshold3; usefulevidence/postdocs work thisturn.",
+  "atomics_wait_async_gc_fix": {
+    "worktree": "/private/tmp/blueice-native-panel-fix-20261013",
+    "base_commit": "33dfdb3b78150a470c07b99d4941e6651a9833ae",
+    "status": "committed-isolated-focused-passed",
+    "red": {
+      "session_id": 88432,
+      "exit_code": 101,
+      "passed": 0,
+      "failed": 2,
+      "log": "/private/tmp/blueice-followup-20261012/async-host-wait-gc-red.log"
+    },
+    "full_source_red": {
+      "source_commit": "ec421744015eac64793dae147d4b4bd0043b8fc6",
+      "target": "cov_g4_test262_binary",
+      "case": "atomics_wait_async",
+      "fixture_failures": 4,
+      "fixtures": [
+        "undefined-for-timeout.js sloppy/strict",
+        "bigint/undefined-for-timeout.js sloppy/strict"
+      ],
+      "error": "TypeError: invalid Promise receiver",
+      "log": "frontend/macos/.build/workspace-ec4217440-20261013.log"
+    },
+    "candidate": "Root host wait promise from registration through queued completion; keep all dequeued event roots across prior callbacks and release entire wave even on error. Host thread only carries opaque ids; owning VM does heap access.",
+    "green_log": "/private/tmp/blueice-followup-20261012/async-host-wait-gc-focused-first.log",
+    "changed_files": [
+      "backend/bluejs/src/vm/test262_agents.rs",
+      "backend/bluejs/src/vm/builtins/binary_data.rs",
+      "backend/bluejs/tests/promise_gc_lifecycle.rs"
+    ],
+    "remaining": [
+      "Focused terminal including exact four original Test262 fixture/mode cases",
+      "BlueJS strict all-target Clippy and fmt",
+      "Commit receipt",
+      "Rebuild backend bins and repackage source/helper SHA after new committed head",
+      "Complete native/Windows/Rust acceptance"
+    ],
+    "green_session_id": 68115,
+    "green_exit": 0,
+    "green_passed": 138,
+    "original_test262_fixture_modes_passed": 4,
+    "focused_receipt": "/private/tmp/blueice-followup-20261012/async-host-wait-gc-focused-passed.json",
+    "commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "clean": true,
+    "clippy_exit": 0,
+    "fmt_exit": 0,
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/async-host-wait-gc-results.json"
+  },
+  "corrected_final_source": {
+    "commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "worktree": "/private/tmp/blueice-native-panel-fix-20261013",
+    "program_snapshot": "/private/tmp/blueice-followup-20261012/corrected-504eeb924-program-inputs.json",
+    "source_files": 2192,
+    "program_files": 1902,
+    "previous_33_archive_and_build_superseded": true,
+    "native_source_factory_unchanged_since_testfix": true,
+    "documentation_head": "d37791e2e",
+    "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "documentation_only_delta_programs_verified_unchanged": 1902,
+    "documentation_receipts_committed": true,
+    "integrated_into_main": true,
+    "main_head": "1e198f07e86b8669c92a4705015b873961d69aaa",
+    "production_runtime_source": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "mac_unix_test_only_delta": [
+      "backend/launcher/tests/spawn_core.rs"
+    ]
+  },
+  "physical_printer_input": {
+    "status": "asked-missing-device-info",
+    "question": "Which physical printer can be used? Model and network IP/name or USB connection; no CUPS printer is configured.",
+    "answer_received": false
+  },
+  "corrected_final_backend_build": {
+    "source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "session_id": 27561,
+    "status": "passed",
+    "target": "/private/tmp/blueice-array-from-async-target",
+    "worktree": "/private/tmp/blueice-native-panel-fix-20261013",
+    "log": "/private/tmp/blueice-followup-20261012/corrected-backend-build-504eeb924.log",
+    "snapshot": "/private/tmp/blueice-followup-20261012/corrected-504eeb924-program-inputs.json",
+    "exit_code": 0,
+    "receipt": "/private/tmp/blueice-followup-20261012/corrected-backend-build-504eeb924-results.json",
+    "binaries": {
+      "blueice-core": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-core",
+        "bytes": 87734560,
+        "sha256": "6754944660867b6e6c3a5eb90aed759c0a170bbba7dbb67c928082f4ba6f0bf4"
+      },
+      "blueice-launcher": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-launcher",
+        "bytes": 8450768,
+        "sha256": "3308e25db00f343f910151a8e84df1e8f9d4b9954ec7dd30c95d775f97e71893"
+      },
+      "blueice-bluejs-host": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-bluejs-host",
+        "bytes": 45176912,
+        "sha256": "0e1c26935a7ebae74d8089c607684e1f2f3e74934b694fa1eefa5d31dc0ac9e0"
+      },
+      "bluejs-regexp-worker": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/bluejs-regexp-worker",
+        "bytes": 1718880,
+        "sha256": "07e45474be4133153e3c1e22ac538072a79cec7a42563ca1a941c7c2a9cccc63"
+      },
+      "blueice-ai-gatekeeper": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-ai-gatekeeper",
+        "bytes": 5083712,
+        "sha256": "3268ba6046e09bfc80fbb7a00bad05b95ea2663a8dd8a86f06a8a0ddaa805f8d"
+      },
+      "blueice-downloads": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-downloads",
+        "bytes": 9294880,
+        "sha256": "e50d859ba6bae28bd8b5e2d144f295fa4ee4a60d3b8d82947af1871fbf34b02a"
+      },
+      "blueice-extension-host": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-extension-host",
+        "bytes": 16272896,
+        "sha256": "ec19b4b96f737fa5f7f8da85724fbd30f856fa1232a780b757d965c95bb60885"
+      },
+      "blueice-ai-assistant": {
+        "path": "/private/tmp/blueice-array-from-async-target/debug/blueice-ai-assistant",
+        "bytes": 4488464,
+        "sha256": "1e67ed01190c27497cc4e4111a67548a11e25de2966aa66c92376b1104b8547c"
+      }
+    },
+    "program_files_verified": 1902
+  },
+  "corrected_final_windows_preparation": {
+    "source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "archive_sha256": "44ad5230af763c79aebadf3747e147315b7c6954cdb1972cdfc9dc7b64e52a66",
+    "manifest_sha256": "83fff99ad04c075552c0f06e919ae4b60ac9ed23073af2bd1b9c9c96d9c7cc25",
+    "source_files": 2192,
+    "program_files": 1902,
+    "delta_from_ec4217440": [
+      "backend/bluejs/src/vm/builtins/array_from_async.rs",
+      "backend/bluejs/src/vm/builtins/binary_data.rs",
+      "backend/bluejs/src/vm/test262_agents.rs",
+      "backend/bluejs/tests/array_from_async.rs",
+      "backend/bluejs/tests/promise_gc_lifecycle.rs",
+      "frontend/macos/UITests/BrowserUITests.swift"
+    ],
+    "helpers_prepared_local": 9,
+    "helpers_uploaded_or_started": false,
+    "staged_to_vm": true,
+    "reuse_gates": false,
+    "archive": "/private/tmp/blueice-followup-20261012/windows-source-504eeb924e2b.tar",
+    "manifest": "/private/tmp/blueice-followup-20261012/windows-source-504eeb924e2b-manifest.json",
+    "controller": "/private/tmp/blueice-followup-20261012/windows-504eeb924-controller.ps1",
+    "bootstrap": "/private/tmp/blueice-followup-20261012/windows-start-504eeb924.ps1",
+    "stage_template": "/private/tmp/blueice-followup-20261012/windows-stage-504eeb924-template.ps1",
+    "progress": "/private/tmp/blueice-followup-20261012/windows-progress-504eeb924.ps1",
+    "host_upload_exit": 0,
+    "helpers_uploaded": true,
+    "helpers_executed": false,
+    "prepared_syntax_exit": 0,
+    "prepared_scripts_passed": 9,
+    "prepared_syntax_receipt": "/private/tmp/blueice-followup-20261012/windows-504eeb924-prepared-syntax-results.json",
+    "prepared_guest_directory": "B:\\BlueIce\\results\\prepared-504eeb924",
+    "status": "staged-source-verified-preparing-bootstrap",
+    "source_server_session": 83238,
+    "source_server_pid": 1670587,
+    "stage_script": "/private/tmp/blueice-followup-20261012/windows-stage-504eeb924.ps1",
+    "staging_started": true,
+    "stage_guest_pid": 13848,
+    "stage_exit": 0,
+    "staging_receipt": "/private/tmp/blueice-followup-20261012/windows-staging-504eeb924-results.json",
+    "source_server_exit": 0,
+    "helper_copy_guest_pid": 7324
+  },
+  "corrected_macos_native": {
+    "source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "worktree": "/private/tmp/blueice-native-panel-fix-20261013",
+    "backend_target": "/private/tmp/blueice-array-from-async-target",
+    "app_build_session": 4998,
+    "app_build_exit": 0,
+    "drag_fixture_build_session": 72551,
+    "drag_fixture_build_exit": 0,
+    "source_snapshot": "/private/tmp/blueice-followup-20261012/native-504eeb924-source-inputs.json",
+    "strict_signatures_verified": 11,
+    "focus": {
+      "status": "passed",
+      "session_id": 57839,
+      "controller": "/private/tmp/blueice-followup-20261012/run-panel-focused-504eeb924.py",
+      "plan": "/private/tmp/blueice-followup-20261012/corrected-native-panel-focus-504eeb924-plan.json",
+      "methods": 14,
+      "log": "/private/tmp/blueice-followup-20261012/native-panel-focused-504eeb924.log",
+      "xcresult": "/private/tmp/blueice-followup-20261012/native-panel-focused-504eeb924.xcresult",
+      "last_passed": 2,
+      "last_failed": 0,
+      "last_methods": [
+        "Test Case '-[BrowserUITests.BrowserUITests testBrowserServiceRecoveryNeverReplaysPostOrRestoresItsPrivateBody]' started.",
+        "Test Case '-[BrowserUITests.BrowserUITests testBrowserServiceRecoveryNeverReplaysPostOrRestoresItsPrivateBody]' passed (31.590 seconds).",
+        "Test Case '-[BrowserUITests.BrowserUITests testBrowserServiceRestartRestoresVolatileWindowsHistoryAndZoomWithoutSaving]' started."
+      ],
+      "exit_code": 0,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "source_unchanged": true,
+      "owned_process_absence_verified": true,
+      "receipt": "/private/tmp/blueice-followup-20261012/native-panel-focused-504eeb924-results.json",
+      "summary": "/private/tmp/blueice-followup-20261012/native-panel-focused-504eeb924-summary.json"
+    },
+    "full_native_started": true,
+    "remaining": [
+      "14 focused methods terminal success and wrappers cleanup",
+      "Complete native310methods+current-source scopeddragrecordings",
+      "Actual physicalIME/VO/display/printer acceptance"
+    ],
+    "full": {
+      "status": "failed-complete",
+      "session_id": 62394,
+      "controller": "/private/tmp/blueice-followup-20261012/run-full-native-504eeb924.py",
+      "log": "/private/tmp/blueice-followup-20261012/native-full-504eeb924.log",
+      "xcresult": "/private/tmp/blueice-followup-20261012/native-full-504eeb924.xcresult",
+      "last_passed": 293,
+      "last_failed": 1,
+      "last_methods": [
+        [
+          "BrowserUITests.BrowserUITests testTabDragIntoCollapsedGroupAndBackToUngroupedEndPreservesPage",
+          "passed"
+        ],
+        [
+          "BrowserUITests.BrowserUITests testTabDragReordersWithoutChangingSelectedEditorFindOrZoom",
+          "passed"
+        ]
+      ],
+      "last_skipped": 1,
+      "known_failure": "testNativeAssistantLoopbackEditorAndClosingUnconfirmedChanges: Review button auto-scroll/retry did not produce confirmation at line646; retain full run, investigate after terminal cleanup.",
+      "exit_code": 65,
+      "passed": 308,
+      "failed": 1,
+      "skipped": 1,
+      "receipt": "/private/tmp/blueice-followup-20261012/native-504eeb924-failed-complete-results.json",
+      "summary": "/private/tmp/blueice-followup-20261012/native-full-504eeb924-summary.json",
+      "source_unchanged": true,
+      "wrappers_cleanup_verified": true,
+      "owned_process_absence_verified": true,
+      "strict_signatures_verified": 11
+    },
+    "running_integrity_audit": "/private/tmp/blueice-followup-20261012/native-504eeb924-running-integrity-audit.json",
+    "completed_actual_os_drags": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-results.json",
+    "current_physical_ime_skip_receipt": "/private/tmp/blueice-followup-20261012/native-504eeb924-physical-ime-skip-results.json",
+    "physical_ime_accepted": false,
+    "terminal_auditor": {
+      "script": "/private/tmp/blueice-followup-20261012/audit-full-native-504eeb924.py",
+      "syntax_exit_code": 0,
+      "executed": true,
+      "requires": "Actual62394terminal65,full310summarymatchinglog,2wrapperscleanup,1902inputs+8bins+11strictsignaturesandownedProductsprocessabsence",
+      "exit_code": 0,
+      "session_id": 33382
+    },
+    "drag_movie_verification": {
+      "status": "passed",
+      "session_id": 26460,
+      "exit_code": 0,
+      "receipt": "/private/tmp/blueice-followup-20261012/native-504eeb924-actual-drag-preview.json",
+      "image": "/private/tmp/blueice-followup-20261012/native-504eeb924-actual-drag-preview.png",
+      "observations": 2,
+      "bounds_points": [
+        100,
+        48
+      ],
+      "event_start_seconds": 26.84,
+      "actual_frames_seconds": [
+        28.053333333333335,
+        28.253333333333334
+      ]
+    }
+  },
+  "physical_ime_input": {
+    "status": "asked-for-actual-new-runner-accessibility-setting",
+    "runner": "/private/tmp/blueice-native-panel-fix-20261013/frontend/macos/.build/Build/Products/Debug/BrowserUITests-Runner.app",
+    "runner_built_and_focused_14_passed": true,
+    "requirement": "Actual AXIsProcessTrusted guard skipped previous physical method; manual macOS grant is required. No bypass performed.",
+    "answer_received": false
+  },
+  "corrected_windows_acceptance": {
+    "status": "passed-complete",
+    "source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "bootstrap_guest_pid": 10520,
+    "metadata": "B:\\BlueIce\\workspaces\\blueice-downloads\\.blueice-validation\\acceptance-20261013-504eeb924",
+    "progress_probe": "/private/tmp/blueice-followup-20261012/windows-progress-504eeb924.ps1",
+    "source_files": 2192,
+    "program_files": 1902,
+    "disk_guard": {
+      "max_target_gib": 60,
+      "min_free_b_gib": 50,
+      "min_free_c_gib": 4
+    },
+    "reuse_rust_gates": false,
+    "current": null,
+    "controller_guest_pid": 9160,
+    "controller_live_verified": false,
+    "controller_last_verified_utc": "2026-10-12T22:28:46.2411453Z",
+    "completed": [
+      "rust-fmt",
+      "rust-clippy",
+      "rust-build",
+      "rust-test",
+      "winui-build",
+      "winui-protocol"
+    ],
+    "disk": {
+      "free_b": 280671723520,
+      "free_c": 7192195072,
+      "target_bytes": 32117160767,
+      "max_target_bytes": 64424509440,
+      "min_free_b": 53687091200,
+      "min_free_c": 4294967296
+    },
+    "latest_probe_receipt": "/private/tmp/blueice-followup-20261012/windows-504eeb924-progress-7360-status.json",
+    "last_live_counts": null,
+    "array_gc_original_regression_current_pass": "/private/tmp/blueice-followup-20261012/windows-504eeb924-array-gc-current-result.json",
+    "gc_observer_script": "/private/tmp/blueice-followup-20261012/windows-504eeb924-gc-regression-observer.ps1",
+    "gc_latest_probe_receipt": "/private/tmp/blueice-followup-20261012/windows-504eeb924-gc-observer-5800-status.json",
+    "original_gc_regressions_current_pass": "/private/tmp/blueice-followup-20261012/windows-504eeb924-original-gc-current-results.json",
+    "active_test_observer_script": "/private/tmp/blueice-followup-20261012/windows-504eeb924-active-rust-details.ps1",
+    "active_test_observer_latest_receipt": "/private/tmp/blueice-followup-20261012/windows-504eeb924-active-rust-details-13796-status.json",
+    "all_current_gc_regression_results": "/private/tmp/blueice-followup-20261012/current-cross-platform-gc-regression-results-20261013.json",
+    "rust_test_exit_code": 0,
+    "full_rust_counts": {
+      "ignored": 64,
+      "groups": 516,
+      "failed": 0,
+      "passed": 5770
+    },
+    "full_rust_receipt": "/private/tmp/blueice-followup-20261012/windows-504eeb924-full-rust-passed-results.json",
+    "bootstrap_exit_code": 0,
+    "desktop_passed": 7,
+    "desktop_task_exit_code": 0,
+    "protocol_exit_code": 0,
+    "source_unchanged_verified_files": 2192,
+    "gate_log_hashes_verified": 6,
+    "ui_and_format_artifact_hashes_verified": 56,
+    "owned_runtime_gone": true,
+    "owned_task_gone": true,
+    "receipt": "/private/tmp/blueice-followup-20261012/windows-504eeb924-complete-results.json",
+    "final_state": "/private/tmp/blueice-followup-20261012/windows-504eeb924-final-state.json",
+    "final_audit": "/private/tmp/blueice-followup-20261012/windows-504eeb924-final-audit-status.json"
+  },
+  "spawn_core_click_fixture_followup": {
+    "worktree": "/private/tmp/blueice-launcher-event-order-20261013",
+    "base_commit": "d37791e2e",
+    "status": "committed-integrated",
+    "failure": "Original ec421 complete MacRust fails supervised_child_click_event_profile_runs_js_and_bluets_before_navigation atfirstclickedFrameReady; isolated originalimmutabletestbinaryrepeat also101",
+    "root_cause": "Fixture explicitly throws before installing click listener whenever dispatchEvent is available, which contradicts the newly implemented node EventTarget surface.",
+    "correction": "Require callable dispatchEvent; retain real JS/BlueTS native click,cancellednavigation,listenerthrowcontainment,Promisejob DOM effects,createdsubtree andallFrameReady assertions;add actualreply diagnostics",
+    "red_log": "/private/tmp/blueice-followup-20261012/spawn-core-click-original-red.log",
+    "diagnostic_build": "Standalone Rust1.96 rustc links to existingimmutable504rlibs/nativeSearchPaths; outputown .build/diagnostic/debug/deps;8runtimebin symlinksonly, noCargo/cachemutations",
+    "compiler_exit": 0,
+    "diagnostic_log": "/private/tmp/blueice-followup-20261012/spawn-core-updated-fixture-first.log",
+    "changed_program_files": [
+      "backend/launcher/tests/spawn_core.rs"
+    ],
+    "runtime_product_changes": false,
+    "remaining": [
+      "Independent7casegate",
+      "Commit test/docs after gate",
+      "Merge after frozenmainRust terminal; rerun correctedfullMacRust includesupdatedfixture",
+      "No needrestart currentWindows/native504 programgates forUnix-test-onlydelta"
+    ],
+    "diagnostic_session_id": 34583,
+    "commit": "1e198f07e86b8669c92a4705015b873961d69aaa",
+    "green_exit": 0,
+    "green_passed": 7,
+    "red_original_exit": 101,
+    "red_same_fixed_runtime_exit": 101,
+    "receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/launcher-node-event-fixture-results.json"
+  },
+  "corrected_macos_workspace": {
+    "status": "complete-results-verified-exit-unrecorded",
+    "source_commit": "1e198f07e86b8669c92a4705015b873961d69aaa",
+    "cargo_pid": 80688,
+    "session_id": null,
+    "session_handle_note": "Launch succeeded before context output truncation; live Cargo PID verified; do not relaunch. Observe log/process and terminal Cargo log.",
+    "snapshot": "/private/tmp/blueice-followup-20261012/workspace-1e198f07e-inputs.json",
+    "log": "frontend/macos/.build/workspace-1e198f07e-20261013.log",
+    "product_runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "delta_from_current_native_windows_programs": [
+      "backend/launcher/tests/spawn_core.rs"
+    ],
+    "delta_scope": "Unix-only test fixture; runtime sources unchanged",
+    "fmt_exit_code": 0,
+    "diff_check_exit_code": 0,
+    "last_observation": {
+      "groups": 225,
+      "passed": 2968,
+      "failed": 0,
+      "ignored": 5,
+      "scope": "Partial completed groups during live full Rust gate"
+    },
+    "array_gc_original_regression_current_pass": "/private/tmp/blueice-followup-20261012/macos-workspace-1e198f07e-array-gc-current-result.json",
+    "original_gc_regressions_current_pass": "/private/tmp/blueice-followup-20261012/macos-workspace-1e198f07e-original-gc-current-results.json",
+    "all_current_gc_regression_results": "/private/tmp/blueice-followup-20261012/current-cross-platform-gc-regression-results-20261013.json",
+    "passed": 7610,
+    "failed": 0,
+    "ignored": 69,
+    "groups": 516,
+    "source_unchanged_at_completion": true,
+    "cargo_process_gone": true,
+    "exit_code": null,
+    "receipt": "/private/tmp/blueice-followup-20261012/macos-workspace-1e198f07e-complete-results.json"
+  },
+  "native_assistant_review_followup": {
+    "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "method": "testNativeAssistantLoopbackEditorAndClosingUnconfirmedChanges",
+    "full_run_status": "still-running; one finished failed case retained",
+    "failed_case_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-assistant-review-failure.log",
+    "failed_case_excerpt_sha256": "3ae0d1cb9fb1d23898f45f2961dbbc6849b0a38b1f9f537c51752037d244b5bb",
+    "earlier_focused_run_same_case_passed": true,
+    "failure_at": "BrowserUITests.swift:646; confirmation button absent after review click",
+    "observed_scroll": "XCTest generated dx228.75 dy-229; retry dy-213 following Not hittable",
+    "cause_status": "Undiagnosed; scroll/click ordering and retained text must be checked in same-source focused repetition after full UI cleanup",
+    "preserved_assertions": [
+      "Invalid remote URL refused",
+      "No settings file before actual confirmation",
+      "Loopback URL confirmation exists and is hittable",
+      "Close cancels unconfirmed changes",
+      "Actual confirmed persistent settings match"
+    ],
+    "next_steps": [
+      "Complete existing full native gate and owned cleanup",
+      "Extract failed-case XCResult screenshot/hierarchy and current drag recordings",
+      "Repeat exactly this case against same frozen source and binaries with owned fixture wrappers",
+      "Use failure evidence to fix; preserve all consent checks",
+      "Run affected assistant cohort and complete native gate after any test/source change"
+    ],
+    "reproduction_controller": "/private/tmp/blueice-followup-20261012/run-assistant-review-reproduction-504eeb924.py",
+    "reproduction_controller_syntax_exit_code": 0,
+    "reproduction_controller_executed": true,
+    "reproduction": {
+      "status": "passed",
+      "session_id": 90653,
+      "log": "/private/tmp/blueice-followup-20261012/native-assistant-review-reproduction-504eeb924.log",
+      "xcresult": "/private/tmp/blueice-followup-20261012/native-assistant-review-reproduction-504eeb924.xcresult",
+      "source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+      "source_unchanged_before_start": true,
+      "backend_binaries_verified_before_start": 8,
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "source_unchanged": true,
+      "backend_binaries_unchanged": true,
+      "owned_process_absence_verified": true,
+      "receipt": "/private/tmp/blueice-followup-20261012/native-assistant-review-reproduction-504eeb924-results.json"
+    },
+    "full_failure_attachments": "/private/tmp/blueice-followup-20261012/native-504eeb924-assistant-failure-attachments",
+    "full_failed_hierarchy": "F70B1180...txt: editor(660,328,600,366) bottom694; review button(665,697,132.5,24) outside viewport, baseURL keyboardfocus retained, local-model correct; validURI prefix present, oldvalidationnotice stillvisible. Fullsnapshot/video must inspect to distinguish scroll/click frominput.",
+    "confirmed_failure_evidence": {
+      "image": "/private/tmp/blueice-followup-20261012/native-504eeb924-assistant-failure-frame.png",
+      "frame_seconds": 30.233333333333334,
+      "fields": "Video shows exact http://127.0.0.1:11434/v1/ and local-model; old invalid notice remains because Review action never occurred",
+      "geometry": "AX snapshot editor maxY694, Review minY697/maxY721 outside viewport"
+    }
+  },
+  "storage_latest_host_audit": {
+    "utc": "2026-10-12T21:21:44.362798+00:00",
+    "qcow2": "/data/vms/blueice-test-320g.qcow2",
+    "allocated_bytes": 62929874944,
+    "host_data_free_bytes": 1624683573248,
+    "host_data_device": "/dev/sda1",
+    "live_and_persistent_target": "vda",
+    "live_and_persistent_path_verified": true
+  },
+  "physical_printer_discovery": {
+    "usb_receipt": "/private/tmp/blueice-followup-20261012/physical-usb-iokit-printer-discovery-unsandboxed-20261013.json",
+    "usb_host_devices": 3,
+    "usb_printer_candidates": [],
+    "bonjour_receipt": "/private/tmp/blueice-followup-20261012/physical-printer-bonjour-tty-discovery-20261013.json",
+    "bonjour_service_types": [
+      "_ipp._tcp",
+      "_ipps._tcp",
+      "_printer._tcp"
+    ],
+    "bonjour_seconds_each": 15,
+    "bonjour_advertised_printer_rows": 0,
+    "actual_printer_acceptance": false,
+    "remaining": "Previously requested actual printer model/IP/name or USB connection; bounded discovery cannot prove hardware absence."
+  },
+  "windows_storage_workflow_docs": {
+    "status": "committed-isolated-awaiting-main-workspace-terminal",
+    "worktree": "/private/tmp/blueice-windows-storage-docs-20261013",
+    "commit": "86c8b582d20de8679b4db2426ee25e2f7a7d783e",
+    "parent": "1e198f07e86b8669c92a4705015b873961d69aaa",
+    "files": [
+      "AGENTS.md",
+      "frontend/winui/README.md"
+    ],
+    "purpose": "Future owner WindowsVM Rust/WinUI/desktop tests use dedicated B checkout+storage wrapper at each helper entry point. Normal hostedWindowsCI not changed.",
+    "validation": "git diff --check0; isolatedcommitclean; main1902snapshotfullyrestoredandmatches. ExistingWindowswrapperactualguestregressionsretained.",
+    "source_snapshot_note": "WinUI README is included in the coarse1902input snapshot despite being documentation. The transient initial main-worktree doc draft was moved to isolatedworktree and reverted before commit; no Rust/Swift/C#/scriptproduct code changed. Native504privateworktree/Windows504guest inputs never changed. MergeonlyaftermainfullRustterminal; no restartcurrentWindows/native for docs."
+  },
+  "physical_display_signal_safe_tool": {
+    "source": "/private/tmp/blueice-followup-20261012/owned-display-transition.swift",
+    "binary": "/private/tmp/blueice-followup-20261012/owned-display-transition-signal-safe",
+    "compile_exit_code": 0,
+    "release_tests_receipt": "/private/tmp/blueice-followup-20261012/physical-display-lease-signal-results-20261013.json",
+    "actual_release_cases_passed": 7,
+    "physical_display_changed": false,
+    "physical_acceptance": false,
+    "next": "Use signal-safe binary instead of the old unsignalled helper for actual owned mode transition only after native UI/focus cleanup; require before/after Core viewport and restored physical mode proof.",
+    "describe_receipt": "/private/tmp/blueice-followup-20261012/physical-signal-safe-display-description-20261013.json"
+  },
+  "native_assistant_visibility_fix": {
+    "commit": "12bc507720b82fc85b3b0ce2946cf3d8c982ef89",
+    "authoring_worktree": "/private/tmp/blueice-native-assistant-scroll-fix-20261013",
+    "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+    "native_worktree": "/private/tmp/blueice-native-panel-fix-20261013",
+    "native_worktree_ff_done": true,
+    "native_worktree_clean_before_launch": true,
+    "main_integrated": true,
+    "main_commit_unchanged": "1e198f07e86b8669c92a4705015b873961d69aaa",
+    "code_delta": [
+      "frontend/macos/UITests/BrowserUITests.swift"
+    ],
+    "swift_parse_exit_code": 0,
+    "diff_check_exit_code": 0,
+    "snapshot": "/private/tmp/blueice-followup-20261012/native-12bc50772-source-inputs.json",
+    "focus": {
+      "status": "passed",
+      "session_id": 33110,
+      "controller": "/private/tmp/blueice-followup-20261012/run-assistant-focused-12bc50772.py",
+      "plan": "/private/tmp/blueice-followup-20261012/native-assistant-focused-12bc50772-plan.json",
+      "log": "/private/tmp/blueice-followup-20261012/native-assistant-focused-12bc50772.log",
+      "xcresult": "/private/tmp/blueice-followup-20261012/native-assistant-focused-12bc50772.xcresult",
+      "selected_methods": 14,
+      "exit_code": 0,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": "/private/tmp/blueice-followup-20261012/native-assistant-focused-12bc50772-results.json",
+      "source_unchanged": true,
+      "backend_binaries_unchanged": true,
+      "strict_signatures_verified": 11,
+      "owned_process_absence_verified": true
+    },
+    "remaining": [
+      "14 affected native cases terminal and cleanup",
+      "Complete native310currentUIfixture",
+      "Later mainintegration afterRustterminal"
+    ],
+    "full": {
+      "status": "running",
+      "session_id": 14537,
+      "source_commit": "12bc507720b82fc85b3b0ce2946cf3d8c982ef89",
+      "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+      "documentation_head": "1e4286068f000860492aee69692edcc8c94a20ed",
+      "controller": "/private/tmp/blueice-followup-20261012/run-full-native-12bc50772.py",
+      "log": "/private/tmp/blueice-followup-20261012/native-full-12bc50772.log",
+      "xcresult": "/private/tmp/blueice-followup-20261012/native-full-12bc50772.xcresult",
+      "snapshot": "/private/tmp/blueice-followup-20261012/native-12bc50772-source-inputs.json",
+      "exit_receipt_will_be_written": "/private/tmp/blueice-followup-20261012/native-full-12bc50772-exit.json",
+      "last_observation": {
+        "passed": 197,
+        "failed": 0,
+        "skipped": 0,
+        "recent": [
+          [
+            "BrowserUITests.BrowserUITests testContextEditingReadonlyPasswordAndKeyboardMenu",
+            "passed"
+          ],
+          [
+            "BrowserUITests.BrowserUITests testContextLinkCopyNewTabHistoryAndPolicyDenial",
+            "passed"
+          ]
+        ]
+      }
+    }
+  },
+  "current_platform_evidence_documentation": {
+    "worktree": "/private/tmp/blueice-native-assistant-scroll-fix-20261013",
+    "commit": "1e4286068f000860492aee69692edcc8c94a20ed",
+    "parent": "12bc507720b82fc85b3b0ce2946cf3d8c982ef89",
+    "scope": "DOC/ARTIFACTONLY: completedWindows504/failedNative504/current9OSdrag+scopedmovingmovie/crossplatform5GCcases/same-sourceassistantrepro;2actualPNGretainhashes+3plansupdated",
+    "clean": true,
+    "integrated_main": true
+  },
+  "physical_display_actual_acceptance": {
+    "receipt": "/private/tmp/blueice-followup-20261012/physical-display-mode-transition-20261013-results.json",
+    "session_id": 12739,
+    "exit_code": 0,
+    "actual_single_monitor_mode_transition_passed": true,
+    "display_name": "PA279CRV",
+    "display_id": 2,
+    "physical_modes": [
+      89,
+      159,
+      89
+    ],
+    "actual_owned_core_scales": [
+      2,
+      1,
+      2
+    ],
+    "actual_core_frame_generations": [
+      4,
+      5,
+      6
+    ],
+    "same_document_and_frame_source_preserved": true,
+    "physical_mode_restored": true,
+    "multi_monitor_transition_accepted": false
+  },
+  "owned_physical_application": {
+    "metadata": "/private/tmp/blueice-followup-20261012/owned-physical-application-20261013.json",
+    "application_pid": 6713,
+    "launcher_pid": 6718,
+    "bundle": "/private/tmp/blueice-native-panel-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app",
+    "fixture_root": "/private/tmp/bi-physical-t3lmcki7",
+    "runtime": "/private/tmp/bi-0101AC74913C435CADB2FA5E0F6776FD",
+    "status": "cleaned",
+    "cleanup_required": false,
+    "start_exit_code": 0,
+    "baseline_exit_code": 0,
+    "preferences_private": true,
+    "cleanup_receipt": "/private/tmp/blueice-followup-20261012/owned-physical-application-cleanup-20261013-results.json"
+  },
+  "physical_voiceover_actual_attempt": {
+    "utc": "2026-10-12T23:04:20.332373+00:00",
+    "owned_blueice_pid": 6713,
+    "voiceover_enabled_after_standard_command_f5": true,
+    "first_start_ui": "Exact newly started VoiceOver QuickstartPID8661 window\u65c1\u767d button\u4f7f\u7528\u300c\u65c1\u767d\u300d selected through normal authorizedSystemEvents",
+    "actual_reader_pid": 10659,
+    "actual_reader_bundle": "com.apple.VoiceOver",
+    "guarded_observation_failed": true,
+    "observation_error": "VoiceOver AppleEvent timed out(-1712) after text under cursor initialnotfound(-1728)",
+    "driver_path_normalization_fixed": "Both supplied/actual bundlepaths normalizedFoundation resolvingSymlinks (/private/tmp and/tmp alias), exactPID/BID/pathguardpreserved",
+    "actual_navigation_action_speech_accepted": false,
+    "reader_initial_enabled": false,
+    "restore_command_f5_exit_code": 0,
+    "reader_restored_enabled_false_observed": true,
+    "reader_process_shutdown_still_needs_verification": false,
+    "physical_mode89_restored": true,
+    "reader_process_gone_verified": true,
+    "reader_restored": {
+      "enabled": false,
+      "readerCount": 0
+    }
+  },
+  "physical_completion_documentation": {
+    "worktree": "/private/tmp/blueice-native-assistant-scroll-fix-20261013",
+    "commit": "8afbcef73",
+    "parent": "1e4286068f000860492aee69692edcc8c94a20ed",
+    "scope": "Documentation/artifacts only; actualsinglemonitor89/159/89+Core2/1/2/frame4/5/6,exactcleanup+retained3sources,failedVOactualtimeout/offrestoration,14fixednativepass,7610Maccompletecasecounts/directexitunknown",
+    "integrated_main": true,
+    "clean": true
+  },
+  "final_macos_rust_checks": {
+    "status": "passed",
+    "session_id": 43634,
+    "source_commit": "1e4286068f000860492aee69692edcc8c94a20ed",
+    "controller": "/private/tmp/blueice-followup-20261012/run-final-macos-rust-checks.py",
+    "receipt": "/private/tmp/blueice-followup-20261012/macos-final-1e4286068-rust-checks-results.json",
+    "formatter_exit_code": 0,
+    "remaining": "Actual strictworkspace/alltargetClippyexit/result",
+    "target": "frontend/macos/.build/core-target",
+    "exit_code": 0,
+    "clippy_exit_code": 0,
+    "complete": true
+  },
+  "latest_documentation_commit": "dda3e4255b67b519ca38797e044c3b57ad205ef8",
+  "native_12bc_latest_observation": {
+    "session_id": 14537,
+    "status": "TERMINAL65 consumed/closed",
+    "passed": 307,
+    "failed": 2,
+    "skipped": 1,
+    "total": 310
+  },
+  "native_12bc_terminal_auditor_prepared": {
+    "path": "/private/tmp/blueice-followup-20261012/audit-full-native-12bc50772.py",
+    "syntax_verified": true,
+    "executed": false,
+    "requires": "existing explicit terminal exit receipt; 310 case outcomes agree with XCResult; source1902/bins8/signatures11/wrapper cleanup/owned process absence"
+  },
+  "current_main_commit": "970258866c99ff75b53f12d2c1e796e0204b44fb",
+  "physical_input_preflight": {
+    "commit": "b39171277",
+    "actual_tis": "ABC selected; system Zhuyin enabled and selectable",
+    "voiceover_scripting_marker": "/var/db/Accessibility/.VoiceOverAppleScriptEnabled absent; installed utility marker-check symbols verified; checkbox UI not yet inspected",
+    "settings_modified": false,
+    "physical_ime_or_voiceover_accepted": false,
+    "prepared_only": [
+      "owned-zhuyin-source-lease.swift compiled0, scoped60sec TIS restoration; not executed against owned live app",
+      "owned-system-key-driver.applescript compiled0, exact owned FG/BID/bundle normal SystemEvents keycodes; no actual physical keys delivered",
+      "observe-owned-input-state.py syntax valid; reads real Core TextInputState.marked without text injection; not executed",
+      "audit-full-native-12bc50772.py syntax valid; requires actual terminal exit JSON then310/log/XCResult/source1902/bins8/sign11/2wrappers/owned-process cleanup"
+    ],
+    "next_actual_action": "After14537 terminal+audit cleanup, use existing authorized normal SystemEvents OS keycodes for real Zhuyin and documented VO navigation/action + copy-last-phrase. Restore original TIS/reader and clipboard. Do not create protected VO scripting marker or modify TCC. Do not use compilation/readiness as physical acceptance."
+  },
+  "physical_driver_preparation_latest": {
+    "receipt": "/private/tmp/blueice-followup-20261012/owned-physical-driver-preparation-20261013.json",
+    "swift_phrase_lease_compile_exit": 0,
+    "applescript_gui_and_key_compile_exit": 0,
+    "actual_nonexistent_owner_guard_checks": 3,
+    "preflight_controller_exit": 0,
+    "sources": [
+      "owned-voiceover-phrase-lease.swift",
+      "owned-gui-field-control.applescript",
+      "owned-system-key-driver.applescript",
+      "owned-zhuyin-source-lease.swift",
+      "observe-owned-input-state.py"
+    ],
+    "scope": "PREPARATION ONLY; no actual clipboard snapshot or key delivery, no IME/VO acceptance",
+    "fixed": "Normalize both expected and actual key driver paths for /tmp/private alias; explicit unreadable-foreground refusal; own osascript child timeout+TERM/SIGKILL; snapshot all clipboard formats in-memory and verify actual restored bytes",
+    "execution": "Actual UI/driver must use authorized escalated native-test controller, after full14537 terminal+audit/owned cleanup. Default sandbox NSWorkspace frontmost unavailable; that is not macOS AX permission diagnosis. Guard checks were executed with escalated read-only exact preflight controller and all3 refused nonexistentPID2147483647 before GUI/clipboard/key events."
+  },
+  "actual_ime_controller_prepared": {
+    "path": "/private/tmp/blueice-followup-20261012/run-owned-physical-zhuyin.py",
+    "receipt": "/private/tmp/blueice-followup-20261012/physical-ime-controller-preparation-20261013.json",
+    "status": "Bothactual --preflight75 noUI because terminal audit absent; syntaxvalid aftermode extension. Native0isNOT required tostartindependentphysicaltest: accepts audited terminal0/65+all310counts/source/signature/ownedcleanup, noownedProductsprocesses. Fullnativefailurestillmustfixed separately.",
+    "scope": "PREPARATION ONLY. Actual future execution gates on native-12bc50772-complete-results.json exit0/310/cleanup plus live absence of owned Products processes; actual GUI loopback navigation/AX focus -> normal SystemEvents physical1/32/20/36/1/32/53; reads real Core marked/text/doc/frame/node identity;60secTISlease originalsource restore; normal ownedapp quit + own UUID prefs/runtime/HTTP thread/fixture cleanup. No Unicode CJK insertion/Core Compose/clipboard writes/TCC grants. Receipt first-attempt actual results retained; different --attempt ID for later retries.",
+    "next_action": "After14537 terminal run existing audit-full-native-12bc50772.py with escalated controller prefix. Then run python3 run-owned-physical-zhuyin.py through require_escalated authorized actualnativeUI/controller prefix; record true exit/results/cleanup even failures. Prior driver guard receipt observer hash is historical; new nullable GetTextInputUnavailable handling is captured by new preparation receipt. No production/nativeRoot/binary edits.",
+    "sha256": "61401ad35e18ca748ba510dcbfa076a73c3d77fd8c3319136d269dd135431832",
+    "modes": [
+      "zhuyin",
+      "voiceover"
+    ],
+    "voiceover_path": "NormalownedCommandF5; exactnewSystemQuickstartPID/BID/pathUseVoiceOver ifpresent; realreaderPID verified; exactownedApp reactivate+AXfocusName; phraselease snapshotsallclipboardformats; documentedVOShiftF4 sync (SystemEvents keycode118 shiftCtrlOpt), VOShiftC returnsactualOSlastphrase; VORight navigation toOpenDestination thenVOSpace actualCoreURL/documentgen/requeststarget.180secphraselease byteverifiedclipboardrestoration; normalCmdF5off+reader/Quickstartgone beforeownedappnormalquit/runtime/prefs/fixturecleanup. Compile/guards only; no actualSpeech/NAV/action acceptance yet. Fnfunctionkey behavior remains actualtestquestion; doNOTsetnewpreferencesorcreateprotectedVOASmarker.",
+    "current_new_helpers": [
+      "read-voiceover-system-state.swift/compiledbinary:actualescalatedreadenabledfalse/readers[]/quickstarts[]",
+      "owned-voiceover-quickstart.applescript/scpt compile0/actualinvalidownerrefused1beforeanyclick",
+      "owned-system-key-driver.applescript/scpt recompiled with documentedvo-sync-focused andvo-read-cursor ops; sourcehashchanged sincefirstguardreceipt"
+    ]
+  },
+  "printer_availability_latest": {
+    "path": "/private/tmp/blueice-followup-20261012/linux-printer-availability-20261013.json",
+    "result": "Linux existingvalidationhostCUPSscheduler running; bothlpstat-p/-v exit1 No destinations added. No configured printer here; no physical print performed. ExistingMacno configuredprinter + usermodel/IP/USBinfo pending remains. This does not prove no physical hardware exists."
+  },
+  "native_12bc_new_failure": {
+    "receipt": "/private/tmp/blueice-followup-20261012/native-12bc50772-drag-position-failure-progress.json",
+    "case": "testNativeOSSetDragImageExportsTheActualCorePreviewAndPayload",
+    "phase": "before dragging/preview assertions: BlueIce ownedwindowposition x44,y40 expectedx40,y40 three attempts, lasttwo exact4pointcorrections felloutside smallguardabs(delta)<4",
+    "next": "After14537 terminal+actual310 source/sign/wrappers/owned audit, extract ONLYthis failedcase movie+AX attachment, confirm/reproduce same-source. Candidate testhelperfix inclusive abs(delta)<=4 for small correction (preserve exacttargetabs<3 allgeometry/payload assertions); actual focused/regression then fresh full310 acceptance needed. No liveRootsource/product edits. Fullnative nowhas1 actualfailure notcurrentgreen."
+  },
+  "native_four_point_candidate": {
+    "worktree": "/private/tmp/blueice-native-assistant-scroll-fix-20261013",
+    "status": "UNCOMMITTED oneUItestfilemodified; mainB391clean, liveprivateNativeRoot1e428/source12bcunchanged",
+    "receipt": "/private/tmp/blueice-followup-20261012/native-window-four-point-candidate-preparation.json",
+    "patch": "/private/tmp/blueice-followup-20261012/native-window-four-point-candidate.patch",
+    "validation": "swiftparse0+gitdiffcheck0 ONLY; actualUI hasNOTexecutedthiscandidate",
+    "next": "After14537 terminal+old310hash/sign/wrapper/ownedcleanup receipt andscopedfailuremovie/AXinspection, build candidate inauthoringRoot with SAME frozen504backend8 bins viaxcodebuildbuild-for-testing BLUEICE_BACKEND_DIR=/private/tmp/blueice-array-from-async-target/debug (noRustCargo rebuild; projectcopycodesignsprivateoutputsonly), buildindependentDragInteropFixture fornewProducts, then retained actualsetDragImage methodincludingforcedexact4pointcase; verify all1902inputs/bins/signatures/normalcleanup. Ifpasses, runaffectedposition/9OSdragcohort, commitreviewablefix+evidence andFF main. Newfull310mustpass (existingAXskip disclosed) beforedeclaringcomplete. Do not mutate activeRoot while14537live; noUI concurrency. RunactualCJK/VO serialafterauditedterminalcleanup evenifnative65-knownfixture failure, recording failure/cleanup honestly.",
+    "build_session_id": 86832,
+    "build_controller": "/private/tmp/blueice-followup-20261012/build-native-four-point-candidate.py",
+    "build_state": "86832 TERMINAL0 consumed; bothbuild-for-testing+DragInteropFixture build0, strict11signature0;1902candidatehashes/Live1902UNCHANGED/backend8UNCHANGED verified. NoUI launched. DO NOTpoll86832 again. Actual UI candidate remainsUNACCEPTED.",
+    "build_receipt": "/private/tmp/blueice-followup-20261012/native-four-point-candidate-build-results.json",
+    "focused_controller": "/private/tmp/blueice-followup-20261012/run-native-four-point-focused.py",
+    "focused_preflight": "syntaxvalid, actualcall75 pending oldFull310terminalaudit beforeanyUI. ActualfocusonlyexistingtestNativeOSSetDragImage... includesforced4fromobservedframe, returnsbaseline+originalx40layout. Reusesnewcandidatebuild test-without-building withkeepAlways, explicitexitJSON native-four-point-focused-exit.json surviveslosthandle. After14537 fullterminal+audit+scopedfailedmovieinspection, execute thiscontroller viarequire_escalated authorizednativeUI prefix andimmediatelyrecordnewsession. Afteractualfocus terminal audit1 case/source1902/backend8/strict11/owned cleanup andscopednewmovie; ifstillfails correcttest positioning fromactualdata. Whenpasses affectedcohort+commitandfreshfullnative310required; noRust/WinrerunforUItest-only change.",
+    "focused_session_id": 56245,
+    "focused_state": "56245 TERMINAL0 consumed/closed: actualonecase1pass0fail0skip forced4point/runtimepreviewgeometry+payload. Fullfocused audit0 source1902/bin8/sig11/ownedprocessabsence verified. Actualmovie stillneeds scopedpreviewverification beforeformalnewdragclaim; relatedcohort+fullnative310 stillneeded.",
+    "focused_receipt": "/private/tmp/blueice-followup-20261012/native-four-point-focused-results.json",
+    "integration": "Committedacb9942a2 +FFMAIN cleanahead1 (originb391observed). SavesUI4ptfix/oldnative3072skip1receipt/focused1pass/source/sign cleanup+actualphysicalfailedattempts+restoration andoverall/followupplans. Authoringalsoacb, sourceUITesthashidenticalacceptedfocus; mainproductionRust andSwiftviewportstillunchanged."
+  },
+  "native_12bc_language_failure": {
+    "receipt": "/private/tmp/blueice-followup-20261012/native-12bc50772-language-switch-failure-progress.json",
+    "scoped_log": "/private/tmp/blueice-followup-20261012/native-12bc50772-language-switch-failure.log",
+    "method": "testRuntimeLanguageSwitchPreservesPageEditorsPrivatePanelsAndRelaunch",
+    "actual_failure": "line2796 no\u7e41\u9ad4\u4e2d\u6587MenuItem afterpopupclick; log foreignUserNotificationCenterDialog830/189/260/267 andclickfallbackcenter946/417 INSIDEdialog bounds",
+    "next": "Afterfullterminal receipt+audit old310, exportONLYthiscase AX tree/movie alongsideexistingfailedsetDragImagecase. InspectsourceappSettingswindow/popupframe vsforeignunrelatedsystemprompt. Likelyneedsownedsettingswindow unobstructedplacement beforeclick plusmenuvisibilitychecks; doNOTgrant/dismissforeignsystemdialog orweakenlanguage/editor/privatepanels/persistedsettings/relaunchasserts. DoNOTmodifyalreadybuiltfourpointcandidate source beforepreparedfocusedrun (buildreceipt hashes gateit); firstuseactualcandidatefocused0 for4point, thenprepareappropriate languagefix/rebuild/realcohort/newfull310."
+  },
+  "native_12bc_terminal_audit": {
+    "session_id": 64820,
+    "state": "TERMINAL0 consumed/closed; source1902/bin8/sig11/310XCTestvsXCResult307pass2fail1skip/wrappercleanup+ownedprocessabsence allverified",
+    "receipt": "/private/tmp/blueice-followup-20261012/native-12bc50772-complete-results.json"
+  },
+  "native_12bc_failed_attachments": {
+    "drag": "/private/tmp/blueice-followup-20261012/native-12bc50772-drag-position-attachments",
+    "language": "/private/tmp/blueice-followup-20261012/native-12bc50772-language-switch-attachments",
+    "drag_ax": "B41A5253-73F2-4876-BB04-98199CF89D7B.txt actual44/40 width760height600",
+    "language_ax": "169BF708-00AD-453D-9A59-12CCEE2CFC61.txt settingswindow730/349/460/577 popup879/405/134/24; app/window AXdisabled atfailure",
+    "viewed_actual_frames": [
+      "native-12bc50772-drag-position-failure-frame.png at32.166s",
+      "native-12bc50772-language-switch-failure-frame.png at29.975s (postclick/missingmenu; requested24s gavegapnext29.975)"
+    ],
+    "notification_correction": "Dragframeclearlyshows VSCode wantsVoiceOverAppleScriptcontrol dialog, NOTLocalNetworkdialog. DoNOTattributepermissionchangeorwhoinitiatedwithoutproof; no grant/dismiss actions. Language clickcenter946/417 insideforeignUserNotifbounds830/189/260/267. Needearlierlanguageframe<=21s toconfirmpreclickobstruction; laterframe29.975showsSettingsEnglish/noopenpopup. Direct normal SystemEvents keyboard route forfutureVOdoesNOTrequirecreatingprotectedASenablemarker."
+  },
+  "actual_zhuyin_first": {
+    "session_id": 59315,
+    "state": "59315TERMINAL1 consumed/closed: GUIAX entiretree navigationtimedout7sec before anyCJK composition. Receipt physical-zhuyin-20261013-first-results.json preserved; actualobservations0/physicalIMEfalse. Cleanup normalquitapp37680exit0/allownProducts gone/runtime+UUIDprefs/fixture/HTTPthreadremoved/originalABC source verified. No oldPIDs reuse.",
+    "controller": "/private/tmp/blueice-followup-20261012/run-owned-physical-zhuyin.py",
+    "command_mode": "--mode zhuyin --attempt first",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-zhuyin-20261013-first-results.json",
+    "cleanup": "normalownedappterminate/own UUIDprefs/runtime/HTTPserver/tempfixture, TIS60seclease restoresoriginal; actualreceipt evenfailedattempt; pollsame59315 untilterminal beforeanythingelseUI."
+  },
+  "actual_zhuyin_keyboard_navigation": {
+    "session_id": 32018,
+    "state": "32018TERMINAL1 consumed/closed. ActualCmdL+typedASCIIURI/CoreURL andTabfocusedEditorblank passed, TISlease reportsZhuyinglobal butfirstactualOSkey1 produceds unmarked, not\u310b. ThusphysicalIMENOTaccepted. Fullcleanup all0 verified inclleaseExit0/restoredABC/app39846normalexit0/sourceRuntime/privateprefs/fixture/HTTPthread/ownProducts gone. RootNativeEditingMenu.choose selectsNSTextInputContext.selectedKeyboardInputSource independently ofglobalTIS, discoveredactualreason.",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-zhuyin-20261013-keyboard-navigation-results.json"
+  },
+  "actual_zhuyin_native_context": {
+    "session_id": 1748,
+    "state": "1748TERMINAL1 consumed/closed. ACTUAL sixstagesgreen: key1\u310b marked0/1, key32\u310b\u3127 marked0/2, tone20\u4f60 marked0/1, Return36\u4f60 markedNone, next1\u4f60\u310b marked1/1,next32\u4f60\u310b\u3127 marked1/2. Escape53 FAIL leaves\u4f60\u310b\u3127 markedNone insteadrestore\u4f60. PhysicalIMEstillFALSE. Fullnormalcleanup proven0 lease/sourceABC/app40887normalexit0/runtime/UUIDprefs/fixture/HTTPthread/ownProducts gone. OldPIDsdoNOTreuse.",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-zhuyin-20261013-native-input-context-results.json",
+    "sources_changed": "ASguifieldhelper menu-onlyselect-source operation compiled0 +controller newgui action; actualserviceevent observer otherwiseunchanged; noTCC/VOASpermission modification."
+  },
+  "actual_zhuyin_cancel_bug": {
+    "receipt": "/private/tmp/blueice-followup-20261012/physical-zhuyin-20261013-native-input-context-results.json",
+    "evidence": "Real systemTIS+nativeNSTextInputContext menuselect +normalOSkeycodes succeededcomposition/commit butEscapecancelleftphonetics committed;6observations retained source504/GUIoldRoot. NeedinvestigateactualAppKitKeyDown/unmarkText/NSInputContext.handleEvent route (notfabricatecancel viaCoreCompose/Unicode insertion).",
+    "sources": "frontend/macos/Sources/PageViewport.swift keyDown610+ (tailafter659notyetread), doCommandcancel840 vsunmarkText859 alwaysfinish; existingNativeEditingTests testAppKitComposition... onlydirectdoCommand cancel notrealIME key Escape. Needactualpublickey boundary regression thenmacSwiftfix, compile/focused/nativecohort/currentactualhardware+freshfullgates; Rust/Windowscorecodeunchanged unlessfixscopeexpands. CandidateauthoringcurrentlyonlyUITest4ptfix alreadycompiled/focusedpass0. Don\u2019tmutatealreadyacceptedfocusreceipt/sourceclaims; preserveallfailedphysicalattempts/sourcehashes. NativeUIfullsource1e/12bc and8fixedbackendstillfrozen."
+  },
+  "actual_voiceover_keyboard_navigation": {
+    "session_id": 42499,
+    "state": "42499TERMINAL1 consumed/closed: actualstartupreader41749 observedtransient thenQuickstart41754arrivedlate. voiceover_keyassertfailedbeforecursor-sync delivery (emptyAssertionError), noactualspokenphrase/navigation/action; phraselease0didNOTcopyandclipboardunchanged/restored. OriginalcontrolleroffCmdF5didNOTcloseQuickstart,cleanupfalse honestlyretained; ownedapp41697normalexit0 andruntime/prefs/fixture/HTTPthread/ownProducts removed. FOLLOWUPnormalexactnewQuickstart41754TurnOffVoiceOverbuttonexit0,actualstateenabledFALSE/readers[]/quickstarts[] VERIFIED andsaved physical-voiceover-keyboard-navigation-followup-cleanup.json. DoNOTreuseoldPIDs. Initialoff fullyrestored; no TCC/permission/grants/protectedmarker changed.",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-voiceover-20261013-keyboard-navigation-results.json",
+    "controller": "run-owned-physical-zhuyin.py --modevoiceover --attemptkeyboard-navigation",
+    "method": "normalguardedCmdL/tabfocusName, systemCmdF5+actualQuickstartifneeded, actualreaderPID/systemBundle, allformatclipboardin-memorylease, VOShiftF4 sync/ShiftC actualspokenphrase/VORight tofixturelink/VOSpace thenactualCoreURLchanged; restoringVOinitialoff/processesgone+clipboardbyte-for-byte beforeownnormalappquit/runtime/prefs/fixturecleanup; noVoiceOverAppleEvents/protectedASmarker/TCC bypass."
+  },
+  "voiceover_next_repair": "Fixstartup readiness: transientinitialreaderdoesNOTmeanready; waitstable reader plus noQuickstart for>=1sec, handlelateexactnewsystemQuickstart normalUseVoiceOver. voiceover_keymustreportclearAssertionErrorwithactualreaderstate insteadempty; normalcleanup must detectownedQuickstart anduseactualTurnOffVoiceOver button, notjustCmdF5 fromBlueIce. DoNOTdismissuserforeignVSCodeVoiceOverAppleScriptpermissionprompt. Existingkeyboardroute noVoiceOverAppleEvents needed. ActualfutureVOasserts/NAV/lastphrase/action remainunaccepted.",
+  "native_ime_escape_regression": {
+    "session_id": 22262,
+    "state": "22262TERMINAL65 consumed/closed. Original proposedtestfailedbeforeanyIME composition: constructedNSEvent(s/u) didNOTestablishTCIMbuffer/marked ranges; assertions at1238/1239+1241/1242 andfinal1244 timedout. This is invalidfixtureprecondition evidence, NOTreproductionofEscape bug. SourcePageViewport stillunchanged; failedlog/xcresult/exit retained. ActualOSKey6stage/escfailedreceipt1748remainsprimaryred.",
+    "controller": "/private/tmp/blueice-followup-20261012/run-native-ime-escape-red.py",
+    "new_source": "authoringacb ONEUNCOMMITTEDfrontend/macos/Tests/NativeEditingTests.swift; actualNSTextInputContext withTCIM, ownNSWindow key/firstresponder, constructedphysicalcode1/s+32/u+53/Escape keyDown throughrealIME +Core. ExpectedA\ud83d\ude00B\u310b/marked4-1,A\ud83d\ude00B\u310b\u3127/marked4-2,EscaperestoreA\ud83d\ude00B/marknone; originalTISrestored+ownedfixture/model/windownormalcleanup. TestmaynotreproactualsystemRoot hardwarebug; don\u2019tforcefailureifitpasses. OriginalrealOSfailed6stageattempt alreadystrongred evidence."
+  },
+  "native_ime_key_boundary_before_fix": {
+    "session_id": 83674,
+    "state": "83674TERMINAL0 consumed/closed: correctedgenericpublicEscape+Core1pass0fail0skip BEFOREproductionfix. ItdoesNOTreproactualTCIMunmark bug, explicitlynotphysicalIMEacceptance. OriginalactualOS6stagecancelbad stillred. Testsourcesretained; unsupportedoriginalsyntheticTcimfixture red22262 isdisqualified. ",
+    "controller": "/private/tmp/blueice-followup-20261012/run-native-ime-key-boundary-before-fix.py",
+    "future_exit_receipt": "/private/tmp/blueice-followup-20261012/native-ime-key-boundary-before-fix-exit.json",
+    "next": "Pollsame83674 actualterminal, inspectscope/results+ownedcleanup beforeprod fix. RootNativeKeyDown610 bypassesnontextkeyswhenmarked, final659 performKeyEquivalent||inputContext.handleEvent(event)||interpret;unmarkText859 ALWAYSfinishComposition;doCommandcancel840 sendscancel butTCIMEscapeunmark path skipsit. CandidatefixinterceptunmodifiedEscape53 whenhasMarkedText beforeNSInputContext.handleEvent, cancelCorefirst+discardIMEbuffer withoutcommittingphonetics; carefullypreserveordinaryunmark commit tests, node/doc/context/pendingmarkedstate. MustbuildnewMacSwiftapp andactualOS7stage rerunagainstNEWcandidateBundle, notoldNativeRoot (actualcontroller currentlyPRODUCTS/BUNDLEhardcodedoldRoot; addexplicitownedworktree/bundle choice + actualfrontsourceSHA inreceipt). Rust/backend8fixed504unchangedso no duplicateWindowsRust forMacSwift-onlyfix. Alloriginalhardwareattempts retained."
+  },
+  "native_ime_cancel_fixed_cohort": {
+    "session_id": 90110,
+    "state": "90110TERMINAL0 consumed/closed: both actualProtocolmethods2pass0fail0skip (genericEscape/core +existingcomposition/ordinaryunmark commit). Audit24510TERMINAL0 consumed/closed source1902deltaONLYPageViewport+NativeEditingTests,11strictsig/ownedprocessgone0; receipt native-ime-cancel-fixed-cohort-results.json. Notactualhardwareacceptance.",
+    "controller": "/private/tmp/blueice-followup-20261012/run-native-ime-cancel-fixed-cohort.py",
+    "fix": "ScopedinterpretingKey+BrowserWindow.dispatchingKey fence; whenunmodifiedEscape53&hasmarked cancelsCorebeforeinputContext.discardMarkedText; scopeddiscardcallbackguard preventsphoneticadoption. unmarkText recognizesScopedEscape cancellation butkeepsordinaryfinish behavior; doCommandcancelusesprivatehelperclearpendingcontext/unmark. Originalnormalunmarkcompositiontest+genericKeyEscape actualcohort2cases. SourceSDKNSTextInputContext.h explicitlydiscardconversionsession/clientclearmarkedrange; syntax+diff0. Physical7stagefixedsuccess NOTyetproven."
+  },
+  "actual_physical_controller_build_choice": {
+    "new_flag": "--application-build accepted|candidate (defaultacceptedoldRoot)",
+    "next_run": "After90110terminalactual2cases+cleanup, execute actualmodezhuyin --application-build candidate --attempt escape-fixed (newRootcompiledSwiftfix). MustneverrunoldacceptedBundlefornewfixclaim. Receiptnowcapturesfront_end_base_commit +PageViewport/NativeEditingMenu SHA plusactualappbuildchoice; runtimeRust504fixedunchanged. NormalinitialVOoff/noQuickstart required andownPIDs/prodPaths checks unchanged."
+  },
+  "actual_zhuyin_escape_fixed": {
+    "session_id": 20721,
+    "state": "20721TERMINAL0 consumed/closed: ACTUALCANDIDATEMacSwift7OS stagesALLPASS, physical_ime_acceptedTRUE, \u310b marked0/1->\u310b\u31270/2->\u4f600/1->Return\u4f60unmarked->\u4f60\u310b1/1->\u4f60\u310b\u31271/2->Escape\u4f60unmarked. RealCore doc/frame/node preserved,requestsone/normalapp52155exit0/lease0/ABCrestored/runtime/UUIDprefs/fixture/HTTPthread/ownProducts gone. Receiptphysical-zhuyin-20261013-escape-fixed-results.json sourcefrontEndacb+PageViewportSHA d4340be9277bb5d417591f7b171fbb49d4eee52d72addb183bc055e96b4af85d. Newfixnotyetcommitted(twoauthoringfiles); no oldSourceclaims.",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-zhuyin-20261013-escape-fixed-results.json",
+    "new_product_scope": "MacSwift viewport ONLY actualprodchange; 8fixed504Rustbins unchanged. ReceiptexplicitcandidateBuild/frontEndBase+PageViewport/NativeEditingMenu SHA beforeactualRun. Prioractual6stagesred/escapecommittedphonetics preservedagainstOLDacceptedRoot; doNOTclaimoldSourcepassednewfix."
+  },
+  "native_editing_cancel_fixed_all": {
+    "session_id": 29191,
+    "state": "TERMINAL0 consumed/closed; ALL38NativeEditingTests PASS0FAIL0SKIP; audit70258TERMINAL0 consumed/closed current1902source/sign11/ownedprocessabsence verified. NoRootUIKitactors remain.",
+    "receipt": "/private/tmp/blueice-followup-20261012/native-editing-cancel-fixed-all-results.json"
+  },
+  "actual_voiceover_stable_startup": {
+    "session_id": 96576,
+    "state": "96576TERMINAL1 consumed/closed: newQuickstart54820 processobservedbeforeAXwindowpublished; exactwindow-count guardfailed (0windowsatinstant), bothstart+cleanup helpersinitiallyfailed. ActuallaterREADONLYinspectsame54820 returns1windowtitle\u65c1\u767d. NormalTurnOffVoiceOverbuttonexit0 followedactualstateoff/readers[]/quickstarts[] provedandretained physical-voiceover-stable-startup-followup-cleanup.json. Nativeownedapp54742normalexit0/runtime/prefs/fixture/server/ownProducts cleaned. No key/phrase/NAV/action acceptance.",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-voiceover-20261013-stable-startup-results.json",
+    "startup_fix": "Requires SAMErealreaderPID/noQuickstart stable>=1.5secs, handleslateownedQuickstartnormalUseVoiceOver; helper verifiesexactsystemPID/BID/bundlebeforeactivation ifinactive; normalcleanup handlesownedQuickstartviaTurnOffVoiceOver insteadblindtoggle, elseownBlueIceCmdF5off. AScompile0+controller syntax0, currentrealexecution needed; actualNAV/speech/action notyetaccepted."
+  },
+  "actual_voiceover_window_readiness": {
+    "session_id": 98095,
+    "state": "98095TERMINAL1 consumed/closed: STILLstartuphelperonewindownotpublishedwithin3sec atUseaction; noNAV/phrase/actions. NORMALCLEANUPthisattemptSUCCEEDED viaownQuickstartTurnOffVoiceOver, actualenabledFALSE/readers[]/quickstarts[] provenwithinreceipt, app56560normalexit0/runtime/prefs/fixture/HTTPthread/ownProducts gone. Preserve physical-voiceover-20261013-window-readiness-results.json. No oldPIDs reuse. Windowcountdiagnosisnotyetloggedactualvalue atfailure; needinstrumentactualcount/delays thenlongerboundedwait orread-onlyview ownednewdialog beforetest, notweakenexact1window/systemowner/buttonguards.",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-voiceover-20261013-window-readiness-results.json",
+    "actual_fix": "Quickstarthelper nowverifiesSystemPID/BID/path beforeactivation ifinactive, then waitsbounded30*0.1s foractual1windowbeforeuse/disable. Preservesexactowner/systembundle/window/actionbutton guards, helperAScompiled0. StableReaderPID>=1.5s/noQuickstart gate remains. ActualOSproofnotyetproven; pollsame98095 untilterminal+VOoff/readers[]/quickstarts[]/clipboard/restoration andownappcleanup beforeanyotherUI."
+  },
+  "native_ime_cancel_commit": {
+    "commit": "befb84bf9",
+    "state": "COMMITTED authoring+FFMAIN, BOTHclean; mainahead2 beforeanyexternalrefchange. MacSwiftPageViewport31lines+1genericEscapeKey Core regression, allsourcepositivephysicalIME7steps and38editingreceipttracked+overall/followupupdated. Rust/WinUIproductionMATCH504: gitdiff backend/Cargo*/frontendWinUI onlyUnixspawn_core test andWinUIREADME; no duplicateWindowsRust required.",
+    "actual_physical_receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/physical-zhuyin-escape-fixed-results.json",
+    "editing_receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-native-editing-cancel-results.json"
+  },
+  "actual_voiceover_measured_window": {
+    "session_id": 14596,
+    "state": "14596TERMINAL1 consumed/closed. StartupNOWACTUALLYready stable58509reader/noQuickstart +NamefieldactualCorefocus hello; scope reachesphraseleaseReady preserves4bytes1item andvo-sync-focuseddelivered. Thenunexpectedlease response assertedempty; initialphraseNONE; cleanupseesEOFbecauseunexpectedresponsealreadyconsumed. NoNAV/action accepted. actualVOoff/readers[]/quickstarts[]/ownapp58363normalexit0/runtime/prefs/fixture/server removed verified. Neednewinstrumentationvalue fromreceipt.phrase_lease_responses/sourceLeaseStderr; oldcodewasmissingdiagnostic. Readerstartupissue resolvedby8sec80*.1s requerywindow wait/15parenttimeout; successfulQuickstartnormalUse observed.",
+    "controller": "run-owned-physical-zhuyin.py",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-voiceover-20261013-measured-window-readiness-results.json",
+    "change": "Quickstart helpernowre-queriesexactPID process eachloop, logsactualwindowCountattempt1/every10, max80*.1sec wait; parentquickstartuse/disabletimeout15sec. ExistingexactPID/BID/systemBundle/foreground/singlewindow/buttonguards preserved. AScompiled0. Needactualoutput/clearstage/recovery proof, notassumeGUIready. NootherGUI/nativecohort while14596live."
+  },
+  "actual_voiceover_fn_command": {
+    "session_id": 30090,
+    "state": "30090TERMINAL1 consumed/closed. Actualphrase_lease_responses containsRELEASEDreasonphrase-copy-failed (NOTforegroundchange), clipboard_restoredTRUE/copiedFalse. No actualphrase/NAV/actions. Readeroff/readers[]/quickstarts[]/app60060normal0/runtime/prefs/fixture/HTTPthread/ownProducts gone proven. Fnheld/releasednormalSystemEvents code63+118 compiled; functionalitynotyetproven. Needactualchildexit/output andasynchronousclipboardack.",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-voiceover-20261013-fn-command-results.json",
+    "change": "OfficialAppleMac26 VoiceOverNav requiresVOShiftFnF4 (notmissingFn). LocalSystemEvents.sdef supportskey down/up integer keycodes; addednormalFn63down->F4key118ctrloptsShift->Fn63up, withkeyupguaranteedonerror. Existingowner/foreground/SystemBID guards unchanged. Scriptcompiled0. phrase() nowretainsEVERYactuallease response andassertsdiagnostic; cleanuprecordsleaseexit+stderrifended. DoNOTassumeFnfixpassesuntilactualoutput. Previousunexpectedresponsecouldbeforegroundownerchange triggeredFunctionKey; needdata. InitialVOoff verified beforethisrun."
+  },
+  "actual_voiceover_async_phrase_copy": {
+    "session_id": 53070,
+    "state": "53070TERMINAL1 consumed/closed: ACTUALcopyleaseDiagnostic driver_exit0, driver_outputDeliveredoneguardedsystemkeyboardop +scptsave-warning-1763 (doesnotmeankeyfailed), clipboard_changedFALSE evenafter2sec asyncwait, owned_foregroundTRUE, reader_enabledTRUE. Noactuallastphrase/NAV/action. Helperreleaseclipboardpreserved/copiedFALSE, sourceleaseexit1expectedfailure, actualVOoff/readers[]/quickstarts[]/ownedapp60664normalexit0/runtime/prefs/fixture/HTTPthread/ownProducts gone verified. SourceAScodevo-copy-phrase key8 controloptionShift. ReaderinitialKeyFocusNamehello true Core proof; startupstable nowworks via80*.1sec exactwindowwaiting+stableReader1.5sec. This isNOTpermissiondenialorforegroundfailure; don\u2019tguesscause fromzero clipboard change. NeedactualVoiceOver modifier/input-command prefs viaSYSTEMUTILITYreadonlyinspection ornormaldocumentedalternateCapsLock withcorrectstatepreservation ifsetting verified; existingprotectedVOASmarkerabsent andforeignVSCodeVoiceovercontrolpromptdoNOTapprove/grant/bypass. No fullspeechverification yet.",
+    "future_receipt": "/private/tmp/blueice-followup-20261012/physical-voiceover-20261013-async-phrase-copy-results.json",
+    "change": "Phraselease compiledwithchildactualexit+stdout/stderr diagnostic onfailedcopy andwaitup2sec forsystemVoiceOverclipboardasyncupdate whileownerforeground/readeron; existingguard/rootPid/bundle, clipboardallformat snapshot/restoration retained. NoactualRootSource prodchanges (mainbefbcleanahead2). Observeactualreason/data beforechanges orpermissionquestions."
+  },
+  "native_language_window_fixed": {
+    "session_id": 1260,
+    "state": "1260TERMINAL0 consumed/closed: actualboth language/privacy/editor/persisted/rerelaunch +existingOSsetDragImage passed2/0/0, sources3confirmedunchanged; audit0 currentsource1902deltaONLYUItestfile/strict11/ownprocessabsence. Receipt native-language-window-fixed-cohort-results.json. Mainbefbclean; authoringONEUItestuncommittedlangfix. No oldhandles live.",
+    "controller": "/private/tmp/blueice-followup-20261012/run-native-language-window-fixed-cohort.py",
+    "future_exit_receipt": "/private/tmp/blueice-followup-20261012/native-language-window-fixed-cohort-exit.json",
+    "change": "positionOwnedWindow optionaltitleX defaultsOLDcenter forallothercallers; runtimeLanguageCase ownedSettingswindow viaidentifierinterface-language, draglefttitle80 initialx730+80=810 outsideforeignDialogx830+, positiononlyownedSettingsx40,y40; preserve<3exactposition/alllanguage/editor/permissions/privateassistant/noConfirm/persistence/relaunch assertions. Each3language-menu choice waitsactualmenuitemexists5sec. No permissiondialoggrant/dismiss/simulatedselection. ActualsetDragImagecase includesforced4reg remainsunchanged. syntax/diff0, actualrunpending."
+  },
+  "native_current_os_drag_nine": {
+    "session_id": 83187,
+    "state": "83187TERMINAL65 consumed/closed: 4pass5fail0skip/9total; ALL5failures AutomaticUpdateFixture Code1 missingbuild-time ownedUpdate metadata. This wasmissingwrapper mistake, NOTcurrent9dragcomplete. Failedreceipt native-current-os-drag-nine-fixture-failed-results.json source3confirmed/actualownProductsabsence verified0. Keepattempt. Needswrapped rerun sameSource.",
+    "controller": "/private/tmp/blueice-followup-20261012/run-native-current-os-drag-nine.py",
+    "future_exit": "/private/tmp/blueice-followup-20261012/native-current-os-drag-nine-exit.json",
+    "scope": "crossinactiveWindows/documenttext/externalAppKitbothdirections/exactbinaryFilePromise/copyMoveLink+readonly/cancellation+sourceinvalidation+hoverleave/currentsetDragImage100x48. Retainednativekeptrecordings. Needactual9scope cases/XCResult/source1902/bins8/sig11/cleanup auditterminal andscopedrealcustompreviewmovie2movingpixels; broaderprotocolcohort/currentfull311next."
+  },
+  "native_current_preview_verified": {
+    "session_id": 16372,
+    "state": "TERMINAL0 consumed/closed: ACTUALcurrentcandidateSourcebefb+UIlangfix scopedsetDragImage movieaccepted, customdragstart31.43s andtwoMOVINGgreen100x48Rect observations32.77/32.97 x204->308. Fullvideo3840x2160/desktop1920x1080 scale2 originalframes, no graphicediting. VideoSHA54bb50... PNGsha d65cb4...",
+    "receipt": "/private/tmp/blueice-followup-20261012/native-current-befb-drag-preview-results.json",
+    "png": "/private/tmp/blueice-followup-20261012/native-current-befb-drag-preview.png",
+    "source_case": "native-language-window-fixed-cohort2methods actualsetDragImagepassed0/source1902/sig11/cleanup0; no fakefullsuiteacceptance"
+  },
+  "native_current_os_drag_nine_wrapped": {
+    "session_id": 8554,
+    "state": "ACTIVE actualexact9OSmethods SAMEcandidateSources insideownedSFTP+automatic-updatefixturewrappers; buildoccursinsidewrappers supplyingprivateInfoMetadata; onlyONEUI noVOUtility/otherUI whilelive.",
+    "controller": "/private/tmp/blueice-followup-20261012/run-native-current-os-drag-nine-wrapped.py",
+    "future_exit": "/private/tmp/blueice-followup-20261012/native-current-os-drag-nine-wrapped-exit.json",
+    "next": "Pollsame8554 thenexact9counts/XCResult/source1902/bin8/sign11/2wrapperscleanuptags+psProductsabsence; originalfailedmissingwrapperattempt retained. Bothsource/producerfixesvalidated currentMacSwiftcancel actual7OSIME+38editingandUIlanguage2 actualpass0; librarysame sourceunchangedRust/WinUI504."
+  },
+  "vo_modifier_inspection_preparation": {
+    "scope": "READONLYinstalledSystemUtilitybinarystrings, noUtilityUIopened whileOSdragactive",
+    "actual_symbols": [
+      "commandsPrefs.keysToUseAsVoiceOverModifier",
+      "generalPrefs.voModifierPopupButton.closed.menuItem.controlOption",
+      "generalPrefs.voModifierPopupButton.closed.menuItem.capsLock",
+      "generalPrefs.voModifierPopupButton.closed.menuItem.controlOptionOrCapsLock"
+    ],
+    "utility": "/System/Applications/Utilities/VoiceOver Utility.app",
+    "bundle_id": "com.apple.VoiceOverUtility",
+    "executable": "VoiceOver Utility",
+    "version": "993",
+    "next": "After8554UIterminal+cleanup, inspectactualVOUtilitymodifiercfg UIread-only bynewexactPID/BID/path, normalcloseonlynewownedUtility. RootinitialVOoff. Startup8sec/stableReader+normalcleanup alreadyactualpass, butVOctrlOptShiftC delivered0 noClipboardUpdate2s despiteforeowned+ReaderON; doNOTguessdisabledpermissions/prefs. Commands UI selectorstrings fromprimaryinstalledbinary useful. DoNOTgrantprotectedVOASflag orapproveforeignVSCodeVoiceovercontrolprompt."
+  },
+  "vo_modifier_inspection_current": {
+    "owned_pid": 75595,
+    "bundle_id": "com.apple.VoiceOverUtility",
+    "initial_voiceover_enabled": false,
+    "modifier_title": "\u2303\u2325 \u6216 \u21ea",
+    "actual_ax_role": "AXMenuButton",
+    "normal_terminate_exit": 0,
+    "post_terminate_applications": [],
+    "raw_controls": "/private/tmp/blueice-followup-20261012/voiceover-utility-commands-other-roles-readonly.txt",
+    "read_only_preferences_unchanged": true,
+    "scoped_window_capture_exit": 1,
+    "scoped_window_capture_error": "could not create image from window"
+  },
+  "native_full_current_2cf93cf56": {
+    "session_id": 77691,
+    "state": "terminal65",
+    "source_commit": "2cf93cf56",
+    "runtime_source_commit": "504eeb924",
+    "expected_case_count": 311,
+    "log": "/private/tmp/blueice-followup-20261012/native-full-2cf93cf56.log",
+    "exit_receipt": "/private/tmp/blueice-followup-20261012/native-full-2cf93cf56-exit.json",
+    "snapshot": "/private/tmp/blueice-followup-20261012/native-2cf93cf56-source-inputs.json",
+    "started_utc": "2026-10-13T02:28:39.293988+00:00",
+    "latest_nonterminal_log_observation": {
+      "completed": 195,
+      "counts": {
+        "passed": 195,
+        "failed": 0,
+        "skipped": 0
+      },
+      "failure_names": [],
+      "last_started": [
+        "BrowserUITests.BrowserUITests testChromeTabFromAddressActivatesGoWithSpace"
+      ],
+      "terminal_receipt_exists": false
+    },
+    "last_live_handle_poll_utc": "2026-10-13T02:42:56.808324+00:00",
+    "observation_watcher_cell_1742": "terminated observer only on newfailure; authoritative job77691 re-polled stilllive",
+    "new_failure": {
+      "method": "testSessionManualRestoreForgetAndInvalidPreferenceRecovery",
+      "assertion": "Normal close must stop the owned services",
+      "source_line": 2915,
+      "phase": "tearDownWithError",
+      "owned_interruption": "com_apple_SwiftUI_Settings_window at38,40 size460x577",
+      "blocked_browser_close_point": [
+        416,
+        79
+      ],
+      "failed_case_log": "/private/tmp/blueice-followup-20261012/native-current-session-recovery-failed-case.log",
+      "all_method_body_assertions_preceding_teardown_passed": true,
+      "candidate_fix": "Close exact owned Settings windows normally before browser-window close loop in UI tearDown; preserve final app/service-exit and all preference assertions. Do not mutate active source2cf; prepare after complete source/audit."
+    },
+    "passed": 308,
+    "failed": 2,
+    "skipped": 1,
+    "audit_session_id": 34375,
+    "audit_exit_code": 0,
+    "source1902_unchanged": true,
+    "binaries8_unchanged": true,
+    "strict_signatures11": true,
+    "wrapper_and_owned_process_cleanup_verified": true,
+    "failure_phase": "Both UI teardown Settings overlap; rootmain6line normalclose fix pending focused4"
+  },
+  "voiceover_native_driver_prepared": {
+    "post_event_access": true,
+    "accessibility_trusted": true,
+    "preflight_no_events_posted": true,
+    "compiled_native_key_driver": "/private/tmp/blueice-followup-20261012/owned-native-voiceover-key",
+    "phrase_lease_compiled": true,
+    "controller_syntax_verified": true,
+    "requires_current_full_native311_terminal_audit": true,
+    "actual_driver_not_run": true,
+    "next_command": [
+      "python3",
+      "/private/tmp/blueice-followup-20261012/run-owned-physical-zhuyin.py",
+      "--mode",
+      "voiceover",
+      "--application-build",
+      "candidate",
+      "--vo-driver",
+      "native",
+      "--attempt",
+      "native-event-channel"
+    ],
+    "all_key_release_events_preallocated": true,
+    "observed_modifier_restoration_required": true
+  },
+  "printer_availability_current_recheck": {
+    "result_path": "/private/tmp/blueice-followup-20261012/macos-printer-availability-current-native-20261013.json",
+    "configured_printer_found": false,
+    "physical_print_accepted": false
+  },
+  "physical_display_latest_recheck": {
+    "online_display_count": 1,
+    "id": 2,
+    "name": "PA279CRV",
+    "scale": 2,
+    "bounds": [
+      0,
+      0,
+      1920,
+      1080
+    ],
+    "actual_transition_performed_in_recheck": false
+  },
+  "native_owned_settings_teardown_fix": {
+    "main_source": "/Users/ephoton/git/blueice-downloads/frontend/macos/UITests/BrowserUITests.swift",
+    "sha256": "571308d2be52a01132b5b5058e0306bf662cc0b1d018d516a138383eeccb759e",
+    "diff_scope": "Six UI tearDown lines normally close exact owned com_apple_SwiftUI_Settings_window and assert its disappearance before normal browser closes; original app/service stop assertion unchanged",
+    "diff_check_exit": 0,
+    "focused_tests_pending": true,
+    "active_private_source_unchanged": true,
+    "candidate_root": "/private/tmp/blueice-native-owned-settings-teardown-20261013",
+    "focused_session_id": 28308,
+    "state": "focused4-running",
+    "log": "/private/tmp/blueice-followup-20261012/native-owned-settings-close-focused.log",
+    "exit_receipt": "/private/tmp/blueice-followup-20261012/native-owned-settings-close-focused-exit.json",
+    "audit_helper": "/private/tmp/blueice-followup-20261012/audit-native-owned-settings-close-focused.py",
+    "prior_full_failed_old_root_kept_immutable": true,
+    "first_focused_state": "terminal65 3pass1fail0skip",
+    "first_failure": "Owned Finder zoom alignment66 versus Settingsclose54 +/-3, before restart behavior",
+    "first_audit_exit": 0,
+    "first_signatures_used_verified": 10,
+    "independent_drag_fixture_unbuilt_unused_in_focused4": true,
+    "focused2_session_id": 95556,
+    "focused2_state": "terminal0 4passed0failed0skipped",
+    "focused2_source_sha256": "de590f0632e571425b0971a91a9486765a4ddc8096f9d610690d821453e9fbc9",
+    "additional_fix": "Position only own Settings x840 y160 before capturing close-control and aligning only newly owned Finder window; original +/-3 and immediate Cmd-Q/relaunch assertions retained",
+    "focused2_log": "/private/tmp/blueice-followup-20261012/native-owned-settings-close-focused-2.log",
+    "focused2_audit": "/private/tmp/blueice-followup-20261012/audit-native-owned-settings-close-focused-2.py",
+    "focused2_audit_exit": 0,
+    "source1902_bin8_signature10_wrapper_owned_cleanup_verified": true,
+    "committed": "26c97b5f8",
+    "candidate_fast_forwarded_clean": true
+  },
+  "actual_voiceover_native_event_channel": {
+    "session_id": 72444,
+    "state": "terminal1",
+    "source_commit": "2cf93cf56",
+    "runtime_source_commit": "504eeb924",
+    "receipt": "/private/tmp/blueice-followup-20261012/physical-voiceover-20261013-native-event-channel-results.json",
+    "owned_native_event_authorization_preflight": true,
+    "ui_concurrency_prohibited": true,
+    "observations": 0,
+    "copy_driver_exit": 0,
+    "copied_phrase": false,
+    "observed_modifiers_restored": true,
+    "reader_off_and_processes_gone": true,
+    "clipboard_restored": true,
+    "input_source_restored": true,
+    "owned_app_runtime_preferences_fixture_removed": true,
+    "accepted": false
+  },
+  "vo_command_assignment_inspection_current": {
+    "owned_pid": 29402,
+    "initial_utility_applications": [],
+    "expected_system_bundle": true,
+    "initial_voiceover_enabled": false,
+    "normal_termination_required": true,
+    "native_ax_helper": "/private/tmp/blueice-followup-20261012/read-owned-voiceover-utility-native",
+    "state": "closed normally",
+    "actual_command_set": "User0custom",
+    "last_phrase_copy_binding": "CtrlOptionShiftC",
+    "allow_applescript_control": false,
+    "normal_done_exit": 0,
+    "utility_terminate_exit": 0,
+    "post_termination_applications": []
+  },
+  "native_full_26c97b5f8": {
+    "session_id": 34213,
+    "state": "terminal65",
+    "source_commit": "26c97b5f8",
+    "root": "/private/tmp/blueice-native-owned-settings-teardown-20261013",
+    "expected_methods": 311,
+    "frozen_program_inputs": 1902,
+    "runtime_source_commit": "504eeb924",
+    "log": "/private/tmp/blueice-followup-20261012/native-full-26c97b5f8.log",
+    "exit_receipt": "/private/tmp/blueice-followup-20261012/native-full-26c97b5f8-exit.json",
+    "audit_helper": "/private/tmp/blueice-followup-20261012/audit-full-native-26c97b5f8.py",
+    "started_utc": "2026-10-13T04:52:34.427351+00:00",
+    "latest_log_observation": {
+      "completed": 182,
+      "counts": {
+        "passed": 182,
+        "failed": 0,
+        "skipped": 0
+      },
+      "failures": [],
+      "last_started": [
+        "BrowserUITests.BrowserUITests testAppearanceMenuKeepsPreferencesAcrossTabsAndHistory"
+      ],
+      "terminal_receipt_present": false
+    },
+    "last_handle_poll_utc": "2026-10-13T04:54:58.406061+00:00",
+    "new_failure": {
+      "case": "testNativeOSFileDragFulfillsPromisesInIndependentAppWithExactBytes",
+      "source_line": 118,
+      "reason": "Fresh worktree lacks DragInteropFixture.app; XCUIApplication cannot determine bundle identifier before any drag. Fixture builder is separate and not invoked by run-kept-native-tests.py.",
+      "failed_case_log": "/private/tmp/blueice-followup-20261012/native-26c-file-promises-failed-case.log"
+    },
+    "watcher_cell_1790": "terminated observer only;34213 confirmedstilllive",
+    "passed": 307,
+    "failed": 3,
+    "skipped": 1,
+    "audit_session": 15718,
+    "audit_exit": 0,
+    "required_drag_fixture_missing": true,
+    "strict_signature_scope_complete": false,
+    "available_signatures_verified": 10,
+    "source1902_bin8_wrapper_owned_cleanup_verified": true,
+    "old_settings_teardown_relaunch_language_four_pass_in_full": true
+  },
+  "native_drag_fixture_build_fix": {
+    "root": "/private/tmp/blueice-native-drag-fixture-fix-20261013",
+    "base_commit": "ed4e12b5c",
+    "scope": "Kept runner builds and signs required independent drag fixture before any test; ordinary test.sh branch retains standalone fixture build; no production or assertions change",
+    "syntax_and_diff_checks_exit": 0,
+    "cold_fixture_absent": true,
+    "gui_tests_pending_until_current34213_terminal_audit": true,
+    "focused13_session": 70239,
+    "state": "committed after13PASS0",
+    "log": "/private/tmp/blueice-followup-20261012/native-cold-drag-fixture-thirteen.log",
+    "exit_receipt": "/private/tmp/blueice-followup-20261012/native-cold-drag-fixture-thirteen-exit.json",
+    "audit_helper": "/private/tmp/blueice-followup-20261012/audit-native-cold-drag-fixture-thirteen.py",
+    "focused13_exit": 0,
+    "audit_exit": 0,
+    "source1902_bin8_signature11_wrapper_owned_cleanup_verified": true,
+    "commit": "a1fcf96d8",
+    "candidate_fast_forwarded_clean": true
+  },
+  "voiceover_caption_preflight_current": {
+    "owned_utility_pid": 69261,
+    "prelaunch_applications": [],
+    "initial_voiceover_enabled": false,
+    "state": "readonlybaselinecomplete Utilitynormalclosed0",
+    "normal_termination_required": true,
+    "show_caption_panel": true,
+    "exact_checkbox_title": "\u986f\u793a\u5b57\u5e55\u9762\u677f",
+    "exact_identifier": "_NS:10",
+    "caption_pref_never_changed": true,
+    "post_cleanup_applications": [],
+    "baseline_json": "/private/tmp/blueice-followup-20261012/voiceover-native-caption-panel-baseline.json"
+  },
+  "actual_voiceover_caption": {
+    "session_id": 9709,
+    "state": "terminal1",
+    "attempt": "caption-native",
+    "receipt": "/private/tmp/blueice-followup-20261012/physical-voiceover-20261013-caption-native-results.json",
+    "caption_pref_original_enabled": true,
+    "no_pref_change_required": true,
+    "all_other_gui_jobs_closed": true,
+    "accepted": false,
+    "diagnostic": "Actual reader AXWindows -25204 CannotComplete,0windows/no ownedphrase",
+    "reader_off_and_processes_gone": true,
+    "clipboard_preserved": true,
+    "original_input_source_restored": true,
+    "own_app_exit": 0,
+    "runtime_preferences_fixture_removed": true
+  },
+  "native_full_a1fcf96d8": {
+    "session_id": 46484,
+    "state": "terminal0",
+    "root": "/private/tmp/blueice-native-drag-fixture-fix-20261013",
+    "source_commit": "a1fcf96d8",
+    "source_manifest": "/private/tmp/blueice-followup-20261012/native-a1fcf96d8-source-inputs.json",
+    "expected_cases": 311,
+    "program_files": 1902,
+    "runtime_source": "504eeb924",
+    "log": "/private/tmp/blueice-followup-20261012/native-full-a1fcf96d8.log",
+    "exit_receipt": "/private/tmp/blueice-followup-20261012/native-full-a1fcf96d8-exit.json",
+    "audit_helper": "/private/tmp/blueice-followup-20261012/audit-full-native-a1fcf96d8.py",
+    "started_utc": "2026-10-13T06:51:52.997867+00:00",
+    "latest_log_observation": {
+      "completed": 167,
+      "counts": {
+        "passed": 167,
+        "failed": 0,
+        "skipped": 0
+      },
+      "failures": [],
+      "last_started": [
+        "ProtocolTests.SessionRestoreTests testFailedRestartIsRetryableUsesNewRuntimeAndRejectsDuplicateAndOldOwners"
+      ],
+      "terminal_receipt_present": false
+    },
+    "last_live_handle_poll_utc": "2026-10-13T06:53:30.794105+00:00",
+    "passed": 310,
+    "failed": 0,
+    "skipped": 1,
+    "audit_session": 27603,
+    "audit_exit": 0,
+    "source1902_bin8_signature11_wrapper_owned_cleanup_verified": true,
+    "formal_receipt": "development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-native-a1fcf96d8-results.json",
+    "documentation_commit": "970258866c99ff75b53f12d2c1e796e0204b44fb"
+  },
+  "actual_voiceover_caption_window_owner": {
+    "session_id": 29263,
+    "state": "terminal1",
+    "scope": "Only exact newly owned Reader PID CGwindow metadata; no global titles, no image capture",
+    "preflight": {
+      "AX_trusted": true,
+      "event_post_authorized": true,
+      "screen_capture_authorized": false
+    },
+    "receipt": "/private/tmp/blueice-followup-20261012/physical-voiceover-20261013-caption-window-owner-results.json",
+    "accepted": false,
+    "reader_owned_cg_windows": 3,
+    "visible_count": 2,
+    "AXWindows_error": -25204,
+    "screen_capture_authorized": false,
+    "reader_off_input_clip_app_runtime_preferences_fixture_restored": true
+  },
+  "remaining_required_user_input": {
+    "asked_async": true,
+    "questions": "Printer model/IP/USB; second monitor connected; manual VoiceOver physical-keyboard navigation/speech on this Mac",
+    "answer_received": false
+  }
+}

@@ -96,6 +96,83 @@ impl Vm {
         };
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::WebAbort(native) => {
+                self.web_abort_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::WebUrl(native) => {
+                self.web_url_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::DOMException
+            | NativeFunction::DOMExceptionName
+            | NativeFunction::DOMExceptionMessage
+            | NativeFunction::DOMExceptionCode => {
+                self.web_dom_exception_call(function, &receiver, &args, construct)
+            }
+            NativeFunction::WebDrag(native) => {
+                self.web_drag_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::WebEvent(native) => {
+                self.web_event_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::WebTarget(native) => {
+                self.web_target_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::WebReader(native) => {
+                self.web_reader_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::WebStream(native) => {
+                self.web_stream_call(native, &receiver, &args, construct)
+            }
+            NativeFunction::StreamReaction {
+                stream,
+                action,
+                rejected,
+            } => self.stream_reaction(stream, action, rejected, first.clone()),
+            NativeFunction::TeePull { tee, branch } => self.tee_pull(tee, branch),
+            NativeFunction::StreamIteration {
+                request,
+                action,
+                rejected,
+            } => self.stream_iteration_reaction(request, action, rejected, first.clone()),
+            NativeFunction::TeeCancel { tee, branch } => {
+                self.tee_cancel(tee, branch, first.clone())
+            }
+            NativeFunction::TeeReaction {
+                tee,
+                reader,
+                action,
+                rejected,
+            } => self.tee_reaction(tee, reader, action, rejected, first.clone()),
+            NativeFunction::FileListIteratorNext => self.web_file_list_iterator_next(&receiver),
+            NativeFunction::HostSelectionCurrentTarget => {
+                self.host_selection_current_target(&receiver)
+            }
+            NativeFunction::HostSelectionPreventDefault => {
+                self.host_selection_prevent_default(&receiver)
+            }
+            NativeFunction::HostSelectionStopPropagation(immediate) => {
+                self.host_selection_stop_propagation(&receiver, immediate)
+            }
+            NativeFunction::FileList => Err(RuntimeError::TypeError(
+                "Illegal FileList constructor".into(),
+            )),
+            NativeFunction::FileListLength
+            | NativeFunction::FileListItem
+            | NativeFunction::FileListIterator => {
+                self.web_file_list_call(function, &receiver, &args)
+            }
+            NativeFunction::HostInputFiles(index) => self.web_input_files(index, &receiver),
+            NativeFunction::Blob | NativeFunction::File => {
+                self.web_blob_construct(&args, construct, function == NativeFunction::File)
+            }
+            NativeFunction::BlobSize
+            | NativeFunction::BlobType
+            | NativeFunction::BlobSlice
+            | NativeFunction::BlobText
+            | NativeFunction::BlobArrayBuffer
+            | NativeFunction::BlobBytes
+            | NativeFunction::FileName
+            | NativeFunction::FileLastModified => self.web_blob_call(function, &receiver, &args),
             NativeFunction::Host(index) => {
                 self.host_function_call(index, receiver, &args, construct)
             }
@@ -115,6 +192,9 @@ impl Vm {
                 self.host_click_listener_call(index, receiver, &args, construct, false)
             }
             NativeFunction::HostTimer(function) => self.host_timer_call(function, &args, construct),
+            NativeFunction::HostNodeDispatch(index) => {
+                self.host_node_dispatch_call(index, &receiver, &args, construct)
+            }
             NativeFunction::HostClickPreventDefault => {
                 self.host_click_prevent_default(receiver, &args, construct)
             }

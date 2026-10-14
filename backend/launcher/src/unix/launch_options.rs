@@ -5,6 +5,19 @@
 use super::*;
 
 impl CoreLaunchOptions {
+    /// Runs an installed extension package through core's authenticated
+    /// extension host (with the private permission-control pipe).
+    pub fn with_extension_manifest(mut self, manifest: PathBuf) -> Self {
+        self.extension_manifest = Some(manifest);
+        self
+    }
+
+    /// Wires core to the assistant this launcher supervises.
+    pub fn with_assistant(mut self, assistant: AssistantWiring) -> Self {
+        self.assistant = Some(assistant);
+        self
+    }
+
     /// Forwards an owner-selected gatekeeper endpoint to the trusted core.
     /// This is intentionally unrelated to the page-host capability.
     pub fn with_gatekeeper_socket(mut self, path: PathBuf) -> Self {
@@ -73,6 +86,15 @@ impl CoreLaunchOptions {
     pub fn supervise_out_of_process_bluejs_with_dom_mutation_fixture(mut self) -> Self {
         self.supervise_out_of_process_bluejs = true;
         self.core_dom_mutation_fixture = true;
+        self
+    }
+
+    /// Runs admitted page JavaScript with the bounded live DOM and click
+    /// bindings. This is an embedding-owner startup choice; page traffic
+    /// cannot create the child, select its endpoint or enable bindings.
+    pub fn supervise_out_of_process_bluejs_with_page_dom(mut self) -> Self {
+        self.supervise_out_of_process_bluejs = true;
+        self.core_dom_file_bindings = true;
         self
     }
 

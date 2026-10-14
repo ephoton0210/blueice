@@ -23,24 +23,57 @@ use blueice_dom::{Document, NodeData, NodeId};
 /// as CSS, in document order.
 pub fn extract_inline_stylesheets(doc: &Document) -> Vec<Rule> {
     let mut rules = Vec::new();
-    collect(doc, doc.root(), &mut rules);
+    collect(doc, doc.root(), &mut rules, None);
     rules
 }
 
-fn collect(doc: &Document, node: NodeId, rules: &mut Vec<Rule>) {
-    if let NodeData::Element { tag_name, .. } = doc.data(node) {
-        if tag_name == "style" {
+pub fn extract_inline_stylesheets_with_environment(
+    doc: &Document,
+    environment: &blueice_css::MediaEnvironment,
+) -> Vec<Rule> {
+    let mut rules = Vec::new();
+    collect(doc, doc.root(), &mut rules, Some(environment));
+    rules
+}
+
+fn collect(
+    doc: &Document,
+    node: NodeId,
+    rules: &mut Vec<Rule>,
+    environment: Option<&blueice_css::MediaEnvironment>,
+) {
+    if let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(node)
+    {
+        let media_matches = environment.is_none_or(|env| {
+            attributes
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("media"))
+                .is_none_or(|(_, value)| {
+                    value.trim().is_empty() || blueice_css::matches_media(value, env)
+                })
+        });
+        if tag_name == "style" && media_matches {
             let mut css_text = String::new();
             for child in doc.children(node) {
                 if let NodeData::Text { data } = doc.data(child) {
                     css_text.push_str(data);
                 }
             }
-            rules.extend(blueice_css::parse(&css_text).rules);
+            rules.extend(
+                environment
+                    .map_or_else(
+                        || blueice_css::parse(&css_text),
+                        |env| blueice_css::parse_with_environment(&css_text, env),
+                    )
+                    .rules,
+            );
         }
     }
     for child in doc.children(node) {
-        collect(doc, child, rules);
+        collect(doc, child, rules, environment);
     }
 }
 

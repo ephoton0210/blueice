@@ -1,0 +1,112 @@
+{
+  "utc": "2026-10-13T00:57:28.796083+00:00",
+  "base_commit": "b39171277e502ffce9c0efb420f1b443e36e6f6c",
+  "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "candidate_ui_sha256": "ca27cccb19c1434e9c245dc38349dbd4d184eb2b59b700902c4e8de6f1701223",
+  "session_id": 56245,
+  "exit_code": 0,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "program_files_verified": 1902,
+  "frozen_backend_binaries_verified": 8,
+  "strict_signatures": [
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/BlueIcePanels.app",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/DragInteropFixture.app",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-core",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-launcher",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-bluejs-host",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/bluejs-regexp-worker",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-gatekeeper",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-downloads",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-extension-host",
+      "exit_code": 0
+    },
+    {
+      "path": "/private/tmp/blueice-native-assistant-scroll-fix-20261013/frontend/macos/.build/Build/Products/Debug/BlueIce.app/Contents/MacOS/blueice-ai-assistant",
+      "exit_code": 0
+    }
+  ],
+  "owned_process_absence_verified": true,
+  "remaining_owned_processes": [],
+  "log_sha256": "cc3fa1c74d6d578cae618a903bfb783e5be46f4206c7cc0508b920b31424f989",
+  "xcresult": "/private/tmp/blueice-followup-20261012/native-four-point-focused.xcresult",
+  "summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "00008132-001C51E40EC3001C",
+          "deviceName": "My Mac",
+          "modelName": "Mac mini",
+          "osBuildNumber": "26A434",
+          "osVersion": "27.0.1",
+          "platform": "macOS"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 1,
+        "skippedTests": 0,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "BlueIce \u00b7 Built with macOS 27.0.1",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1791852943.502,
+    "passedTests": 1,
+    "result": "Passed",
+    "runtimeWarnings": [
+      {
+        "issueType": "Runtime Warning",
+        "message": "[Internal] Thread running at User-interactive quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions"
+      }
+    ],
+    "skippedTests": 0,
+    "startTime": 1791852892.449,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - BlueIce",
+    "topInsights": [],
+    "totalTestCount": 1
+  },
+  "calibration": [
+    "OWNED_WINDOW_POSITION_CALIBRATION id=browser-window attempt=1 requested=(40.0,40.0) actual=(42.0,40.0)",
+    "OWNED_WINDOW_POSITION_CALIBRATION id=browser-window attempt=1 requested=(46.0,40.0) actual=(47.0,40.0)",
+    "OWNED_WINDOW_POSITION_CALIBRATION id=browser-window attempt=1 requested=(42.0,40.0) actual=(44.0,40.0)",
+    "OWNED_WINDOW_POSITION_CALIBRATION id=browser-window attempt=1 requested=(40.0,40.0) actual=(38.0,40.0)"
+  ],
+  "scope": "Actual existing OS setDragImage method and forced four-point placement, native reference/custom preview geometry and payload assertions; does not establish full suite acceptance"
+}

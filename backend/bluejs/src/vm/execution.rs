@@ -1620,7 +1620,7 @@ impl Vm {
         operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>,
     ) -> Result<T, RuntimeError> {
         let roots = self.execution_roots();
-        self.heap.push_scoped_roots(roots);
+        self.heap.push_scoped_roots(roots, Vec::new());
         let result = operation(&mut self.heap);
         self.heap.pop_scoped_roots();
         result.map_err(RuntimeError::from)

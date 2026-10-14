@@ -9,22 +9,35 @@
 //! binary (`src/bin/blueice-core.rs`) drives from IPC messages.
 
 mod ai_snapshot;
+pub mod assistant_client;
+pub mod assistant_page;
 pub mod compiler_ipc;
 pub mod compiler_service;
 pub mod credits;
 pub mod debugger;
+pub mod downloads_page;
 mod gatekeeper_client;
+pub mod gatekeeper_settings_page;
+mod navigation_request;
+mod object_urls;
 mod page;
+mod page_text;
 pub mod script;
 pub mod session;
 mod stylesheet;
 mod tabs;
+mod translation;
 
 use blueice_css::{cascade, ua_stylesheet, Origin};
 use blueice_paint::Frame;
 
+pub use object_urls::{ObjectUrlLease, ObjectUrlPurpose};
+pub use page::printing::{FrozenPrintDocument, PrintedDocument};
 pub use page::Page;
-pub use tabs::{TabId, TabManager};
+pub use tabs::{
+    BrowserContext, BrowserContextId, ClosedBrowserContext, GroupId, HistorySnapshotMode, TabGroup,
+    TabId, TabManager, WindowId,
+};
 
 /// One-shot render: parse `html`, cascade with `css` (an explicit
 /// stylesheet, e.g. from a test fixture) plus any `<style>` tags found

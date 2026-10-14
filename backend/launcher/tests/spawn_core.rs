@@ -579,7 +579,7 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
             "<style>a { display: block; width: 100px; height: 30px; }</style>",
             "<a id='js' href='/away'>JS click</a><a id='ts' href='/away'>TS click</a>",
             "<div id='status'>before</div>",
-            "<script>if (typeof document.getElementById('js').dispatchEvent !== 'undefined') throw 'broad event API';",
+            "<script>if (typeof document.getElementById('js').dispatchEvent !== 'function') throw 'missing node event dispatch';",
             "document.getElementById('js').addEventListener('click', function(event) {",
             "event.preventDefault();",
             "Promise.resolve().then(function() { document.getElementById('status').textContent = 'JS ran'; });",
@@ -621,7 +621,7 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
         &frame_dir,
         CoreLaunchOptions::default()
             .with_gatekeeper_socket(gatekeeper_path.clone())
-            .supervise_out_of_process_bluejs_with_dom_event_fixture(),
+            .supervise_out_of_process_bluejs_with_page_dom(),
     )
     .expect("launcher must supervise an event-capable child");
     let mut stream = core.stream.try_clone().unwrap();
@@ -637,10 +637,11 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
         blueice_ipc::read_server_message(&mut stream).unwrap(),
         blueice_ipc::ServerMessage::Navigated { url: url.clone() }
     );
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }
-    ));
+    let initial_frame = blueice_ipc::read_server_message(&mut stream).unwrap();
+    assert!(
+        matches!(initial_frame, blueice_ipc::ServerMessage::FrameReady { .. }),
+        "{initial_frame:?}"
+    );
     blueice_ipc::write_client_message(
         &mut stream,
         &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
@@ -684,10 +685,11 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
         },
     )
     .unwrap();
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }
-    ));
+    let js_frame = blueice_ipc::read_server_message(&mut stream).unwrap();
+    assert!(
+        matches!(js_frame, blueice_ipc::ServerMessage::FrameReady { .. }),
+        "{js_frame:?}"
+    );
     blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetDom).unwrap();
     let blueice_ipc::ServerMessage::Dom(dom) =
         blueice_ipc::read_server_message(&mut stream).unwrap()
@@ -704,10 +706,11 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
         },
     )
     .unwrap();
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }
-    ));
+    let typed_frame = blueice_ipc::read_server_message(&mut stream).unwrap();
+    assert!(
+        matches!(typed_frame, blueice_ipc::ServerMessage::FrameReady { .. }),
+        "{typed_frame:?}"
+    );
     blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetDom).unwrap();
     let blueice_ipc::ServerMessage::Dom(dom) =
         blueice_ipc::read_server_message(&mut stream).unwrap()

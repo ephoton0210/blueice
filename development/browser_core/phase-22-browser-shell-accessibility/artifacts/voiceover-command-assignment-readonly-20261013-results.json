@@ -1,0 +1,53 @@
+{
+  "utc": "2026-10-13T04:52:34.424836+00:00",
+  "scope": "Actual native AX inspection of a newly owned system Utility; command browser/view/search/row selection only, no command or authorization changes",
+  "physical_voiceover_accepted": false,
+  "owned_pid": 29402,
+  "canonical_bundle": "/System/Applications/Utilities/VoiceOver Utility.app",
+  "prelaunch_applications": [],
+  "general": {
+    "welcome_dialog_checked": true,
+    "allow_applescript_control_checked": false
+  },
+  "commands": {
+    "modifier": "⌃⌥ 或 ⇪",
+    "selected_command_set": "使用者（0自訂）",
+    "builtin_selected": false,
+    "user_selected": true,
+    "custom_command_count": 0
+  },
+  "last_spoken_phrase_copy": {
+    "command_label": "將最後一段詞句拷貝到剪貼板",
+    "displayed_input": "⌃⌥  ⇧C",
+    "matches_attempted_native_key_combination": true
+  },
+  "inspection_inputs": {
+    "voiceover-utility-native-current-controls.json": {
+      "path": "/private/tmp/blueice-followup-20261012/voiceover-utility-native-current-controls.json",
+      "sha256": "413d24177c8d9025e595cd8288a193b711f824865346f7a1c3774ccbed7b5c32"
+    },
+    "voiceover-utility-native-current-commands.json": {
+      "path": "/private/tmp/blueice-followup-20261012/voiceover-utility-native-current-commands.json",
+      "sha256": "8ef1fdf2bf9147116eae13b5d281dd4763b51a7c2ab4be42dcc4fdd34ee3aca7"
+    },
+    "voiceover-utility-native-last-phrase-inputs.json": {
+      "path": "/private/tmp/blueice-followup-20261012/voiceover-utility-native-last-phrase-inputs.json",
+      "sha256": "192db70a9feed57e74ab217d819cd4e59f0cddfd781e0ace86ebb9649b6ac05a"
+    }
+  },
+  "inspection_source_sha256": "756e59fe212bda9e9def3fc72567f993bd99c2b0f572e1f98ec4a84993539fc7",
+  "view_operations": [
+    "open Commands category",
+    "open Command set Edit browser",
+    "filter fixed search terms",
+    "select exact last-phrase-copy row",
+    "normal Done"
+  ],
+  "normal_cleanup": {
+    "done_exit_code": 0,
+    "utility_terminate_accepted": true,
+    "utility_terminate_exit_code": 0,
+    "post_termination_applications": []
+  },
+  "remaining": "Actual VoiceOver navigation/action/phrase remain unaccepted. Verified shortcut configuration does not establish recognition of posted keys. Real caption-panel observation remains a possible next diagnostic after full native UI cleanup."
+}

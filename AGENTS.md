@@ -23,6 +23,15 @@ harness is `differential-testing/`.
   and refuses a second `CARGO_TARGET_DIR`.
   Override the GiB limits with `BLUEICE_TEST_MAX_TARGET_GIB` and
   `BLUEICE_TEST_MIN_FREE_GIB` when the host has a smaller disk.
+- On the owner's Windows validation VM, keep the checkout under
+  `B:\BlueIce\workspaces` and invoke Rust, WinUI and desktop validation through
+  `scripts/test-with-windows-storage.ps1 -Workspace <B:\checkout> <command>`.
+  The wrapper requires the dedicated `BlueIceTests320` NTFS volume, keeps build
+  products, tool caches and TEMP/TMP on B:, and requires 50 GiB free. Apply it
+  at the entry point for scheduled desktop helpers too. See
+  `development/browser_core/phase-22-browser-shell-accessibility/WINDOWS_TEST_STORAGE.md`
+  for commands and the verified C: cleanup; do not create new BlueIce test
+  workspaces or temporary trees on C: on this VM.
 - `cargo clippy --workspace --all-targets -- -D warnings` treats all Clippy
   warnings as errors, matching CI.
 - `cargo fmt --all -- --check` verifies Rust formatting; run `cargo fmt --all`

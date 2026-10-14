@@ -692,8 +692,11 @@ fn launcher_refuses_every_bounded_value_budget_on_a_real_bluets_socket() {
         let over_nodes = ["row"; 9].join(",");
         let edge_nodes = format!("{},shortRow", ["row"; 7].join(","));
         let short_row = vec!["1"; 23].join(",");
+        // Keep the same 33 empty slots without an undeclared constructor
+        // in the closed snapshot profile used by this debugger fixture.
+        let over_length = ",".repeat(33);
         let source = format!(
-            "let row = [{edge_array}]; let shortRow = [{short_row}]; let overNodes = [{over_nodes}]; let edgeNodes = [{edge_nodes}]; function inner(depth: any, length: any, nodes: any, bytes: any, edgeDepth: any, edgeLength: any, edgeNodeCount: any, edgeBytes: any, good: number): number {{ return good; }} globalThis.answer = inner([[[[[1]]]]], new Array(33), overNodes, 'x'.repeat(2049), [[[[1]]]], row, edgeNodes, 'x'.repeat(2048), 7);"
+            "let row = [{edge_array}]; let shortRow = [{short_row}]; let overNodes = [{over_nodes}]; let edgeNodes = [{edge_nodes}]; function inner(depth: any, length: any, nodes: any, bytes: any, edgeDepth: any, edgeLength: any, edgeNodeCount: any, edgeBytes: any, good: number): number {{ return good; }} globalThis.answer = inner([[[[[1]]]]], [{over_length}], overNodes, 'x'.repeat(2049), [[[[1]]]], row, edgeNodes, 'x'.repeat(2048), 7);"
         );
         let body = format!(
             "<main>bounded-value-budgets</main><script type=\"application/x-blueice-typescript\">{source}</script>"

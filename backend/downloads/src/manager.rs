@@ -1,0 +1,1952 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! The downloads process's brain (`phase-10-download-manager/PLAN.md`'s
+//! "Layering and process shape"): ids, the queue, each transfer's
+//! lifecycle, the gatekeeper calls, the destination policy, persistence,
+//! and fan-out of changes to subscribers. All transfer *mechanics*
+//! (probing, segments, retries, resume validation) live in
+//! `blueice_net::download`; this module decides *whether and where* a
+//! transfer runs and keeps the one [`TransferInfo`] record every client
+//! reads.
+//!
+//! Each running transfer gets a **job thread** that walks it through
+//! `AwaitingClearance` -> `review_url` -> `probe` (retrying transient
+//! failures) -> pick the destination -> `review_download` -> `Transfer::
+//! begin` -> wait. The manager reviews every start *itself*: a client -- the
+//! MCP adapter included -- is never trusted to have asked the gatekeeper,
+//! because a compile-time token doesn't cross a process boundary
+//! (`research/safe-browsing-enforcement.md`). A resume re-enters the same
+//! sequence, since a verdict can change between a pause and a resume.
+//!
+//! Lock discipline: the state mutex is never held across network or
+//! blocking engine calls (`Transfer::pause`/`cancel`/`wait`, the
+//! gatekeeper, the probe) -- only across bookkeeping, copying a persistence
+//! snapshot, and non-blocking pushes into each subscriber's own pending set.
+//! The store worker performs its write and `fsync` after that lock is
+//! released, so one slow disk or client can never delay another.
+
+use crate::policy::{is_reserved_download_name, reconfine_stored, resolve_requested, unique_path};
+use crate::store::{Store, StoredTransfer};
+use blueice_ipc::downloads::{BlockedInfo, ErrorCode, TransferEvent, TransferInfo, TransferState};
+use blueice_ipc::downloads::{
+    ResponseBodyReader, ResponseDownload, SingleStreamReason, TransferMode,
+};
+use blueice_ipc::local_socket::ensure_private_dir;
+use blueice_net::download::backend::validate_url;
+use blueice_net::download::clearance::{Blocked, Reviewer};
+use blueice_net::download::credentials::{
+    delete_ftps_password, delete_sftp_password, delete_sftp_private_key_passphrase,
+    save_ftps_password, save_sftp_password, save_sftp_private_key_passphrase, FtpsCredentialRef,
+    SftpCredentialRef, SftpPrivateKeyPassphraseRef,
+};
+use blueice_net::download::file_name::choose_file_name;
+use blueice_net::download::probe::probe;
+use blueice_net::download::response::{validate_metadata, ResponseFile, MAX_RESPONSE_CHUNK_BYTES};
+use blueice_net::download::sidecar::remove_partials;
+use blueice_net::download::transfer::{DownloadSpec, Snapshot, Transfer};
+use blueice_net::download::{bounded_transfer_text, DownloadOptions, MAX_TRANSFER_SEGMENTS};
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::fmt;
+use std::io::{self, Read};
+use std::os::unix::net::UnixStream;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// How many events a transfer's log keeps (matches the engine's own bound).
+const MAX_EVENTS: usize = 32;
+/// How long an operation waits for a job thread to settle after asking it to.
+const SETTLE_TIMEOUT: Duration = Duration::from_secs(15);
+/// Finished history is useful, but must not make every list/persist grow forever.
+const DEFAULT_MAX_HISTORY: usize = 1_000;
+const DEFAULT_MAX_QUEUED: usize = 100;
+
+#[derive(Debug, Clone)]
+pub struct ManagerConfig {
+    /// Where finished downloads land, and the only place a requested
+    /// destination may point inside.
+    pub download_dir: PathBuf,
+    /// Previously selected folders, explicitly authorized by the process owner.
+    /// They are used only by records that already belong to those folders.
+    pub previous_download_dirs: Vec<PathBuf>,
+    /// Where `transfers.json` lives.
+    pub data_dir: PathBuf,
+    pub gatekeeper_socket: PathBuf,
+    /// Transfers running at once; the rest stay `Queued`.
+    pub max_concurrent: usize,
+    /// Maximum transfer records retained. Oldest terminal records are evicted
+    /// when a new transfer starts; active and resumable records are never
+    /// silently dropped, so a full set of those makes a new request fail.
+    pub max_history: usize,
+    /// Maximum accepted transfers waiting for a worker slot.
+    pub max_queued: usize,
+    /// Per-transfer engine settings (connections, retries, timeouts, ...).
+    pub options: DownloadOptions,
+    /// How long a gatekeeper check may take before it counts as a rejection.
+    pub review_timeout: Duration,
+}
+
+impl ManagerConfig {
+    pub fn new(
+        download_dir: impl AsRef<Path>,
+        data_dir: impl AsRef<Path>,
+        gatekeeper_socket: impl AsRef<Path>,
+    ) -> Self {
+        ManagerConfig {
+            download_dir: download_dir.as_ref().to_path_buf(),
+            previous_download_dirs: Vec::new(),
+            data_dir: data_dir.as_ref().to_path_buf(),
+            gatekeeper_socket: gatekeeper_socket.as_ref().to_path_buf(),
+            max_concurrent: 3,
+            max_history: DEFAULT_MAX_HISTORY,
+            max_queued: DEFAULT_MAX_QUEUED,
+            options: DownloadOptions::default(),
+            review_timeout: Duration::from_secs(10),
+        }
+    }
+}
+
+/// A request the manager refused, in the wire protocol's terms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagerError {
+    pub code: ErrorCode,
+    pub message: String,
+}
+
+impl ManagerError {
+    fn new(code: ErrorCode, message: impl Into<String>) -> Self {
+        ManagerError {
+            code,
+            message: message.into(),
+        }
+    }
+
+    fn not_found(id: u64) -> Self {
+        ManagerError::new(ErrorCode::NotFound, format!("there is no transfer {id}"))
+    }
+
+    fn invalid_state(message: impl Into<String>) -> Self {
+        ManagerError::new(ErrorCode::InvalidState, message)
+    }
+}
+
+impl fmt::Display for ManagerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for ManagerError {}
+
+#[derive(Default)]
+struct Control {
+    pause: AtomicBool,
+    cancel: AtomicBool,
+}
+
+struct Job {
+    control: Arc<Control>,
+    transfer: Option<Arc<Transfer>>,
+}
+
+struct PendingResponse {
+    metadata: ResponseDownload,
+    body: ResponseBodyReader<UnixStream>,
+}
+
+struct Entry {
+    response: Option<PendingResponse>,
+    info: TransferInfo,
+    overwrite: bool,
+    download_root: PathBuf,
+    /// The event log as it stood when this run began, plus what the manager
+    /// itself recorded since; the engine's own events are appended to it.
+    events_before_engine: Vec<TransferEvent>,
+    /// `Some` while a job thread exists for this transfer.
+    job: Option<Job>,
+}
+
+/// A change a [`Subscription`] reports. A removed transfer cannot be
+/// represented by a [`TransferInfo`], so it is deliberately distinct from
+/// an ordinary record update.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SubscriptionUpdate {
+    Updated(Box<TransferInfo>),
+    Removed { id: u64 },
+}
+
+impl SubscriptionUpdate {
+    fn id(&self) -> u64 {
+        match self {
+            SubscriptionUpdate::Updated(info) => info.id,
+            SubscriptionUpdate::Removed { id } => *id,
+        }
+    }
+}
+
+/// One subscriber's pending updates. Deliberately *not* a queue of every
+/// change: it keeps only the **latest** change for each transfer, in the
+/// order they last changed. A subscriber that falls behind therefore skips
+/// intermediate progress but still receives either the newest record or its
+/// removal, and its memory is bounded by the number of transfers, never by
+/// how long it stalls.
+#[derive(Default)]
+struct Pending {
+    order: VecDeque<u64>,
+    latest: HashMap<u64, SubscriptionUpdate>,
+}
+
+struct Subscriber {
+    pending: Mutex<Pending>,
+    wake: Condvar,
+    closed: AtomicBool,
+}
+
+impl Subscriber {
+    fn push(&self, update: SubscriptionUpdate) {
+        let mut pending = self.pending.lock().unwrap_or_else(|p| p.into_inner());
+        let id = update.id();
+        if pending.latest.insert(id, update).is_none() {
+            pending.order.push_back(id);
+        }
+        drop(pending);
+        self.wake.notify_one();
+    }
+
+    fn pop(pending: &mut Pending) -> Option<SubscriptionUpdate> {
+        let id = pending.order.pop_front()?;
+        pending.latest.remove(&id)
+    }
+}
+
+/// A subscription to changes in any transfer, from [`TransferManager::subscribe`].
+/// Dropping it unsubscribes.
+pub struct Subscription {
+    inner: Arc<Subscriber>,
+}
+
+impl Subscription {
+    /// The next pending update, waiting up to `timeout` for one; `None` if none came.
+    pub fn recv_timeout(&self, timeout: Duration) -> Option<SubscriptionUpdate> {
+        let mut pending = self.inner.pending.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(info) = Subscriber::pop(&mut pending) {
+            return Some(info);
+        }
+        pending = self
+            .inner
+            .wake
+            .wait_timeout(pending, timeout)
+            .unwrap_or_else(|p| p.into_inner())
+            .0;
+        Subscriber::pop(&mut pending)
+    }
+
+    /// Everything pending right now, without waiting.
+    pub fn drain(&self) -> Vec<SubscriptionUpdate> {
+        let mut pending = self.inner.pending.lock().unwrap_or_else(|p| p.into_inner());
+        std::iter::from_fn(|| Subscriber::pop(&mut pending)).collect()
+    }
+}
+
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        self.inner.closed.store(true, Ordering::SeqCst);
+    }
+}
+
+struct State {
+    next_id: u64,
+    generation: u64,
+    entries: BTreeMap<u64, Entry>,
+    subscribers: Vec<Arc<Subscriber>>,
+    last_saved: Instant,
+    shutting_down: bool,
+}
+
+/// One immutable view of manager state waiting to reach `transfers.json`.
+/// Keeping this independent of [`State`] lets the durable write (including
+/// `fsync`) happen without holding the manager lock.
+struct PersistSnapshot {
+    next_id: u64,
+    transfers: Vec<StoredTransfer>,
+}
+
+struct PersistRequest {
+    revision: u64,
+    snapshot: PersistSnapshot,
+}
+
+#[derive(Default)]
+struct PersistState {
+    next_revision: u64,
+    completed_revision: u64,
+    pending: Option<PersistRequest>,
+    /// The last completed write's error. It is retained until a later save
+    /// succeeds, so a full disk or permissions change cannot fail silently.
+    last_error: Option<String>,
+    stopped: bool,
+}
+
+struct PersistInner {
+    state: Mutex<PersistState>,
+    wake: Condvar,
+    completed: Condvar,
+}
+
+/// Serializes persistent snapshots on one worker. Only the newest pending
+/// snapshot is retained: a progress tick made while an earlier fsync is in
+/// flight supersedes any older queued tick, while state transitions still
+/// enqueue their current full record immediately.
+struct Persister {
+    inner: Arc<PersistInner>,
+}
+
+impl Persister {
+    fn start(store: Store) -> Self {
+        let inner = Arc::new(PersistInner {
+            state: Mutex::new(PersistState::default()),
+            wake: Condvar::new(),
+            completed: Condvar::new(),
+        });
+        let worker = inner.clone();
+        thread::spawn(move || {
+            loop {
+                let request = {
+                    let mut state = worker.state.lock().unwrap_or_else(|p| p.into_inner());
+                    while state.pending.is_none() && !state.stopped {
+                        state = worker.wake.wait(state).unwrap_or_else(|p| p.into_inner());
+                    }
+                    if state.stopped {
+                        return;
+                    }
+                    state.pending.take().expect("the wait loop checked it")
+                };
+                let result = store.save(request.snapshot.next_id, &request.snapshot.transfers);
+                let mut state = worker.state.lock().unwrap_or_else(|p| p.into_inner());
+                state.completed_revision = request.revision;
+                state.last_error = result.as_ref().err().map(ToString::to_string);
+                if let Some(error) = &state.last_error {
+                    // This is deliberately not best-effort. The daemon's log
+                    // and `TransferManager::last_persistence_error` both retain
+                    // it until a later durable write succeeds.
+                    eprintln!("blueice-downloads: could not save transfers.json: {error}");
+                }
+                worker.completed.notify_all();
+            }
+        });
+        Persister { inner }
+    }
+
+    /// Queues a complete replacement snapshot and returns its monotonic
+    /// revision. This is constant-time while holding the manager lock.
+    fn request(&self, snapshot: PersistSnapshot) -> u64 {
+        let mut state = self.inner.state.lock().unwrap_or_else(|p| p.into_inner());
+        state.next_revision += 1;
+        let revision = state.next_revision;
+        state.pending = Some(PersistRequest { revision, snapshot });
+        drop(state);
+        self.inner.wake.notify_one();
+        revision
+    }
+
+    /// Waits until at least `revision` was attempted. Used only at manager
+    /// startup and orderly shutdown, after releasing the manager state lock.
+    fn wait_for(&self, revision: u64) -> io::Result<()> {
+        let mut state = self.inner.state.lock().unwrap_or_else(|p| p.into_inner());
+        while state.completed_revision < revision && !state.stopped {
+            state = self
+                .inner
+                .completed
+                .wait(state)
+                .unwrap_or_else(|p| p.into_inner());
+        }
+        match &state.last_error {
+            Some(error) => Err(io::Error::other(error.clone())),
+            None if state.completed_revision >= revision => Ok(()),
+            None => Err(io::Error::other("the persistence worker stopped")),
+        }
+    }
+
+    fn last_error(&self) -> Option<String> {
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .last_error
+            .clone()
+    }
+}
+
+impl Drop for Persister {
+    fn drop(&mut self) {
+        let mut state = self.inner.state.lock().unwrap_or_else(|p| p.into_inner());
+        state.stopped = true;
+        drop(state);
+        self.inner.wake.notify_one();
+        self.inner.completed.notify_all();
+    }
+}
+
+struct Shared {
+    config: ManagerConfig,
+    /// The canonical download directory (symlinks resolved).
+    root: PathBuf,
+    persister: Persister,
+    state: Mutex<State>,
+    changed: Condvar,
+}
+
+pub struct TransferManager {
+    shared: Arc<Shared>,
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn push_event(events: &mut Vec<TransferEvent>, message: impl Into<String>) {
+    events.push(TransferEvent {
+        at_ms: now_ms(),
+        message: bounded_transfer_text(message.into()),
+    });
+    if events.len() > MAX_EVENTS {
+        events.remove(0);
+    }
+}
+
+fn bounded_events(events: Vec<TransferEvent>) -> Vec<TransferEvent> {
+    let first = events.len().saturating_sub(MAX_EVENTS);
+    events
+        .into_iter()
+        .skip(first)
+        .map(|event| TransferEvent {
+            at_ms: event.at_ms,
+            message: bounded_transfer_text(event.message),
+        })
+        .collect()
+}
+
+/// Records from older versions are input too.  Normalize every field that
+/// reaches a snapshot or the store before keeping it in the manager, so a
+/// historical oversized response cannot reintroduce unbounded IPC state on
+/// restart.
+fn bound_loaded_info(info: &mut TransferInfo) {
+    info.url = bounded_transfer_text(&info.url);
+    info.final_url = info.final_url.as_deref().map(bounded_transfer_text);
+    info.content_type = info.content_type.as_deref().map(bounded_transfer_text);
+    info.last_error = info.last_error.as_deref().map(bounded_transfer_text);
+    if let Some(blocked) = &mut info.blocked {
+        blocked.reason = bounded_transfer_text(&blocked.reason);
+        blocked.category = bounded_transfer_text(&blocked.category);
+    }
+    info.events = bounded_events(std::mem::take(&mut info.events));
+    info.segments.truncate(MAX_TRANSFER_SEGMENTS);
+}
+
+/// A destination is *claimed* while its transfer may still write there.
+fn claims_destination(state: TransferState) -> bool {
+    matches!(
+        state,
+        TransferState::Queued
+            | TransferState::AwaitingClearance
+            | TransferState::Active
+            | TransferState::Paused
+    )
+}
+
+/// The downloads directory can be on a case-insensitive filesystem (the
+/// normal macOS default).  Conservatively use the same collision rule on
+/// every platform, so a transfer's safety never depends on where it lands.
+fn same_destination(left: &Path, right: &Path) -> bool {
+    left.to_string_lossy().to_lowercase() == right.to_string_lossy().to_lowercase()
+}
+
+fn conflicting_destination<'a>(
+    mut entries: impl Iterator<Item = &'a Entry>,
+    id: u64,
+    destination: &Path,
+) -> Option<&'a Entry> {
+    entries.find(|entry| {
+        entry.info.id != id
+            && claims_destination(entry.info.state)
+            && !entry.info.dest_path.is_empty()
+            && same_destination(Path::new(&entry.info.dest_path), destination)
+    })
+}
+
+/// Why a job thread stopped, when the engine's own final snapshot isn't
+/// what says so.
+enum JobEnd {
+    /// `Transfer::wait` returned: the engine's final snapshot already set the state.
+    Engine,
+    Blocked(Blocked),
+    Failed(String),
+    Paused,
+    Cancelled,
+}
+
+impl TransferManager {
+    /// Opens the manager over its directories: creates the download
+    /// directory, loads `transfers.json`, and brings interrupted transfers
+    /// back as `Paused` -- never auto-started, so a restart can't quietly
+    /// resume downloads the user has forgotten about.
+    pub fn open(config: ManagerConfig) -> io::Result<Arc<TransferManager>> {
+        use std::os::unix::fs::DirBuilderExt;
+        // A user-selected folder belongs to the user. Restrict newly created
+        // directories without chmodding an existing folder or its parents.
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&config.download_dir)?;
+        ensure_private_dir(&config.data_dir)?;
+        let root = std::fs::canonicalize(&config.download_dir)?;
+        if config.previous_download_dirs.len() > 32 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "at most 32 historical download folders are supported",
+            ));
+        }
+        let mut authorized_roots = vec![root.clone()];
+        for directory in &config.previous_download_dirs {
+            let previous = std::fs::canonicalize(directory)?;
+            if !previous.is_dir() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "a historical download folder is not a directory",
+                ));
+            }
+            if !authorized_roots.contains(&previous) {
+                authorized_roots.push(previous);
+            }
+        }
+        let store = Store::new(&config.data_dir);
+        let loaded = store.load();
+
+        let mut entries = BTreeMap::new();
+        let mut generation = 0;
+        for stored in loaded.transfers {
+            let mut info = stored.info;
+            // A stored root records provenance, never authorization. Only the
+            // startup configuration can permit a former folder. Legacy records
+            // are assigned the current root before the next atomic store write.
+            let download_root = stored.download_root.unwrap_or_else(|| root.clone());
+            if !authorized_roots.contains(&download_root) {
+                // Unsupported owner preferences can omit a legitimate former
+                // root. Preserve the catalog so explicit owner authorization
+                // can recover it; do not turn completed history into failures.
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "an original download folder is not authorized; select its original location to retain the download history",
+                ));
+            }
+            // Clients retain each record's revision from List after reconnect;
+            // the next mutation must be newer than every persisted record.
+            generation = generation.max(info.generation);
+            bound_loaded_info(&mut info);
+            let mut events = info.events.clone();
+            if !info.dest_path.is_empty() {
+                match reconfine_stored(&download_root, &info.dest_path) {
+                    Ok(dest) => info.dest_path = dest.to_string_lossy().into_owned(),
+                    Err(reason) => {
+                        info.dest_path.clear();
+                        info.state = TransferState::Failed;
+                        info.last_error = Some(bounded_transfer_text(format!(
+                            "stored destination refused: {reason}"
+                        )));
+                        info.finished_at_ms = Some(now_ms());
+                        push_event(
+                            &mut events,
+                            format!(
+                                "stored destination was outside the downloads directory and was discarded: {reason}"
+                            ),
+                        );
+                        info.events = events.clone();
+                    }
+                }
+            }
+            if info.original_response
+                && matches!(
+                    info.state,
+                    TransferState::Queued
+                        | TransferState::AwaitingClearance
+                        | TransferState::Active
+                        | TransferState::Paused
+                )
+            {
+                info.state = TransferState::Failed;
+                info.last_error =
+                    Some("the original response was interrupted; navigate again explicitly".into());
+                info.finished_at_ms = Some(now_ms());
+                info.speed_bps = 0;
+                info.eta_secs = None;
+                info.connections = 0;
+                if !info.dest_path.is_empty() {
+                    remove_partials(Path::new(&info.dest_path));
+                }
+                push_event(
+                    &mut events,
+                    "the original response cannot be restored or replayed after a restart",
+                );
+                info.events = events.clone();
+            } else if matches!(
+                info.state,
+                TransferState::Queued | TransferState::AwaitingClearance | TransferState::Active
+            ) {
+                info.state = TransferState::Paused;
+                info.speed_bps = 0;
+                info.eta_secs = None;
+                info.connections = 0;
+                push_event(
+                    &mut events,
+                    "the downloads process restarted; resume to continue",
+                );
+                info.events = events.clone();
+            }
+            entries.insert(
+                info.id,
+                Entry {
+                    response: None,
+                    info,
+                    overwrite: stored.overwrite,
+                    download_root,
+                    events_before_engine: events,
+                    job: None,
+                },
+            );
+        }
+        let limit = config.max_history.max(1);
+        while entries.len() > limit {
+            let Some(id) = entries
+                .iter()
+                .find_map(|(id, entry)| entry.info.state.is_terminal().then_some(*id))
+            else {
+                break;
+            };
+            entries.remove(&id);
+        }
+        let state = State {
+            next_id: loaded.next_id,
+            generation,
+            entries,
+            subscribers: Vec::new(),
+            last_saved: Instant::now(),
+            shutting_down: false,
+        };
+        let shared = Arc::new(Shared {
+            config,
+            root,
+            persister: Persister::start(store),
+            state: Mutex::new(state),
+            changed: Condvar::new(),
+        });
+        let revision = {
+            let mut state = shared.lock();
+            shared.persist(&mut state)
+        };
+        shared.persister.wait_for(revision)?;
+        Ok(Arc::new(TransferManager { shared }))
+    }
+
+    /// Queues a download. `dest`, if given, is a path relative to the
+    /// download directory and is validated now, so a bad request fails
+    /// immediately rather than after a probe; without it, the file name
+    /// comes from the server's response or the URL.
+    pub fn start(
+        &self,
+        url: &str,
+        dest: Option<&str>,
+        overwrite: bool,
+    ) -> Result<TransferInfo, ManagerError> {
+        self.queue(url, dest, overwrite, None)
+    }
+
+    /// Own a dedicated input socket. Reads have a short timeout for cancellation;
+    /// framing requires explicit completion even when the HTTP length is unknown.
+    pub fn start_response(
+        &self,
+        response: ResponseDownload,
+        input: UnixStream,
+    ) -> Result<TransferInfo, ManagerError> {
+        validate_metadata(&response)
+            .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        input
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))?;
+        let url = response.url.clone();
+        self.queue(
+            &url,
+            None,
+            false,
+            Some(PendingResponse {
+                metadata: response,
+                body: ResponseBodyReader::new(input),
+            }),
+        )
+    }
+
+    fn queue(
+        &self,
+        url: &str,
+        dest: Option<&str>,
+        overwrite: bool,
+        response: Option<PendingResponse>,
+    ) -> Result<TransferInfo, ManagerError> {
+        validate_url(url)
+            .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        // Validate caller-controlled input before evicting any history. A
+        // malformed destination must be an ordinary rejected request, never
+        // a way to make an unrelated completed record disappear.
+        let requested_dest = dest
+            .map(|requested| {
+                resolve_requested(&self.shared.root, requested)
+                    .map_err(|message| ManagerError::new(ErrorCode::InvalidRequest, message))
+            })
+            .transpose()?;
+        if let Some(path) = &requested_dest {
+            if !overwrite && path.exists() {
+                return Err(ManagerError::new(
+                    ErrorCode::InvalidRequest,
+                    format!(
+                        "{} already exists; ask to overwrite it to replace it",
+                        path.display()
+                    ),
+                ));
+            }
+        }
+        let mut state = self.shared.lock();
+        if state.shutting_down {
+            return Err(ManagerError::new(
+                ErrorCode::Internal,
+                "the downloads process is shutting down",
+            ));
+        }
+        if state
+            .entries
+            .values()
+            .filter(|entry| entry.info.state == TransferState::Queued)
+            .count()
+            >= self.shared.config.max_queued
+        {
+            return Err(ManagerError::new(
+                ErrorCode::InvalidState,
+                format!(
+                    "the download queue already has {} waiting transfers",
+                    self.shared.config.max_queued
+                ),
+            ));
+        }
+        if let Some(path) = &requested_dest {
+            if let Some(other) = conflicting_destination(state.entries.values(), 0, path) {
+                return Err(ManagerError::new(
+                    ErrorCode::InvalidRequest,
+                    format!(
+                        "{} is already the destination of transfer {}",
+                        path.display(),
+                        other.info.id
+                    ),
+                ));
+            }
+        }
+        self.shared.evict_history_for_new(&mut state)?;
+        let dest_path = requested_dest
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+
+        let id = state.next_id;
+        state.next_id = state.next_id.checked_add(1).ok_or_else(|| {
+            ManagerError::new(ErrorCode::Internal, "the transfer id space is exhausted")
+        })?;
+        let info = TransferInfo {
+            id,
+            url: url.to_string(),
+            dest_path,
+            state: TransferState::Queued,
+            created_at_ms: now_ms(),
+            original_response: response.is_some(),
+            ..TransferInfo::default()
+        };
+        state.entries.insert(
+            id,
+            Entry {
+                response,
+                info,
+                overwrite,
+                download_root: self.shared.root.clone(),
+                events_before_engine: Vec::new(),
+                job: None,
+            },
+        );
+        let created = self.shared.commit(&mut state, id, true);
+        Shared::schedule(&self.shared, &mut state);
+        Ok(created)
+    }
+
+    /// Writes a password to the platform credential store. No transfer state
+    /// carries the password; later SFTP workers derive this reference from
+    /// their `sftp://user@host/path` URL after host-key verification.
+    pub fn set_sftp_password(
+        &self,
+        host: &str,
+        port: u16,
+        username: &str,
+        password: &str,
+    ) -> Result<(), ManagerError> {
+        let reference = SftpCredentialRef::new(host, port, username)
+            .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        save_sftp_password(&reference, password)
+            .map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    pub fn remove_sftp_password(
+        &self,
+        host: &str,
+        port: u16,
+        username: &str,
+    ) -> Result<(), ManagerError> {
+        let reference = SftpCredentialRef::new(host, port, username)
+            .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        delete_sftp_password(&reference)
+            .map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    /// Stores a passphrase for the local SFTP private key selected at process
+    /// startup. The private-key path itself never crosses this socket or enters
+    /// transfer state.
+    pub fn set_sftp_private_key_passphrase(
+        &self,
+        host: &str,
+        port: u16,
+        username: &str,
+        passphrase: &str,
+    ) -> Result<(), ManagerError> {
+        let reference = SftpPrivateKeyPassphraseRef::new(host, port, username)
+            .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        save_sftp_private_key_passphrase(&reference, passphrase)
+            .map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    pub fn remove_sftp_private_key_passphrase(
+        &self,
+        host: &str,
+        port: u16,
+        username: &str,
+    ) -> Result<(), ManagerError> {
+        let reference = SftpPrivateKeyPassphraseRef::new(host, port, username)
+            .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        delete_sftp_private_key_passphrase(&reference)
+            .map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    /// Writes an explicit-FTPS password to the platform credential store.
+    /// Plain FTP is anonymous-only, so only the TLS-protected variant can
+    /// create this kind of credential reference.
+    pub fn set_ftps_password(
+        &self,
+        host: &str,
+        port: u16,
+        username: &str,
+        password: &str,
+    ) -> Result<(), ManagerError> {
+        let reference = FtpsCredentialRef::new(host, port, username)
+            .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        save_ftps_password(&reference, password)
+            .map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    pub fn remove_ftps_password(
+        &self,
+        host: &str,
+        port: u16,
+        username: &str,
+    ) -> Result<(), ManagerError> {
+        let reference = FtpsCredentialRef::new(host, port, username)
+            .map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        delete_ftps_password(&reference)
+            .map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    pub fn list(&self, filter: Option<TransferState>) -> Vec<TransferInfo> {
+        self.shared
+            .lock()
+            .entries
+            .values()
+            .map(|e| e.info.clone())
+            .filter(|i| filter.is_none_or(|f| i.state == f))
+            .collect()
+    }
+
+    pub fn get(&self, id: u64) -> Result<TransferInfo, ManagerError> {
+        self.shared
+            .lock()
+            .entries
+            .get(&id)
+            .map(|e| e.info.clone())
+            .ok_or_else(|| ManagerError::not_found(id))
+    }
+
+    /// Pauses a queued, clearing, or running transfer and returns once it
+    /// has settled. Pausing a paused transfer is a no-op.
+    pub fn pause(&self, id: u64) -> Result<TransferInfo, ManagerError> {
+        let transfer = {
+            let mut state = self.shared.lock();
+            let entry = state
+                .entries
+                .get_mut(&id)
+                .ok_or_else(|| ManagerError::not_found(id))?;
+            if entry.info.original_response {
+                return Err(ManagerError::invalid_state("original navigation responses cannot be paused or replayed; cancel this transfer instead"));
+            }
+            match entry.info.state {
+                TransferState::Paused => return Ok(entry.info.clone()),
+                TransferState::Queued if entry.job.is_none() => {
+                    entry.info.state = TransferState::Paused;
+                    push_event(
+                        &mut entry.events_before_engine,
+                        "paused while waiting in the queue",
+                    );
+                    entry.info.events = entry.events_before_engine.clone();
+                    return Ok(self.shared.commit(&mut state, id, true));
+                }
+                TransferState::Queued
+                | TransferState::AwaitingClearance
+                | TransferState::Active => {
+                    let job = entry.job.as_ref().ok_or_else(|| {
+                        ManagerError::invalid_state(format!(
+                            "transfer {id} has no running job to pause"
+                        ))
+                    })?;
+                    job.control.pause.store(true, Ordering::SeqCst);
+                    job.transfer.clone()
+                }
+                other => {
+                    return Err(ManagerError::invalid_state(format!(
+                        "transfer {id} is {other} and cannot be paused"
+                    )));
+                }
+            }
+        };
+        if let Some(transfer) = transfer {
+            transfer.pause();
+        }
+        self.shared.wait_for_job_end(id);
+        self.get(id)
+    }
+
+    /// Puts a paused, failed, or blocked transfer back in the queue. It goes
+    /// through the whole review-probe-begin sequence again: a gatekeeper
+    /// verdict can change between a pause and a resume.
+    pub fn resume(&self, id: u64) -> Result<TransferInfo, ManagerError> {
+        {
+            let state = self.shared.lock();
+            let entry = state
+                .entries
+                .get(&id)
+                .ok_or_else(|| ManagerError::not_found(id))?;
+            if entry.info.original_response {
+                return Err(ManagerError::invalid_state("original navigation responses cannot be resumed or replayed; navigate again explicitly"));
+            }
+            if !matches!(
+                entry.info.state,
+                TransferState::Paused | TransferState::Failed | TransferState::Blocked
+            ) {
+                return Err(ManagerError::invalid_state(format!(
+                    "transfer {id} is {} and cannot be resumed",
+                    entry.info.state
+                )));
+            }
+            let root = std::fs::canonicalize(&entry.download_root).map_err(|_| {
+                ManagerError::invalid_state("the original download folder is unavailable")
+            })?;
+            if root != entry.download_root {
+                return Err(ManagerError::invalid_state(
+                    "the original download folder has changed",
+                ));
+            }
+            if !entry.info.dest_path.is_empty() {
+                reconfine_stored(&entry.download_root, &entry.info.dest_path)
+                    .map_err(ManagerError::invalid_state)?;
+            }
+        }
+        self.shared.wait_for_job_end(id);
+        let mut state = self.shared.lock();
+        let destination = state
+            .entries
+            .get(&id)
+            .ok_or_else(|| ManagerError::not_found(id))?
+            .info
+            .dest_path
+            .clone();
+        if !destination.is_empty() {
+            let destination = Path::new(&destination);
+            if let Some(other) = conflicting_destination(state.entries.values(), id, destination) {
+                return Err(ManagerError::invalid_state(format!(
+                    "{} is already the destination of transfer {}; cancel or finish it before resuming transfer {id}",
+                    destination.display(),
+                    other.info.id
+                )));
+            }
+        }
+        let entry = state
+            .entries
+            .get_mut(&id)
+            .expect("the transfer was checked while the manager lock is held");
+        if entry.job.is_some() {
+            return Err(ManagerError::invalid_state(format!(
+                "transfer {id} is still settling; try again"
+            )));
+        }
+        entry.info.state = TransferState::Queued;
+        entry.info.last_error = None;
+        entry.info.blocked = None;
+        entry.info.finished_at_ms = None;
+        push_event(
+            &mut entry.events_before_engine,
+            "resuming: the download will be reviewed by the gatekeeper again",
+        );
+        entry.info.events = entry.events_before_engine.clone();
+        let queued = self.shared.commit(&mut state, id, true);
+        Shared::schedule(&self.shared, &mut state);
+        Ok(queued)
+    }
+
+    /// Stops a transfer and deletes its partial files. A completed transfer
+    /// is left exactly as it is (its file is kept).
+    pub fn cancel(&self, id: u64) -> Result<TransferInfo, ManagerError> {
+        let (transfer, running) = {
+            let mut state = self.shared.lock();
+            let entry = state
+                .entries
+                .get_mut(&id)
+                .ok_or_else(|| ManagerError::not_found(id))?;
+            if matches!(
+                entry.info.state,
+                TransferState::Completed | TransferState::Cancelled
+            ) {
+                return Ok(entry.info.clone());
+            }
+            match entry.job.as_ref() {
+                Some(job) => {
+                    job.control.cancel.store(true, Ordering::SeqCst);
+                    (job.transfer.clone(), true)
+                }
+                None => (None, false),
+            }
+        };
+        if running {
+            if let Some(transfer) = transfer {
+                transfer.cancel();
+            }
+            self.shared.wait_for_job_end(id);
+        }
+        // Whether it was running or already at rest, make sure it ends up
+        // cancelled with its partial files gone.
+        let dest = {
+            let mut state = self.shared.lock();
+            let entry = state
+                .entries
+                .get_mut(&id)
+                .ok_or_else(|| ManagerError::not_found(id))?;
+            if entry.info.state == TransferState::Completed {
+                return Ok(entry.info.clone());
+            }
+            // A queued original response owns its input before a job exists.
+            // Retire that connection too, so its producer can stop immediately.
+            entry.response.take();
+            entry.info.state = TransferState::Cancelled;
+            entry.info.finished_at_ms = Some(now_ms());
+            entry.info.speed_bps = 0;
+            entry.info.eta_secs = None;
+            entry.info.connections = 0;
+            push_event(&mut entry.events_before_engine, "cancelled");
+            entry.info.events = entry.events_before_engine.clone();
+            let dest = entry.info.dest_path.clone();
+            self.shared.commit(&mut state, id, true);
+            dest
+        };
+        if !dest.is_empty() {
+            remove_partials(Path::new(&dest));
+        }
+        self.get(id)
+    }
+
+    /// Drops a finished transfer from history. Never a running or paused
+    /// one -- cancel it first. A failed or blocked transfer's leftover
+    /// partial files go with it; a completed transfer's file is kept. A
+    /// [`SubscriptionUpdate::Removed`] event is published after removal.
+    pub fn remove(&self, id: u64) -> Result<(), ManagerError> {
+        // A transfer whose state is already terminal may still be inside its
+        // job thread's last moments (the engine reports the final state
+        // before the job thread has cleaned up), so let it settle first:
+        // otherwise a client that sees "completed" and removes it at once
+        // could be told it is still running.
+        if self
+            .shared
+            .lock()
+            .entries
+            .get(&id)
+            .is_some_and(|e| e.info.state.is_terminal())
+        {
+            self.shared.wait_for_job_end(id);
+        }
+        let mut state = self.shared.lock();
+        let entry = state
+            .entries
+            .get(&id)
+            .ok_or_else(|| ManagerError::not_found(id))?;
+        if !entry.info.state.is_terminal() || entry.job.is_some() {
+            return Err(ManagerError::invalid_state(format!(
+                "transfer {id} is {}; cancel it before removing it",
+                entry.info.state
+            )));
+        }
+        let (state_was, dest) = (entry.info.state, entry.info.dest_path.clone());
+        state.entries.remove(&id);
+        self.shared.removed(&mut state, id);
+        let revision = self.shared.persist(&mut state);
+        drop(state);
+        // `Remove` promises that history is gone, rather than merely queued
+        // to disappear. The fsync remains outside the manager state lock.
+        self.shared.persister.wait_for(revision).map_err(|error| {
+            ManagerError::new(
+                ErrorCode::Internal,
+                format!(
+                    "the transfer was removed in memory but history could not be saved: {error}"
+                ),
+            )
+        })?;
+        if matches!(state_was, TransferState::Failed | TransferState::Blocked) && !dest.is_empty() {
+            remove_partials(Path::new(&dest));
+        }
+        Ok(())
+    }
+
+    /// Updates to any transfer from now on. A subscriber that doesn't keep
+    /// up skips intermediate progress but always sees the newest state of
+    /// each transfer (see [`Pending`]); it never blocks anyone.
+    pub fn subscribe(&self) -> Subscription {
+        let inner = Arc::new(Subscriber {
+            pending: Mutex::new(Pending::default()),
+            wake: Condvar::new(),
+            closed: AtomicBool::new(false),
+        });
+        self.shared.lock().subscribers.push(inner.clone());
+        Subscription { inner }
+    }
+
+    /// Nothing queued, clearing, running, or still unwinding a job thread:
+    /// the state in which the launcher may tear this process down
+    /// (`research/multi-process-memory.md`).  A transfer can publish its
+    /// terminal engine snapshot just before its job releases its slot and
+    /// schedules the next queue item, so its terminal state alone is not a
+    /// quiescence barrier.
+    pub fn is_idle(&self) -> bool {
+        !self.shared.lock().entries.values().any(|entry| {
+            entry.job.is_some()
+                || matches!(
+                    entry.info.state,
+                    TransferState::Queued
+                        | TransferState::AwaitingClearance
+                        | TransferState::Active
+                )
+        })
+    }
+
+    /// The most recent durable-store failure, if any. It remains visible
+    /// until a later `transfers.json` save succeeds, rather than disappearing
+    /// as a best-effort write used to do.
+    pub fn last_persistence_error(&self) -> Option<String> {
+        self.shared.persister.last_error()
+    }
+
+    /// An orderly stop: checkpoints resumable transfers, fails original
+    /// responses whose one-shot source cannot be replayed, persists, and
+    /// refuses new starts.
+    pub fn shutdown(&self) {
+        let jobs: Vec<(u64, Arc<Control>, Option<Arc<Transfer>>)> = {
+            let mut state = self.shared.lock();
+            state.shutting_down = true;
+            state
+                .entries
+                .iter()
+                .filter_map(|(id, e)| {
+                    e.job
+                        .as_ref()
+                        .map(|j| (*id, j.control.clone(), j.transfer.clone()))
+                })
+                .collect()
+        };
+        for (_, control, transfer) in &jobs {
+            control.pause.store(true, Ordering::SeqCst);
+            if let Some(transfer) = transfer {
+                transfer.pause();
+            }
+        }
+        for (id, _, _) in &jobs {
+            self.shared.wait_for_job_end(*id);
+        }
+        let mut state = self.shared.lock();
+        let ids: Vec<u64> = state
+            .entries
+            .iter()
+            .filter(|(_, e)| e.job.is_none() && e.info.state == TransferState::Queued)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in ids {
+            if let Some(entry) = state.entries.get_mut(&id) {
+                if entry.info.original_response {
+                    entry.response.take();
+                    entry.info.state = TransferState::Failed;
+                    entry.info.finished_at_ms = Some(now_ms());
+                    entry.info.last_error =
+                        Some("The original response was interrupted and cannot be replayed".into());
+                    push_event(
+                        &mut entry.events_before_engine,
+                        "failed: the downloads process shut down; original response cannot be replayed",
+                    );
+                } else {
+                    entry.info.state = TransferState::Paused;
+                    push_event(
+                        &mut entry.events_before_engine,
+                        "paused: the downloads process shut down",
+                    );
+                }
+                entry.info.events = entry.events_before_engine.clone();
+            }
+            self.shared.commit(&mut state, id, false);
+        }
+        let revision = self.shared.persist(&mut state);
+        drop(state);
+        // An orderly shutdown must not return before the pause records have
+        // been attempted durably. The error remains observable through
+        // `last_persistence_error` and is logged by the persister.
+        let _ = self.shared.persister.wait_for(revision);
+    }
+}
+
+impl Shared {
+    fn lock(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Records that `id` changed: bumps the generation, tells subscribers,
+    /// and saves (immediately for a state change, at most once a second for
+    /// progress ticks). Returns the record as it now stands.
+    fn commit(&self, state: &mut State, id: u64, force_save: bool) -> TransferInfo {
+        state.generation += 1;
+        let generation = state.generation;
+        let info = match state.entries.get_mut(&id) {
+            Some(entry) => {
+                entry.info.generation = generation;
+                entry.info.clone()
+            }
+            None => return TransferInfo::default(),
+        };
+        state
+            .subscribers
+            .retain(|s| !s.closed.load(Ordering::SeqCst));
+        for subscriber in &state.subscribers {
+            subscriber.push(SubscriptionUpdate::Updated(Box::new(info.clone())));
+        }
+        if force_save || state.last_saved.elapsed() >= Duration::from_secs(1) {
+            self.persist(state);
+        }
+        self.changed.notify_all();
+        info
+    }
+
+    /// Publishes that a transfer was removed. Unlike [`Self::commit`], there
+    /// is no remaining record to attach a generation to.
+    fn removed(&self, state: &mut State, id: u64) {
+        state.generation += 1;
+        state
+            .subscribers
+            .retain(|s| !s.closed.load(Ordering::SeqCst));
+        for subscriber in &state.subscribers {
+            subscriber.push(SubscriptionUpdate::Removed { id });
+        }
+        self.changed.notify_all();
+    }
+
+    /// Makes room for one new record without ever deleting running, paused,
+    /// or otherwise resumable work. Subscribers receive removals just as if
+    /// the user had explicitly removed those oldest terminal records.
+    fn evict_history_for_new(&self, state: &mut State) -> Result<(), ManagerError> {
+        let limit = self.config.max_history.max(1);
+        while state.entries.len() >= limit {
+            let Some(id) = state
+                .entries
+                .iter()
+                .find_map(|(id, entry)| entry.info.state.is_terminal().then_some(*id))
+            else {
+                return Err(ManagerError::new(
+                    ErrorCode::InvalidState,
+                    format!(
+                        "the transfer history limit ({limit}) is full of resumable transfers; remove one before starting another"
+                    ),
+                ));
+            };
+            state.entries.remove(&id);
+            self.removed(state, id);
+        }
+        Ok(())
+    }
+
+    fn persist(&self, state: &mut State) -> u64 {
+        let transfers: Vec<StoredTransfer> = state
+            .entries
+            .values()
+            .map(|e| StoredTransfer {
+                info: e.info.clone(),
+                overwrite: e.overwrite,
+                download_root: Some(e.download_root.clone()),
+            })
+            .collect();
+        let revision = self.persister.request(PersistSnapshot {
+            next_id: state.next_id,
+            transfers,
+        });
+        state.last_saved = Instant::now();
+        revision
+    }
+
+    /// Blocks until `id` has no job thread (it has settled), or a timeout.
+    fn wait_for_job_end(&self, id: u64) {
+        let deadline = Instant::now() + SETTLE_TIMEOUT;
+        let mut state = self.lock();
+        while state.entries.get(&id).is_some_and(|e| e.job.is_some()) {
+            let now = Instant::now();
+            if now >= deadline {
+                break;
+            }
+            state = self
+                .changed
+                .wait_timeout(state, deadline - now)
+                .unwrap_or_else(|p| p.into_inner())
+                .0;
+        }
+    }
+
+    /// Starts jobs for queued transfers while slots are free.
+    fn schedule(shared: &Arc<Shared>, state: &mut State) {
+        if state.shutting_down {
+            return;
+        }
+        let running = state.entries.values().filter(|e| e.job.is_some()).count();
+        let mut free = shared.config.max_concurrent.max(1).saturating_sub(running);
+        let queued: Vec<u64> = state
+            .entries
+            .iter()
+            .filter(|(_, e)| e.info.state == TransferState::Queued && e.job.is_none())
+            .map(|(id, _)| *id)
+            .collect();
+        for id in queued {
+            if free == 0 {
+                break;
+            }
+            free -= 1;
+            let control = Arc::new(Control::default());
+            if let Some(entry) = state.entries.get_mut(&id) {
+                entry.job = Some(Job {
+                    control: control.clone(),
+                    transfer: None,
+                });
+            }
+            let for_job = shared.clone();
+            thread::spawn(move || run_job(for_job, id, control));
+        }
+    }
+
+    /// Folds an engine snapshot into the record clients read.
+    fn apply_snapshot(&self, id: u64, snapshot: &Snapshot) {
+        let mut state = self.lock();
+        let Some(entry) = state.entries.get_mut(&id) else {
+            return;
+        };
+        let changed_state = entry.info.state != snapshot.state;
+        let info = &mut entry.info;
+        info.state = snapshot.state;
+        info.final_url = Some(bounded_transfer_text(&snapshot.final_url));
+        info.total_bytes = snapshot.total_bytes;
+        info.completed_bytes = snapshot.completed_bytes;
+        info.speed_bps = snapshot.speed_bps;
+        info.eta_secs = snapshot.eta.map(|d| d.as_secs());
+        info.connections = snapshot.connections;
+        info.mode = snapshot.mode;
+        info.resume_safe = snapshot.resume_safe;
+        info.segments = snapshot.segments.clone();
+        info.retries = snapshot.retries;
+        info.last_error = snapshot.last_error.as_deref().map(bounded_transfer_text);
+        info.content_type = snapshot.content_type.as_deref().map(bounded_transfer_text);
+        let mut events = entry.events_before_engine.clone();
+        events.extend(snapshot.events.iter().map(|event| TransferEvent {
+            at_ms: event.at_ms,
+            message: bounded_transfer_text(&event.message),
+        }));
+        if events.len() > MAX_EVENTS {
+            events.drain(..events.len() - MAX_EVENTS);
+        }
+        entry.info.events = events;
+        if snapshot.state.is_terminal() {
+            entry.info.finished_at_ms = Some(now_ms());
+        }
+        self.commit(&mut state, id, changed_state);
+    }
+
+    /// Adds a manager-level event to `id`'s log (and to the record).
+    fn event(&self, id: u64, message: impl Into<String>) {
+        let mut state = self.lock();
+        if let Some(entry) = state.entries.get_mut(&id) {
+            push_event(&mut entry.events_before_engine, message);
+            entry.info.events = entry.events_before_engine.clone();
+        }
+        self.commit(&mut state, id, false);
+    }
+}
+
+fn interrupted(control: &Control) -> Option<JobEnd> {
+    if control.cancel.load(Ordering::SeqCst) {
+        Some(JobEnd::Cancelled)
+    } else if control.pause.load(Ordering::SeqCst) {
+        Some(JobEnd::Paused)
+    } else {
+        None
+    }
+}
+
+/// Sleeps `duration`, waking early if the job is paused or cancelled.
+fn sleep_unless_interrupted(duration: Duration, control: &Control) -> Option<JobEnd> {
+    let deadline = Instant::now() + duration;
+    while Instant::now() < deadline {
+        if let Some(end) = interrupted(control) {
+            return Some(end);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    None
+}
+
+fn run_job(shared: Arc<Shared>, id: u64, control: Arc<Control>) {
+    let end = job_steps(&shared, id, &control);
+    let mut state = shared.lock();
+    if let Some(entry) = state.entries.get_mut(&id) {
+        // `Engine`: `Transfer::wait` returned, so the engine's final snapshot
+        // has already set the state and merged its events. Every other end
+        // happened before the engine started, and the manager says so itself.
+        if !matches!(end, JobEnd::Engine) {
+            match end {
+                JobEnd::Blocked(blocked) => {
+                    entry.info.state = TransferState::Blocked;
+                    let reason = bounded_transfer_text(blocked.reason);
+                    let category = bounded_transfer_text(blocked.category);
+                    push_event(
+                        &mut entry.events_before_engine,
+                        format!("blocked by the gatekeeper ({category}): {reason}"),
+                    );
+                    entry.info.blocked = Some(BlockedInfo { reason, category });
+                    entry.info.finished_at_ms = Some(now_ms());
+                }
+                JobEnd::Failed(message) => {
+                    entry.info.state = TransferState::Failed;
+                    let message = bounded_transfer_text(message);
+                    push_event(
+                        &mut entry.events_before_engine,
+                        format!("failed: {message}"),
+                    );
+                    entry.info.last_error = Some(message);
+                    entry.info.finished_at_ms = Some(now_ms());
+                }
+                JobEnd::Paused if entry.info.original_response => {
+                    entry.info.state = TransferState::Failed;
+                    entry.info.last_error = Some(
+                        "the original response was interrupted; navigate again explicitly".into(),
+                    );
+                    entry.info.finished_at_ms = Some(now_ms());
+                }
+                JobEnd::Paused => {
+                    entry.info.state = TransferState::Paused;
+                    push_event(
+                        &mut entry.events_before_engine,
+                        "paused before the transfer started; resuming starts again from the review",
+                    );
+                }
+                JobEnd::Cancelled => {
+                    entry.info.state = TransferState::Cancelled;
+                    push_event(&mut entry.events_before_engine, "cancelled");
+                    entry.info.finished_at_ms = Some(now_ms());
+                }
+                JobEnd::Engine => {}
+            }
+            entry.info.events = entry.events_before_engine.clone();
+            entry.info.speed_bps = 0;
+            entry.info.eta_secs = None;
+            entry.info.connections = 0;
+        }
+        entry.job = None;
+    }
+    shared.commit(&mut state, id, true);
+    Shared::schedule(&shared, &mut state);
+}
+
+fn response_steps(
+    shared: &Arc<Shared>,
+    id: u64,
+    control: &Arc<Control>,
+    mut response: PendingResponse,
+) -> JobEnd {
+    let metadata = &response.metadata;
+    let root = {
+        let mut state = shared.lock();
+        let Some(entry) = state.entries.get_mut(&id) else {
+            return JobEnd::Failed("the transfer was removed".into());
+        };
+        entry.info.state = TransferState::AwaitingClearance;
+        entry.info.final_url = Some(metadata.url.clone());
+        entry.info.content_type = metadata.content_type.clone();
+        entry.info.total_bytes = metadata.total_bytes;
+        entry.info.mode = TransferMode::SingleStream {
+            reason: SingleStreamReason::Unknown,
+        };
+        let root = entry.download_root.clone();
+        shared.commit(&mut state, id, true);
+        root
+    };
+    if let Some(end) = interrupted(control) {
+        return end;
+    }
+    let reviewer =
+        Reviewer::new(&shared.config.gatekeeper_socket).with_timeout(shared.config.review_timeout);
+    let cleared = match reviewer.review_url(&metadata.url) {
+        Ok(cleared) => cleared,
+        Err(blocked) => return JobEnd::Blocked(blocked),
+    };
+    if let Some(end) = interrupted(control) {
+        return end;
+    }
+    let name = choose_file_name(metadata.content_disposition.as_deref(), &metadata.url);
+    let name = if is_reserved_download_name(&name) {
+        format!("{name}.download")
+    } else {
+        name
+    };
+    let dest = {
+        let mut state = shared.lock();
+        let claimed: Vec<PathBuf> = state
+            .entries
+            .values()
+            .filter(|entry| {
+                entry.info.id != id
+                    && claims_destination(entry.info.state)
+                    && !entry.info.dest_path.is_empty()
+            })
+            .map(|entry| PathBuf::from(&entry.info.dest_path))
+            .collect();
+        let dest = unique_path(&root, &name, &|path| {
+            claimed.iter().any(|claim| same_destination(path, claim))
+        });
+        state
+            .entries
+            .get_mut(&id)
+            .expect("owned response entry")
+            .info
+            .dest_path = dest.to_string_lossy().into_owned();
+        shared.commit(&mut state, id, true);
+        dest
+    };
+    let file_name = dest
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    let clearance = match reviewer.review_response(cleared, metadata, file_name) {
+        Ok(clearance) => clearance,
+        Err(blocked) => return JobEnd::Blocked(blocked),
+    };
+    if let Some(end) = interrupted(control) {
+        return end;
+    }
+    let mut file = match ResponseFile::begin(
+        &dest,
+        metadata.clone(),
+        clearance,
+        shared.config.options.clone(),
+    ) {
+        Ok(file) => file,
+        Err(error) => return JobEnd::Failed(error.to_string()),
+    };
+    {
+        let mut state = shared.lock();
+        let entry = state.entries.get_mut(&id).expect("owned response entry");
+        entry.info.state = TransferState::Active;
+        entry.info.connections = 1;
+        push_event(
+            &mut entry.events_before_engine,
+            "receiving the original navigation response without refetch or replay",
+        );
+        entry.info.events = entry.events_before_engine.clone();
+        shared.commit(&mut state, id, true);
+    }
+    let mut buffer = [0; MAX_RESPONSE_CHUNK_BYTES];
+    let started = Instant::now();
+    let mut last_byte = started;
+    loop {
+        if let Some(end) = interrupted(control) {
+            return end;
+        }
+        let count = match response.body.read(&mut buffer) {
+            Ok(count) => count,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::TimedOut
+                        | io::ErrorKind::WouldBlock
+                        | io::ErrorKind::Interrupted
+                ) =>
+            {
+                if last_byte.elapsed() >= shared.config.options.stall_timeout {
+                    return JobEnd::Failed(
+                        "the original response stream stalled; no request was replayed".into(),
+                    );
+                }
+                continue;
+            }
+            Err(error) => return JobEnd::Failed(error.to_string()),
+        };
+        if let Some(end) = interrupted(control) {
+            return end;
+        }
+        if count == 0 {
+            // Serialize cancel and final publication with the manager's lock.
+            // A cancel accepted before this boundary prevents publication.
+            let mut state = shared.lock();
+            if let Some(end) = interrupted(control) {
+                return end;
+            }
+            let completed = match file.finish() {
+                Ok(completed) => completed,
+                Err(error) => return JobEnd::Failed(error.to_string()),
+            };
+            let entry = state.entries.get_mut(&id).expect("owned response entry");
+            entry.info.state = TransferState::Completed;
+            entry.info.completed_bytes = completed;
+            entry.info.finished_at_ms = Some(now_ms());
+            push_event(
+                &mut entry.events_before_engine,
+                format!("completed original response: {completed} bytes"),
+            );
+            entry.info.events = entry.events_before_engine.clone();
+            shared.commit(&mut state, id, true);
+            return JobEnd::Engine;
+        }
+        let completed = match file.append(&buffer[..count]) {
+            Ok(completed) => completed,
+            Err(error) => return JobEnd::Failed(error.to_string()),
+        };
+        last_byte = Instant::now();
+        let mut state = shared.lock();
+        let entry = state.entries.get_mut(&id).expect("owned response entry");
+        entry.info.completed_bytes = completed;
+        entry.info.speed_bps =
+            (completed as f64 / started.elapsed().as_secs_f64().max(0.001)) as u64;
+        shared.commit(&mut state, id, false);
+    }
+}
+
+fn job_steps(shared: &Arc<Shared>, id: u64, control: &Arc<Control>) -> JobEnd {
+    let response = shared
+        .lock()
+        .entries
+        .get_mut(&id)
+        .and_then(|entry| entry.response.take());
+    if let Some(response) = response {
+        return response_steps(shared, id, control, response);
+    }
+    if shared
+        .lock()
+        .entries
+        .get(&id)
+        .is_some_and(|entry| entry.info.original_response)
+    {
+        return JobEnd::Failed(
+            "the original response stream is no longer available; navigate again explicitly".into(),
+        );
+    }
+    let config = &shared.config;
+    let (url, existing_dest, overwrite, download_root) = {
+        let mut state = shared.lock();
+        let Some(entry) = state.entries.get_mut(&id) else {
+            return JobEnd::Failed("the transfer was removed".to_string());
+        };
+        entry.events_before_engine = entry.info.events.clone();
+        entry.info.state = TransferState::AwaitingClearance;
+        entry.info.last_error = None;
+        entry.info.blocked = None;
+        push_event(
+            &mut entry.events_before_engine,
+            "reviewing the URL with the gatekeeper",
+        );
+        entry.info.events = entry.events_before_engine.clone();
+        let fields = (
+            entry.info.url.clone(),
+            entry.info.dest_path.clone(),
+            entry.overwrite,
+            entry.download_root.clone(),
+        );
+        shared.commit(&mut state, id, true);
+        fields
+    };
+
+    let reviewer = Reviewer::new(&config.gatekeeper_socket).with_timeout(config.review_timeout);
+    let cleared = match reviewer.review_url(&url) {
+        Ok(cleared) => cleared,
+        Err(blocked) => return JobEnd::Blocked(blocked),
+    };
+    if let Some(end) = interrupted(control) {
+        return end;
+    }
+    shared.event(id, "the URL is cleared; probing the server");
+
+    let mut attempt = 0;
+    let probed = loop {
+        match probe(&cleared, &config.options) {
+            Ok(probed) => break probed,
+            Err(e) if e.is_retryable() && attempt < config.options.max_retries => {
+                attempt += 1;
+                let delay = config.options.retry_delay(attempt);
+                shared.event(
+                    id,
+                    format!(
+                        "the probe failed ({e}); retrying in {} ms (attempt {attempt}/{})",
+                        delay.as_millis(),
+                        config.options.max_retries
+                    ),
+                );
+                if let Some(end) = sleep_unless_interrupted(delay, control) {
+                    return end;
+                }
+            }
+            Err(e) => return JobEnd::Failed(e.to_string()),
+        }
+    };
+    if let Some(end) = interrupted(control) {
+        return end;
+    }
+
+    // The destination: a requested one was fixed at `start`; otherwise the
+    // name comes from the response, made unique, and claimed under the lock
+    // so two transfers racing for one name get different ones.
+    let derived = existing_dest.is_empty();
+    let dest = if derived {
+        let name = choose_file_name(probed.content_disposition(), probed.url());
+        let name = if is_reserved_download_name(&name) {
+            format!("{name}.download")
+        } else {
+            name
+        };
+        let mut state = shared.lock();
+        let claimed: Vec<PathBuf> = state
+            .entries
+            .values()
+            .filter(|e| {
+                e.info.id != id && claims_destination(e.info.state) && !e.info.dest_path.is_empty()
+            })
+            .map(|e| PathBuf::from(&e.info.dest_path))
+            .collect();
+        let path = unique_path(&download_root, &name, &|p| {
+            claimed.iter().any(|claim| same_destination(p, claim))
+        });
+        if let Some(entry) = state.entries.get_mut(&id) {
+            entry.info.dest_path = path.to_string_lossy().into_owned();
+        }
+        shared.commit(&mut state, id, true);
+        path
+    } else {
+        PathBuf::from(existing_dest)
+    };
+    let file_name = dest
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    let clearance = match reviewer.review_download(cleared, &probed, &file_name) {
+        Ok(clearance) => clearance,
+        Err(blocked) => {
+            if derived {
+                // Nothing was created; release the name this transfer had claimed.
+                let mut state = shared.lock();
+                if let Some(entry) = state.entries.get_mut(&id) {
+                    entry.info.dest_path.clear();
+                }
+            }
+            return JobEnd::Blocked(blocked);
+        }
+    };
+    shared.event(id, "the gatekeeper cleared the download");
+    if let Some(end) = interrupted(control) {
+        return end;
+    }
+
+    let options = DownloadOptions {
+        overwrite,
+        ..config.options.clone()
+    };
+    let for_updates = shared.clone();
+    let on_update = Arc::new(move |snapshot: &Snapshot| for_updates.apply_snapshot(id, snapshot));
+    let transfer = match Transfer::begin(
+        DownloadSpec {
+            dest,
+            options,
+            on_update: Some(on_update),
+        },
+        probed,
+        clearance,
+    ) {
+        Ok(transfer) => Arc::new(transfer),
+        Err(e) => return JobEnd::Failed(e.to_string()),
+    };
+    if let Some(entry) = shared.lock().entries.get_mut(&id) {
+        if let Some(job) = entry.job.as_mut() {
+            job.transfer = Some(transfer.clone());
+        }
+    }
+    // A pause or cancel may have arrived while the transfer was starting.
+    if control.cancel.load(Ordering::SeqCst) {
+        transfer.cancel();
+    } else if control.pause.load(Ordering::SeqCst) {
+        transfer.pause();
+    }
+    // Most transfers publish their terminal snapshot from the coordinator.
+    // An empty response completes synchronously in `Transfer::begin`, though,
+    // and therefore has no coordinator to invoke `on_update`.  Applying the
+    // snapshot returned by `wait` also makes that terminal transition visible
+    // to the manager before this job releases its queue slot.
+    let final_snapshot = transfer.wait();
+    shared.apply_snapshot(id, &final_snapshot);
+    JobEnd::Engine
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use blueice_ipc::downloads::SegmentInfo;
+    use blueice_net::download::MAX_TRANSFER_TEXT_BYTES;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    #[test]
+    fn a_persistence_failure_is_retained_instead_of_being_silently_dropped() {
+        let path = std::env::temp_dir().join(format!(
+            "bd-persist-file-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        // `Store::save` requires this path to be a directory. A regular file
+        // is a deterministic permission/layout failure without relying on a
+        // host filesystem being full.
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+            .unwrap();
+        let persister = Persister::start(Store::new(&path));
+        let revision = persister.request(PersistSnapshot {
+            next_id: 1,
+            transfers: Vec::new(),
+        });
+
+        assert!(persister.wait_for(revision).is_err());
+        assert!(persister
+            .last_error()
+            .is_some_and(|error| !error.is_empty()));
+        drop(persister);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_persister_keeps_the_latest_snapshot_after_a_burst_of_changes() {
+        let dir = std::env::temp_dir().join(format!(
+            "bd-persist-latest-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let persister = Persister::start(Store::new(&dir));
+        let first = persister.request(PersistSnapshot {
+            next_id: 2,
+            transfers: vec![StoredTransfer {
+                info: TransferInfo {
+                    id: 1,
+                    url: "https://example.test/old".to_string(),
+                    ..TransferInfo::default()
+                },
+                overwrite: false,
+                download_root: None,
+            }],
+        });
+        let last = persister.request(PersistSnapshot {
+            next_id: 3,
+            transfers: vec![StoredTransfer {
+                info: TransferInfo {
+                    id: 2,
+                    url: "https://example.test/current".to_string(),
+                    ..TransferInfo::default()
+                },
+                overwrite: true,
+                download_root: None,
+            }],
+        });
+
+        persister.wait_for(first).unwrap();
+        persister.wait_for(last).unwrap();
+        let loaded = Store::new(&dir).load();
+        assert_eq!(loaded.next_id, 3);
+        assert_eq!(loaded.transfers.len(), 1);
+        assert_eq!(loaded.transfers[0].info.url, "https://example.test/current");
+        assert!(loaded.transfers[0].overwrite);
+        drop(persister);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn loading_old_state_cannot_restore_unbounded_transfer_fields() {
+        let oversized = "界".repeat(MAX_TRANSFER_TEXT_BYTES);
+        let mut info = TransferInfo {
+            url: oversized.clone(),
+            final_url: Some(oversized.clone()),
+            content_type: Some(oversized.clone()),
+            last_error: Some(oversized.clone()),
+            blocked: Some(BlockedInfo {
+                reason: oversized.clone(),
+                category: oversized.clone(),
+            }),
+            events: (0..=MAX_EVENTS)
+                .map(|at_ms| TransferEvent {
+                    at_ms: at_ms as u64,
+                    message: oversized.clone(),
+                })
+                .collect(),
+            segments: vec![SegmentInfo::default(); MAX_TRANSFER_SEGMENTS + 1],
+            ..TransferInfo::default()
+        };
+
+        bound_loaded_info(&mut info);
+
+        assert!(info.url.len() <= MAX_TRANSFER_TEXT_BYTES);
+        assert!(info.final_url.unwrap().len() <= MAX_TRANSFER_TEXT_BYTES);
+        assert!(info.content_type.unwrap().len() <= MAX_TRANSFER_TEXT_BYTES);
+        assert!(info.last_error.unwrap().len() <= MAX_TRANSFER_TEXT_BYTES);
+        let blocked = info.blocked.unwrap();
+        assert!(blocked.reason.len() <= MAX_TRANSFER_TEXT_BYTES);
+        assert!(blocked.category.len() <= MAX_TRANSFER_TEXT_BYTES);
+        assert_eq!(info.events.len(), MAX_EVENTS);
+        assert!(info
+            .events
+            .iter()
+            .all(|event| event.message.len() <= MAX_TRANSFER_TEXT_BYTES));
+        assert_eq!(info.segments.len(), MAX_TRANSFER_SEGMENTS);
+    }
+}

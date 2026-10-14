@@ -1,0 +1,161 @@
+{
+  "utc": "2026-10-12T21:43:16.692838+00:00",
+  "runtime_source_commit": "504eeb924e2b936527dc36e7f73cbe95c579ef7b",
+  "test_source_sha256": "67991eb857312e86b1cb85521acf4237543528f7e0b8e5374f582719426c7701",
+  "actual_os_methods_passed": 9,
+  "failed": 0,
+  "skipped": 0,
+  "cases": [
+    {
+      "method": "testNativeOSSetDragImageExportsTheActualCorePreviewAndPayload",
+      "outcome": "passed",
+      "seconds": 37.68,
+      "native_log_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSSetDragImageExportsTheActualCorePreviewAndPayload.log",
+      "native_log_excerpt_sha256": "a620571e0579c794c3744939ee29b0b7a515dd50c793dea2a4cc83dbf5988b4c"
+    },
+    {
+      "method": "testNativeOSDragModifiersChooseCopyMoveLinkAndRefuseReadonlyMove",
+      "outcome": "passed",
+      "seconds": 50.52,
+      "native_log_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSDragModifiersChooseCopyMoveLinkAndRefuseReadonlyMove.log",
+      "native_log_excerpt_sha256": "c6b30558e4e154e43e04e89650948486df534c989cedc8325d3f1210060b0d31"
+    },
+    {
+      "method": "testNativeOSFileDragFulfillsPromisesInIndependentAppWithExactBytes",
+      "outcome": "passed",
+      "seconds": 30.693,
+      "native_log_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSFileDragFulfillsPromisesInIndependentAppWithExactBytes.log",
+      "native_log_excerpt_sha256": "f8df583451c81c3a889341da75787f92e3dd7da3416ac7f90f3aa6145a91c542"
+    },
+    {
+      "method": "testNativeOSPageTextDragCopiesAcrossInactiveWindowsAndKeepsSourceAlive",
+      "outcome": "passed",
+      "seconds": 56.689,
+      "native_log_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSPageTextDragCopiesAcrossInactiveWindowsAndKeepsSourceAlive.log",
+      "native_log_excerpt_sha256": "1afd1be02819bfa3fd8ac61ae7c3c6452789a5fca248321401782fd867bd1963"
+    },
+    {
+      "method": "testNativeOSTextDragInteroperatesWithAnIndependentAppKitApplication",
+      "outcome": "passed",
+      "seconds": 32.322,
+      "native_log_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSTextDragInteroperatesWithAnIndependentAppKitApplication.log",
+      "native_log_excerpt_sha256": "b383190d3f909ab7903f0c0e7146f7cd5141f3b50a4d8542deaf76cda17b5d4f"
+    },
+    {
+      "method": "testNativeOSStationaryDragDispatchesSourceCancellationBeforeRelease",
+      "outcome": "passed",
+      "seconds": 28.602,
+      "native_log_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSStationaryDragDispatchesSourceCancellationBeforeRelease.log",
+      "native_log_excerpt_sha256": "53ddf4b5419ca5024e505a6d353142f122e9537c349c2217ac5d9097058fd02d"
+    },
+    {
+      "method": "testNativeOSPageDragCancellationKeepsTheActualCoreDestinationEmpty",
+      "outcome": "passed",
+      "seconds": 27.44,
+      "native_log_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSPageDragCancellationKeepsTheActualCoreDestinationEmpty.log",
+      "native_log_excerpt_sha256": "3a477a23ec496984ea7c15f70a4ad074025ff8c240483791073ae02b5357eae1"
+    },
+    {
+      "method": "testNativeOSDocumentTextDragCopiesToTheCoreControlAndRefusesReadOnlyDrop",
+      "outcome": "passed",
+      "seconds": 33.348,
+      "native_log_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSDocumentTextDragCopiesToTheCoreControlAndRefusesReadOnlyDrop.log",
+      "native_log_excerpt_sha256": "998d5f564b589b44606fd0b6a17484d5ef50dfa883e3ffaf73d41ef652c5a9da"
+    },
+    {
+      "method": "testNativeOSHoverLeavesOnChromeTabSelectionAndWindowFocusChange",
+      "outcome": "passed",
+      "seconds": 41.977,
+      "native_log_excerpt": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSHoverLeavesOnChromeTabSelectionAndWindowFocusChange.log",
+      "native_log_excerpt_sha256": "c95533d294131cce26a3a744472dbbea3759637642faa0f00d647305e79adbf1"
+    }
+  ],
+  "scope": "Nine actual OS drag methods passed on current production source; scoped retained recording accepts two moving100x48 Core preview images. Complete native suite separately retains one unrelated assistant-review test failure and one actual IME skip.",
+  "moving_preview": {
+    "accepted": true,
+    "decoder": "15.1.0",
+    "libraries": {
+      "libavutil": [
+        59,
+        39,
+        100
+      ],
+      "libavcodec": [
+        61,
+        19,
+        101
+      ],
+      "libavformat": [
+        61,
+        7,
+        100
+      ],
+      "libavdevice": [
+        61,
+        3,
+        100
+      ],
+      "libavfilter": [
+        10,
+        4,
+        100
+      ],
+      "libswscale": [
+        8,
+        3,
+        100
+      ],
+      "libswresample": [
+        5,
+        3,
+        100
+      ]
+    },
+    "video": "/private/tmp/blueice-followup-20261012/native-504eeb924-drag-image-attachments/15EC4DC0-236D-4A0E-A1EF-E4F1216B8FF9.mp4",
+    "video_sha256": "6a8f7a1327db25ae799ee52e9c7d9b208d87088940d0d001ec1c9b783d7eb4a5",
+    "time_seconds": 28.253333333333334,
+    "pixel_width": 3840,
+    "pixel_height": 2160,
+    "desktop_width": 1920,
+    "desktop_height": 1080,
+    "bounds_in_points": {
+      "x": 304.0,
+      "y": 189.0,
+      "width": 100.0,
+      "height": 48.0,
+      "green_pixels": 17214
+    },
+    "moving_preview_observations": [
+      {
+        "time_seconds": 28.053333333333335,
+        "bounds": {
+          "x": 200.0,
+          "y": 180.0,
+          "width": 100.0,
+          "height": 49.0,
+          "green_pixels": 17548
+        }
+      },
+      {
+        "time_seconds": 28.253333333333334,
+        "bounds": {
+          "x": 304.0,
+          "y": 189.0,
+          "width": 100.0,
+          "height": 48.0,
+          "green_pixels": 17214
+        }
+      }
+    ],
+    "native_log": "/private/tmp/blueice-followup-20261012/native-504eeb924-completed-os-drag-logs/testNativeOSSetDragImageExportsTheActualCorePreviewAndPayload.log",
+    "native_log_sha256": "a620571e0579c794c3744939ee29b0b7a515dd50c793dea2a4cc83dbf5988b4c",
+    "event_start_seconds": 26.84,
+    "image": "/private/tmp/blueice-followup-20261012/native-504eeb924-actual-drag-preview.png",
+    "image_sha256": "5ddbbb7e6ce245d4e5aa588a12336d32e6019af86193469b1fddad46b37e0527"
+  },
+  "terminal_native_receipt": "macos-native-504eeb924-failed-results.json",
+  "program_inputs_verified": 1902,
+  "runtime_binaries_verified": 8,
+  "strict_signatures_verified": 11,
+  "retained_preview_image": "macos-drag-504eeb924-preview.png"
+}

@@ -5,8 +5,63 @@
 use super::*;
 
 impl SpawnedCore {
+    /// Spawns a standalone core using the conventional gatekeeper
+    /// socket. Launcher-managed cores should use
+    /// [`Self::spawn_with_gatekeeper`] with their private supervised
+    /// gatekeeper instead.
     pub fn spawn(width: f64, height: f64, frame_dir: &Path) -> io::Result<Self> {
         Self::spawn_with_options(width, height, frame_dir, CoreLaunchOptions::default())
+    }
+
+    /// Spawns a core wired to `gatekeeper_socket`, which must be a
+    /// live, launcher-supervised mandatory checkpoint for production
+    /// launcher use.
+    pub fn spawn_with_gatekeeper(
+        width: f64,
+        height: f64,
+        frame_dir: &Path,
+        gatekeeper_socket: &Path,
+    ) -> io::Result<Self> {
+        Self::spawn_with_gatekeeper_and_extension(width, height, frame_dir, gatekeeper_socket, None)
+    }
+
+    /// Starts an installed package through core's authenticated extension
+    /// host when a manifest is supplied. Each cutover gets a fresh private
+    /// extension socket and core-generated child credential. Optional grants
+    /// are not copied to v2; a new core starts from manifest-declared grants.
+    pub fn spawn_with_gatekeeper_and_extension(
+        width: f64,
+        height: f64,
+        frame_dir: &Path,
+        gatekeeper_socket: &Path,
+        extension_manifest: Option<&Path>,
+    ) -> io::Result<Self> {
+        Self::spawn_with_assistant(
+            width,
+            height,
+            frame_dir,
+            gatekeeper_socket,
+            extension_manifest,
+            None,
+        )
+    }
+
+    /// [`Self::spawn_with_gatekeeper_and_extension`] plus the launcher's public
+    /// assistant socket, which core is given as `--assistant-socket` so live
+    /// translation and assistant tasks reach the supervised assistant.
+    pub fn spawn_with_assistant(
+        width: f64,
+        height: f64,
+        frame_dir: &Path,
+        gatekeeper_socket: &Path,
+        extension_manifest: Option<&Path>,
+        assistant: Option<&AssistantWiring>,
+    ) -> io::Result<Self> {
+        let mut options =
+            CoreLaunchOptions::default().with_gatekeeper_socket(gatekeeper_socket.to_path_buf());
+        options.extension_manifest = extension_manifest.map(Path::to_path_buf);
+        options.assistant = assistant.cloned();
+        Self::spawn_with_options(width, height, frame_dir, options)
     }
 
     /// Exposes only the generation-private script socket pathname for
@@ -34,6 +89,16 @@ impl SpawnedCore {
         frame_dir: &Path,
         options: CoreLaunchOptions,
     ) -> io::Result<Self> {
+        if options.extension_manifest.is_some()
+            && (options.page_http_policy.is_some() || options.compiler_catalog.is_some())
+        {
+            // Both features need the core's stdin pipe (owner bootstrap versus
+            // the private permission-control channel).
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "an installed extension cannot be combined with an owner bootstrap pipe",
+            ));
+        }
         if options.page_http_policy.is_some() && options.core_http_page_script_fixture {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -70,6 +135,7 @@ impl SpawnedCore {
                 compiler_mcp_relay,
                 debugger_relay,
             },
+            None,
         )?;
         core.activate_relays();
         Ok(core)
@@ -85,9 +151,19 @@ impl SpawnedCore {
         frame_dir: &Path,
         options: CoreLaunchOptions,
         relays: RelaySet,
+        lifetime: &CutoverGate,
     ) -> io::Result<Self> {
+        lifetime.check_open()?;
         let private_page_host = PrivatePageHostLaunch::spawn(&options)?;
-        Self::spawn_with_private_host(width, height, frame_dir, options, private_page_host, relays)
+        Self::spawn_with_private_host(
+            width,
+            height,
+            frame_dir,
+            options,
+            private_page_host,
+            relays,
+            Some(lifetime),
+        )
     }
 
     fn spawn_with_private_host(
@@ -97,7 +173,11 @@ impl SpawnedCore {
         options: CoreLaunchOptions,
         private_page_host: Option<PrivatePageHostLaunch>,
         relays: RelaySet,
+        lifetime: Option<&CutoverGate>,
     ) -> io::Result<Self> {
+        if let Some(lifetime) = lifetime {
+            lifetime.check_open()?;
+        }
         let (bluejs_host, page_host_config, script_private_socket_path) = match private_page_host {
             Some(private_page_host) => (
                 Some(private_page_host.host),
@@ -110,6 +190,13 @@ impl SpawnedCore {
         let core_bin = sibling_core_binary(&this_exe);
         let internal_socket_path = unique_internal_socket_path();
         let _ = std::fs::remove_file(&internal_socket_path);
+        let extension_socket_path = options
+            .extension_manifest
+            .as_ref()
+            .map(|_| unique_internal_extension_socket_path());
+        if let Some(path) = extension_socket_path.as_deref() {
+            let _ = std::fs::remove_file(path);
+        }
         if let Some(path) = &script_private_socket_path {
             remove_owned_socket_if_owned(path);
         }
@@ -154,6 +241,27 @@ impl SpawnedCore {
                     .arg("--script-session-token")
                     .arg(config.session_token());
             }
+        }
+        if let Some(assistant) = &options.assistant {
+            command.arg("--assistant-socket").arg(&assistant.socket);
+            if let Some(settings) = &assistant.settings_file {
+                command.arg("--assistant-settings").arg(settings);
+            }
+        }
+        if let (Some(manifest), Some(socket)) = (
+            options.extension_manifest.as_deref(),
+            extension_socket_path.as_deref(),
+        ) {
+            command
+                .arg("--extension-socket")
+                .arg(socket)
+                .arg("--extension-manifest")
+                .arg(manifest)
+                .arg("--extension-host")
+                .arg(sibling_extension_host_binary(&this_exe))
+                .arg("--permission-control-stdio")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped());
         }
         if options.core_http_page_script_fixture {
             command
@@ -242,6 +350,9 @@ impl SpawnedCore {
                 command.arg("--debugger-static-scope-relation");
             }
         }
+        if let Some(lifetime) = lifetime {
+            lifetime.check_open()?;
+        }
         let mut child = command.spawn()?;
         if options.page_http_policy.is_some() || options.compiler_catalog.is_some() {
             let send_result = child
@@ -272,6 +383,9 @@ impl SpawnedCore {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
+                if let Some(path) = extension_socket_path.as_deref() {
+                    let _ = std::fs::remove_file(path);
+                }
                 if let Some(script_socket) = &script_private_socket_path {
                     remove_owned_socket_if_owned(script_socket);
                 }
@@ -285,10 +399,30 @@ impl SpawnedCore {
             }
         }
 
-        if !wait_for_socket(&internal_socket_path, Duration::from_secs(5)) {
+        // Core itself gives its authenticated extension host five seconds to
+        // connect, then stops that child on failure. Leave a little margin
+        // before launcher's fallback kill so we do not interrupt that cleanup.
+        let startup_timeout = if options.extension_manifest.is_some() {
+            Duration::from_secs(7)
+        } else {
+            Duration::from_secs(5)
+        };
+        let ready = match lifetime {
+            Some(gate) => wait_for_socket_or_exit_while(
+                &internal_socket_path,
+                &mut child,
+                startup_timeout,
+                || !gate.is_closed(),
+            ),
+            None => wait_for_socket_or_exit(&internal_socket_path, &mut child, startup_timeout),
+        };
+        if !ready {
             let _ = child.kill();
             let _ = child.wait();
             let _ = std::fs::remove_file(&internal_socket_path);
+            if let Some(path) = extension_socket_path.as_deref() {
+                let _ = std::fs::remove_file(path);
+            }
             if let Some(script_socket) = &script_private_socket_path {
                 remove_owned_socket_if_owned(script_socket);
             }
@@ -304,10 +438,21 @@ impl SpawnedCore {
             )));
         }
         if let Some(debugger_socket) = &debugger_private_socket_path {
-            if !wait_for_socket(debugger_socket, Duration::from_secs(5)) {
+            let ready = match lifetime {
+                Some(gate) => {
+                    wait_for_socket_while(debugger_socket, Duration::from_secs(5), || {
+                        !gate.is_closed()
+                    })
+                }
+                None => wait_for_socket(debugger_socket, Duration::from_secs(5)),
+            };
+            if !ready {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
+                if let Some(path) = extension_socket_path.as_deref() {
+                    let _ = std::fs::remove_file(path);
+                }
                 if let Some(script_socket) = &script_private_socket_path {
                     remove_owned_socket_if_owned(script_socket);
                 }
@@ -321,13 +466,23 @@ impl SpawnedCore {
                 )));
             }
         }
-        let mut stream = match connect_when_listening(&internal_socket_path, Duration::from_secs(5))
-        {
+        let connect = match lifetime {
+            Some(gate) => {
+                connect_when_listening_while(&internal_socket_path, Duration::from_secs(5), || {
+                    !gate.is_closed()
+                })
+            }
+            None => connect_when_listening(&internal_socket_path, Duration::from_secs(5)),
+        };
+        let mut stream = match connect {
             Ok(stream) => stream,
             Err(error) => {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
+                if let Some(path) = extension_socket_path.as_deref() {
+                    let _ = std::fs::remove_file(path);
+                }
                 if let Some(script_socket) = &script_private_socket_path {
                     remove_owned_socket_if_owned(script_socket);
                 }
@@ -349,10 +504,23 @@ impl SpawnedCore {
         // this already-past-its-handshake connection, `core` just
         // answers it again rather than re-gating (see `blueice_engine::
         // session::run_session`'s own docs).
-        if let Err(error) = blueice_ipc::client_handshake(&mut stream) {
+        let handshake = (|| {
+            stream.set_read_timeout(Some(startup_timeout))?;
+            stream.set_write_timeout(Some(startup_timeout))?;
+            if let Some(lifetime) = lifetime {
+                lifetime.watch_stream(&stream)?;
+            }
+            blueice_ipc::client_handshake(&mut stream)?;
+            stream.set_read_timeout(None)?;
+            stream.set_write_timeout(None)
+        })();
+        if let Err(error) = handshake {
             let _ = child.kill();
             let _ = child.wait();
             let _ = std::fs::remove_file(&internal_socket_path);
+            if let Some(path) = extension_socket_path.as_deref() {
+                let _ = std::fs::remove_file(path);
+            }
             if let Some(script_socket) = &script_private_socket_path {
                 remove_owned_socket_if_owned(script_socket);
             }
@@ -364,9 +532,11 @@ impl SpawnedCore {
             }
             return Err(error);
         }
-        Ok(SpawnedCore {
+        let mut core = SpawnedCore {
             child,
             internal_socket_path,
+            extension_socket_path,
+            permission_control: None,
             script_private_socket_path,
             compiler_private_socket_path,
             debugger_private_socket_path,
@@ -377,7 +547,178 @@ impl SpawnedCore {
             compiler_mcp_relay: relays.compiler_mcp_relay,
             debugger_relay: relays.debugger_relay,
             stream,
-        })
+        };
+        // A responsive, authenticated host is not enough: prove that this
+        // generation's private parent pipe actually reaches its registry
+        // before admitting it as v1 or cutting over to it as v2.
+        if core.options.extension_manifest.is_some() {
+            let input = core.child.stdin.take().ok_or_else(|| {
+                io::Error::other("installed core has no private permission input pipe")
+            })?;
+            let output = core.child.stdout.take().ok_or_else(|| {
+                io::Error::other("installed core has no private permission output pipe")
+            })?;
+            core.permission_control = Some(PermissionControlChannel::new(input, output)?);
+            core.inspect_installed_extension()?.ok_or_else(|| {
+                io::Error::other("installed core did not report extension permissions")
+            })?;
+        }
+        Ok(core)
+    }
+
+    pub(super) fn inspect_installed_extension(
+        &self,
+    ) -> io::Result<Option<control::InstalledExtensionPermissions>> {
+        let Some(channel) = self.permission_control.as_ref() else {
+            return Ok(None);
+        };
+        match channel.inspect()? {
+            PermissionControlReply::State {
+                extension_id,
+                name,
+                version,
+                optional,
+                runtime_ephemeral,
+            } => Ok(Some(control::InstalledExtensionPermissions {
+                extension_id,
+                name,
+                version,
+                optional,
+                runtime_ephemeral,
+            })),
+            _ => Err(io::Error::other(
+                "core returned a non-state permission inspection reply",
+            )),
+        }
+    }
+
+    pub(super) fn inspect_document(&self, tab_id: u64) -> io::Result<(u64, Option<String>)> {
+        let channel = self.permission_control.as_ref().ok_or_else(|| {
+            io::Error::other("the active core has no installed permission channel")
+        })?;
+        match channel.exchange(
+            PermissionControlRequest::InspectDocument { tab_id },
+            PERMISSION_INSPECT_TIMEOUT,
+        )? {
+            PermissionControlReply::Document {
+                tab_id: observed,
+                document_epoch,
+                url,
+            } if observed == tab_id => Ok((document_epoch, url)),
+            PermissionControlReply::Rejected { reason } => Err(io::Error::other(reason)),
+            _ => Err(io::Error::other(
+                "core returned an unexpected document inspection reply",
+            )),
+        }
+    }
+
+    /// A core rejection (for example, a navigation after native review) is
+    /// expected and leaves the core serving. Only an uncertain transport or
+    /// malformed success kills the generation, preventing a late lease from
+    /// outliving its trusted window.
+    pub(super) fn arm_ephemeral(
+        &mut self,
+        capability: &str,
+        tab_id: u64,
+        document_epoch: u64,
+    ) -> io::Result<Result<(), String>> {
+        let outcome = (|| {
+            let channel = self.permission_control.as_ref().ok_or_else(|| {
+                io::Error::other("the active core has no installed permission channel")
+            })?;
+            match channel.exchange(
+                PermissionControlRequest::ArmEphemeral {
+                    capability: capability.to_string(),
+                    tab_id,
+                    document_epoch,
+                },
+                PERMISSION_CHANGE_TIMEOUT,
+            )? {
+                PermissionControlReply::EphemeralArmed {
+                    capability: armed,
+                    tab_id: armed_tab,
+                    document_epoch: armed_epoch,
+                    ticket,
+                } if armed == capability
+                    && armed_tab == tab_id
+                    && armed_epoch == document_epoch
+                    && ticket.len() == 64
+                    && ticket.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+                {
+                    Ok(Ok(()))
+                }
+                PermissionControlReply::Rejected { reason } => Ok(Err(reason)),
+                _ => Err(io::Error::other(
+                    "core returned an inconsistent one-shot permission reply",
+                )),
+            }
+        })();
+        if outcome.is_err() {
+            let _ = self.child.kill();
+        }
+        outcome
+    }
+
+    /// The caller must hold the broker's cutover gate and active-core lock
+    /// after validating this package/capability against a native decision.
+    /// An uncertain mutating reply cannot leave a possibly granted core
+    /// serving: terminate it, which also withdraws its process-local grants.
+    pub(super) fn apply_optional_change(
+        &mut self,
+        action: trusted_window::PermissionAction,
+        capability: &str,
+    ) -> io::Result<control::InstalledExtensionPermissions> {
+        let outcome = (|| {
+            let channel = self.permission_control.as_ref().ok_or_else(|| {
+                io::Error::other("the active core has no installed permission channel")
+            })?;
+            let (request, expected_granted) = match action {
+                trusted_window::PermissionAction::Grant => (
+                    PermissionControlRequest::Grant {
+                        capability: capability.to_string(),
+                    },
+                    true,
+                ),
+                trusted_window::PermissionAction::Revoke => (
+                    PermissionControlRequest::Revoke {
+                        capability: capability.to_string(),
+                    },
+                    false,
+                ),
+            };
+            match channel.exchange(request, PERMISSION_CHANGE_TIMEOUT)? {
+                PermissionControlReply::Updated {
+                    capability: updated,
+                    granted,
+                    ..
+                } if updated == capability && granted == expected_granted => {}
+                PermissionControlReply::Rejected { reason } => {
+                    return Err(io::Error::other(reason))
+                }
+                _ => {
+                    return Err(io::Error::other(
+                        "core returned an unexpected permission change reply",
+                    ))
+                }
+            }
+            let installed = self.inspect_installed_extension()?.ok_or_else(|| {
+                io::Error::other("the installed extension disappeared after a permission change")
+            })?;
+            if !installed
+                .optional
+                .iter()
+                .any(|entry| entry.capability == capability && entry.granted == expected_granted)
+            {
+                return Err(io::Error::other(
+                    "core permission state did not confirm the requested change",
+                ));
+            }
+            Ok(installed)
+        })();
+        if outcome.is_err() {
+            let _ = self.child.kill();
+        }
+        outcome
     }
 
     pub(super) fn activate_relays(&self) {
@@ -415,14 +756,35 @@ impl SpawnedCore {
 
 impl Drop for SpawnedCore {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        // Discard this generation's private authority before disconnecting
+        // it. The worker closes core's stdin on EOF; core then withdraws
+        // optional grants even if the normal client-shutdown path stalls.
+        self.permission_control.take();
+        // Let core observe its private client disconnect and reap its own
+        // extension-host child before the force-kill fallback. SIGKILL first
+        // would orphan that child during every successful cutover.
+        let _ = self.stream.shutdown(Shutdown::Both);
+        let deadline = Instant::now() + Duration::from_millis(750);
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+                _ => {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    break;
+                }
+            }
+        }
         // A delegated child may still be blocked on the core-owned
         // protocol connection. Reap it only after core is gone, rather
         // than allowing the child's private capability to outlive its
         // intended core generation.
         drop(self.bluejs_host.take());
         let _ = std::fs::remove_file(&self.internal_socket_path);
+        if let Some(path) = self.extension_socket_path.as_deref() {
+            let _ = std::fs::remove_file(path);
+        }
         if let Some(script_socket) = &self.script_private_socket_path {
             remove_owned_socket_if_owned(script_socket);
         }

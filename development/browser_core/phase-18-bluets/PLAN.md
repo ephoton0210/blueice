@@ -6479,3 +6479,16 @@ target. Symbolic assignment and return relations follow in the next leaf.
 - [x] Bound the pure contract validator's depth, collection, node-fuel and string-byte work with caller-visible limits
 - [x] Add an opt-in, TypeScript-5.9.3-pinned external-oracle job for the implemented initial matrix
 - [ ] Add real-process page, debugger, contract, resource, policy and multi-tab regression coverage
+
+## Nested named event callbacks (2026-10-13)
+
+The node-event profile regression exposed missing nested function parsing,
+callback scope and direct lowering. Structured nested bodies now keep separate
+returns/locals, hoist signatures in the relevant lexical scope, restore outer
+function tables and retain runtime closure/hoisting behavior. Four public
+compiler/VM cases pass, including nonleaking shadowed signatures and the
+64-level parser bound. The complete BlueTS crate still passes all 354 cases
+with 60 optional pinned-oracle cases ignored. See the
+[node event results](../phase-22-browser-shell-accessibility/NODE_EVENT_RESULTS.md).
+Broader TypeScript syntax, browser conformance and complete post-integration
+platform gates remain open.

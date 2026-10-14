@@ -1,0 +1,46 @@
+BlueIce macOS native form reset — 2026-10-02
+base=97794bb5727894e456f73d35d18963a44a2f2e7b
+source_count=15
+source_sha256=845cf13a3707d9a2a20aa289409ab7b14e68d3955667fe08840d7d9fdcf872b7
+native_result=frontend/macos/.build/results-20261002-202807.xcresult
+native_total=54
+native_passed=53
+native_failed=0
+native_skipped=1
+physical_zhuyin=skipped; Runner lacks Accessibility permission
+swiftui_view_update_state_warnings=0
+internal_runtime_warnings=11
+rust_unique_passed=1295
+rust_failed=0
+rust_ignored=0
+workspace_check=passed
+affected_clippy=passed
+rustfmt=passed
+strict_bundle_and_service_signatures=passed
+validation_image_and_result_gitignore=passed
+owned_native_bundle_processes_remaining=0
+screenshot=development/browser_core/phase-22-browser-shell-accessibility/artifacts/macos-native-form-reset.png
+screenshot_bytes=504381
+screenshot_sha256=0fea37622f63ff8b796262df174a5e61c296aab2e24eddedf1b8891899767003
+binary_sha256 BlueIce dd3efceae265ff44be45aba04ea92d0d4d4cd4ecc08de2343142892f977f6d80
+binary_sha256 BlueIce.debug.dylib fade453241d9cc85e54421268f86091fdd21dc1149492e1932a972275551dd9c
+binary_sha256 blueice-core 8ebfdb003eea203c1f99f32dcd2472fe108cc9826c4c640226fe654619b181f6
+binary_sha256 blueice-launcher af7b04ff6753ee88e7cb9500231daaaba7ab4459c5953b832edf4dab0f4649df
+binary_sha256 blueice-ai-gatekeeper 022471088f7fa271ff6e389fef97e4e42986caf5ea5852be1e571caf38ba3d93
+
+SOURCE PATHS
+backend/core/engine/src/ai_snapshot.rs
+backend/core/engine/src/page.rs
+backend/core/engine/src/page/native_forms.rs
+backend/core/engine/src/page/native_interaction.rs
+backend/core/engine/src/page/tests.rs
+backend/core/engine/src/session/run_loop.rs
+backend/core/engine/tests/native_keyboard.rs
+backend/core/layout/src/fragment.rs
+backend/core/layout/src/lib.rs
+backend/core/layout/src/native_text.rs
+backend/core/paint/src/lib.rs
+frontend/macos/Sources/BrowserModel.swift
+frontend/macos/TestSupport/HTTPFixture.swift
+frontend/macos/Tests/NativeEditingTests.swift
+frontend/macos/UITests/BrowserUITests.swift

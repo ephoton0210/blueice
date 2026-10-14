@@ -159,6 +159,68 @@ fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelop
 /// error reply before an operation can touch a successor document.
 pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> ScriptReply {
     match request {
+        ScriptRequest::BeginBlobUrl {
+            target,
+            size,
+            media_type,
+        } => {
+            if media_type.len() > SCRIPT_MAX_NAME_BYTES {
+                return script_error("Object URL MIME type exceeds its byte limit");
+            }
+            with_tab_document(tabs, target, |tabs, tab| {
+                let result = usize::try_from(size)
+                    .map_err(|_| "Object URL size out of range".to_string())
+                    .and_then(|size| tabs.begin_object_url_upload(tab, size, &media_type));
+                result.map_or_else(
+                    |message| ScriptReply::Error { message },
+                    |upload_id| ScriptReply::BlobUrlUpload { upload_id },
+                )
+            })
+        }
+        ScriptRequest::AppendBlobUrl {
+            target,
+            upload_id,
+            offset,
+            bytes,
+        } => {
+            if bytes.len() > blueice_ipc::script::SCRIPT_MAX_FILE_CHUNK_BYTES {
+                return script_error("Object URL upload chunk exceeds its byte limit");
+            }
+            with_tab_document(tabs, target, |tabs, tab| {
+                let result = usize::try_from(offset)
+                    .map_err(|_| "Object URL offset out of range".to_string())
+                    .and_then(|offset| {
+                        tabs.append_object_url_upload(tab, upload_id, offset, &bytes)
+                    });
+                result.map_or_else(
+                    |message| ScriptReply::Error { message },
+                    |()| ScriptReply::Ack,
+                )
+            })
+        }
+        ScriptRequest::CommitBlobUrl { target, upload_id } => {
+            with_tab_document(tabs, target, |tabs, tab| {
+                tabs.commit_object_url_upload(tab, upload_id).map_or_else(
+                    |message| ScriptReply::Error { message },
+                    |url| ScriptReply::BlobUrl { url },
+                )
+            })
+        }
+        ScriptRequest::AbortBlobUrl { target, upload_id } => {
+            with_tab_document(tabs, target, |tabs, tab| {
+                tabs.abort_object_url_upload(tab, upload_id);
+                ScriptReply::Ack
+            })
+        }
+        ScriptRequest::RevokeBlobUrl { target, url } => {
+            if url.len() > SCRIPT_MAX_NAME_BYTES {
+                return script_error("Object URL exceeds its byte limit");
+            }
+            with_tab_document(tabs, target, |tabs, tab| {
+                tabs.revoke_object_url(tab, &url);
+                ScriptReply::Ack
+            })
+        }
         ScriptRequest::Hello { .. } | ScriptRequest::Call { .. } => {
             script_error("script transport envelope is not a DOM operation")
         }
@@ -212,6 +274,55 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
                 |_| ScriptReply::Ack,
             )
         }),
+        ScriptRequest::GetFileValue { target, node } => with_document(tabs, target, |page| {
+            page.script_file_value(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |value| ScriptReply::FileValue { value },
+            )
+        }),
+        ScriptRequest::ClearInputFiles { target, node } => with_document(tabs, target, |page| {
+            page.script_clear_input_files(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |()| ScriptReply::Ack,
+            )
+        }),
+        ScriptRequest::ResetForm { target, node } => with_document(tabs, target, |page| {
+            page.script_reset_form(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |()| ScriptReply::Ack,
+            )
+        }),
+        ScriptRequest::GetDocument { target } => {
+            with_document(tabs, target, |page| ScriptReply::NodeCreated {
+                node: page.script_document_handle(),
+            })
+        }
+        ScriptRequest::GetInputFiles { target, node } => with_document(tabs, target, |page| {
+            page.script_input_files(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |(revision, files)| ScriptReply::InputFiles { revision, files },
+            )
+        }),
+        ScriptRequest::GetEventPath { target, node } => with_document(tabs, target, |page| {
+            page.script_event_path(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |nodes| ScriptReply::EventPath { nodes },
+            )
+        }),
+        ScriptRequest::ReadInputFile {
+            target,
+            node,
+            revision,
+            index,
+            offset,
+            length,
+        } => with_document(tabs, target, |page| {
+            page.script_read_input_file(node, revision, index, offset, length)
+                .map_or_else(
+                    |message| ScriptReply::Error { message },
+                    |bytes| ScriptReply::InputFileBytes { bytes },
+                )
+        }),
         ScriptRequest::GetTextContent { target, node } => with_document(tabs, target, |page| {
             page.script_text_content(node).map_or_else(
                 |message| ScriptReply::Error { message },
@@ -245,6 +356,22 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
 fn script_error(message: &'static str) -> ScriptReply {
     ScriptReply::Error {
         message: message.to_string(),
+    }
+}
+
+fn with_tab_document(
+    tabs: &mut TabManager,
+    target: ScriptDocumentTarget,
+    operation: impl FnOnce(&mut TabManager, TabId) -> ScriptReply,
+) -> ScriptReply {
+    let tab = TabId::from_u64(target.tab_id);
+    if tabs
+        .get(tab)
+        .is_some_and(|page| page.document_generation() == target.document_generation)
+    {
+        operation(tabs, tab)
+    } else {
+        script_error("script document is stale or unavailable")
     }
 }
 

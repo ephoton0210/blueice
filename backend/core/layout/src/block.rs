@@ -152,7 +152,12 @@ pub(crate) fn layout_block(
     let mut cursor_y = 0.0;
     let mut pending_inline: Vec<NodeId> = Vec::new();
 
-    for child in doc.children(node) {
+    let native = crate::native_text::control_text(doc, node);
+    let mut form = crate::native_text::form_control(doc, node);
+    for child in doc
+        .children(node)
+        .filter(|_| native.is_none() && form.is_none())
+    {
         match classify(doc, styles, child) {
             BoxGen::None => continue,
             BoxGen::Inline => pending_inline.push(child),
@@ -192,6 +197,67 @@ pub(crate) fn layout_block(
         cursor_y += used_height;
     }
 
+    if let Some(crate::NativeForm::SelectList {
+        options,
+        first,
+        row_height,
+        ..
+    }) = &mut form
+    {
+        *row_height = default_line_height(font_size).max(20.0);
+        *first = options
+            .iter()
+            .position(|option| option.selected)
+            .unwrap_or(0)
+            .saturating_sub(crate::select_display_size(doc, node).min(1000) as usize - 1);
+        cursor_y = *row_height * crate::select_display_size(doc, node).min(1000) as f64;
+    } else if matches!(form, Some(crate::NativeForm::Select(_))) {
+        cursor_y = default_line_height(font_size).max(20.0);
+    }
+    if let Some(crate::NativeForm::SelectList { options, .. }) = &form {
+        children_fragments.extend(options.iter().map(|option| Fragment {
+            node: Some(option.node),
+            kind: FragmentKind::Block,
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            children: Vec::new(),
+        }));
+    } else if matches!(form, Some(crate::NativeForm::Select(_))) {
+        children_fragments.extend(
+            crate::select_options(doc, node)
+                .iter()
+                .map(|option| Fragment {
+                    node: Some(option.node),
+                    kind: FragmentKind::Block,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                    children: Vec::new(),
+                }),
+        );
+    }
+    let is_native = native.is_some() || form.is_some();
+    if let Some(value) = native {
+        let line_height = style
+            .and_then(|s| s.line_height.as_ref())
+            .and_then(|line_height| resolve_line_height(line_height, font_size))
+            .unwrap_or_else(|| default_line_height(font_size));
+        let lines = crate::native_text::lines(
+            &value,
+            node,
+            content_width,
+            font_size,
+            line_height,
+            style.is_some_and(|s| s.is_bold()),
+            style.is_some_and(|s| s.is_italic()),
+        );
+        cursor_y += lines.len() as f64 * line_height;
+        children_fragments.extend(lines);
+    }
+
     let intrinsic_content_height = cursor_y;
     let content_height = match resolve_height(other, font_size) {
         Some(h) if border_box_sizing => {
@@ -208,15 +274,27 @@ pub(crate) fn layout_block(
         f.y += content_origin_y;
     }
 
-    Fragment {
+    let mut fragment = Fragment {
         node: Some(node),
-        kind: FragmentKind::Block,
+        kind: if is_native {
+            FragmentKind::NativeControl {
+                content_x: content_origin_x,
+                content_y: content_origin_y,
+                content_width,
+                content_height,
+                form,
+            }
+        } else {
+            FragmentKind::Block
+        },
         x: 0.0,
         y: 0.0,
         width: content_width + horizontal_padding_border,
         height: content_height + padding_top + padding_bottom + border_top + border_bottom,
         children: children_fragments,
-    }
+    };
+    update_select_option_bounds(&mut fragment);
+    fragment
 }
 
 fn layout_inline_run(
@@ -287,6 +365,41 @@ fn layout_line(words: &[Word], line_height: f64, y: f64, space_width: f64) -> Fr
         width: x,
         height: line_height,
         children,
+    }
+}
+
+/// Apply the list's scroll position and clip option hit/AX bounds to its content.
+pub fn update_select_option_bounds(fragment: &mut Fragment) {
+    let FragmentKind::NativeControl {
+        content_x,
+        content_y,
+        content_width,
+        content_height,
+        form:
+            Some(crate::NativeForm::SelectList {
+                options,
+                first,
+                row_height,
+                ..
+            }),
+    } = &fragment.kind
+    else {
+        return;
+    };
+    for (index, child) in fragment.children.iter_mut().enumerate() {
+        if options.get(index).map(|option| option.node) != child.node {
+            continue;
+        }
+        let top = (index as f64 - *first as f64) * *row_height;
+        let bottom = (top + *row_height).min(*content_height);
+        child.x = *content_x;
+        child.y = *content_y + top.max(0.0);
+        child.width = if bottom > top.max(0.0) {
+            *content_width
+        } else {
+            0.0
+        };
+        child.height = (bottom - top.max(0.0)).max(0.0);
     }
 }
 

@@ -91,12 +91,18 @@ impl Heap {
     /// next `pop_scoped_roots` releases. Unlike `root`, this does no per-object
     /// table work; an id that is not (or no longer) in this heap is ignored
     /// when marking, and is still reported by whichever operation uses it.
-    pub(crate) fn push_scoped_roots(&mut self, roots: Vec<ObjectId>) {
+    pub(crate) fn push_scoped_roots(
+        &mut self,
+        roots: Vec<ObjectId>,
+        owned_edges: Vec<(ObjectId, Vec<ObjectId>)>,
+    ) {
         self.scoped_roots.push(roots);
+        self.scoped_owned_edges.push(owned_edges);
     }
 
     pub(crate) fn pop_scoped_roots(&mut self) {
         self.scoped_roots.pop();
+        self.scoped_owned_edges.pop();
     }
 
     pub(super) fn ensure_room(
@@ -184,6 +190,21 @@ impl Heap {
         };
         let mut waiting: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
         let mut ephemeron_work = Vec::new();
+        // A Promise's Rust-side record belongs to its heap object. Its
+        // result and reactions are strong edges from that owner, rather than
+        // independent roots. Waiting for the owner also permits unreachable
+        // promise/result cycles to be collected.
+        for (owner, references) in self.scoped_owned_edges.iter().flatten() {
+            let references = references
+                .iter()
+                .copied()
+                .filter(|id| self.objects.contains_key(id));
+            if key_is_live(owner, &marked) {
+                ephemeron_work.extend(references);
+            } else if self.objects.contains_key(owner) {
+                waiting.entry(*owner).or_default().extend(references);
+            }
+        }
         // Called once per table, at the moment it is known to be live.
         let activate = |entries: &HashMap<WeakCollectionKey, Value>,
                         marked: &HashSet<ObjectId>,
@@ -215,6 +236,28 @@ impl Heap {
             };
             if table_live {
                 activate(entries, &marked, &mut waiting, &mut ephemeron_work);
+            }
+        }
+        // A dependent signal with observers stays alive only when at least
+        // one original source is independently live. The ordinary ephemeron
+        // worklist also handles sources discovered through WeakMap values.
+        for (dependent, object) in &self.objects {
+            let ObjectKind::WebAbortSignal(state) = &object.kind else {
+                continue;
+            };
+            if state.aborted() || !state.dependent || !state.observed() {
+                continue;
+            }
+            for source in state
+                .sources
+                .iter()
+                .filter(|source| self.objects.contains_key(source))
+            {
+                if key_is_live(source, &marked) {
+                    ephemeron_work.push(*dependent);
+                } else {
+                    waiting.entry(*source).or_default().push(*dependent);
+                }
             }
         }
         while let Some(id) = ephemeron_work.pop() {
@@ -296,6 +339,7 @@ impl Heap {
             }
         }
         self.remembered.clear();
+        self.clean_abort_weak_edges();
         self.minor_collections += 1;
     }
 
@@ -359,6 +403,7 @@ impl Heap {
             .saturating_mul(2)
             .max(self.config.major_threshold_bytes)
             .min(self.config.max_heap_bytes);
+        self.clean_abort_weak_edges();
         self.major_collections += 1;
     }
 }

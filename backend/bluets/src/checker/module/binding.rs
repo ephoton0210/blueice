@@ -704,7 +704,12 @@ impl<'a> ModuleChecker<'a> {
         fields: &[TypeField],
         span: &SourceSpan,
     ) {
+        let declared_record = Type::Record(fields.to_vec());
+        let mut checked = HashSet::new();
         for field in fields {
+            if !checked.insert(&field.name) {
+                continue;
+            }
             let inherited = {
                 let mut visited = HashSet::new();
                 let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
@@ -716,10 +721,23 @@ impl<'a> ModuleChecker<'a> {
             else {
                 continue;
             };
-            let declared = if field.optional {
-                Type::Union(vec![field.value.clone(), Type::Undefined])
-            } else {
-                field.value.clone()
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            let PropertyType::Found {
+                value: declared, ..
+            } = property_type(
+                &declared_record,
+                &field.name,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            )
+            else {
+                self.type_error(
+                    span,
+                    "interface overload collection exceeds the type-expansion limit".into(),
+                    DiagnosticCode::ResourceLimit,
+                );
+                continue;
             };
             if !self.is_assignable_bounded(&declared, &inherited, span) {
                 self.type_error(

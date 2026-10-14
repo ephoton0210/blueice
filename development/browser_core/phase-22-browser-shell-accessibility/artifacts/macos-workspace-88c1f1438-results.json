@@ -1,0 +1,15 @@
+{
+  "source_commit": "88c1f1438333a00fe943d67d45e1d69b18aab2bd",
+  "session_id": 68740,
+  "exit_code": 0,
+  "passed": 7537,
+  "failed": 0,
+  "ignored": 69,
+  "groups": 503,
+  "log": "frontend/macos/.build/workspace-88c1f1438-20261012.log",
+  "log_sha256": "de03ac745db77f0956e8219a4763a82f6ded389359276730c86d401845232334",
+  "verified_program_input_files": 1882,
+  "changed_program_inputs": [],
+  "input_verification": "All 1882 inputs matched immediately after terminal completion and before integration fast-forward.",
+  "command": "CARGO_TARGET_DIR=frontend/macos/.build/core-target rustup run 1.96.0 cargo test --workspace --no-fail-fast --locked"
+}

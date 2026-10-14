@@ -40,7 +40,7 @@
 use crate::page::{find_fragment_bounds, Page};
 use blueice_dom::{Document, NodeData, NodeId};
 use blueice_ipc::{AiNode, AiSnapshot, NameFrom, NodeState, Role};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub(crate) fn build(page: &Page, generation: u64, tab_id: u64) -> AiSnapshot {
     let doc = page.doc();
@@ -48,12 +48,15 @@ pub(crate) fn build(page: &Page, generation: u64, tab_id: u64) -> AiSnapshot {
     collect(page, doc, doc.root(), None, &mut nodes);
     link_children(&mut nodes);
     compute_occlusion(&mut nodes);
+    let accessibility = Some(page.accessibility_snapshot(&nodes));
     AiSnapshot {
+        frame_source: 0, // the session fills this from its live frame directory
         generation,
         tab_id,
         url: page.url().map(str::to_string),
         scroll_y: page.scroll_y(),
         nodes,
+        accessibility,
     }
 }
 
@@ -103,7 +106,17 @@ fn to_ai_node(page: &Page, doc: &Document, node: NodeId, parent: Option<u64>) ->
     };
     let role = infer_role(tag_name, attributes)?;
     let bounds = find_fragment_bounds(page.fragment(), node, 0.0, 0.0)?;
-    let (name, name_from) = compute_name(doc, node, tag_name, attributes);
+    let (name, name_from) = compute_name(doc, node, tag_name, attributes, None, None);
+    // Only a content-derived name can differ from the page's own words:
+    // attributes (`aria-label`, `alt`, `placeholder`, `title`) are never
+    // translated. The original is offered only while a translation is showing.
+    let original_name = if page.translation_shown() && name_from == Some(NameFrom::Contents) {
+        compute_name(doc, node, tag_name, attributes, Some(page), None)
+            .0
+            .filter(|original| Some(original) != name.as_ref())
+    } else {
+        None
+    };
     let opacity = page.styles().get(&node).map(|s| s.opacity()).unwrap_or(1.0);
     Some(AiNode {
         id: node.as_u64(),
@@ -112,6 +125,7 @@ fn to_ai_node(page: &Page, doc: &Document, node: NodeId, parent: Option<u64>) ->
         role,
         name,
         name_from,
+        original_name,
         state: compute_state(page, node, tag_name, attributes),
         bounds,
         opacity,
@@ -119,6 +133,188 @@ fn to_ai_node(page: &Page, doc: &Document, node: NodeId, parent: Option<u64>) ->
         occluded_by: None,
         occluded_fraction: 0.0,
     })
+}
+
+/// The platform name excludes hidden and protected descendant text while the
+/// inspection representation retains its existing source-observability contract.
+pub(crate) fn native_name(page: &Page, node: NodeId) -> Option<String> {
+    let NodeData::Element {
+        tag_name,
+        attributes,
+    } = page.doc().data(node)
+    else {
+        return None;
+    };
+    if attr(attributes, "aria-labelledby").is_some() {
+        let label = native_author_label(page, node, &native_label_index(page), None);
+        if !label.text.is_empty() {
+            return Some(label.text);
+        }
+    }
+    compute_name(page.doc(), node, tag_name, attributes, None, Some(page)).0
+}
+
+/// Bounded public author names shared by the native tree and live announcements.
+/// This intentionally excludes hidden/protected references rather than adopting
+/// the complete accessible-name algorithm's hidden-reference exception.
+#[derive(Clone, Default)]
+pub(crate) struct NativeAuthorLabel {
+    pub text: String,
+    pub sources: Vec<NodeId>,
+    pub attributes: [Option<String>; 2],
+    pub truncated: bool,
+}
+
+pub(crate) fn native_label_index(page: &Page) -> HashMap<String, NodeId> {
+    let mut index = HashMap::new();
+    let mut pending = vec![(page.doc().root(), 0)];
+    let mut visited = 0;
+    while let Some((node, depth)) = pending.pop() {
+        visited += 1;
+        if visited > 50_000 {
+            break;
+        }
+        if depth > 256 {
+            continue;
+        }
+        if let NodeData::Element { attributes, .. } = page.doc().data(node) {
+            if let Some(id) = attr(attributes, "id") {
+                index.entry(id.to_string()).or_insert(node);
+            }
+        }
+        pending.extend(
+            page.doc()
+                .children(node)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .map(|child| (child, depth + 1)),
+        );
+    }
+    index
+}
+
+pub(crate) fn native_author_label(
+    page: &Page,
+    node: NodeId,
+    index: &HashMap<String, NodeId>,
+    live_region: Option<NodeId>,
+) -> NativeAuthorLabel {
+    const LIMIT: usize = 4096;
+    let mut result = NativeAuthorLabel::default();
+    let NodeData::Element { attributes, .. } = page.doc().data(node) else {
+        return result;
+    };
+    if !page.accessibility_safe_content(node) {
+        return result;
+    }
+    result.attributes = ["aria-labelledby", "aria-label"]
+        .map(|name| attr(attributes, name).map(|value| value.chars().take(LIMIT).collect()));
+    let mut remaining = LIMIT;
+    fn append(
+        result: &mut NativeAuthorLabel,
+        remaining: &mut usize,
+        text: &str,
+        source: NodeId,
+        container: NodeId,
+    ) {
+        let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if normalized.is_empty() {
+            return;
+        }
+        if !result.text.is_empty() && *remaining > 0 {
+            result.text.push(' ');
+            *remaining -= 1;
+        }
+        let mut chars = normalized.chars();
+        let part: String = chars.by_ref().take(*remaining).collect();
+        result.truncated |= chars.next().is_some();
+        *remaining -= part.chars().count();
+        if !part.is_empty() {
+            result.text.push_str(&part);
+            result.sources.extend([source, container]);
+        }
+    }
+    if let Some(ids) = attr(attributes, "aria-labelledby") {
+        let mut seen = HashSet::new();
+        let mut visited = 0;
+        for (offset, id) in ids.split_ascii_whitespace().enumerate() {
+            if offset >= 256 {
+                result.truncated = true;
+                break;
+            }
+            let Some(&reference) = index.get(id) else {
+                continue;
+            };
+            if !seen.insert(reference)
+                || !page.accessibility_safe_content(reference)
+                || live_region
+                    .is_some_and(|region| !page.accessibility_author_content(reference, region))
+            {
+                continue;
+            }
+            let mut pending = vec![(reference, 0)];
+            while let Some((current, depth)) = pending.pop() {
+                visited += 1;
+                if visited > 50_000 || depth > 256 {
+                    result.truncated = true;
+                    break;
+                }
+                if !page.accessibility_safe_content(current)
+                    || live_region
+                        .is_some_and(|region| !page.accessibility_author_content(current, region))
+                {
+                    continue;
+                }
+                match page.doc().data(current) {
+                    NodeData::Text { data } => append(
+                        &mut result,
+                        &mut remaining,
+                        data,
+                        current,
+                        page.doc().parent(current).unwrap_or(current),
+                    ),
+                    NodeData::Element {
+                        tag_name,
+                        attributes,
+                    } => {
+                        if let Some(label) = attr(attributes, "aria-label") {
+                            append(&mut result, &mut remaining, label, current, current);
+                            continue;
+                        }
+                        if matches!(tag_name.as_str(), "input" | "select") {
+                            if let Some(value) = page.native_control_public_value(current) {
+                                append(&mut result, &mut remaining, &value, current, current);
+                            }
+                            continue;
+                        }
+                        if tag_name == "img" {
+                            if let Some(alt) = attr(attributes, "alt") {
+                                append(&mut result, &mut remaining, alt, current, current);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                pending.extend(
+                    page.doc()
+                        .children(current)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .map(|child| (child, depth + 1)),
+                );
+            }
+        }
+    }
+    if result.text.is_empty() {
+        if let Some(label) = attr(attributes, "aria-label") {
+            append(&mut result, &mut remaining, label, node, node);
+        }
+    }
+    result.sources.sort_by_key(|id| id.as_u64());
+    result.sources.dedup();
+    result
 }
 
 fn attr<'a>(attributes: &'a [(String, String)], name: &str) -> Option<&'a str> {
@@ -143,12 +339,21 @@ fn infer_role(tag: &str, attributes: &[(String, String)]) -> Option<Role> {
     match tag {
         "a" if attr(attributes, "href").is_some() => Some(Role::Link),
         "button" => Some(Role::Button),
-        "input" => Some(match attr(attributes, "type") {
-            Some("checkbox") | Some("radio") => Role::CheckBox,
-            Some("submit") | Some("button") | Some("reset") => Role::Button,
-            _ => Role::TextBox,
-        }),
+        "input" => Some(
+            match attr(attributes, "type")
+                .unwrap_or("text")
+                .to_ascii_lowercase()
+                .as_str()
+            {
+                "checkbox" | "radio" => Role::CheckBox,
+                "range" => Role::Slider,
+                "submit" | "button" | "reset" | "file" => Role::Button,
+                _ => Role::TextBox,
+            },
+        ),
         "textarea" => Some(Role::TextBox),
+        "select" => Some(Role::ComboBox),
+        "option" => Some(Role::Option),
         "ul" | "ol" => Some(Role::List),
         "li" => Some(Role::ListItem),
         "p" => Some(Role::Paragraph),
@@ -160,17 +365,29 @@ fn infer_role(tag: &str, attributes: &[(String, String)]) -> Option<Role> {
     }
 }
 
+/// `originals`, when given, makes text nodes that live translation replaced
+/// read as their original text instead of what is shown.
 fn compute_name(
     doc: &Document,
     node: NodeId,
     tag: &str,
     attributes: &[(String, String)],
+    originals: Option<&Page>,
+    native: Option<&Page>,
 ) -> (Option<String>, Option<NameFrom>) {
     if let Some(label) = attr(attributes, "aria-label") {
         return (
             Some(label.to_string()),
             Some(NameFrom::Attribute("aria-label".to_string())),
         );
+    }
+    if tag == "option" {
+        if let Some(label) = attr(attributes, "label").filter(|label| !label.is_empty()) {
+            return (
+                Some(label.to_string()),
+                Some(NameFrom::Attribute("label".into())),
+            );
+        }
     }
     if tag == "img" {
         return match attr(attributes, "alt") {
@@ -181,9 +398,22 @@ fn compute_name(
             None => (None, None),
         };
     }
-    if matches!(tag, "input" | "textarea") {
+    if matches!(tag, "input" | "textarea" | "select") {
+        if let Some(label) = blueice_layout::input_button_label(doc, node) {
+            return (
+                Some(label),
+                Some(NameFrom::Attribute(
+                    if attr(attributes, "value").is_some() {
+                        "value"
+                    } else {
+                        "type"
+                    }
+                    .into(),
+                )),
+            );
+        }
         if let Some(id_attr) = attr(attributes, "id") {
-            if let Some(label_text) = find_label_text_for(doc, id_attr) {
+            if let Some(label_text) = find_label_text_for(doc, id_attr, originals, native) {
                 return (Some(label_text), Some(NameFrom::Contents));
             }
         }
@@ -195,7 +425,7 @@ fn compute_name(
     if let Some(title) = attr(attributes, "title") {
         return (Some(title.to_string()), Some(NameFrom::Title));
     }
-    let text = text_content(doc, node);
+    let text = text_content(doc, node, originals, native);
     if text.is_empty() {
         (None, None)
     } else {
@@ -206,24 +436,38 @@ fn compute_name(
 /// Scans the whole document for a `<label for="id_attr">` -- one input
 /// at a time is fine at MVP page sizes; a document-wide index would
 /// only pay for itself on pages with many labeled inputs.
-fn find_label_text_for(doc: &Document, id_attr: &str) -> Option<String> {
-    fn walk(doc: &Document, node: NodeId, id_attr: &str) -> Option<String> {
+fn find_label_text_for(
+    doc: &Document,
+    id_attr: &str,
+    originals: Option<&Page>,
+    native: Option<&Page>,
+) -> Option<String> {
+    fn walk(
+        doc: &Document,
+        node: NodeId,
+        id_attr: &str,
+        originals: Option<&Page>,
+        native: Option<&Page>,
+    ) -> Option<String> {
+        if native.is_some_and(|page| !page.accessibility_exposed(node)) {
+            return None;
+        }
         if let NodeData::Element {
             tag_name,
             attributes,
         } = doc.data(node)
         {
             if tag_name == "label" && attributes.iter().any(|(k, v)| k == "for" && v == id_attr) {
-                let text = text_content(doc, node);
+                let text = text_content(doc, node, originals, native);
                 if !text.is_empty() {
                     return Some(text);
                 }
             }
         }
         doc.children(node)
-            .find_map(|child| walk(doc, child, id_attr))
+            .find_map(|child| walk(doc, child, id_attr, originals, native))
     }
-    walk(doc, doc.root(), id_attr)
+    walk(doc, doc.root(), id_attr, originals, native)
 }
 
 /// `node`'s own text, for computing its name "from contents" -- stops
@@ -235,16 +479,35 @@ fn find_label_text_for(doc: &Document, id_attr: &str) -> Option<String> {
 /// real accessibility tree nor an agent reading this one wants --
 /// `<li>` correctly gets no name of its own here, since its entire
 /// content is delegated to the separately-represented `<p>`.
-fn text_content(doc: &Document, node: NodeId) -> String {
+fn text_content(
+    doc: &Document,
+    node: NodeId,
+    originals: Option<&Page>,
+    native: Option<&Page>,
+) -> String {
     let mut raw = String::new();
-    collect_text(doc, node, &mut raw, true);
+    collect_text(doc, node, &mut raw, true, originals, native);
     raw.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn collect_text(doc: &Document, node: NodeId, out: &mut String, is_root: bool) {
+fn collect_text(
+    doc: &Document,
+    node: NodeId,
+    out: &mut String,
+    is_root: bool,
+    originals: Option<&Page>,
+    native: Option<&Page>,
+) {
+    if native.is_some_and(|page| !page.accessibility_safe_content(node)) {
+        return;
+    }
     match doc.data(node) {
         NodeData::Text { data } => {
-            out.push_str(data);
+            out.push_str(
+                originals
+                    .and_then(|page| page.original_text(node))
+                    .unwrap_or(data),
+            );
             out.push(' ');
             return;
         }
@@ -255,7 +518,7 @@ fn collect_text(doc: &Document, node: NodeId, out: &mut String, is_root: bool) {
         _ => {}
     }
     for child in doc.children(node) {
-        collect_text(doc, child, out, false);
+        collect_text(doc, child, out, false, originals, native);
     }
 }
 
@@ -269,10 +532,24 @@ fn compute_state(
         && matches!(attr(attributes, "type"), Some("checkbox") | Some("radio")))
     .then(|| has_attr(attributes, "checked"));
     NodeState {
+        value: page.native_control_public_value(node),
+        native_text_input: page.supports_native_text_input(node),
+        native_focusable: page.native_focusable(node),
+        native_drag_source: page.native_drag_static_source(node),
+        file_input: tag == "input"
+            && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("file")),
+        select_list: tag == "select"
+            && (blueice_layout::select_display_size(page.doc(), node) > 1
+                || has_attr(attributes, "multiple")),
+        multiple: tag == "select" && has_attr(attributes, "multiple"),
+        radio: tag == "input"
+            && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("radio")),
+        protected: tag == "input"
+            && attr(attributes, "type").is_some_and(|kind| kind.eq_ignore_ascii_case("password")),
         checked,
-        disabled: has_attr(attributes, "disabled"),
+        disabled: has_attr(attributes, "disabled") || page.native_control_disabled(node),
         required: has_attr(attributes, "required"),
-        selected: tag == "option" && has_attr(attributes, "selected"),
+        selected: tag == "option" && page.native_option_selected(node),
         hovered: page.hovered() == Some(node),
         focused: page.focused() == Some(node),
     }
@@ -332,6 +609,7 @@ fn compute_occlusion(nodes: &mut [AiNode]) {
 mod tests {
     use super::*;
     use crate::Page;
+    use blueice_ipc::NodeAction;
 
     fn page_with(html: &str) -> Page {
         let mut page = Page::new(320.0, 400.0);
@@ -344,6 +622,24 @@ mod tests {
             .iter()
             .find(|n| n.name.as_deref() == Some(name))
             .unwrap_or_else(|| panic!("no node named {name:?} in {nodes:#?}"))
+    }
+
+    #[test]
+    fn native_input_capabilities_and_protected_values_come_from_core() {
+        let page = page_with(
+            r#"<input aria-label="Editable" value="hello">
+            <input aria-label="Disabled" disabled value="locked">
+            <input aria-label="Secret" type="PASSWORD" value="do not disclose">
+            <textarea aria-label="Multiline">readable</textarea>"#,
+        );
+        let snap = build(&page, 1, 1);
+        assert!(find(&snap.nodes, "Editable").state.native_text_input);
+        assert!(!find(&snap.nodes, "Disabled").state.native_text_input);
+        assert!(find(&snap.nodes, "Multiline").state.native_text_input);
+        let secret = find(&snap.nodes, "Secret");
+        assert!(secret.state.protected);
+        assert!(secret.state.native_text_input);
+        assert_eq!(secret.state.value, None);
     }
 
     #[test]
@@ -429,6 +725,26 @@ mod tests {
     }
 
     #[test]
+    fn a_text_input_reports_the_value_that_the_shared_frame_would_render() {
+        let mut page = page_with(r#"<input type="text" value="initial">"#);
+        let before = build(&page, 0, 1);
+        let input = before
+            .nodes
+            .iter()
+            .find(|node| node.role == Role::TextBox)
+            .unwrap();
+        assert_eq!(input.state.value.as_deref(), Some("initial"));
+        assert!(input.bounds.width > 0.0 && input.bounds.height > 0.0);
+
+        page.act(
+            NodeId::from_u64(input.id),
+            NodeAction::SetValue("changed".to_string()),
+        );
+        let after = build(&page, 1, 1);
+        assert_eq!(after.nodes[0].state.value.as_deref(), Some("changed"));
+    }
+
+    #[test]
     fn a_checkbox_reports_its_checked_state() {
         let page =
             page_with(r#"<label for="c">Agree</label><input id="c" type="checkbox" checked>"#);
@@ -436,6 +752,35 @@ mod tests {
         let node = find(&snap.nodes, "Agree");
         assert_eq!(node.role, Role::CheckBox);
         assert_eq!(node.state.checked, Some(true));
+    }
+
+    #[test]
+    fn a_native_range_is_a_slider_with_its_core_owned_value() {
+        let page = page_with(
+            r#"<label for="volume">Volume</label><input id="volume" type="range" min="0" max="10" value="4">"#,
+        );
+        let snap = build(&page, 0, 1);
+        let node = find(&snap.nodes, "Volume");
+        assert_eq!(node.role, Role::Slider);
+        assert_eq!(node.state.value.as_deref(), Some("4"));
+    }
+
+    #[test]
+    fn a_native_select_and_its_options_are_addressable_with_selected_state() {
+        let page = page_with(
+            r#"<label for="priority">Priority</label><select id="priority"><option selected>First</option><option>Second</option></select>"#,
+        );
+        let snap = build(&page, 0, 1);
+        let select = find(&snap.nodes, "Priority");
+        let first = find(&snap.nodes, "First");
+        let second = find(&snap.nodes, "Second");
+        assert_eq!(select.role, Role::ComboBox);
+        assert_eq!(first.role, Role::Option);
+        assert_eq!(second.role, Role::Option);
+        assert_eq!(first.parent, Some(select.id));
+        assert_eq!(second.parent, Some(select.id));
+        assert!(first.state.selected);
+        assert!(!second.state.selected);
     }
 
     #[test]
@@ -491,10 +836,16 @@ mod tests {
     fn every_node_carries_its_stable_dom_node_id_not_a_recomputed_index() {
         let page = page_with("<p>hi</p>");
         let snap = build(&page, 0, 1);
-        let node = &snap.nodes[0];
-        let real_id = page.doc().root(); // just to confirm `id` is a real, resolvable NodeId
-        assert_ne!(real_id.as_u64(), node.id); // root itself isn't represented
-        assert!(page.doc().contains(NodeId::from_u64(node.id)));
+        let node = find(&snap.nodes, "hi");
+        fn find_tag(doc: &Document, node: NodeId, tag: &str) -> Option<NodeId> {
+            if matches!(doc.data(node), NodeData::Element { tag_name, .. } if tag_name == tag) {
+                return Some(node);
+            }
+            doc.children(node)
+                .find_map(|child| find_tag(doc, child, tag))
+        }
+        let paragraph = find_tag(page.doc(), page.doc().root(), "p").unwrap();
+        assert_eq!(node.id, paragraph.as_u64());
     }
 
     #[test]
@@ -549,5 +900,82 @@ mod tests {
         let page = page_with("<h1>One</h1><p>Two</p>");
         let snap = build(&page, 0, 1);
         assert!(snap.nodes.iter().all(|n| !n.occluded));
+    }
+
+    #[test]
+    fn a_translated_node_reports_the_shown_name_and_the_original() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated(
+            "<h1>Welcome</h1><p>Hello <a href=\"/x\">there</a></p>",
+            Some("https://example.com".to_string()),
+            &["歡迎".into(), "哈囉".into(), "這裡".into()],
+        );
+        let snap = build(&page, 1, 1);
+        let heading = find(&snap.nodes, "歡迎");
+        assert_eq!(heading.original_name.as_deref(), Some("Welcome"));
+        // The paragraph's own text excludes the separately represented link.
+        let paragraph = find(&snap.nodes, "哈囉");
+        assert_eq!(paragraph.original_name.as_deref(), Some("Hello"));
+        let link = find(&snap.nodes, "這裡");
+        assert_eq!(link.original_name.as_deref(), Some("there"));
+    }
+
+    #[test]
+    fn the_original_is_absent_when_the_original_is_showing_or_nothing_was_translated() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated("<p>Hello</p>", None, &["你好".into()]);
+        page.set_translation_shown(false);
+        let snap = build(&page, 1, 1);
+        let node = find(&snap.nodes, "Hello");
+        assert_eq!(node.original_name, None);
+
+        let plain = page_with("<p>Hello</p>");
+        let snap = build(&plain, 1, 1);
+        assert_eq!(find(&snap.nodes, "Hello").original_name, None);
+    }
+
+    #[test]
+    fn attribute_names_are_never_reported_as_translated_originals() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated(
+            "<p aria-label=\"Greeting\">Hello</p><p>Bye</p>",
+            None,
+            &["你好".into(), "再見".into()],
+        );
+        let snap = build(&page, 1, 1);
+        // An explicit attribute name is not page text and is never translated.
+        assert_eq!(find(&snap.nodes, "Greeting").original_name, None);
+        assert_eq!(
+            find(&snap.nodes, "再見").original_name.as_deref(),
+            Some("Bye")
+        );
+    }
+
+    #[test]
+    fn a_label_translated_for_a_field_keeps_its_original_on_the_field() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated(
+            "<label for=\"n\">Name</label><input id=\"n\" type=\"text\">",
+            None,
+            &["姓名".into()],
+        );
+        let snap = build(&page, 1, 1);
+        let input = snap
+            .nodes
+            .iter()
+            .find(|n| matches!(n.role, Role::TextBox))
+            .unwrap();
+        assert_eq!(input.name.as_deref(), Some("姓名"));
+        assert_eq!(input.original_name.as_deref(), Some("Name"));
+    }
+
+    #[test]
+    fn a_translated_snapshot_serializes_the_original_and_an_untranslated_one_omits_it() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated("<p>Hello</p>", None, &["你好".into()]);
+        let json = serde_json::to_string(&build(&page, 1, 1)).unwrap();
+        assert!(json.contains("\"original_name\":\"Hello\""));
+        let plain = serde_json::to_string(&build(&page_with("<p>x</p>"), 1, 1)).unwrap();
+        assert!(!plain.contains("original_name"));
     }
 }

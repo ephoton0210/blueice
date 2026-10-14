@@ -95,7 +95,12 @@ function main() {
   console.log(`summary: ${summary.domIdenticalCount}/${summary.fixturesCompared} DOM-identical, average DOM similarity ${(summary.averageDomSimilarity * 100).toFixed(1)}%, average pixel match ${(summary.averagePixelMatch * 100).toFixed(1)}%`);
 
   const reportPath = join(OUTPUT_DIR, "report.json");
-  writeFileSync(reportPath, JSON.stringify({ summary, missing, results }, null, 2));
+  writeFileSync(reportPath, JSON.stringify({
+    environment: { platform: process.platform, arch: process.arch },
+    summary,
+    missing,
+    results,
+  }, null, 2));
   console.log(`full report written to ${reportPath}`);
   console.log(`per-fixture screenshot diff images written under ${DIFF_IMAGE_DIR}`);
 }
