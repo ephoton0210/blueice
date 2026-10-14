@@ -740,12 +740,16 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     generations at both resolution and arm without retaining a breakpoint.
     At a valid three-frame pause, require the old single-program generated
     location route to reject the foreign loader frame instead of relabeling it.
-  - [ ] Prove thrown completion through the same public System pause without
-    replaying loader or wrapper effects. Prove a substituted cross-stream arm
-    cannot consume the owner stream's hold; the current core debugger listener
-    serves one connection to EOF before accepting the next, so concurrent
-    real-process streams need an explicit bounded multi-client design or an
-    equivalent core-level admission test.
+  - [x] With the same frozen System emitted artifact and a throwing page
+    loader, pause at the mapped execute-body token, project the three exact
+    frames, and resume through a caught thrown completion. Verify the exact
+    thrown value and that register and console each run once; the BlueTS
+    script must report successful execution after the foreign caller catches.
+  - [ ] Prove a substituted cross-stream arm cannot consume the owner
+    stream's hold. The current core debugger listener serves one connection
+    to EOF before accepting the next, so concurrent real-process streams
+    need an explicit bounded multi-client design or an equivalent core-level
+    admission test.
   - [ ] Add independently default-denied, same-stream receipted public
     debugger operations for generated breakpoint resolution/arming and
     paused step/stack-location projection. Unmapped helper bodies and
@@ -1358,6 +1362,20 @@ The concurrent foreign-stream arm case is not claimed: the current core
 before accepting another. A second public socket can connect but cannot
 complete `Hello` while the owner holds its stream. The remaining check needs
 bounded multi-client service or an equivalent core admission-stream test.
+
+The frozen System emitted JavaScript and map also pass a separate real-process
+thrown-completion regression with a page-supplied loader that throws from the
+mapped `console.log` call. The public debugger resolves and arms the same
+execute-body token, observes the exact emitted/loader/emitted pause and mapped
+original position, then resumes the nested frame. The foreign loader catches
+only the expected thrown value, rejects missing or wrong exceptions, and
+checks that both `System.register` and `console.log` ran exactly once. After
+root continuation, the browser reports the BlueTS script as `Executed`.
+This closes the thrown-completion subcheck but not the separate concurrent
+cross-stream admission check or K.11.4 as a whole. The focused throwing
+System test passes 1/1 and the full real-process debugger suite passes 48/48;
+launcher debugger-test Clippy with warnings denied, workspace formatting and
+diff checks pass.
 
 ### K.12 Projects — M10 — gap G-M2
 

@@ -31,6 +31,35 @@ const PAGE_SYSTEM_LOADER: &str = r#"
     } };
 "#;
 
+const PAGE_SYSTEM_THROW_LOADER: &str = r#"
+    var systemLogCount = 0;
+    var systemRegisterCount = 0;
+    var console = { log: function(value) {
+        systemLogCount++;
+        if (value !== 42) throw 'wrong System value';
+        throw 'expected System execute throw';
+    } };
+    var System = { register: function(dependencies, declare) {
+        systemRegisterCount++;
+        if (systemRegisterCount !== 1) throw 'System wrapper replay';
+        if (dependencies.length !== 0) throw 'unexpected System dependency';
+        var exports = {};
+        var body = declare(function(name, value) {
+            exports[name] = value;
+            return value;
+        }, { id: 'main' });
+        if (body.setters.length !== 0) throw 'unexpected System setter';
+        try {
+            body.execute();
+            throw 'missing System execute throw';
+        } catch (error) {
+            if (error !== 'expected System execute throw') throw error;
+        }
+        if (systemLogCount !== 1) throw 'System execute replay';
+        if (exports.answer !== 42) throw 'System export result';
+    } };
+"#;
+
 fn system_source() -> String {
     let frozen = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -39,13 +68,17 @@ fn system_source() -> String {
     format!("{frozen}\ndeclare const console: {{ log(value: number): void }};\n")
 }
 
-fn serve_system_document(listener: TcpListener, source: String) -> thread::JoinHandle<()> {
+fn serve_system_document(
+    listener: TcpListener,
+    source: String,
+    loader: &'static str,
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let mut request = [0_u8; 1024];
         let _ = stream.read(&mut request);
         let body = format!(
-            "<main>system</main><script>{PAGE_SYSTEM_LOADER}</script><script type=\"application/x-blueice-typescript\">{source}</script>"
+            "<main>system</main><script>{loader}</script><script type=\"application/x-blueice-typescript\">{source}</script>"
         );
         stream
             .write_all(
@@ -128,7 +161,7 @@ fn public_system_requires_explicit_dual_program_breakpoint_and_stack_route() {
     let gatekeeper_socket = clearing_gatekeeper();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
-    let fixture = serve_system_document(listener, source);
+    let fixture = serve_system_document(listener, source, PAGE_SYSTEM_LOADER);
     let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
         &gatekeeper_socket,
         StaticMetadataPolicy {
@@ -443,6 +476,182 @@ fn public_system_requires_explicit_dual_program_breakpoint_and_stack_route() {
                 thread::sleep(Duration::from_millis(10));
             }
             reply => panic!("System execute must rejoin its root: {reply:?}"),
+        }
+    }
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    await_completed_execution(&mut debugger, program);
+    write_client_message(&mut browser, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::BlueTsScriptReports(reports)
+            if reports.len() == 1
+                && reports[0].outcome == blueice_ipc::BlueTsScriptExecutionOutcome::Executed
+    ));
+    drop(debugger);
+    launcher.shutdown();
+    fixture.join().unwrap();
+}
+
+#[test]
+fn public_system_thrown_completion_keeps_loader_and_execute_body_single_shot() {
+    let source = system_source();
+    let module = "memory:///main.ts";
+    let compilation = blueice_bluets::compile(
+        module,
+        &blueice_bluets::MapLoader::from([blueice_bluets::ModuleSource::new(
+            module,
+            source.clone(),
+        )]),
+        blueice_bluets::CompilerOptions {
+            module_kind: blueice_bluets::ModuleKind::System,
+            source_map: true,
+            inline_sources: true,
+            ..Default::default()
+        },
+    );
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    let output = compilation.output.unwrap();
+    let artifact = &output.artifacts[module];
+    let call = position(
+        &artifact.javascript,
+        artifact.javascript.rfind("console.log(").unwrap(),
+    );
+    let original = position(&source, source.find("console.log(answer)").unwrap());
+
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = serve_system_document(listener, source, PAGE_SYSTEM_THROW_LOADER);
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            emitted_blue_ts_classic_system: true,
+            generated_breakpoint: true,
+            generated_paused_location: true,
+            ..Default::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    let manifest =
+        DebuggerMetadataCapabilityManifest::opaque_selected(DebuggerMetadataCapabilitySelection {
+            generated_breakpoint: true,
+            generated_paused_location: true,
+            ..Default::default()
+        });
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
+                requested_metadata_capabilities: manifest.clone(),
+            }
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
+            granted_metadata_capabilities: manifest,
+        }
+    );
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let inventory = debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm });
+    let DebuggerReply::Programs(programs) = inventory else {
+        panic!("throwing System page must install loader and emitted programs: {inventory:?}")
+    };
+    assert_eq!(programs.len(), 2);
+    let loader = programs[0];
+    let program = programs[1];
+    let target = DebuggerGeneratedSystemBreakpointTarget {
+        emitted: DebuggerGeneratedBreakpointTarget {
+            program,
+            generated_line: call.0,
+            generated_column_utf16: call.1,
+        },
+        loader,
+    };
+    let binding = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ResolveGeneratedSystemBreakpoint { target },
+    );
+    let DebuggerReply::GeneratedSystemBreakpoint(DebuggerGeneratedSystemBreakpoint {
+        safe_point: Some(point),
+        ..
+    }) = binding
+    else {
+        panic!("throwing System execute token must bind exactly: {binding:?}")
+    };
+    assert_ne!(point.code_unit_ordinal, 0);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmGeneratedSystemBreakpoint { target },
+        ),
+        DebuggerReply::GeneratedSystemBreakpointArmed(DebuggerGeneratedSystemBreakpoint {
+            target,
+            safe_point: Some(point),
+        })
+    );
+    let (frame, paused) = await_nested_paused_execution(&mut debugger, program);
+    assert_eq!(paused, point);
+    let projection = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetGeneratedSystemStackLocations { frame, loader },
+    );
+    let DebuggerReply::GeneratedSystemStackLocations(projection) = projection else {
+        panic!("throwing System pause must retain its foreign loader: {projection:?}")
+    };
+    assert!(projection.is_well_formed());
+    assert_eq!(projection.safe_points[0], point);
+    assert_eq!(projection.safe_points[1].program, loader);
+    assert_eq!(projection.locations[1], None);
+    let location = projection.locations[0].unwrap();
+    assert_eq!(
+        (location.generated_line, location.generated_column_utf16),
+        call
+    );
+    let original_location = location.original.unwrap();
+    assert_eq!(
+        (
+            original_location.source_index,
+            original_location.line,
+            original_location.column_utf16
+        ),
+        (0, original.0, original.1)
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeNestedExecution { frame },
+        ),
+        DebuggerReply::NestedResumeRequested { frame }
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ) {
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::Paused { safe_point },
+                ..
+            } if safe_point.code_unit_ordinal == 0 => break,
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::NestedResuming { frame: active },
+                ..
+            } if active == frame && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            reply => panic!("throwing System execute must rejoin its root: {reply:?}"),
         }
     }
     assert_eq!(
