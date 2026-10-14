@@ -34,6 +34,11 @@ sharing its job budget and preserving fuel/frame roots while script-driven
 dispatch waits for the enclosing JavaScript. Acceptance is tracked in the
 [integration record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
 
+M1i adds a bounded document timer/browser task entry and returns to Core after
+one selected task and checkpoint. Task/frame wake replies cover ready browser
+work and future abort deadlines. This offers rendering between ready tasks;
+general logical source ordering and network/UI policy remain open before Fetch.
+
 ## Objective
 
 Make BlueIce capable of running ordinary interactive websites on one coherent web-platform model before adding specialised graphics, background execution or browser chrome. The compatibility baseline is the relevant [HTML Standard](https://html.spec.whatwg.org/multipage/), DOM, URL, Encoding, Fetch and related W3C/WHATWG specifications, delivered through explicit feature profiles and conformance tests rather than a claim that every API happens to work.

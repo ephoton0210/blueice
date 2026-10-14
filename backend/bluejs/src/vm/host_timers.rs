@@ -157,7 +157,7 @@ impl Vm {
         Ok(())
     }
 
-    fn sample_host_timer_clock(&mut self) -> u64 {
+    pub(super) fn sample_host_timer_clock(&mut self) -> u64 {
         if let Some(clock) = &self.host_timer_clock {
             self.host_timer_clock_ms = self.host_timer_clock_ms.max(clock());
         }
@@ -189,74 +189,90 @@ impl Vm {
         if self.ensure_no_debugger_continuation().is_err() {
             return Ok(BlueJsTimerRun::default());
         }
+        let due = self.snapshot_due_host_timers(now_ms);
+        let mut run = BlueJsTimerRun::default();
+        for id in due.into_iter().take(MAX_HOST_TIMER_TASKS_PER_TURN) {
+            self.run_host_timer_entry(id, &mut run)?;
+        }
+        Ok(run)
+    }
+
+    pub(super) fn snapshot_due_host_timers(&mut self, now_ms: u64) -> Vec<u32> {
         self.host_timer_clock_ms = self.host_timer_clock_ms.max(now_ms);
         let now = self.sample_host_timer_clock();
-        let mut due = self
+        let mut due: Vec<_> = self
             .host_timers
             .iter()
             .filter(|timer| timer.due_ms <= now)
             .map(|timer| (timer.due_ms, timer.id))
-            .collect::<Vec<_>>();
+            .collect();
         due.sort_unstable();
-        let mut run = BlueJsTimerRun::default();
-        for (_, id) in due.into_iter().take(MAX_HOST_TIMER_TASKS_PER_TURN) {
-            // A callback earlier in this pass may have cleared this timer.
-            let Some(index) = self.host_timers.iter().position(|timer| timer.id == id) else {
-                continue;
-            };
-            let interval = self.host_timers[index].interval_ms;
-            let (callback, arguments, nesting, snapshot) = if interval.is_none() {
-                let timer = self.host_timers.remove(index);
-                (timer.callback, timer.arguments, timer.nesting, timer.roots)
-            } else {
-                let timer = &self.host_timers[index];
-                // The registration stays alive while the interval runs; its
-                // argument copy must also fit before it is allocated.
-                let bytes = timer.scheduling_payload_bytes();
-                self.admit_scheduling_work(HostSchedulingUsage {
-                    payload_bytes: bytes,
-                    ..HostSchedulingUsage::default()
-                })?;
-                let timer = &self.host_timers[index];
-                let (callback, arguments, nesting) =
-                    (timer.callback, timer.arguments.clone(), timer.nesting);
-                let roots = self.root_timer_task(callback, &arguments)?;
-                (callback, arguments, nesting, roots)
-            };
-            let active_bytes = arguments
-                .capacity()
-                .saturating_mul(std::mem::size_of::<Value>())
-                .saturating_add(
-                    snapshot
-                        .capacity()
-                        .saturating_mul(std::mem::size_of::<RootId>()),
-                )
-                .saturating_add(arguments.iter().fold(0usize, |total, value| {
-                    total.saturating_add(super::host_scheduling::value_payload_bytes(value))
-                }));
-            self.active_scheduling_bytes =
-                self.active_scheduling_bytes.saturating_add(active_bytes);
-            if self.host_timers.is_empty() {
-                self.host_timers.shrink_to_fit();
-            }
-            let outcome = self
-                .synchronize_scheduling_usage()
-                .and_then(|()| self.run_timer_task(callback, arguments, nesting, &mut run));
-            self.release_timer_roots(snapshot);
-            self.active_scheduling_bytes =
-                self.active_scheduling_bytes.saturating_sub(active_bytes);
-            self.synchronize_scheduling_usage()?;
-            outcome?;
-            if let Some(interval) = interval {
-                let now = self.sample_host_timer_clock();
-                // A callback or its checkpoint can clear its own interval.
-                if let Some(timer) = self.host_timers.iter_mut().find(|timer| timer.id == id) {
-                    timer.due_ms = now.saturating_add(nested_delay(interval, nesting));
-                    timer.nesting = nesting.saturating_add(1);
-                }
+        due.into_iter().map(|(_, id)| id).collect()
+    }
+
+    pub(super) fn has_host_timer(&self, id: u32) -> bool {
+        self.host_timers.iter().any(|timer| timer.id == id)
+    }
+
+    pub(super) fn run_host_timer_entry(
+        &mut self,
+        id: u32,
+        run: &mut BlueJsTimerRun,
+    ) -> Result<(), RuntimeError> {
+        // Earlier task callbacks and their checkpoints may have canceled it.
+        let Some(index) = self.host_timers.iter().position(|timer| timer.id == id) else {
+            return Ok(());
+        };
+        let interval = self.host_timers[index].interval_ms;
+        let (callback, arguments, nesting, snapshot) = if interval.is_none() {
+            let timer = self.host_timers.remove(index);
+            (timer.callback, timer.arguments, timer.nesting, timer.roots)
+        } else {
+            let timer = &self.host_timers[index];
+            // The registration stays alive while the interval runs; its
+            // argument copy must also fit before it is allocated.
+            let bytes = timer.scheduling_payload_bytes();
+            self.admit_scheduling_work(HostSchedulingUsage {
+                payload_bytes: bytes,
+                ..HostSchedulingUsage::default()
+            })?;
+            let timer = &self.host_timers[index];
+            let (callback, arguments, nesting) =
+                (timer.callback, timer.arguments.clone(), timer.nesting);
+            let roots = self.root_timer_task(callback, &arguments)?;
+            (callback, arguments, nesting, roots)
+        };
+        let active_bytes = arguments
+            .capacity()
+            .saturating_mul(std::mem::size_of::<Value>())
+            .saturating_add(
+                snapshot
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<RootId>()),
+            )
+            .saturating_add(arguments.iter().fold(0usize, |total, value| {
+                total.saturating_add(super::host_scheduling::value_payload_bytes(value))
+            }));
+        self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
+        if self.host_timers.is_empty() {
+            self.host_timers.shrink_to_fit();
+        }
+        let outcome = self
+            .synchronize_scheduling_usage()
+            .and_then(|()| self.run_timer_task(callback, arguments, nesting, run));
+        self.release_timer_roots(snapshot);
+        self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(active_bytes);
+        self.synchronize_scheduling_usage()?;
+        outcome?;
+        if let Some(interval) = interval {
+            let now = self.sample_host_timer_clock();
+            // A callback or its checkpoint can clear its own interval.
+            if let Some(timer) = self.host_timers.iter_mut().find(|timer| timer.id == id) {
+                timer.due_ms = now.saturating_add(nested_delay(interval, nesting));
+                timer.nesting = nesting.saturating_add(1);
             }
         }
-        Ok(run)
+        Ok(())
     }
 
     fn root_timer_task(

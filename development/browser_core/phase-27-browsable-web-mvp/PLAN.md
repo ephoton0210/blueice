@@ -20,6 +20,12 @@ dispatch retains its enclosing JavaScript ordering. The
 [milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record)
 tracks its acceptance without closing M1 as a whole.
 
+M1i shares timer/browser work in one bounded document task entry. Core can
+publish a render pass after each selected task; ready browser work and future
+abort deadlines participate in wake scheduling. The existing render entry
+stays separate. General logical source associations, network/UI ordering and
+broader host-buffer policy keep M1 in progress.
+
 ## Objective
 
 Let an ordinary script-driven page work end to end in the one `core`: HTML

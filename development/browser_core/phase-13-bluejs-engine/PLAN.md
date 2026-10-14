@@ -8,6 +8,12 @@
 
 **M1h callback follow-up:** Native DOM callbacks now checkpoint before the next listener, with shared job admission, preserved fuel and rooted dispatch frames across import/module work. Script-driven dispatch waits for the enclosing JavaScript. Acceptance is tracked in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
 
+**M1i task-turn follow-up:** Timer and browser work share a bounded document
+entry, and the child returns to Core after one selected task and checkpoint.
+Ready browser work and future abort deadlines participate in task/frame wake
+replies; rendering remains separate. Full logical task-source ordering and
+network/UI policy remain open; see the browser-integration milestone record.
+
 ## Ubuntu verification scope (2026-09-19)
 
 The only available host for this update is Ubuntu 24.04.3 LTS under WSL2 (`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), not Ubuntu 24.04.4. It successfully built all workspace targets and ran focused ECMA-402/BlueJS regressions; the exact commands and outcomes are recorded in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md). The unfiltered Test262 inventory was also rerun: 96,203 / 102,926 modes pass (93.468%), including 86,304 / 91,820 ECMA-262 Core modes (93.993%) and 6,364 / 6,714 ECMA-402 modes (94.787%). Coverage figures elsewhere remain separately dated because no fresh coverage run occurred in this update.

@@ -92,6 +92,12 @@ dispatch shares one 256-job cap, preserves instruction fuel and roots its
 displaced execution frame during import/module jobs. Resource failure stops
 delivery before default action. See the
 [M1h record](BROWSER_INTEGRATION_TODO.md#milestone-record) for verification.
+M1i adds a common timer/browser task entry. Ordinary child polls select one
+task and complete its checkpoint before Core can publish dirty pixels or
+service frontend work. The separate render entry remains. Ready browser work
+and future abort deadlines now participate in the existing relative wake
+reply; large deadlines use bounded wake chunks without changing v59 fields or
+the generated v12 declarations. Full logical source ordering remains open.
 See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).

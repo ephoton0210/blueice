@@ -276,6 +276,15 @@ fn fixture(body: String) -> (Fixture, String, PathBuf) {
 }
 
 #[test]
+fn javascript_and_bluets_ready_timers_offer_a_frame_between_tasks() {
+    counter_frames("let count: number = 0;
+        function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
+        function tick(): void { count += 1; queueMicrotask(publish); }
+        function arm(): void { setTimeout(tick, 0); setTimeout(tick, 0); setTimeout(tick, 0); }
+        setTimeout(arm, 500);", true);
+}
+
+#[test]
 fn javascript_and_bluets_intervals_publish_matching_frames_and_representations() {
     counter_frames("let count: number = 0; let timer: number = 0;
         function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }

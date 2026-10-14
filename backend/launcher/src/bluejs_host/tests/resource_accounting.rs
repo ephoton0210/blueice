@@ -5,6 +5,37 @@
 use super::*;
 
 #[test]
+fn long_abort_deadlines_use_bounded_task_and_frame_wake_replies() {
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(1, vec![classic(0, "true;")]),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    host.runtime
+        .configure_realm_bindings(7, |bindings| {
+            bindings.install_web_file_api()?;
+            bindings.install_host_timers()?;
+            bindings.install_host_animation_frames()
+        })
+        .unwrap();
+    let origin = blueice_bluejs::BlueJsPageOrigin::new("https://example.test").unwrap();
+    let handle=host.runtime.install_program(
+        7,&origin,
+        blueice_bluejs::BlueJsSourceIdentity::new("page:///long-abort.js","sha256:long-abort").unwrap(),
+        &blueice_bluejs::BlueJsProgramV1::Script(blueice_bluejs::parse("var pending=AbortSignal.timeout(9007199254740991);pending.onabort=function(){};requestAnimationFrame(function(){});").unwrap()),
+    ).unwrap();
+    host.runtime.execute_program(7, handle).unwrap();
+    assert!(
+        matches!(host.handle_request(PageHostRequest::FlushDragTasks { tab_id:7,document_generation:1 }),PageHostReply::DragTasksFlushed { next_wake_in_ms:Some(delay),animation_frame_pending:true,.. } if delay==i32::MAX as u64)
+    );
+    assert!(
+        matches!(host.handle_request(PageHostRequest::RunAnimationFrame { tab_id:7,document_generation:1 }),PageHostReply::AnimationFrameRendered { next_wake_in_ms:Some(delay),animation_frame_pending:false,.. } if delay==i32::MAX as u64)
+    );
+}
+
+#[test]
 fn task_and_frame_replies_release_the_real_vm_timer_payload_charge() {
     assert_eq!(
         blueice_bluejs::MAX_HOST_SCHEDULING_BYTES as u64,

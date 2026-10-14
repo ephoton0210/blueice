@@ -105,7 +105,7 @@ pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};
 pub use vm::{
-    BlueJsAnimationFrameRun, BlueJsTimerRun, HostDragEventData, HostDragEventKind,
+    BlueJsAnimationFrameRun, BlueJsTaskTurn, BlueJsTimerRun, HostDragEventData, HostDragEventKind,
     HostDragEventOutcome, HostDragImage, HostDragItem, HostFileData, HostFileSelectionEvent,
     HostFunction, HostFunctionError, HostInputFilesReader, HostInputFilesUpdate, HostObject,
     HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod, HostObjectPairMethod,

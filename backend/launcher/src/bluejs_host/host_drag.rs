@@ -148,14 +148,10 @@ impl BlueJsChildHost {
         // All profiles retain their own globals and exact-document callbacks.
         let timer_epoch = document.timer_epoch;
         let now_ms = || u64::try_from(timer_epoch.elapsed().as_millis()).unwrap_or(u64::MAX);
-        if self.runtime.flush_drag_tasks(tab_id).is_err() {
-            return host_failure();
-        }
-        if self.runtime.run_due_timers(tab_id, now_ms()).is_err() {
-            return host_failure();
-        }
-        let next_wake_in_ms = match self.runtime.next_timer_due(tab_id) {
-            Ok(due) => due.map(|due| due.saturating_sub(now_ms())),
+        // Return to Core after one task and its checkpoint so rendering and
+        // frontend work can proceed before the next selected task.
+        let next_wake_in_ms = match self.runtime.run_task_turn(tab_id, now_ms(), 1) {
+            Ok(turn) => turn.next_wake_in_ms,
             Err(_) => return host_failure(),
         };
         let scheduling_payload_bytes = match self.runtime.host_scheduling_usage(tab_id) {
@@ -165,7 +161,9 @@ impl BlueJsChildHost {
         PageHostReply::DragTasksFlushed {
             tab_id,
             document_generation,
-            next_wake_in_ms,
+            // Abort timeouts can exceed the private reply's timer range.
+            // Wake in bounded steps; the VM retains the actual deadline.
+            next_wake_in_ms: next_wake_in_ms.map(|delay| delay.min(i32::MAX as u64)),
             scheduling_payload_bytes,
             animation_frame_pending: self
                 .runtime
@@ -197,7 +195,7 @@ impl BlueJsChildHost {
         }
         let now = u64::try_from(epoch.elapsed().as_millis()).unwrap_or(u64::MAX);
         let (Ok(due), Ok(animation_frame_pending)) = (
-            self.runtime.next_timer_due(tab_id),
+            self.runtime.next_task_wake_in_ms(tab_id, now),
             self.runtime.animation_frame_pending(tab_id),
         ) else {
             return host_failure();
@@ -209,7 +207,7 @@ impl BlueJsChildHost {
         PageHostReply::AnimationFrameRendered {
             tab_id,
             document_generation,
-            next_wake_in_ms: due.map(|due| due.saturating_sub(now)),
+            next_wake_in_ms: due.map(|delay| delay.min(i32::MAX as u64)),
             animation_frame_pending,
             scheduling_payload_bytes,
         }

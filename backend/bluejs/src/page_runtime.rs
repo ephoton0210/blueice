@@ -557,6 +557,38 @@ impl BlueJsPageRuntime {
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
+    /// Runs at most `max_tasks` (capped at 64) across due timers and document
+    /// browser work, checkpointing each task. Render callbacks use their
+    /// separate entry. A zero wake means another task can run immediately.
+    pub fn run_task_turn(
+        &mut self,
+        tab_id: u64,
+        now_ms: u64,
+        max_tasks: usize,
+    ) -> Result<crate::BlueJsTaskTurn, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .run_host_task_turn(now_ms, max_tasks)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
+    /// Earliest relative task wake, including immediately runnable browser
+    /// work and future abort deadlines. Paused documents have no runnable wake.
+    pub fn next_task_wake_in_ms(
+        &mut self,
+        tab_id: u64,
+        now_ms: u64,
+    ) -> Result<Option<u64>, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .next_host_task_wake(now_ms)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Document-owned scheduling counts and payloads, including the realm's
     /// ShadowRealms. Resource-failed documents require replacement/close.
     pub fn host_scheduling_usage(

@@ -14,7 +14,7 @@ use std::sync::{
     Arc,
 };
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 struct Fixture {
     root: std::path::PathBuf,
@@ -37,6 +37,28 @@ fn reply(stream: &mut UnixStream, message: &ClientMessage, request: u64) -> Serv
         let (_, id, message) = blueice_ipc::read_server_message_with_ids(stream).unwrap();
         if id == Some(request) && !matches!(message, ServerMessage::FrameReady { .. }) {
             return message;
+        }
+    }
+}
+
+fn dom_after_tasks(stream: &mut UnixStream, request: u64, expected: &str) -> String {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let ServerMessage::Dom(dom) = reply(stream, &ClientMessage::GetDom, request) else {
+            panic!("expected DOM")
+        };
+        if dom.contains(expected) {
+            return dom;
+        }
+        assert!(Instant::now() < deadline, "tasks did not finish: {dom}");
+        // FileReader events span task turns. Wait for Core to publish their
+        // changes without sending more frontend work to drive the scheduler.
+        loop {
+            let (tab, id, message) = blueice_ipc::read_server_message_with_ids(stream).unwrap();
+            if tab == Some(1) && id.is_none() && matches!(message, ServerMessage::FrameReady { .. })
+            {
+                break;
+            }
         }
     }
 }
@@ -169,9 +191,7 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
         reply(&mut stream, &ClientMessage::Navigate { url }, 1),
         ServerMessage::Navigated { .. }
     ));
-    let ServerMessage::Dom(dom) = reply(&mut stream, &ClientMessage::GetDom, 2) else {
-        panic!("expected DOM")
-    };
+    let dom = dom_after_tasks(&mut stream, 2, "\"initial 中文:true\"");
     assert!(dom.contains("\"initial 中文:true\""), "{dom}");
     assert!(dom.contains("\"stream:7,0,255\""), "{dom}");
     assert!(dom.contains("\"tee:7,0,255\""), "{dom}");
@@ -224,9 +244,11 @@ fn ordinary_file_reader_tasks_mutate_the_live_core_after_scripts_and_selection_e
         ),
         ServerMessage::FileInputState(_)
     ));
-    let ServerMessage::Dom(dom) = reply(&mut stream, &ClientMessage::GetDom, 7) else {
-        panic!("expected selected DOM")
-    };
+    let dom = dom_after_tasks(
+        &mut stream,
+        7,
+        "\"input,change,loadstart,progress,load,loadend:0,255,65\"",
+    );
     assert!(
         dom.contains("\"input,change,loadstart,progress,load,loadend:0,255,65\""),
         "{dom}"

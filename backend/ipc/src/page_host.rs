@@ -993,7 +993,8 @@ pub enum PageHostReply {
     DragTasksFlushed {
         tab_id: u64,
         document_generation: u64,
-        /// Relative monotonic timer delay; no process-local clock value or
+        /// Relative task wake delay, including ready browser work and timer/
+        /// abort deadlines; no process-local clock value or
         /// callback identity crosses the child boundary. Legacy serialized
         /// replies may omit it; connected peers still require matching versions.
         #[serde(default)]

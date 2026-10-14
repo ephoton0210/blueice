@@ -35,6 +35,7 @@ mod host_finalization;
 mod host_objects;
 mod host_registration;
 mod host_scheduling;
+mod host_task_turns;
 mod host_timers;
 use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::SchedulingScope;
@@ -102,6 +103,7 @@ pub use host_objects::{
     HostFileSelectionEvent, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
     HostObjectPairMethod,
 };
+pub use host_task_turns::BlueJsTaskTurn;
 use host_timers::HostTimer;
 pub(crate) use host_timers::HostTimerFunction;
 pub use host_timers::{BlueJsTimerRun, MAX_HOST_TIMERS_PER_REALM};
@@ -1160,6 +1162,7 @@ pub struct Vm {
     active_finalization_registry: Option<ObjectId>,
     next_browser_task_is_finalization: bool,
     browser_task_realm_cursor: usize,
+    next_task_is_timer: bool,
     /// Heap edges of displaced async frames and active iterator records that
     /// live outside the operand stack. Nested frames retain their own suffix
     /// until they return, fail, or hand ownership to a suspended frame.

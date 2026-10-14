@@ -189,6 +189,7 @@ impl Vm {
             active_finalization_registry: None,
             next_browser_task_is_finalization: true,
             browser_task_realm_cursor: 0,
+            next_task_is_timer: false,
             async_frame_roots: Vec::new(),
             test262_done: None,
             test262_agent_host: None,

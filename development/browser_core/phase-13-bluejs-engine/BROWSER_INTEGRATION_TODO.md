@@ -45,6 +45,11 @@ work and exposes its retained payload ledger.
 
 - [ ] Macrotask queue that drains microtasks after every task (per
       `research/js-bytecode-eventloop.md`)
+- [x] **M1i: bounded document task turns.** One host entry shares a task
+      budget between the existing timer and browser-work groups, checkpoints
+      each delivery and returns the next runnable/deadline wake. Core selects
+      one task per poll before offering rendering. Full logical task-source
+      associations and network/UI ordering remain in the open item below.
 - [x] **M1a: bounded host microtask checkpoints.** Both page executors finish
       each completed script turn, including throws and completed debugger
       declarations, before executing the next declaration. A throwing job
@@ -377,6 +382,53 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1i — Bounded document task turns and render opportunities (2026-10-15)
+
+- The real public Core fixture failed before implementation: three ready
+  timers ran in one child batch, and the first observed Representation already
+  contained `tick:3`. The child previously drained up to 64 browser tasks and
+  then 64 timers before returning to Core.
+- Added the source-free `run_task_turn`/`BlueJsTaskTurn` page boundary. Timer
+  and browser work share a maximum 64-delivery turn and alternate when both
+  groups are ready. Browser cleanup/ordinary fairness and same-document
+  ShadowRealm ownership remain in the existing document scheduler. Timer
+  snapshots retain due/creation order, cancellation and next-turn rearming;
+  browser tasks retain their ready FIFO order. Every delivery checkpoints.
+- The child selects one task per ordinary Core poll, permitting rendering and
+  frontend service before another task. Render callbacks keep their separate
+  entry. Both task and frame replies report ready browser work as an immediate
+  wake, include future abort deadlines and preserve timer wakes. Future live
+  abort work neither consumes task budget nor blocks a ready read; dead weak
+  entries can be reaped immediately. Long abort deadlines use bounded private
+  wake chunks while the VM retains the true deadline. The v59 schema/range
+  validation and v12 host globals/typings are unchanged.
+- This defines fair arbitration between the existing implementation groups;
+  general logical task-source associations and network/UI source policy still
+  need the open ordering work before Fetch. The design follows the
+  [two-entry-point decision](../research/js-bytecode-eventloop.md) and
+  [HTML task selection/checkpoint model](https://html.spec.whatwg.org/multipage/webappapis.html#event-loop-processing-model).
+- The JavaScript/BlueTS burst fixture now requires three distinct PNG frames
+  and a matching post-microtask Representation after each timer. The existing
+  FileReader fixture initially assumed navigation drained every read task;
+  it now waits for Core frame notifications before observing later task
+  results, retaining all data, cancellation and native-event assertions.
+- Final macOS gates: **3,042 related tests passed**: 2,741 across the five
+  affected libraries, 292 public runtime/DOM/allocation cases and nine rebuilt
+  real Core/child fixtures; one existing launcher case remains ignored.
+  Five-crate all-target Clippy, the updated FileReader fixture's Clippy and
+  formatting passed. The pinned full Test262 inventory completed in
+  **450.159 seconds**: **102,921 / 102,926 pass**, one existing stale-corpus
+  mode, four existing exclusions and **zero failures/timeouts**. All source/
+  mode hashes, dispositions, expectations, feature flags, error kinds/phases
+  and runner settings match M1h; diagnostic text and elapsed times are not
+  acceptance keys. Both frozen binaries retained their recorded hashes.
+  The [unmodified machine summary](test262-browser-task-turns-macos-summary.json)
+  records the gates; raw results and the comparison remain under
+  `target/test262-host-task-turns-full-20261015/`. This is focused affected-
+  crate validation, with no new workspace-wide or coverage claim. M1 remains
+  incomplete for general ordering, broader host-buffer policy and error/
+  rejection reporting.
 
 ### M1h — Native DOM callback microtask cleanup (2026-10-15)
 

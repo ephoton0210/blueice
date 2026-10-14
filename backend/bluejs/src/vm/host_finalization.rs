@@ -118,7 +118,7 @@ impl Vm {
         Ok(())
     }
 
-    fn host_shadow_realms(&self) -> Vec<ShadowRealmRecord> {
+    pub(super) fn host_shadow_realms(&self) -> Vec<ShadowRealmRecord> {
         let mut queue: VecDeque<_> = self.shadow_realms.values().cloned().collect();
         let mut seen = HashSet::from([self.object_prototype.heap]);
         let mut realms = Vec::new();
@@ -168,10 +168,10 @@ impl Vm {
         for offset in 0..count {
             let owner = (self.browser_task_realm_cursor.wrapping_add(offset)) % count;
             let runnable = if owner == 0 {
-                !self.browser_tasks.is_empty()
+                self.has_runnable_browser_task()
             } else {
                 realms[owner - 1].vm.try_borrow().is_ok_and(|vm| {
-                    !vm.browser_tasks.is_empty() && vm.ensure_no_debugger_continuation().is_ok()
+                    vm.has_runnable_browser_task() && vm.ensure_no_debugger_continuation().is_ok()
                 })
             };
             if runnable {

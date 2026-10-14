@@ -27,6 +27,37 @@ pub(super) enum BrowserTask {
 }
 
 impl Vm {
+    fn browser_task_wake(&self, task: &BrowserTask) -> u64 {
+        if let BrowserTask::AbortTimeout {
+            signal,
+            started,
+            delay,
+            ..
+        } = task
+        {
+            if self
+                .heap
+                .abort_signal(*signal)
+                .is_ok_and(|state| !state.aborted())
+            {
+                let remaining = delay.saturating_sub(started.elapsed());
+                return u64::try_from(remaining.as_nanos().div_ceil(1_000_000)).unwrap_or(u64::MAX);
+            }
+        }
+        0
+    }
+
+    pub(super) fn next_own_browser_task_wake(&self) -> Option<u64> {
+        self.browser_tasks
+            .iter()
+            .map(|task| self.browser_task_wake(task))
+            .min()
+    }
+
+    pub(super) fn has_runnable_browser_task(&self) -> bool {
+        self.next_own_browser_task_wake() == Some(0)
+    }
+
     pub(super) fn queue_drag_string_task(
         &mut self,
         callback: ObjectId,
@@ -99,11 +130,19 @@ impl Vm {
         }
         self.run_host_microtask_checkpoint()?;
         for _ in 0..max_tasks {
-            let Some(task) = self.browser_tasks.pop_front() else {
+            let Some(index) = self
+                .browser_tasks
+                .iter()
+                .position(|task| self.browser_task_wake(task) == 0)
+            else {
                 self.browser_tasks.shrink_to_fit();
                 self.synchronize_scheduling_usage()?;
-                return Ok(true);
+                return Ok(self.browser_tasks.is_empty());
             };
+            let task = self
+                .browser_tasks
+                .remove(index)
+                .expect("a runnable task was selected");
             let active_bytes = match &task {
                 BrowserTask::DragString { text, .. } => {
                     text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
