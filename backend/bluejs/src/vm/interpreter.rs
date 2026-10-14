@@ -5,14 +5,63 @@
 use super::*;
 
 impl Vm {
+    /// Both private fields and private methods refer to the captured class
+    /// owner through a binding slot. An uninitialized or non-object slot is
+    /// the same protocol error for either kind of element.
+    pub(super) fn private_element_owner(&mut self, slot: usize) -> Result<ObjectId, RuntimeError> {
+        self.binding_value(slot)
+            .expect(
+                "a private owner uses a retained synthetic class binding, never a deleted eval var",
+            )
+            .and_then(|value| value.object_id())
+            .ok_or_else(|| {
+                RuntimeError::TypeError(
+                    "private elements are not available in this function".into(),
+                )
+            })
+    }
+
+    pub(super) fn private_element_receiver(value: Value) -> Result<ObjectId, RuntimeError> {
+        value.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("private fields require an object receiver".into())
+        })
+    }
+
     pub(super) fn interpret(
         &mut self,
         code: &Bytecode,
         iterators: &mut Vec<Value>,
         start_pc: usize,
         resume_value: Option<Value>,
-        suspend_at: Option<usize>,
+        suspend_at: Option<InterpreterSuspensionPoint>,
         restored_handlers: Option<(Vec<HandlerFrame>, usize)>,
+    ) -> Result<InterpreterExit, RuntimeError> {
+        let iterator_root_base = self.async_frame_roots.len();
+        let result = self.interpret_frame(
+            code,
+            iterators,
+            start_pc,
+            resume_value,
+            suspend_at,
+            restored_handlers,
+            iterator_root_base,
+        );
+        // Every exit, including a resource refusal, releases this active
+        // frame's records. A suspended frame's caller owns them afterwards.
+        self.async_frame_roots.truncate(iterator_root_base);
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn interpret_frame(
+        &mut self,
+        code: &Bytecode,
+        iterators: &mut Vec<Value>,
+        start_pc: usize,
+        resume_value: Option<Value>,
+        suspend_at: Option<InterpreterSuspensionPoint>,
+        restored_handlers: Option<(Vec<HandlerFrame>, usize)>,
+        iterator_root_base: usize,
     ) -> Result<InterpreterExit, RuntimeError> {
         let stack_base = self.stack.len();
         let pending_base = self.pending_completions.len();
@@ -31,9 +80,32 @@ impl Vm {
             handler.stack_depth += handler_stack_base;
         }
         let mut suspended_await = None;
+        let mut executed_root_instruction = false;
         loop {
-            if suspend_at == Some(pc) {
-                return Ok(InterpreterExit::Suspend { pc });
+            // IteratorStep and IteratorStepReference can remove a record
+            // from the operand stack while retaining it for abrupt cleanup.
+            // The Rust iterator vector is therefore an active GC owner too.
+            // Nested interpreters append their roots after this frame's set.
+            self.async_frame_roots.truncate(iterator_root_base);
+            self.async_frame_roots
+                .extend(iterators.iter().filter_map(Value::object_id));
+            if matches!(suspend_at, Some(InterpreterSuspensionPoint::Offset(target)) if target == pc)
+                || (executed_root_instruction
+                    && suspend_at == Some(InterpreterSuspensionPoint::AfterRootInstruction))
+            {
+                // The caller owns the returned records while execution is
+                // suspended. Handler stack depths are relative to this
+                // frame's operand-stack base, exactly like `Yield`, so a
+                // later interpreter entry can restore them without exposing
+                // an ambient caller frame to the continuation.
+                for handler in &mut handlers {
+                    handler.stack_depth -= handler_stack_base;
+                }
+                return Ok(InterpreterExit::Suspend {
+                    pc,
+                    iterators: std::mem::take(iterators),
+                    handlers: std::mem::take(&mut handlers),
+                });
             }
             self.charge_step()?;
             let instruction = code
@@ -41,14 +113,23 @@ impl Vm {
                 .expect("compiler emits valid instruction boundaries");
             let operand = instruction.operand.unwrap_or(0) as usize;
             pc += instruction.opcode.width();
+            let throw_epoch_before = self.throw_epoch;
             let outcome: Result<Option<Completion>, RuntimeError> = (|| {
                 match instruction.opcode {
+                    Opcode::SetFunctionName => {
+                        let len = self.stack.len();
+                        let (key, function) =
+                            (self.stack[len - 2].clone(), self.stack[len - 1].clone());
+                        self.set_function_name_from_key(&function, &key, operand as u32)?;
+                    }
                     Opcode::DefineData
                     | Opcode::DefineAccessor
                     | Opcode::DefineMethod
                     | Opcode::DefineClassAccessor => {
                         let value = self.pop();
-                        let (receiver, key) = self.property_reference()?;
+                        let (receiver, key) = self.property_reference().expect(
+                            "literal definitions retain their new owner and an already converted property key",
+                        );
                         let object = receiver.object_id().unwrap();
                         if matches!(
                             instruction.opcode,
@@ -56,7 +137,7 @@ impl Vm {
                                 | Opcode::DefineAccessor
                                 | Opcode::DefineClassAccessor
                         ) {
-                            if let Value::Object(function) = value {
+                            if let Some(function) = value.object_id() {
                                 self.with_roots(|heap| heap.set_closure_home(function, object))?;
                             }
                         }
@@ -85,13 +166,15 @@ impl Vm {
                         self.stack.push(value);
                     }
                     Opcode::DefinePrivateField => {
-                        let (receiver, name) = self.property_reference()?;
-                        let Value::Object(owner) = receiver else {
-                            unreachable!("private class owner is an object")
-                        };
-                        let PropertyName::String(name) = name else {
-                            unreachable!("compiler emits string private names")
-                        };
+                        let (receiver, name) = self.property_reference().expect(
+                            "the compiler supplies a live class owner and a constant private name",
+                        );
+                        let owner = receiver
+                            .object_id()
+                            .expect("private class owner is an object");
+                        let name = name
+                            .into_string()
+                            .expect("compiler emits string private names");
                         self.with_roots(|heap| {
                             if operand != 0 {
                                 heap.add_private_brand(owner, owner)?;
@@ -101,34 +184,44 @@ impl Vm {
                     }
                     Opcode::DefinePrivateMethod | Opcode::DefinePrivateAccessor => {
                         let value = self.pop();
-                        let (receiver, name) = self.property_reference()?;
-                        let Value::Object(owner) = receiver else {
-                            unreachable!("private class owner is an object")
-                        };
-                        let PropertyName::String(name) = name else {
-                            unreachable!("compiler emits string private names")
-                        };
-                        if let Value::Object(function) = value {
-                            self.with_roots(|heap| heap.set_closure_home(function, owner))?;
-                        }
-                        if instruction.opcode == Opcode::DefinePrivateMethod {
-                            self.with_roots(|heap| {
+                        let (receiver, name) = self.property_reference().expect(
+                            "the compiler supplies a live class owner and a constant private name",
+                        );
+                        let owner = receiver
+                            .object_id()
+                            .expect("private class owner is an object");
+                        let name = name
+                            .into_string()
+                            .expect("compiler emits string private names");
+                        let function = value
+                            .object_id()
+                            .expect("private methods and accessors are functions");
+                        // Installing the static brand can collect between home
+                        // metadata and the private element's first heap edge.
+                        // Keep both popped operands live through every step,
+                        // and release them on either success or refusal.
+                        let base = self.stack.len();
+                        self.stack.extend([receiver, value.clone()]);
+                        let result = self.with_roots(|heap| {
+                            heap.set_closure_home(function, owner)?;
+                            if instruction.opcode == Opcode::DefinePrivateMethod {
                                 if operand != 0 {
                                     heap.add_private_brand(owner, owner)?;
                                 }
                                 heap.define_private_method(owner, name, value)
-                            })?;
-                        } else {
-                            self.with_roots(|heap| {
+                            } else {
                                 if operand & 2 != 0 {
                                     heap.add_private_brand(owner, owner)?;
                                 }
                                 heap.define_private_accessor(owner, name, value, operand & 1 != 0)
-                            })?;
-                        }
+                            }
+                        });
+                        self.stack.truncate(base);
+                        result?;
                     }
                     Opcode::DeleteProperty => {
-                        let (receiver, key) = self.property_reference()?;
+                        let (receiver, key) = self.property_reference()
+                            .expect("DeleteProperty consumes a compiler-prepared object-coercible base and canonical key");
                         let deleted = match receiver {
                             Value::Object(id) => self.object_delete(id, &key)?,
                             Value::String(s) => {
@@ -170,8 +263,9 @@ impl Vm {
                         let callee = self.stack[base].clone();
                         let receiver = self.stack[base + 1].clone();
                         let result = if instruction.opcode == Opcode::DirectEvalSpread
-                            && self.is_intrinsic_eval(&callee)?
-                        {
+                            && self.is_intrinsic_eval(&callee).expect(
+                                "intrinsic eval classification only reads the live callee tag",
+                            ) {
                             self.direct_eval(native::argument(&args, 0))?
                         } else {
                             self.call_native(callee, receiver, args, operand != 0)?
@@ -181,9 +275,10 @@ impl Vm {
                     }
                     Opcode::CallClassStaticBlock => {
                         let base = self.stack.len() - 2;
-                        let Value::Object(target) = self.stack[base].clone() else {
-                            unreachable!("class constructors are objects")
-                        };
+                        let target = self.stack[base]
+                            .clone()
+                            .object_id()
+                            .expect("class constructors are objects");
                         if let Value::Object(function) = self.stack[base + 1] {
                             self.with_roots(|heap| heap.set_closure_home(function, target))?;
                         }
@@ -195,46 +290,22 @@ impl Vm {
                         )?;
                         self.stack.truncate(base + 1);
                     }
-                    Opcode::DefineClassStaticField => {
-                        let base = self.stack.len() - 4;
-                        let target = self.stack[base + 1].clone();
-                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
-                        let initializer = self.stack[base + 3].clone();
-                        if let (Value::Object(target), Value::Object(function)) =
-                            (&target, &initializer)
-                        {
-                            self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
-                        }
-                        let value =
-                            self.call_native(initializer, target.clone(), Vec::new(), false)?;
-                        let Value::Object(target) = target else {
-                            unreachable!("class fields target the constructor")
-                        };
-                        if !self.with_roots(|heap| {
-                            heap.define_own_property(
-                                target,
-                                key,
-                                PropertyDescriptor::data(value, true, true, true),
-                            )
-                        })? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot define class field".into(),
-                            ));
-                        }
-                        self.stack.truncate(base + 1);
-                    }
                     Opcode::DefineInstanceField => {
                         // The receiver and value stay on the operand stack (and
                         // so rooted) until the definition has completed.
                         let base = self.stack.len() - 3;
                         let receiver = self.stack[base].clone();
-                        let key = self.coerce_property_key(&self.stack[base + 1].clone())?;
+                        let key = self
+                            .coerce_property_key(&self.stack[base + 1].clone())
+                            .expect(
+                                "class evaluation converted and retained the field's property key",
+                            );
                         let value = self.stack[base + 2].clone();
-                        let Value::Object(object) = receiver else {
-                            return Err(RuntimeError::TypeError(
-                                "class fields are defined on an object".into(),
-                            ));
-                        };
+                        // This private initializer is invoked only after
+                        // constructor dispatch has obtained its object result.
+                        let object = receiver
+                            .object_id()
+                            .expect("constructor dispatch supplies the class field receiver");
                         if !self.object_define_own_property(
                             object,
                             key,
@@ -246,54 +317,61 @@ impl Vm {
                         }
                         self.stack.truncate(base);
                     }
-                    Opcode::DefinePrivateStaticField => {
-                        let base = self.stack.len() - 4;
-                        let target = self.stack[base + 1].clone();
-                        let name = match self.stack[base + 2].clone() {
-                            Value::String(name) => name,
-                            _ => unreachable!("compiler emits a private-name string"),
-                        };
-                        let initializer = self.stack[base + 3].clone();
-                        if let (Value::Object(target), Value::Object(function)) =
-                            (&target, &initializer)
-                        {
-                            self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
-                        }
-                        let value =
-                            self.call_native(initializer, target.clone(), Vec::new(), false)?;
-                        let Value::Object(target) = target else {
-                            unreachable!("class fields target the constructor")
-                        };
-                        if !self.object_is_extensible(target)? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot add a private element to a non-extensible object".into(),
-                            ));
-                        }
-                        self.with_roots(|heap| heap.set_private_slot(target, target, name, value))?;
-                        self.stack.truncate(base + 1);
+                    Opcode::PrivateFieldAdd => {
+                        // The receiver, name and value stay rooted on the
+                        // operand stack until the field has been added.
+                        let base = self.stack.len() - 3;
+                        let receiver = self.stack[base].clone();
+                        let name = self.stack[base + 1]
+                            .as_string()
+                            .expect("compiler emits a string private name")
+                            .clone();
+                        let value = self.stack[base + 2].clone();
+                        let owner = self.private_element_owner(operand).expect("the compiler initializes the synthetic private owner before instance elements");
+                        self.private_field_add(&receiver, owner, name, value)?;
+                        self.stack.truncate(base);
                     }
                     Opcode::SetClassHome => self.set_class_home()?,
                     Opcode::SetClassHeritage => self.set_class_heritage()?,
+                    Opcode::SetClassFields => self.set_class_fields()?,
+                    Opcode::InitializeInstanceElements => {
+                        // `F, result`: run F's [[Fields]] against the value
+                        // super() constructed, then drop F beneath it.
+                        let base = self.stack.len() - 2;
+                        let (constructor, result) =
+                            (self.stack[base].clone(), self.stack[base + 1].clone());
+                        self.initialize_instance_elements(&constructor, &result)?;
+                        self.stack.remove(base);
+                    }
+                    Opcode::CreateMetadata => self.create_metadata()?,
+                    Opcode::DefineMetadata => self.define_metadata()?,
+                    Opcode::PushDecorator => self.push_decorator()?,
+                    Opcode::CallDecoratedStaticElement => self.call_decorated_static_element()?,
+                    Opcode::DecorateElement => self.decorate_element(operand as u32)?,
+                    Opcode::DecorateClass => self.decorate_class()?,
+                    Opcode::ReplaceClassElement => self
+                        .replace_class_element(operand as u32)
+                        .expect("decoration only reinstalls previously validated class elements"),
+                    Opcode::RunInitializers => self.run_initializers()?,
+                    Opcode::ApplyInitializers => self.apply_initializers()?,
                     Opcode::InitializePrivateBrand => {
-                        let owner = self
-                            .binding_value(operand)?
-                            .and_then(|value| value.object_id())
-                            .ok_or_else(|| {
-                                RuntimeError::TypeError(
-                                    "private elements are not available in this function".into(),
-                                )
-                            })?;
-                        let receiver = self.this.object_id().ok_or_else(|| {
-                            RuntimeError::TypeError(
-                                "private fields require an object receiver".into(),
-                            )
-                        })?;
-                        // PrivateMethodOrAccessorAdd / PrivateFieldAdd: an
-                        // object that is no longer extensible cannot gain a
-                        // private element (`nonextensible-applies-to-private`).
-                        if !self.heap.has_private_brand(receiver, owner)?
-                            && !self.object_is_extensible(receiver)?
-                        {
+                        let owner = self.private_element_owner(operand).expect("the compiler initializes the synthetic private owner before instance elements");
+                        let receiver = Self::private_element_receiver(self.pop()).expect(
+                            "instance initialization follows a successful object construction",
+                        );
+                        // PrivateMethodOrAccessorAdd: installing the same
+                        // methods twice (a constructor returning an already
+                        // initialized object) is a TypeError, and so is adding
+                        // one to an object that is no longer extensible
+                        // (`nonextensible-applies-to-private`).
+                        if self.heap.has_private_brand(receiver, owner).expect(
+                            "the private owner and receiver were resolved from live frame values",
+                        ) {
+                            return Err(RuntimeError::TypeError(
+                                "private methods are already installed on this object".into(),
+                            ));
+                        }
+                        if !self.object_is_extensible(receiver)? {
                             return Err(RuntimeError::TypeError(
                                 "cannot add a private element to a non-extensible object".into(),
                             ));
@@ -301,7 +379,7 @@ impl Vm {
                         self.with_roots(|heap| heap.add_private_brand(receiver, owner))?;
                     }
                     Opcode::PrivateGet | Opcode::PrivateGetMethod => {
-                        let (receiver, owner, name) = self.private_reference(operand)?;
+                        let (receiver, owner, name) = self.private_reference(operand).expect("the compiler emits a constant private name and a retained synthetic class owner");
                         let value = self.private_get(&receiver, owner, &name)?;
                         self.stack.push(value);
                         if instruction.opcode == Opcode::PrivateGetMethod {
@@ -310,64 +388,176 @@ impl Vm {
                     }
                     Opcode::PrivateSet => {
                         let value = self.pop();
-                        let (receiver, owner, name) = self.private_reference(operand)?;
+                        let (receiver, owner, name) = self.private_reference(operand).expect("the compiler emits a constant private name and a retained synthetic class owner");
                         self.private_set(&receiver, owner, name, value.clone())?;
                         self.stack.push(value);
                     }
+                    Opcode::PrivateSetLeaf => {
+                        let (receiver, owner, name) = self.private_reference(operand).expect("the compiler emits a constant private name and a retained synthetic class owner");
+                        let value = self
+                            .stack
+                            .last()
+                            .expect("the destructured value is on the stack")
+                            .clone();
+                        self.private_set(&receiver, owner, name, value)?;
+                    }
+                    Opcode::PrivatePostIncrement
+                    | Opcode::PrivatePreIncrement
+                    | Opcode::PrivatePostDecrement
+                    | Opcode::PrivatePreDecrement => {
+                        let (receiver, owner, name) = self.private_reference(operand).expect("the compiler emits a constant private name and a retained synthetic class owner");
+                        // The private Reference is evaluated once: PrivateGet
+                        // then PrivateSet on the same receiver and name.
+                        // Keep the receiver rooted across a getter or setter.
+                        self.stack.push(receiver.clone());
+                        let old_value = self.private_get(&receiver, owner, &name)?;
+                        let decrement = matches!(
+                            instruction.opcode,
+                            Opcode::PrivatePostDecrement | Opcode::PrivatePreDecrement
+                        );
+                        let (old, new) = self.numeric_step(&old_value, decrement)?;
+                        self.stack.push(new.clone());
+                        self.private_set(&receiver, owner, name, new.clone())?;
+                        self.stack.pop();
+                        self.stack.pop();
+                        let prefix = matches!(
+                            instruction.opcode,
+                            Opcode::PrivatePreIncrement | Opcode::PrivatePreDecrement
+                        );
+                        self.stack.push(if prefix { new } else { old });
+                    }
                     Opcode::PrivateIn => {
-                        let (receiver, owner, _name) = self.private_reference(operand)?;
+                        let (receiver, owner, _name) = self.private_reference(operand).expect("the compiler emits a constant private name and a retained synthetic class owner");
                         let object = receiver.object_id().ok_or_else(|| {
                             RuntimeError::TypeError("private brand checks require an object".into())
                         })?;
                         self.stack
-                            .push(Value::Bool(self.heap.has_private_brand(object, owner)?));
+                            .push(Value::Bool(self.heap.has_private_brand(object, owner).expect("the private owner and receiver were resolved from live frame values")));
+                    }
+                    Opcode::SuperBase => {
+                        let base = self.super_base()
+                            .expect("compiled super references have a retained ordinary class or literal home object; its prototype read cannot allocate");
+                        self.stack.push(base);
                     }
                     Opcode::SuperGet | Opcode::SuperGetMethod => {
-                        let key_value = self.pop();
-                        let key = self.coerce_property_key(&key_value)?;
-                        let value = self.super_get(&key)?;
+                        // The Reference operands stay on the stack (rooted)
+                        // until the property read, and any getter, is done.
+                        let base = self.stack.len() - 3;
+                        let (target, key_value, this) = (
+                            self.stack[base].clone(),
+                            self.stack[base + 1].clone(),
+                            self.stack[base + 2].clone(),
+                        );
+                        let value = self.super_get(&target, &key_value, &this)?;
                         self.check_string(&value)?;
+                        self.stack.truncate(base);
                         self.stack.push(value);
                         if instruction.opcode == Opcode::SuperGetMethod {
-                            self.stack.push(self.this.clone());
+                            self.stack.push(this);
                         }
                     }
                     Opcode::SuperSet => {
-                        let value = self.pop();
-                        let key_value = self.pop();
-                        let key = self.coerce_property_key(&key_value)?;
-                        self.super_set(&key, &value)?;
+                        // Operand 0: `base, key, value, this`; operand 1 (a
+                        // destructuring leaf): `value, base, key, this`.
+                        let base = self.stack.len() - 4;
+                        let (target, key_value, value) = if operand == 0 {
+                            (
+                                self.stack[base].clone(),
+                                self.stack[base + 1].clone(),
+                                self.stack[base + 2].clone(),
+                            )
+                        } else {
+                            (
+                                self.stack[base + 1].clone(),
+                                self.stack[base + 2].clone(),
+                                self.stack[base].clone(),
+                            )
+                        };
+                        let this = self.stack[base + 3].clone();
+                        self.super_set(&target, &key_value, &value, &this)?;
+                        self.stack.truncate(base);
                         self.stack.push(value);
                     }
                     Opcode::SuperUpdate => {
-                        let key_value = self.pop();
-                        let key = self.coerce_property_key(&key_value)?;
-                        let old_value = self.super_get(&key)?;
+                        let base = self.stack.len() - 3;
+                        let (target, key_value, this) = (
+                            self.stack[base].clone(),
+                            self.stack[base + 1].clone(),
+                            self.stack[base + 2].clone(),
+                        );
+                        // The compiler converted the key once already.
+                        let old_value = self.super_get(&target, &key_value, &this)?;
                         let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;
-                        self.super_set(&key, &new)?;
+                        self.stack.push(new.clone());
+                        self.super_set(&target, &key_value, &new, &this)?;
+                        self.stack.truncate(base);
                         self.stack.push(if operand & 2 == 0 { old } else { new });
                     }
+                    Opcode::DeleteSuperProperty => {
+                        return Err(RuntimeError::ReferenceError(
+                            "cannot delete a super property".into(),
+                        ));
+                    }
+                    Opcode::ThisBinding => {
+                        let this = self
+                            .binding_value(operand)
+                            .expect("the synthetic derived-this binding is a retained local cell")
+                            .ok_or_else(|| {
+                                RuntimeError::ReferenceError(
+                                    "this is uninitialized before super()".into(),
+                                )
+                            })?;
+                        self.stack.push(this);
+                    }
+                    Opcode::SuperConstructor => {
+                        let constructor = self.pop();
+                        let object = constructor
+                            .object_id()
+                            .expect("the derived constructor binding holds a function");
+                        let parent = self.object_get_prototype(object).expect(
+                            "the compiler's derived constructor is a retained ordinary closure",
+                        );
+                        self.stack.push(parent.map_or(Value::Null, Value::Object));
+                    }
                     Opcode::SuperCall | Opcode::SuperCallSpread | Opcode::SuperCallForward => {
-                        let args = if instruction.opcode == Opcode::SuperCall {
-                            let base = self.stack.len() - operand;
-                            let args = self.stack[base..].to_vec();
-                            self.stack.truncate(base);
-                            args
-                        } else if instruction.opcode == Opcode::SuperCallSpread {
-                            let arguments = self.pop();
-                            self.array_like_values(&arguments)?
-                        } else {
-                            self.arguments.clone()
+                        // `superCtor` sits below any arguments and stays
+                        // rooted on the stack through the construction.
+                        let (constructor_slot, args) = match instruction.opcode {
+                            Opcode::SuperCall => {
+                                let constructor_slot = self.stack.len() - operand - 1;
+                                (
+                                    constructor_slot,
+                                    self.stack[constructor_slot + 1..].to_vec(),
+                                )
+                            }
+                            Opcode::SuperCallSpread => {
+                                let arguments = self.stack[self.stack.len() - 1].clone();
+                                let constructor_slot = self.stack.len() - 2;
+                                (constructor_slot, self.array_like_values(&arguments)?)
+                            }
+                            _ => (self.stack.len() - 1, self.arguments.clone()),
                         };
-                        let value = self.super_call(args)?;
+                        let constructor = self.stack[constructor_slot].clone();
+                        let value = self.super_call(constructor, args)?;
+                        self.stack.truncate(constructor_slot);
                         self.stack.push(value);
                     }
-                    Opcode::EnterClassFieldInitializer => self.class_field_initializer_depth += 1,
-                    Opcode::LeaveClassFieldInitializer => {
-                        self.class_field_initializer_depth = self
-                            .class_field_initializer_depth
-                            .checked_sub(1)
-                            .expect("compiler balances class field initializers");
+                    Opcode::BindThisValue => {
+                        let value = self
+                            .stack
+                            .last()
+                            .expect("the constructed value is on the stack")
+                            .clone();
+                        if self
+                            .binding_value(operand)
+                            .expect("the synthetic derived-this binding is a retained local cell")
+                            .is_some()
+                        {
+                            return Err(RuntimeError::ReferenceError(
+                                "super() was already called".into(),
+                            ));
+                        }
+                        self.store_binding(operand, value)?;
                     }
                     Opcode::RegExpLiteral => {
                         let base = self.stack.len() - 2;
@@ -390,15 +580,14 @@ impl Vm {
                         iterators.push(iterator);
                     }
                     Opcode::IteratorNext => {
-                        let (record, argument) = if operand == 0 {
-                            (self.stack.last().unwrap().clone(), None)
-                        } else {
-                            let base = self.stack.len() - 2;
-                            let record = self.stack[base].clone();
-                            let argument = self.stack[base + 1].clone();
-                            self.stack.truncate(base + 1);
-                            (record, Some(argument))
-                        };
+                        // The synchronous yield* compiler is the only
+                        // producer: it always supplies the resumed argument.
+                        // AsyncIteratorNext also serves for-await and retains
+                        // its separate no-argument form.
+                        let base = self.stack.len() - 2;
+                        let record = self.stack[base].clone();
+                        let argument = Some(self.stack[base + 1].clone());
+                        self.stack.truncate(base + 1);
                         let result = self.iterator_next(&record, argument)?;
                         self.stack.push(result);
                     }
@@ -412,19 +601,23 @@ impl Vm {
                         let record = self.stack[base].clone();
                         let result = self.stack[base + 1].clone();
                         iterators.retain(|active| active != &record);
-                        let Value::Object(record_id) = record else {
-                            unreachable!("compiler only emits iterator records")
-                        };
+                        let record_id = record
+                            .object_id()
+                            .expect("compiler only emits iterator records");
                         if !matches!(result, Value::Object(_)) {
                             return Err(RuntimeError::TypeError(
                                 "iterator result must be an object".into(),
                             ));
                         }
                         let done = self.get_property(&result, &"done".into())?;
-                        if self.to_boolean(&done)? {
+                        if self.to_boolean(&done).expect(
+                            "the interpreter operand is live and ToBoolean does not run user code",
+                        ) {
                             let value = self.get_property(&result, &"value".into())?;
                             self.stack.truncate(base);
-                            self.with_roots(|heap| heap.set(record_id, "done", Value::Bool(true)))?;
+                            self.heap.set(record_id, "done", Value::Bool(true)).expect(
+                                "the private iterator record already owns its boolean done field",
+                            );
                             self.stack.push(value);
                             pc = operand;
                         } else {
@@ -441,9 +634,10 @@ impl Vm {
                     }
                     Opcode::ForInKeys => {
                         let source = self.stack.last().expect("for-in has a source").clone();
-                        let keys = self.for_in_keys(&source)?;
+                        let record = self.for_in_iterator(&source)?;
                         self.pop();
-                        self.stack.push(keys);
+                        self.stack.push(record.clone());
+                        iterators.push(record);
                     }
                     Opcode::IteratorStep => {
                         let record = self.stack.last().unwrap().clone();
@@ -491,9 +685,9 @@ impl Vm {
                         let record = self.stack[base].clone();
                         let result = self.stack[base + 1].clone();
                         iterators.retain(|active| active != &record);
-                        let Value::Object(record_id) = record else {
-                            unreachable!("compiler only emits iterator records")
-                        };
+                        let record_id = record
+                            .object_id()
+                            .expect("compiler only emits iterator records");
                         if !matches!(result, Value::Object(_)) {
                             return Err(RuntimeError::TypeError(
                                 "async iterator result must be an object".into(),
@@ -502,8 +696,12 @@ impl Vm {
                         let done = self.get_property(&result, &"done".into())?;
                         let value = self.get_property(&result, &"value".into())?;
                         self.stack.truncate(base);
-                        if self.to_boolean(&done)? {
-                            self.with_roots(|heap| heap.set(record_id, "done", Value::Bool(true)))?;
+                        if self.to_boolean(&done).expect(
+                            "the interpreter operand is live and ToBoolean does not run user code",
+                        ) {
+                            self.heap.set(record_id, "done", Value::Bool(true)).expect(
+                                "the private iterator record already owns its boolean done field",
+                            );
                             self.stack.push(value);
                             pc = operand;
                         } else {
@@ -539,7 +737,9 @@ impl Vm {
                         self.pop();
                     }
                     Opcode::CloseIteratorBinding => {
-                        if let Some(record) = self.binding_value(operand)? {
+                        if let Some(record) = self.binding_value(operand).expect(
+                            "the compiler's synthetic iterator slot is a retained local binding",
+                        ) {
                             // `return()` is user code and can allocate, so
                             // the record must be stack-rooted just as it is
                             // for the ordinary IteratorClose opcode.
@@ -560,11 +760,15 @@ impl Vm {
                     }
                     Opcode::IteratorFinish => {
                         let record = self.stack.last().unwrap().clone();
-                        let Value::Object(id) = record else {
-                            unreachable!("compiler only emits iterator records")
-                        };
-                        let done =
-                            matches!(self.heap.get_own(id, "done")?, Some(Value::Bool(true)));
+                        let id = record
+                            .object_id()
+                            .expect("compiler only emits iterator records");
+                        let done = matches!(
+                            self.heap.get_own(id, "done").expect(
+                                "the active iterator record is rooted by this execution frame"
+                            ),
+                            Some(Value::Bool(true))
+                        );
                         iterators.retain(|candidate| candidate != &record);
                         if !done {
                             self.iterator_close(&record)?;
@@ -610,7 +814,9 @@ impl Vm {
                         let base = self.stack.len() - 3;
                         let source = self.stack[base].clone();
                         let excluded = self.stack[base + 1].clone();
-                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        let key = self
+                            .coerce_property_key(&self.stack[base + 2].clone())
+                            .expect("the compiler converted the destructuring source key before resolving its target");
                         let value = self.get_property(&source, &key)?;
                         self.array_push(&excluded, &key.value(), 0)?;
                         self.stack.truncate(base);
@@ -626,7 +832,9 @@ impl Vm {
                         let base = self.stack.len() - 6;
                         let source = self.stack[base].clone();
                         let excluded = self.stack[base + 1].clone();
-                        let source_key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        let source_key = self
+                            .coerce_property_key(&self.stack[base + 2].clone())
+                            .expect("the compiler converted and duplicated the destructuring source key before resolving its target");
                         let object = self.stack[base + 4].clone();
                         let raw_target_key = self.stack[base + 5].clone();
                         let value = self.get_property(&source, &source_key)?;
@@ -645,9 +853,10 @@ impl Vm {
                     }
                     Opcode::CopyDataProperties => {
                         let base = self.stack.len() - 2;
-                        let Value::Object(target) = self.stack[base].clone() else {
-                            unreachable!("compiler creates an object literal target")
-                        };
+                        let target = self.stack[base]
+                            .clone()
+                            .object_id()
+                            .expect("compiler creates an object literal target");
                         let source = self.stack[base + 1].clone();
                         self.copy_data_properties(target, &source, &[])?;
                         self.pop();
@@ -656,6 +865,8 @@ impl Vm {
                         let child = code.functions[operand].clone();
                         let function_prototype = if child.generator && !child.async_function {
                             self.generator_function_prototype()?
+                        } else if child.generator {
+                            self.async_generator_function_prototype()?
                         } else if child.async_function {
                             self.async_function_prototype()?
                         } else {
@@ -684,6 +895,16 @@ impl Vm {
                             self.module_closure_referrers.insert(id, module.clone());
                         }
                         self.stack.push(Value::Object(id));
+                        if child.arrow && self.new_target != Value::Undefined {
+                            let new_target = self.new_target.clone();
+                            self.with_roots(|heap| heap.set_closure_new_target(id, new_target))?;
+                        }
+                        if child.with_depth != 0 {
+                            let with_objects = self.with_objects.clone();
+                            self.with_roots(|heap| {
+                                heap.set_closure_with_objects(id, with_objects)
+                            })?;
+                        }
                         // Arrow functions inherit their containing function's
                         // [[HomeObject]] together with lexical `this`.  Keeping
                         // the new closure on the operand stack first makes it a
@@ -692,28 +913,21 @@ impl Vm {
                             if let Some(home) = self.home_object {
                                 self.with_roots(|heap| heap.set_closure_home(id, home))?;
                             }
-                            // A derived constructor's arrow may invoke `super()`.
-                            // Store its resolved superclass on the arrow closure;
-                            // the call frame then treats that closure as the
-                            // lexical derived-constructor context.
-                            if let Some(constructor) = self.class_constructor {
-                                if let Some(base) = self.heap.class_base(constructor)? {
-                                    self.with_roots(|heap| heap.set_class_base(id, base))?;
-                                }
-                            }
                         }
+                        // OrdinaryFunctionCreate's SetFunctionLength precedes
+                        // SetFunctionName, so `length` is the first own key.
                         self.define_data(
                             id,
-                            "name",
-                            Value::String(child.function_name.clone().into()),
+                            "length",
+                            Value::Number(child.function_length as f64),
                             false,
                             false,
                             true,
                         )?;
                         self.define_data(
                             id,
-                            "length",
-                            Value::Number(child.function_length as f64),
+                            "name",
+                            Value::String(child.function_name.clone().into()),
                             false,
                             false,
                             true,
@@ -733,9 +947,12 @@ impl Vm {
                             // generator/async-generator prototype and remains
                             // replaceable by user code.
                             let base_prototype = if child.async_function {
-                                self.async_generator_prototype()?
+                                self.async_generator_prototype()
+                                    .expect("the function-side prototype retained its async generator prototype")
                             } else {
-                                self.generator_prototype()?
+                                self.generator_prototype().expect(
+                                    "the function-side prototype retained its generator prototype",
+                                )
                             };
                             let prototype =
                                 self.with_roots(|heap| heap.alloc_object(Some(base_prototype)))?;
@@ -770,15 +987,6 @@ impl Vm {
                         }
                     }
                     Opcode::This => {
-                        if self.this == Value::Undefined
-                            && self.class_constructor.is_some_and(|constructor| {
-                                self.heap.class_base(constructor).ok().flatten().is_some()
-                            })
-                        {
-                            return Err(RuntimeError::ReferenceError(
-                                "this is uninitialized before super()".into(),
-                            ));
-                        }
                         if self.this == Value::Undefined
                             && self.call_depth == 0
                             && !self.top_level_module
@@ -871,42 +1079,46 @@ impl Vm {
                             .expect("compiler balances with scopes");
                     }
                     Opcode::WithGet => {
-                        let Value::String(name) = &code.constants[operand] else {
-                            unreachable!("compiler emits a name")
-                        };
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let fallback = self
-                            .active_binding_slot(&name)
-                            .map(|slot| self.eval_aware_binding_value(slot, &name))
-                            .transpose()?;
+                        let fallback = self.with_binding_fallback(&name)?;
                         let value = self.with_get(&name, fallback)?;
                         self.stack.push(value);
                     }
-                    Opcode::WithGetOrUndefined => {
-                        let Value::String(name) = &code.constants[operand] else {
-                            unreachable!("compiler emits a name")
-                        };
+                    Opcode::WithGetMethod => {
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let fallback = self
-                            .active_binding_slot(&name)
-                            .map(|slot| self.eval_aware_binding_value(slot, &name))
-                            .transpose()?;
+                        let fallback = self.with_binding_fallback(&name)?;
+                        let (value, receiver) = self.with_get_method(&name, fallback)?;
+                        self.stack.push(value);
+                        self.stack.push(receiver);
+                    }
+                    Opcode::WithGetOrUndefined => {
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let fallback = self.with_binding_fallback(&name)?;
                         let value = self.with_get_or_undefined(&name, fallback)?;
                         self.stack.push(value);
                     }
                     Opcode::WithSet => {
-                        let Value::String(name) = &code.constants[operand] else {
-                            unreachable!("compiler emits a name")
-                        };
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
                         self.with_set(
                             &name.to_utf8().expect("compiler emits a UTF-8 identifier"),
                             self.stack.last().expect("assignment has a value").clone(),
                         )?;
                     }
                     Opcode::ResolveWithReference => {
-                        let Value::String(name) = &code.constants[operand] else {
-                            unreachable!("compiler emits a name")
-                        };
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
                         let mut object_reference = None;
                         for object in self.with_objects.clone().into_iter().rev() {
@@ -928,41 +1140,42 @@ impl Vm {
                             // consumed only by StoreWithReference.
                             self.stack.push(Value::Number(slot as f64));
                             self.stack.push(Value::Null);
+                        } else if self.dynamic_eval_bindings.contains_key(&name)
+                            || self
+                                .dynamic_eval_outer_bindings
+                                .iter()
+                                .rev()
+                                .any(|bindings| bindings.contains_key(&name))
+                        {
+                            self.stack.push(Value::Bool(false));
+                            self.stack.push(Value::String(name.into()));
                         } else {
-                            // `Undefined` tags an unresolvable reference and
-                            // preserves its source name for sloppy PutValue.
-                            self.stack.push(Value::Undefined);
+                            // Preserve the global Environment Record before
+                            // the RHS can create an eval binding of this name.
+                            // Declarative globals resolve even while in TDZ;
+                            // standard object globals must first materialize.
+                            let resolves = if self.global_bindings.contains_key(&name) {
+                                true
+                            } else {
+                                let global = self
+                                    .global("globalThis")?
+                                    .object_id()
+                                    .expect("globalThis is an object");
+                                self.materialize_lexical_global(global, &name)?;
+                                self.has_property(global, &name.as_str().into())?
+                            };
+                            self.stack.push(if resolves {
+                                Value::Bool(true)
+                            } else {
+                                Value::Undefined
+                            });
                             self.stack.push(Value::String(name.into()));
                         }
                     }
                     Opcode::LoadWithReference => {
                         let marker = self.pop();
                         let target = self.pop();
-                        let value = match (&target, &marker) {
-                            (Value::Object(object), Value::String(name)) => {
-                                self.get_property(&Value::Object(*object), &name.clone().into())?
-                            }
-                            (Value::Number(slot), Value::Null)
-                                if slot.is_finite()
-                                    && *slot >= 0.0
-                                    && slot.fract() == 0.0
-                                    && (*slot as usize) < code.bindings.len() =>
-                            {
-                                let slot = *slot as usize;
-                                self.eval_aware_binding_value(slot, &code.bindings[slot].name)?
-                                    .ok_or_else(|| {
-                                        RuntimeError::ReferenceError(
-                                            code.bindings[slot].name.clone(),
-                                        )
-                                    })?
-                            }
-                            (Value::Undefined, Value::String(name)) => {
-                                return Err(RuntimeError::ReferenceError(
-                                    name.to_utf8().expect("compiler emits a UTF-8 identifier"),
-                                ));
-                            }
-                            _ => unreachable!("compiler emits a valid with reference"),
-                        };
+                        let value = self.load_with_reference(code, &target, &marker)?;
                         // Preserve the original Reference for PutValue after
                         // the RHS has run. `get_property` may invoke a getter,
                         // so stack-resident values are the GC roots here.
@@ -974,50 +1187,36 @@ impl Vm {
                         let value = self.pop();
                         let marker = self.pop();
                         let target = self.pop();
-                        match (target, marker) {
-                            (Value::Object(object), Value::String(name)) => {
-                                self.set_property(&Value::Object(object), &name.into(), &value)?;
-                            }
-                            (Value::Number(slot), Value::Null)
-                                if slot.is_finite()
-                                    && slot >= 0.0
-                                    && slot.fract() == 0.0
-                                    && (slot as usize) < code.bindings.len() =>
-                            {
-                                let slot = slot as usize;
-                                let name = &code.bindings[slot].name;
-                                if !self.store_dynamic_eval_shadowing_binding(
-                                    slot,
-                                    name,
-                                    value.clone(),
-                                )? {
-                                    if self.binding_value(slot)?.is_none() {
-                                        return Err(RuntimeError::ReferenceError(name.clone()));
-                                    }
-                                    if binding_allows_assignment(&code.bindings[slot], code.strict)?
-                                    {
-                                        self.store_binding(slot, value.clone())?;
-                                    }
-                                }
-                            }
-                            (Value::Undefined, Value::String(name)) => {
-                                let name =
-                                    name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                                if !self.set_dynamic_eval_binding(&name, value.clone())?
-                                    && !self.set_global_binding(&name, value.clone())?
-                                {
-                                    let global = self.global("globalThis")?;
-                                    self.set_property(&global, &name.into(), &value)?;
-                                }
-                            }
-                            _ => unreachable!("compiler emits a valid with reference"),
-                        }
+                        self.store_with_reference(code, target, marker, &value)?;
                         self.stack.push(value);
                     }
+                    Opcode::EndParameterEvalScope => self.parameter_eval_env = None,
+                    Opcode::StoreResolvedWithReference => {
+                        let marker = self.pop();
+                        let target = self.pop();
+                        let value = self.pop();
+                        self.stack.push(value.clone());
+                        self.store_with_reference(code, target, marker, &value)?;
+                    }
+                    Opcode::UpdateWithReference => {
+                        // `name++` / `--name` on a Reference resolved before
+                        // the read: GetValue, ToNumeric, then PutValue on that
+                        // same Reference. Operand bit 0: decrement; bit 1:
+                        // prefix (the result is the new value, else the old).
+                        let marker = self.pop();
+                        let target = self.pop();
+                        self.stack.push(target.clone());
+                        self.stack.push(marker.clone());
+                        let current = self.load_with_reference(code, &target, &marker)?;
+                        let (old, new) = self.numeric_step(&current, operand & 1 != 0)?;
+                        self.store_with_reference(code, target, marker, &new)?;
+                        self.stack.truncate(self.stack.len() - 2);
+                        self.stack.push(if operand & 2 == 0 { old } else { new });
+                    }
                     Opcode::Global => {
-                        let Value::String(name) = &code.constants[operand] else {
-                            unreachable!()
-                        };
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
                         // A direct reference to a standard global resolves
                         // through the global object record.  `Vm::global`
@@ -1066,6 +1265,13 @@ impl Vm {
                             })?;
                         self.stack.push(value);
                     }
+                    Opcode::TypeofBinding => {
+                        let value = self
+                            .eval_aware_binding_value(operand, &code.bindings[operand].name)?
+                            .unwrap_or(Value::Undefined);
+                        self.stack
+                            .push(Value::String(self.typeof_value(&value).expect("the interpreter owns this live value and typeof cannot invoke JavaScript").into()));
+                    }
                     Opcode::ResolveBindingReference => {
                         let slot = operand;
                         let dynamic = self.cells.get(&slot).and_then(|cell| {
@@ -1081,14 +1287,21 @@ impl Vm {
                     Opcode::LoadBindingReference => {
                         let marker = self.pop();
                         let target = self.pop();
-                        let Value::Number(slot) = target else {
-                            panic!("compiler emits a binding reference: target={target:?}, marker={marker:?}")
-                        };
+                        let slot = target
+                            .as_number()
+                            .expect("compiler emits a binding reference");
                         let slot = slot as usize;
                         let value = match marker {
                             Value::Null => self.binding_value(slot)?,
-                            Value::Object(cell) => self.heap.get_own(cell, "value")?,
-                            _ => unreachable!("compiler emits a binding reference marker"),
+                            _ => self
+                                .heap
+                                .get_own(
+                                    marker
+                                        .object_id()
+                                        .expect("compiler emits a binding reference marker"),
+                                    "value",
+                                )
+                                .expect("the resolved dynamic reference retains its binding cell"),
                         }
                         .ok_or_else(|| {
                             RuntimeError::ReferenceError(code.bindings[slot].name.clone())
@@ -1101,22 +1314,14 @@ impl Vm {
                         let value = self.pop();
                         self.store_binding(operand, value)?;
                     }
-                    Opcode::StoreBinding => {
-                        // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the
-                        // immutable-binding assignment error, including const.
-                        let name = &code.bindings[operand].name;
+                    Opcode::StoreBinding | Opcode::StoreEvalVar => {
                         let value = self.stack.last().expect("store has a value").clone();
-                        if !self.store_dynamic_eval_shadowing_binding(operand, name, value)? {
-                            if self.binding_value(operand)?.is_none() {
-                                return Err(RuntimeError::ReferenceError(name.clone()));
-                            }
-                            if binding_allows_assignment(&code.bindings[operand], code.strict)? {
-                                self.store_binding(
-                                    operand,
-                                    self.stack.last().expect("store has a value").clone(),
-                                )?;
-                            }
-                        }
+                        self.assign_binding_slot(
+                            code,
+                            operand,
+                            value,
+                            instruction.opcode == Opcode::StoreEvalVar,
+                        )?;
                     }
                     Opcode::StoreBindingReference => {
                         let (target, marker, value, result) = if operand == 0 {
@@ -1135,23 +1340,33 @@ impl Vm {
                             self.stack.truncate(base);
                             (target, marker, value, result)
                         };
-                        let Value::Number(slot) = target else {
-                            unreachable!("compiler emits a binding reference")
-                        };
+                        let slot = target
+                            .as_number()
+                            .expect("compiler emits a binding reference");
                         let slot = slot as usize;
                         match marker {
                             Value::Null => {
-                                if self.binding_value(slot)?.is_none() {
-                                    return Err(RuntimeError::ReferenceError(
-                                        code.bindings[slot].name.clone(),
-                                    ));
-                                }
-                                if binding_allows_assignment(&code.bindings[slot], code.strict)? {
-                                    self.store_binding(slot, value.clone())?;
+                                if self.eval_var_deleted(slot) {
+                                    let name = &code.bindings[slot].name;
+                                    self.assign_unbound_name(name, value.clone(), code.strict)?;
+                                } else {
+                                    if self.binding_value(slot)?.is_none() {
+                                        return Err(RuntimeError::ReferenceError(
+                                            code.bindings[slot].name.clone(),
+                                        ));
+                                    }
+                                    if binding_allows_assignment(&code.bindings[slot], code.strict)?
+                                    {
+                                        self.store_binding(slot, value.clone())?;
+                                    }
                                 }
                             }
-                            Value::Object(cell) => self.store_global_cell(cell, value.clone())?,
-                            _ => unreachable!("compiler emits a binding reference marker"),
+                            _ => self.store_global_cell(
+                                marker
+                                    .object_id()
+                                    .expect("compiler emits a binding reference marker"),
+                                value.clone(),
+                            )?,
                         }
                         if operand != 0 {
                             // The compiler removes the new value first and
@@ -1163,32 +1378,62 @@ impl Vm {
                         }
                     }
                     Opcode::UnboundName | Opcode::TypeofName => {
-                        let Value::String(name) = &code.constants[operand] else {
-                            unreachable!("compiler emits a name")
-                        };
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        // As for `Global`: the realm global object must exist
+                        // before a lazily-materialized standard global can be
+                        // found on it.
+                        self.global("globalThis")?;
                         let value = self.lookup_global_name(&name)?;
                         if instruction.opcode == Opcode::TypeofName {
                             let value = value.unwrap_or(Value::Undefined);
                             self.stack
-                                .push(Value::String(self.typeof_value(&value)?.into()));
+                                .push(Value::String(self.typeof_value(&value).expect("the interpreter owns this live value and typeof cannot invoke JavaScript").into()));
                         } else {
                             self.stack
                                 .push(value.ok_or(RuntimeError::ReferenceError(name))?);
                         }
                     }
-                    Opcode::SetUnboundName => {
-                        let Value::String(name) = &code.constants[operand] else {
-                            unreachable!("compiler emits a name")
-                        };
+                    Opcode::ResolveUnboundName => {
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let value = self.stack.last().expect("assignment has a value").clone();
+                        let resolves = self.unbound_name_resolves(&name)?;
+                        self.stack.push(Value::Bool(resolves));
+                    }
+                    Opcode::SetUnboundName | Opcode::SetResolvedUnboundName => {
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        // Stack: [resolved flag,] value. The flag was computed
+                        // before the right-hand side ran.
+                        let value = self.stack.pop().expect("assignment has a value");
+                        let resolved = (instruction.opcode == Opcode::SetResolvedUnboundName)
+                            .then(|| self.stack.pop() == Some(Value::Bool(true)));
+                        self.stack.push(value.clone());
                         if !self.set_dynamic_eval_binding(&name, value.clone())?
                             && !self.set_global_binding(&name, value.clone())?
                         {
                             let global = self.global("globalThis")?;
                             let global_id = global.object_id().expect("globalThis is an object");
                             let key: PropertyName = name.as_str().into();
+                            // Standard globals (`NaN`, `undefined`, ...) are
+                            // created lazily; the name resolves once made.
+                            self.materialize_lexical_global(global_id, &name)?;
+                            let unresolvable = match resolved {
+                                Some(resolved) => !resolved,
+                                None => !self.has_property(global_id, &key)?,
+                            };
+                            if code.strict && unresolvable {
+                                return Err(RuntimeError::ReferenceError(name));
+                            }
+                            // A strict write to a binding that resolved but
+                            // has since disappeared is also a ReferenceError
+                            // (SetMutableBinding of the object record).
                             if code.strict && !self.has_property(global_id, &key)? {
                                 return Err(RuntimeError::ReferenceError(name));
                             }
@@ -1196,16 +1441,35 @@ impl Vm {
                         }
                     }
                     Opcode::DeleteUnboundName => {
-                        let Value::String(name) = &code.constants[operand] else {
-                            unreachable!("compiler emits a name")
-                        };
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let deleted = self.delete_dynamic_eval_binding(&name)?;
+                        let deleted = self.delete_unbound_name(&name)?;
                         self.stack.push(Value::Bool(deleted));
                     }
+                    Opcode::DeleteWithBinding => {
+                        let name = code.constants[operand]
+                            .as_string()
+                            .expect("compiler emits a name");
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let mut outcome = Value::Undefined;
+                        for object in self.with_objects.clone().into_iter().rev() {
+                            if self.with_has_binding(&object, &name)? {
+                                let id = object.object_id().expect("with objects are objects");
+                                outcome = Value::Bool(if self.is_parameter_eval_env(id) {
+                                    self.delete_eval_env_var(id, &name)
+                                        .expect("with resolution just validated its retained ordinary parameter-eval environment; deletion cannot allocate")
+                                } else {
+                                    self.object_delete(id, &name.as_str().into())?
+                                });
+                                break;
+                            }
+                        }
+                        self.stack.push(outcome);
+                    }
                     Opcode::DeleteDynamicBinding => {
-                        let name = &code.bindings[operand].name;
-                        let deleted = self.delete_dynamic_eval_binding(name)?;
+                        let deleted = self.delete_eval_var(operand)?;
                         self.stack.push(Value::Bool(deleted));
                     }
                     Opcode::EnterScope => {
@@ -1276,8 +1540,12 @@ impl Vm {
                     Opcode::BitAnd | Opcode::BitXor | Opcode::BitOr => {
                         self.bitwise(instruction.opcode)?
                     }
-                    Opcode::StrictEqual => self.binary(|_, a, b| Ok(Value::Bool(a == b)))?,
-                    Opcode::StrictNotEqual => self.binary(|_, a, b| Ok(Value::Bool(a != b)))?,
+                    Opcode::StrictEqual => self
+                        .binary(|_, a, b| Ok(Value::Bool(a == b)))
+                        .expect("strict equality only compares values and cannot fail"),
+                    Opcode::StrictNotEqual => self
+                        .binary(|_, a, b| Ok(Value::Bool(a != b)))
+                        .expect("strict inequality only compares values and cannot fail"),
                     Opcode::Equal => {
                         self.binary(|vm, a, b| vm.loose_equal(a, b).map(Value::Bool))?
                     }
@@ -1309,8 +1577,8 @@ impl Vm {
                                 primitive::Numeric::BigInt(value) => Value::BigInt(value),
                             },
                             Opcode::ToString => Value::String(self.coerce_string(&arg)?),
-                            Opcode::Not => Value::Bool(!self.to_boolean(&arg)?),
-                            _ => Value::String(self.typeof_value(&arg)?.into()),
+                            Opcode::Not => Value::Bool(!self.to_boolean(&arg).expect("the interpreter operand is live and ToBoolean does not run user code")),
+                            _ => Value::String(self.typeof_value(&arg).expect("the interpreter owns this live value and typeof cannot invoke JavaScript").into()),
                         };
                         self.check_string(&value)?;
                         self.pop();
@@ -1330,8 +1598,8 @@ impl Vm {
                     Opcode::JumpIfFalse | Opcode::JumpIfTrue | Opcode::JumpIfNotNullish => {
                         let arg = self.pop();
                         let take = match instruction.opcode {
-                            Opcode::JumpIfFalse => !self.to_boolean(&arg)?,
-                            Opcode::JumpIfTrue => self.to_boolean(&arg)?,
+                            Opcode::JumpIfFalse => !self.to_boolean(&arg).expect("the interpreter operand is live and ToBoolean does not run user code"),
+                            Opcode::JumpIfTrue => self.to_boolean(&arg).expect("the interpreter operand is live and ToBoolean does not run user code"),
                             _ => !matches!(arg, Value::Null | Value::Undefined),
                         };
                         if take {
@@ -1350,12 +1618,50 @@ impl Vm {
                         self.stack.push(Value::Object(id));
                     }
                     Opcode::GetProperty | Opcode::GetMethod => {
-                        let (receiver, key) = self.property_reference()?;
+                        let (receiver, key) = self.property_reference()
+                            .expect("property reads consume a prepared source reference or a retained class metadata object and literal key");
                         let value = self.get_property(&receiver, &key)?;
                         self.check_string(&value)?;
                         self.stack.push(value);
                         if instruction.opcode == Opcode::GetMethod {
                             self.stack.push(receiver);
+                        }
+                    }
+                    Opcode::TailCall => {
+                        let eval_candidate = operand & 1 != 0;
+                        let argument_count = operand >> 1;
+                        let base = self.stack.len() - argument_count - 2;
+                        let callee = self.stack[base].clone();
+                        if eval_candidate
+                            && self.is_intrinsic_eval(&callee).expect(
+                                "intrinsic eval classification only reads the live callee tag",
+                            )
+                        {
+                            // A direct eval runs in this frame's scope: not a
+                            // call that can replace it.
+                            let args = self.stack[base + 2..].to_vec();
+                            let result = self.direct_eval(native::argument(&args, 0))?;
+                            self.check_string(&result)?;
+                            self.stack.truncate(base);
+                            self.stack.push(result);
+                        } else if self.frame_can_be_replaced(code)
+                            && self
+                                .is_callable(&callee)
+                                .expect("the live callee capability check cannot invoke JavaScript")
+                        {
+                            let values = self.stack.split_off(base);
+                            return Ok(Some(Completion::TailCall(values)));
+                        } else {
+                            // The frame is a construct call (its result is
+                            // adjusted after it returns) or the callee is not
+                            // callable (a TypeError raised here, in this
+                            // frame): an ordinary call, then the `Return`
+                            // the compiler emitted after this instruction.
+                            let receiver = self.stack[base + 1].clone();
+                            let args = self.stack[base + 2..].to_vec();
+                            let result = self.call_native(callee, receiver, args, false)?;
+                            self.stack.truncate(base);
+                            self.stack.push(result);
                         }
                     }
                     Opcode::Call | Opcode::DirectEval | Opcode::Construct => {
@@ -1366,20 +1672,51 @@ impl Vm {
                         let receiver = self.stack[base + 1].clone();
                         let args = self.stack[base + 2..].to_vec();
                         let result = if instruction.opcode == Opcode::DirectEval
-                            && self.is_intrinsic_eval(&callee)?
-                        {
-                            self.direct_eval(native::argument(&args, 0))?
+                            && self.is_intrinsic_eval(&callee).expect(
+                                "intrinsic eval classification only reads the live callee tag",
+                            ) {
+                            let value = self.direct_eval(native::argument(&args, 0))?;
+                            self.check_string(&value)?;
+                            value
                         } else {
-                            self.call_native(
+                            let direct_debugger_call = if instruction.opcode == Opcode::Call
+                                && self.debugger_nested_pause_request.is_some()
+                            {
+                                match callee.object_id() {
+                                    Some(id) => self.heap.closure(id).expect("the debugger examines a live operand without invoking JavaScript").is_some(),
+                                    None => false,
+                                }
+                            } else {
+                                false
+                            };
+                            let previous = std::mem::replace(
+                                &mut self.debugger_nested_direct_call,
+                                direct_debugger_call,
+                            );
+                            let caller_generation = self
+                                .debugger_nested_pause_request
+                                .is_some()
+                                .then_some(code.debugger_program_generation)
+                                .flatten();
+                            let previous_caller_generation = std::mem::replace(
+                                &mut self.debugger_nested_direct_caller_generation,
+                                caller_generation,
+                            );
+                            let result = self.call_native(
                                 callee,
                                 receiver,
                                 args,
                                 instruction.opcode == Opcode::Construct,
-                            )?
+                            );
+                            self.debugger_nested_direct_call = previous;
+                            self.debugger_nested_direct_caller_generation =
+                                previous_caller_generation;
+                            result?
                         };
-                        self.check_string(&result)?;
-                        self.stack.truncate(base);
-                        self.stack.push(result);
+                        if self.debugger_nested_continuation.is_none() {
+                            self.stack.truncate(base);
+                            self.stack.push(result);
+                        }
                     }
                     Opcode::DiscardReference => {
                         let value = self.pop();
@@ -1405,7 +1742,8 @@ impl Vm {
                         let base = self.stack.len() - 3;
                         let value = self.stack[base].clone();
                         let object = self.stack[base + 1].clone();
-                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        let key = self.coerce_property_key(&self.stack[base + 2].clone())
+                            .expect("assign_pattern_target emitted PreparePropertyReference and retained its canonical key");
                         self.set_property(&object, &key, &value)?;
                         self.stack.truncate(base);
                         self.stack.push(value);
@@ -1422,7 +1760,8 @@ impl Vm {
                         self.stack.push(value);
                     }
                     Opcode::UpdateProperty => {
-                        let (object, key) = self.property_reference()?;
+                        let (object, key) = self.property_reference()
+                            .expect("UpdateProperty consumes a compiler-prepared object-coercible base and canonical key");
                         self.stack.push(object.clone());
                         let old_value = self.get_property(&object, &key)?;
                         let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;
@@ -1432,14 +1771,15 @@ impl Vm {
                     }
                     Opcode::SetLiteralPrototype => {
                         let value = self.pop();
-                        let Value::Object(object) = self.pop() else {
-                            unreachable!("literal receiver is an object")
-                        };
+                        let object = self
+                            .pop()
+                            .object_id()
+                            .expect("literal receiver is an object");
                         match value {
-                            Value::Object(prototype) => {
-                                self.heap.set_prototype(object, Some(prototype))?
-                            }
-                            Value::Null => self.heap.set_prototype(object, None)?,
+                            Value::Object(prototype) => self.heap.set_prototype(object, Some(prototype))
+                                .expect("an unpublished extensible object literal cannot occur in its live candidate prototype chain"),
+                            Value::Null => self.heap.set_prototype(object, None)
+                                .expect("the unpublished object literal is extensible"),
                             _ => {} // Literal __proto__ with a primitive value has no effect.
                         }
                     }
@@ -1447,6 +1787,7 @@ impl Vm {
                         self.completion = self.pop();
                         self.completion_empty = false;
                     }
+                    Opcode::SetStrictMode => self.strict = operand != 0,
                     Opcode::ClearCompletion => {
                         self.completion = Value::Undefined;
                         self.completion_empty = true;
@@ -1468,9 +1809,14 @@ impl Vm {
                             .pop()
                             .expect("compiler pops its active try handler");
                     }
-                    Opcode::SaveCompletion => self
-                        .completion_saves
-                        .push((self.completion.clone(), self.completion_empty)),
+                    Opcode::EnterFinalizer => {
+                        handlers
+                            .last_mut()
+                            .expect("compiler enters the finalizer of an active try handler")
+                            .state = HandlerState::Finally;
+                        self.completion_saves
+                            .push((self.completion.clone(), self.completion_empty));
+                    }
                     Opcode::ResumeCompletion => return Ok(Some(Completion::Resume(operand))),
                     Opcode::MarkDisposables => {
                         self.dispose_marks.push(self.disposables.len());
@@ -1483,8 +1829,7 @@ impl Vm {
                             DisposeHint::Async
                         };
                         let mut disposables = std::mem::take(&mut self.disposables);
-                        let result =
-                            self.add_disposable_resource(&mut disposables, value, hint, None);
+                        let result = self.add_disposable_resource(&mut disposables, value, hint);
                         self.disposables = disposables;
                         result?;
                     }
@@ -1494,18 +1839,21 @@ impl Vm {
                             .pop()
                             .expect("compiler matches every DisposeResources with a mark");
                         let resources = self.disposables.split_off(mark);
-                        // An abrupt entry leaves this handler's frame on the
-                        // runtime handler stack (in `Finally` state) until
-                        // `ResumeCompletion` runs after this opcode; a
-                        // normal-completion entry already popped it via
-                        // `PopHandler`; see `Opcode::DisposeResources`'s
-                        // definition.
-                        let prior = match handlers.last() {
-                            Some(frame) if frame.metadata == operand => frame
-                                .pending
-                                .map(|index| self.pending_completions[index].clone()),
-                            _ => None,
-                        };
+                        // The handler's frame stays on the runtime handler
+                        // stack (in `Finally` state) until `ResumeCompletion`
+                        // runs after this opcode; only an abrupt entry has a
+                        // pending completion; see
+                        // `Opcode::DisposeResources`'s definition.
+                        let frame = handlers
+                            .last()
+                            .expect("resource disposal is compiled inside its synthetic finalizer");
+                        assert_eq!(
+                            frame.metadata, operand,
+                            "the disposal operand identifies the active synthetic finalizer"
+                        );
+                        let prior = frame
+                            .pending
+                            .map(|index| self.pending_completions[index].clone());
                         let prior = match prior {
                             Some(Completion::Throw(error)) => Some(error),
                             _ => None,
@@ -1521,12 +1869,16 @@ impl Vm {
                         // See `Opcode::DisposeResources`'s own comment: same
                         // abrupt-vs-normal-entry distinction, same handler
                         // index trick.
-                        let prior = match handlers.last() {
-                            Some(frame) if frame.metadata == operand => frame
-                                .pending
-                                .map(|index| self.pending_completions[index].clone()),
-                            _ => None,
-                        };
+                        let frame = handlers
+                            .last()
+                            .expect("resource disposal is compiled inside its synthetic finalizer");
+                        assert_eq!(
+                            frame.metadata, operand,
+                            "the disposal operand identifies the active synthetic finalizer"
+                        );
+                        let prior = frame
+                            .pending
+                            .map(|index| self.pending_completions[index].clone());
                         let prior = match prior {
                             Some(Completion::Throw(error)) => Some(error),
                             _ => None,
@@ -1545,11 +1897,45 @@ impl Vm {
                 }
                 Ok(None)
             })();
+            let new_throw = match &outcome {
+                Ok(Some(Completion::Throw(error))) => error.is_catchable(),
+                Err(error) if error.is_catchable() => {
+                    self.throw_epoch == throw_epoch_before || self.pending_throw_site.is_none()
+                }
+                _ => false,
+            };
             let completion = match outcome {
                 Ok(completion) => completion,
                 Err(error) if error.is_catchable() => Some(Completion::Throw(error)),
                 Err(error) => return Err(error),
             };
+            if new_throw {
+                self.throw_epoch = self.throw_epoch.wrapping_add(1);
+                self.pending_throw_site = code
+                    .debugger_program_generation
+                    .zip(code.debugger_code_unit_ordinal)
+                    .zip(u32::try_from(instruction.offset).ok())
+                    .map(
+                        |((program_generation, code_unit_ordinal), bytecode_offset)| {
+                            VmDebuggerThrowSite {
+                                program_generation,
+                                code_unit_ordinal,
+                                bytecode_offset,
+                            }
+                        },
+                    );
+            }
+            if self.debugger_nested_continuation.is_some() {
+                debug_assert_eq!(instruction.opcode, Opcode::Call);
+                for handler in &mut handlers {
+                    handler.stack_depth -= handler_stack_base;
+                }
+                return Ok(InterpreterExit::Suspend {
+                    pc: instruction.offset,
+                    iterators: std::mem::take(iterators),
+                    handlers: std::mem::take(&mut handlers),
+                });
+            }
             if let Some(promise) = suspended_await.take() {
                 for handler in &mut handlers {
                     handler.stack_depth -= handler_stack_base;
@@ -1576,6 +1962,12 @@ impl Vm {
                     CompletionAction::Continue => {}
                     CompletionAction::Jump(target) => pc = target,
                     CompletionAction::Return(value) => return Ok(InterpreterExit::Return(value)),
+                    CompletionAction::TailCall(values) => {
+                        // The frame ends here; `call_with_target` runs the
+                        // callee at this frame's depth once it is torn down.
+                        self.pending_tail_call = Some(values);
+                        return Ok(InterpreterExit::Return(Value::Undefined));
+                    }
                     CompletionAction::TailRecur(args) => {
                         self.stack.truncate(stack_base);
                         self.unwind_scopes(code, 0);
@@ -1593,6 +1985,7 @@ impl Vm {
                     CompletionAction::Throw(error) => return Err(error),
                 }
             }
+            executed_root_instruction = true;
         }
     }
 }

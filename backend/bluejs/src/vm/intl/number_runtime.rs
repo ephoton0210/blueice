@@ -49,7 +49,8 @@ impl Vm {
             ));
         };
         self.heap
-            .number_format(id)?
+            .number_format(id)
+            .expect("the fallback getter returned a live local value or membrane facade")
             .is_some()
             .then_some(id)
             .ok_or_else(|| RuntimeError::TypeError("receiver is not an Intl.NumberFormat".into()))
@@ -63,8 +64,11 @@ impl Vm {
         if let Some(function) = self.heap.number_format_format(id) {
             return Ok(Value::Object(function));
         }
-        let constructor = self.string_intrinsics()?.0;
-        let prototype = self.heap.prototype(constructor)?.unwrap();
+        // The receiver is a NumberFormat, which only the `Intl` global builds
+        // and only after the string intrinsics exist.
+        let prototype = self
+            .function_prototype()
+            .expect("a NumberFormat exists, so the string intrinsics do");
         let target = self.with_roots(|heap| {
             heap.alloc_native_function(NativeFunction::NumberFormatFormat, "", prototype)
         })?;
@@ -98,7 +102,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let data = self.number_format_data(receiver)?;
         let parts = self.number_format_parts(&data, value)?;
-        self.number_format_parts_to_value(Ok(parts))
+        self.number_format_parts_to_value(parts)
     }
 
     pub(in super::super) fn number_format_format(
@@ -123,7 +127,14 @@ impl Vm {
         value: &Value,
     ) -> Result<Vec<blueice_ecma402::NumberFormatPart>, RuntimeError> {
         data.format_input_to_parts(self.number_format_input(value)?)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+            .map_err(Self::number_format_error)
+    }
+
+    /// The RangeError for a value or range the formatter cannot format.
+    pub(in super::super) fn number_format_error(
+        error: blueice_ecma402::NumberFormatError,
+    ) -> RuntimeError {
+        RuntimeError::RangeError(error.to_string())
     }
 
     pub(in super::super) fn number_format_input(
@@ -134,7 +145,9 @@ impl Vm {
         let value = match value {
             Value::BigInt(value) => NumberFormatValue::Decimal(value.to_string()),
             Value::String(value) => {
-                let number = crate::primitive::number(&Value::String(value.clone()))?;
+                // A string always converts to a Number (`NaN` when malformed).
+                let number = crate::primitive::number(&Value::String(value.clone()))
+                    .expect("a string converts to a Number");
                 match value.to_utf8() {
                     Ok(value) => exact_decimal_intl_mathematical_value(&value)
                         .unwrap_or(NumberFormatValue::Number(number)),
@@ -192,7 +205,7 @@ impl Vm {
         let (start, end) = self.number_format_range_values(start, end)?;
         data.format_range_inputs(start, end)
             .map(|formatted| Value::String(formatted.into()))
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+            .map_err(Self::number_format_error)
     }
 
     pub(in super::super) fn number_format_format_range_to_parts(
@@ -205,15 +218,14 @@ impl Vm {
         let (start, end) = self.number_format_range_values(start, end)?;
         let parts = data
             .format_range_inputs_to_parts(start, end)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+            .map_err(Self::number_format_error)?;
         self.number_format_range_parts_to_value(parts)
     }
 
     pub(in super::super) fn number_format_parts_to_value(
         &mut self,
-        parts: Result<Vec<blueice_ecma402::NumberFormatPart>, blueice_ecma402::NumberFormatError>,
+        parts: Vec<blueice_ecma402::NumberFormatPart>,
     ) -> Result<Value, RuntimeError> {
-        let parts = parts.map_err(|error| RuntimeError::RangeError(error.to_string()))?;
         let prototype = self.object_prototype;
         let base = self.stack.len();
         let result = (|| {
@@ -314,7 +326,8 @@ impl Vm {
         let id = self.unwrap_number_format(receiver)?;
         let data = self
             .heap
-            .number_format(id)?
+            .number_format(id)
+            .expect("UnwrapNumberFormat validated this live heap handle")
             .expect("UnwrapNumberFormat returns a branded object");
         let resolved = data.resolved_options();
         let prototype = self.object_prototype;
@@ -505,5 +518,47 @@ impl Vm {
             self.define_data(result, key, value, true, true, true)?;
         }
         Ok(Value::Object(result))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_bound_format_function_requires_a_number_format_receiver() {
+        // The bound `format` function always carries its branded NumberFormat,
+        // so a foreign receiver can only come from a direct native call.
+        let mut vm = Vm::default();
+        let pair = vm
+            .execute(
+                &crate::compile(
+                    &crate::parse(
+                        "[new Intl.NumberFormat('en'), { valueOf() { throw 'value'; } }]",
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+            .object_id()
+            .unwrap();
+        vm.stack.push(Value::Object(pair));
+        let format = vm.heap().get(pair, "0").unwrap();
+        let throwing = vm.heap().get(pair, "1").unwrap();
+        assert_eq!(
+            vm.number_format_format(&format, &Value::Number(1234.5)),
+            Ok(Value::String("1,234.5".into()))
+        );
+        assert_eq!(
+            vm.number_format_format(&format, &throwing),
+            Err(RuntimeError::Thrown(Value::String("value".into())))
+        );
+        assert_eq!(
+            vm.number_format_format(&Value::Undefined, &Value::Number(1.0)),
+            Err(RuntimeError::TypeError(
+                "receiver is not an Intl.NumberFormat".into()
+            ))
+        );
     }
 }

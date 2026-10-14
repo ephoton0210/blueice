@@ -627,6 +627,23 @@ mod tests {
         let wide = (1_i128 << 60) + 1;
         assert_eq!(exact_ratio_to_f64(wide, 1), wide as f64);
         assert_eq!(exact_ratio_to_f64(2 * wide + 1, 2), (wide as f64) + 0.5);
+        // At this magnitude adjacent doubles differ by one. Exact half-way
+        // quotients must select the even neighbor on either side.
+        assert_eq!(exact_ratio_to_f64((1_i128 << 53) + 1, 2), 2_f64.powi(52));
+        assert_eq!(
+            exact_ratio_to_f64((1_i128 << 53) + 3, 2),
+            2_f64.powi(52) + 2.0
+        );
+        // Below, exactly at, and above the halfway point once the quotient
+        // is wider than a mantissa: only an exact tie with an odd mantissa
+        // rounds up.
+        let two_pow_53 = 1_i128 << 53;
+        assert_eq!(exact_ratio_to_f64((1 << 54) + 1, 1), (1_u64 << 54) as f64);
+        assert_eq!(exact_ratio_to_f64(two_pow_53 + 1, 1), two_pow_53 as f64);
+        assert_eq!(
+            exact_ratio_to_f64(two_pow_53 + 3, 1),
+            (two_pow_53 + 4) as f64
+        );
     }
 
     #[test]

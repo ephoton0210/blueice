@@ -4,9 +4,9 @@
 
 use super::*;
 
-/// The `(key, computed, value)` of a lowered public instance field
-/// (`this[key] = value`, see `class_instance_field`); a private field stays a
-/// private-name store and any other statement is not a field definition.
+/// The `(key, computed, value)` of a lowered public class field
+/// (`this[key] = value`, see `class_field_definition`); a private field stays
+/// a private-name store and any other statement is not a field definition.
 fn public_field_definition(statement: &Stmt) -> Option<(&Expr, bool, &Expr)> {
     let Stmt::Expr(Expr::Assign {
         op: AssignOp::Assign,
@@ -43,6 +43,104 @@ fn is_function_declaration(statement: &Stmt) -> bool {
 }
 
 impl Compiler {
+    /// Emits the value of decorated field: `value` on the stack becomes the
+    /// value after every initializer function the decorators returned (in
+    /// `record[1]`) has been applied with `this` the instance.
+    fn apply_field_initializers(&mut self, record: u32) -> Result<(), CompileError> {
+        self.emit_this()?;
+        self.class_decoration_record_element(record, 1)?;
+        self.emit(Opcode::ApplyInitializers, 0)?;
+        Ok(())
+    }
+
+    /// Pushes `record[index]` of the decoration record in the given slot.
+    pub(super) fn class_decoration_record_element(
+        &mut self,
+        record: u32,
+        index: usize,
+    ) -> Result<(), CompileError> {
+        self.emit(Opcode::GetBinding, record)?;
+        self.constant(Value::String(index.to_string().into()))?;
+        self.emit(Opcode::GetProperty, 0)?;
+        Ok(())
+    }
+
+    /// Runs the extra initializers of `record[0]` with `this`.
+    fn run_extra_initializers(&mut self, record: u32) -> Result<(), CompileError> {
+        self.emit_this()?;
+        self.class_decoration_record_element(record, 0)?;
+        self.emit(Opcode::RunInitializers, 0)?;
+        Ok(())
+    }
+
+    /// DefineField for one lowered class field (see `class_field_definition`),
+    /// running inside the function that initializes it with the receiver as
+    /// `this`. A public field is created with CreateDataPropertyOrThrow,
+    /// never with [[Set]] -- it shadows an inherited setter and reaches
+    /// [[DefineOwnProperty]] (a Proxy trap, a deferred namespace, ...) -- and
+    /// a private one with PrivateFieldAdd. An anonymous function definition
+    /// initializer is named after the field.
+    /// A decorated field (`record`, the slot of its decoration record) also
+    /// threads its initial value through the initializer functions the
+    /// decorators returned first, and runs the extra initializers they added
+    /// right after the definition.
+    fn class_field(&mut self, statement: &Stmt, record: Option<u32>) -> Result<(), CompileError> {
+        if let Some((key, computed, value)) = public_field_definition(statement) {
+            self.emit_this()?;
+            match (key, computed) {
+                (Expr::Identifier(name), false) => {
+                    self.constant(Value::String(name.as_str().into()))?
+                }
+                (key, _) => self.expression(key)?,
+            }
+            let literal_name = match (key, computed) {
+                (Expr::Identifier(name), false) => Some(name.clone()),
+                (Expr::String(name), true) => name.to_utf8().ok(),
+                (Expr::Number(number), true) => crate::primitive::string(&Value::Number(*number))
+                    .ok()
+                    .and_then(|text| text.to_utf8().ok()),
+                _ => None,
+            };
+            if !is_anonymous_function_definition(value) {
+                self.expression(value)?;
+            } else if let Some(name) = literal_name {
+                self.expression_with_name(value, Some(&name))?;
+            } else {
+                // A computed key is only known when the field is defined.
+                self.expression(value)?;
+                self.emit(Opcode::SetFunctionName, 0)?;
+            }
+            if let Some(record) = record {
+                self.apply_field_initializers(record)?;
+            }
+            self.emit(Opcode::DefineInstanceField, 0)?;
+            if let Some(record) = record {
+                self.run_extra_initializers(record)?;
+            }
+            return Ok(());
+        }
+        let Stmt::Expr(Expr::Assign { target, value, .. }) = statement else {
+            return Err(CompileError::InvalidSyntax("invalid class field AST"));
+        };
+        let (object, name) = private_member_parts(target)
+            .ok_or(CompileError::InvalidSyntax("invalid class field AST"))?;
+        let owner = self.private_member_reference(object, name)?;
+        if name.starts_with('\0') {
+            // An auto-accessor's hidden storage has no name to give a function.
+            self.expression(value)?;
+        } else {
+            self.expression_with_name(value, Some(&format!("#{name}")))?;
+        }
+        if let Some(record) = record {
+            self.apply_field_initializers(record)?;
+        }
+        self.emit(Opcode::PrivateFieldAdd, owner)?;
+        if let Some(record) = record {
+            self.run_extra_initializers(record)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         self.function_declarations(statements)?;
         self.statements_after_function_declarations(statements)
@@ -71,7 +169,7 @@ impl Compiler {
             return self.statements_after_function_declarations(statements);
         }
         let is_async = has_await_using_declaration(statements);
-        self.wrap_with_disposal(is_async, |this| {
+        self.wrap_with_disposal(is_async, &mut |this| {
             this.statements_after_function_declarations(statements)
         })
     }
@@ -90,16 +188,16 @@ impl Compiler {
     pub(super) fn wrap_with_disposal(
         &mut self,
         is_async: bool,
-        compile_body: impl FnOnce(&mut Self) -> Result<(), CompileError>,
+        compile_body: &mut dyn FnMut(&mut Self) -> Result<(), CompileError>,
     ) -> Result<(), CompileError> {
-        let handler_index = u32::try_from(self.bytecode.handlers.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let handler_index = self.metadata_index(self.bytecode.handlers.len())?;
         self.bytecode.handlers.push(Handler {
             try_start: 0,
             try_end: 0,
             catch: None,
             catch_end: None,
             finally: None,
+            finally_end: None,
         });
         self.emit(Opcode::PushHandler, handler_index)?;
         self.emit(Opcode::MarkDisposables, 0)?;
@@ -108,13 +206,16 @@ impl Compiler {
         // statement list's own, and disposal returns that completion
         // unchanged (`DisposeResources`). Clearing would turn `4; {using x =
         // null;}` into `undefined` instead of `4`.
-        self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
-        compile_body(self)?;
-        self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
-        self.emit(Opcode::PopHandler, 0)?;
-        self.emit(Opcode::SaveCompletion, 0)?;
+        self.bytecode.handlers[handler_index as usize].try_start = self.offset();
+        // Disposal runs after the block's return value is computed.
+        self.tail_call_blockers += 1;
+        let body = compile_body(self);
+        self.tail_call_blockers -= 1;
+        body?;
+        self.bytecode.handlers[handler_index as usize].try_end = self.offset();
+        self.emit(Opcode::EnterFinalizer, 0)?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
-        let finally_start = self.offset()?;
+        let finally_start = self.offset();
         self.bytecode.handlers[handler_index as usize].finally = Some(finally_start);
         if is_async {
             self.compile_async_dispose_finally(handler_index)?;
@@ -122,6 +223,7 @@ impl Compiler {
             self.emit(Opcode::DisposeResources, handler_index)?;
         }
         self.emit(Opcode::ResumeCompletion, handler_index)?;
+        self.bytecode.handlers[handler_index as usize].finally_end = Some(self.offset());
         self.patch(normal_exit, finally_start);
         Ok(())
     }
@@ -151,7 +253,7 @@ impl Compiler {
     ///             let *result* = *entry*[2]
     ///                 ? *entry*[1].call(*entry*[0], *entry*[3])
     ///                 : *entry*[1].call(*entry*[0]);
-    ///             if (*entry*[4]) { await *result*; }
+    ///             if (*entry*[4]) { await (*entry*[5] ? undefined : *result*); }
     ///         } else if (*entry*[4]) {
     ///             await undefined;
     ///         }
@@ -266,7 +368,11 @@ impl Compiler {
                 ),
                 Stmt::If {
                     test: is_async_test.clone(),
-                    consequent: Box::new(await_stmt(ident("*result*"))),
+                    consequent: Box::new(await_stmt(Expr::Conditional {
+                        test: Box::new(index("*entry*", 5.0)),
+                        consequent: Box::new(ident("undefined")),
+                        alternate: Box::new(ident("*result*")),
+                    })),
                     alternate: None,
                 },
             ])),
@@ -366,14 +472,24 @@ impl Compiler {
         &mut self,
         statements: &[Stmt],
         offsets: &mut [Option<u32>],
+        ranges: &mut [Option<(u32, u32)>],
+        child_indices: &mut [Option<u32>],
     ) -> Result<(), CompileError> {
         debug_assert_eq!(statements.len(), offsets.len());
+        debug_assert_eq!(statements.len(), ranges.len());
+        debug_assert_eq!(statements.len(), child_indices.len());
         for (index, statement) in statements.iter().enumerate() {
             if !is_function_declaration(statement) {
                 continue;
             }
-            offsets[index] = Some(self.offset()?);
+            let start = self.offset();
+            let child_index = self.metadata_index(self.bytecode.functions.len())?;
             self.function_declaration(statement)?;
+            // A successful declaration emits its closure and adds exactly one
+            // direct child. The metadata cap above makes its index a u32.
+            offsets[index] = Some(start);
+            ranges[index] = Some((start, self.offset()));
+            child_indices[index] = Some(child_index);
         }
         Ok(())
     }
@@ -398,22 +514,40 @@ impl Compiler {
         } else {
             self.function(function, false)?;
         }
-        let slot = self.resolve(binding_name).unwrap();
+        let Some(slot) = self.resolve(binding_name) else {
+            // A sloppy direct eval re-declaring a function that an earlier eval
+            // in the same function created: the binding is dynamic, so the new
+            // function object replaces its value.
+            let index = self.name_constant(binding_name)?;
+            self.emit(Opcode::SetUnboundName, index)?;
+            self.emit(Opcode::Pop, 0)?;
+            return Ok(());
+        };
         if self.bytecode.bindings[slot as usize].lexical {
             self.emit(Opcode::InitializeBinding, slot)?;
         } else {
             self.emit(Opcode::StoreBinding, slot)?;
             self.emit(Opcode::Pop, 0)?;
         }
-        // Annex B.3.2/B.3.3 only supplies the legacy outer var for
-        // ordinary functions. Generator and async declarations stay
-        // exclusively lexical even in sloppy code.
-        if matches!(statement, Stmt::FunctionDecl(_)) && is_annex_b_function(function) {
-            if let Some(outer) = self.annex_b_outer_var_slot(slot) {
-                self.emit(Opcode::GetBinding, slot)?;
-                self.emit(Opcode::StoreBinding, outer)?;
-                self.emit(Opcode::Pop, 0)?;
-            }
+        Ok(())
+    }
+
+    /// Annex B.3.2/B.3.3: evaluating a block-level function declaration
+    /// copies the block's function value to the legacy outer var, at the
+    /// place the declaration stands (the block binding itself is initialized
+    /// when the block is entered). Only ordinary functions have the outer var;
+    /// generator and async declarations stay exclusively lexical.
+    fn annex_b_outer_var_assignment(&mut self, function: &Function) -> Result<(), CompileError> {
+        if !is_annex_b_function(function) {
+            return Ok(());
+        }
+        let Some(slot) = function.name.as_ref().and_then(|name| self.resolve(name)) else {
+            return Ok(());
+        };
+        if let Some(outer) = self.annex_b_outer_var_slot(slot) {
+            self.emit(Opcode::GetBinding, slot)?;
+            self.emit(Opcode::StoreBinding, outer)?;
+            self.emit(Opcode::Pop, 0)?;
         }
         Ok(())
     }
@@ -436,16 +570,19 @@ impl Compiler {
         &mut self,
         statements: &[Stmt],
         offsets: &mut [Option<u32>],
+        ranges: &mut [Option<(u32, u32)>],
     ) -> Result<(), CompileError> {
         debug_assert_eq!(statements.len(), offsets.len());
+        debug_assert_eq!(statements.len(), ranges.len());
         for (index, statement) in statements.iter().enumerate() {
             if is_function_declaration(statement) {
                 continue;
             }
-            let start = self.offset()?;
+            let start = self.offset();
             self.statement(statement, true)?;
-            if self.offset()? > start {
+            if self.offset() > start {
                 offsets[index] = Some(start);
+                ranges[index] = Some((start, self.offset()));
             }
         }
         Ok(())
@@ -499,6 +636,9 @@ impl Compiler {
                 }
                 self.expression(object)?;
                 self.emit(Opcode::EnterWith, 0)?;
+                // UpdateEmpty(stmtResult, undefined): an empty body leaves
+                // `undefined`, not the previous statement's value.
+                self.emit(Opcode::ClearCompletion, 0)?;
                 self.with_depth += 1;
                 self.with_scope_depths.push(self.names.len());
                 let result = self.statement(body, false);
@@ -509,39 +649,39 @@ impl Compiler {
                 result?;
                 self.emit(Opcode::LeaveWith, 0)?;
             }
-            Stmt::FunctionDecl(_) | Stmt::ModuleDefaultFunction { .. } => {}
+            Stmt::FunctionDecl(function) => self.annex_b_outer_var_assignment(function)?,
+            Stmt::ModuleDefaultFunction { .. } => {}
             Stmt::ClassDecl(class) => {
+                // The declaration's own binding is initialized once the whole
+                // class has been evaluated; the class body sees the separate
+                // immutable inner binding `class_expression` creates.
                 let slot = self
                     .resolve(class.name.as_deref().expect("class declaration has a name"))
                     .unwrap();
-                self.class_expression_with_binding(class, None, Some(slot))?;
+                self.class_expression(class, None)?;
+                self.emit(Opcode::InitializeBinding, slot)?;
             }
-            Stmt::ClassField(statement) => {
-                self.emit(Opcode::EnterClassFieldInitializer, 0)?;
-                match public_field_definition(statement) {
-                    // DefineField: a public instance field is created with
-                    // CreateDataPropertyOrThrow, never with [[Set]] -- it
-                    // shadows an inherited setter and reaches [[DefineOwnProperty]]
-                    // (a Proxy trap, a deferred namespace, ...).
-                    Some((key, computed, value)) => {
-                        self.expression(&Expr::This)?;
-                        match (key, computed) {
-                            (Expr::Identifier(name), false) => {
-                                self.constant(Value::String(name.as_str().into()))?
-                            }
-                            (key, _) => self.expression(key)?,
-                        }
-                        self.expression(value)?;
-                        self.emit(Opcode::DefineInstanceField, 0)?;
-                    }
-                    None => self.statement(statement, declarations_allowed)?,
-                }
-                self.emit(Opcode::LeaveClassFieldInitializer, 0)?;
+            Stmt::ClassField(statement) => self.class_field(statement, None)?,
+            Stmt::ClassDecoratedField { field, record } => {
+                let slot = self.resolve(record).ok_or(CompileError::InvalidSyntax(
+                    "decoration record binding is not available in this function",
+                ))?;
+                let Stmt::ClassField(field) = &**field else {
+                    return Err(CompileError::InvalidSyntax("invalid decorated field AST"));
+                };
+                self.class_field(field, Some(slot))?;
+            }
+            Stmt::ClassExtraInitializers(record) => {
+                let slot = self.resolve(record).ok_or(CompileError::InvalidSyntax(
+                    "decoration record binding is not available in this function",
+                ))?;
+                self.run_extra_initializers(slot)?;
             }
             Stmt::ClassPrivateBrand(binding) => {
                 let slot = self.resolve(binding).ok_or(CompileError::InvalidSyntax(
                     "private brand binding is not available in this function",
                 ))?;
+                self.emit_this()?;
                 self.emit(Opcode::InitializePrivateBrand, slot)?;
             }
             Stmt::Expr(Expr::Class(class)) => {
@@ -556,47 +696,26 @@ impl Compiler {
                 if !self.function {
                     return Err(CompileError::InvalidSyntax("return requires a function"));
                 }
-                if let Some(args) = value
-                    .as_ref()
-                    .and_then(|value| self.self_tail_call_args(value))
-                {
-                    for argument in args {
-                        let Argument::Normal(value) = argument else {
-                            unreachable!("self tail calls exclude spread arguments")
-                        };
-                        self.expression(value)?;
+                if let Some(value) = value.as_ref().filter(|_| self.bytecode.strict) {
+                    if self.tail_position_return(value)? {
+                        return Ok(());
                     }
-                    let iterators: Vec<_> = self
-                        .loops
-                        .iter()
-                        .rev()
-                        .filter_map(|context| context.iterator)
-                        .collect();
-                    for iterator in iterators {
-                        self.emit(Opcode::GetBinding, iterator)?;
-                        self.emit(Opcode::IteratorClose, 0)?;
-                    }
-                    self.emit(
-                        Opcode::TailRecur,
-                        u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
-                    )?;
-                    return Ok(());
                 }
                 if let Some(value) = value {
                     self.expression(value)?;
+                    if self.bytecode.generator && self.bytecode.async_function {
+                        // In an async generator `return value` awaits `value`
+                        // before completing (§14.10.1); a bare `return` does
+                        // not.
+                        self.emit(Opcode::Await, 0)?;
+                    }
                 } else {
                     self.constant(Value::Undefined)?;
                 }
-                let iterators: Vec<_> = self
-                    .loops
-                    .iter()
-                    .rev()
-                    .filter_map(|context| context.iterator)
-                    .collect();
-                for iterator in iterators {
-                    self.emit(Opcode::GetBinding, iterator)?;
-                    self.emit(Opcode::IteratorClose, 0)?;
-                }
+                // The Return completion unwinds the enclosing handlers first
+                // (their finalizers run before an outer loop's iterator is
+                // closed); the VM closes the iterators still open once no
+                // handler is left.
                 self.emit(Opcode::Return, 0)?;
             }
             Stmt::Empty => {}
@@ -605,7 +724,11 @@ impl Compiler {
                 self.emit(Opcode::SetCompletion, 0)?;
             }
             Stmt::Block(body) => {
-                self.enter_scope(block_lexical_names(body)?, &var_names(body)?, false)?;
+                self.enter_scope(
+                    block_lexical_names(body, self.bytecode.strict),
+                    &var_names(body),
+                    false,
+                )?;
                 self.statements_with_disposal(body)?;
                 self.leave_scope()?;
             }
@@ -627,11 +750,11 @@ impl Compiler {
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
                 self.if_clause_statement(consequent)?;
                 let end = self.emit(Opcode::Jump, 0)?;
-                self.patch(no, self.offset()?);
+                self.patch(no, self.offset());
                 if let Some(alternate) = alternate {
                     self.if_clause_statement(alternate)?;
                 }
-                self.patch(end, self.offset()?);
+                self.patch(end, self.offset());
             }
             Stmt::While { test, body } => {
                 self.loop_statement(None, Some(test), None, body, false, Vec::new())?
@@ -654,7 +777,7 @@ impl Compiler {
                 let is_async_using =
                     matches!(init, Some(ForInit::VarDecl(DeclKind::AwaitUsing, _)));
                 if is_async_using || matches!(init, Some(ForInit::VarDecl(DeclKind::Using, _))) {
-                    self.wrap_with_disposal(is_async_using, |this| {
+                    self.wrap_with_disposal(is_async_using, &mut |this| {
                         this.loop_statement(
                             init.as_ref(),
                             test.as_ref(),
@@ -693,6 +816,156 @@ impl Compiler {
         Ok(())
     }
 
+    /// Returns the value on top of the stack; the Return completion unwinds
+    /// the handlers and closes the iterators of the loops being left.
+    fn emit_return_epilogue(&mut self) -> Result<(), CompileError> {
+        self.emit(Opcode::Return, 0)?;
+        Ok(())
+    }
+
+    /// Compiles `return value` when `value` contains a self tail call in a
+    /// tail position: the call itself, or through the branches of `?:`, the
+    /// right operand of `&&`/`||`/`??`, the last operand of a comma
+    /// expression, or parentheses (§15.10.2 HasCallInTailPosition). Every
+    /// path ends in a `TailRecur` or a `Return`. `Ok(false)` means `value`
+    /// has no such call and nothing was emitted.
+    fn tail_position_return(&mut self, value: &Expr) -> Result<bool, CompileError> {
+        if self.tail_call_blockers != 0 || !self.contains_tail_call(value) {
+            return Ok(false);
+        }
+        match value {
+            Expr::Parenthesized(inner) => return self.tail_position_return(inner),
+            Expr::Conditional {
+                test,
+                consequent,
+                alternate,
+            } => {
+                self.expression(test)?;
+                let no = self.emit(Opcode::JumpIfFalse, 0)?;
+                self.tail_position_return_or_value(consequent)?;
+                self.patch(no, self.offset());
+                self.tail_position_return_or_value(alternate)?;
+            }
+            Expr::Logical { op, left, right } => {
+                self.expression(left)?;
+                self.emit(Opcode::Dup, 0)?;
+                let short_circuit = self.emit(
+                    match op {
+                        LogicalOp::And => Opcode::JumpIfFalse,
+                        LogicalOp::Or => Opcode::JumpIfTrue,
+                        LogicalOp::Nullish => Opcode::JumpIfNotNullish,
+                    },
+                    0,
+                )?;
+                self.emit(Opcode::Pop, 0)?;
+                self.tail_position_return_or_value(right)?;
+                self.patch(short_circuit, self.offset());
+                self.emit_return_epilogue()?;
+            }
+            Expr::Sequence(expressions) => {
+                let (last, rest) = expressions
+                    .split_last()
+                    .expect("a sequence expression has operands");
+                for expression in rest {
+                    self.expression(expression)?;
+                    self.emit(Opcode::Pop, 0)?;
+                }
+                self.tail_position_return_or_value(last)?;
+            }
+            call if self.self_tail_call_args(call).is_none() => {
+                // A call to any other function: `TailCall` replaces this
+                // frame with the callee's, or (when this frame cannot be
+                // replaced, e.g. a constructor) calls it and falls through to
+                // the ordinary `Return`.
+                self.tail_call_pending = true;
+                self.expression(call)?;
+                debug_assert!(!self.tail_call_pending, "the call consumed the flag");
+                self.tail_call_pending = false;
+                self.emit(Opcode::Return, 0)?;
+            }
+            call => {
+                let args = self
+                    .self_tail_call_args(call)
+                    .expect("contains_tail_call found a self tail call");
+                for value in args.iter().copied() {
+                    self.expression(value)?;
+                }
+                let iterators: Vec<_> = self
+                    .loops
+                    .iter()
+                    .rev()
+                    .filter_map(|context| context.iterator)
+                    .collect();
+                for iterator in iterators {
+                    self.emit(Opcode::GetBinding, iterator)?;
+                    self.emit(Opcode::IteratorClose, 0)?;
+                }
+                let arg_count = self.list_count(args.len())?;
+                self.emit(Opcode::TailRecur, arg_count)?;
+            }
+        }
+        Ok(true)
+    }
+
+    /// One operand of a tail position: another tail position when it holds a
+    /// self tail call, otherwise an ordinary `return operand`.
+    fn tail_position_return_or_value(&mut self, value: &Expr) -> Result<(), CompileError> {
+        if !self.tail_position_return(value)? {
+            self.expression(value)?;
+            self.emit_return_epilogue()?;
+        }
+        Ok(())
+    }
+
+    /// Whether `value`, read as a tail position, holds a call this function
+    /// can compile as a tail call.
+    fn contains_tail_call(&self, value: &Expr) -> bool {
+        match value {
+            Expr::Parenthesized(inner) => self.contains_tail_call(inner),
+            Expr::Conditional {
+                consequent,
+                alternate,
+                ..
+            } => self.contains_tail_call(consequent) || self.contains_tail_call(alternate),
+            Expr::Logical { right, .. } => self.contains_tail_call(right),
+            Expr::Sequence(expressions) => expressions
+                .last()
+                .is_some_and(|last| self.contains_tail_call(last)),
+            call => self.self_tail_call_args(call).is_some() || self.is_general_tail_call(call),
+        }
+    }
+
+    /// A call that can replace this frame (§15.10.2): a plain call or tagged
+    /// template made from strict, non-generator, non-async function code that
+    /// is not a class constructor. Spread arguments, `super(...)` calls and
+    /// optional chains keep the ordinary call path, and so does a call inside
+    /// a loop that owns an iterator: closing it after the call would need the
+    /// frame this call replaces.
+    fn is_general_tail_call(&self, call: &Expr) -> bool {
+        if !self.function
+            || !self.bytecode.strict
+            || self.bytecode.generator
+            || self.bytecode.async_function
+            || self.bytecode.class_constructor
+            || self.loops.iter().any(|context| context.iterator.is_some())
+        {
+            return false;
+        }
+        match call {
+            // An optional chain is compiled by its own path (a short-circuit
+            // exit skips the call), which has no tail form.
+            Expr::Call { .. } if optional_chain_root(call) => false,
+            Expr::Call { callee, args } => {
+                !matches!(&**callee, Expr::Super)
+                    && args
+                        .iter()
+                        .all(|argument| matches!(argument, Argument::Normal(_)))
+            }
+            Expr::TaggedTemplate { .. } => true,
+            _ => false,
+        }
+    }
+
     /// Annex B.3.3 parses a sloppy FunctionDeclaration in an `if` clause as
     /// a synthetic block whose lexical function binding is then copied to the
     /// Annex B outer var binding when that clause executes.
@@ -702,7 +975,7 @@ impl Compiler {
                 if !function.generator && !function.is_async)
         {
             self.enter_scope(
-                block_lexical_names(std::slice::from_ref(statement))?,
+                block_lexical_names(std::slice::from_ref(statement), self.bytecode.strict),
                 &BTreeSet::new(),
                 false,
             )?;
@@ -782,24 +1055,12 @@ impl Compiler {
             Stmt::ClassDecl(_) => Err(CompileError::InvalidSyntax(
                 "a labelled statement cannot contain a class declaration",
             )),
-            Stmt::FunctionDecl(function)
-                if self.bytecode.strict || function.generator || function.is_async =>
-            {
-                Err(CompileError::InvalidSyntax(
-                    "invalid labelled function declaration",
-                ))
-            }
-            Stmt::FunctionDecl(function) => {
-                // Annex B permits this sloppy-mode form. Its binding is
-                // var-scoped, while creation occurs when the label executes.
-                self.function(function, false)?;
-                let slot = self
-                    .resolve(function.name.as_ref().expect("declaration has a name"))
-                    .unwrap();
-                self.emit(Opcode::StoreBinding, slot)?;
-                self.emit(Opcode::Pop, 0)?;
-                Ok(())
-            }
+            // A labelled function declaration in a statement list was
+            // unlabelled by the parser (Annex B.3.2), so this is one in a
+            // position that takes a Statement, or a generator/async function.
+            Stmt::FunctionDecl(_) => Err(CompileError::InvalidSyntax(
+                "invalid labelled function declaration",
+            )),
             _ => {
                 self.loops.push(Loop {
                     labels,
@@ -810,7 +1071,7 @@ impl Compiler {
                     iterator: None,
                 });
                 self.statement(item, false)?;
-                let end = self.offset()?;
+                let end = self.offset();
                 let context = self.loops.pop().expect("label control is active");
                 for (jump, control) in context.breaks {
                     self.patch(jump, end);
@@ -863,13 +1124,13 @@ impl Compiler {
         // A direct jump would skip a surrounding `finally`. Route to a local
         // cleanup gateway first; handlers resume there only after finalizers.
         let control = self.bytecode.abrupt_jumps.len();
-        let control_operand = u32::try_from(control).map_err(|_| CompileError::ProgramTooLarge)?;
+        let control_operand = self.metadata_index(control)?;
         self.bytecode.abrupt_jumps.push(AbruptJump {
             cleanup: 0,
             target: 0,
         });
         self.emit(Opcode::AbruptJump, control_operand)?;
-        let cleanup = self.offset()?;
+        let cleanup = self.offset();
         self.bytecode.abrupt_jumps[control].cleanup = cleanup;
         for iterator in iterators {
             // A handler crossed on the way to this cleanup gateway closes
@@ -898,8 +1159,8 @@ impl Compiler {
 
     pub(super) fn scoped_statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         self.enter_scope(
-            block_lexical_names(statements)?,
-            &var_names(statements)?,
+            block_lexical_names(statements, self.bytecode.strict),
+            &var_names(statements),
             false,
         )?;
         self.statements_with_disposal(statements)?;
@@ -914,8 +1175,8 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         validate_switch_case_declarations(cases, self.bytecode.strict)?;
         self.emit(Opcode::ClearCompletion, 0)?;
-        let lexical = switch_lexical_names(cases)?;
-        let vars = switch_var_names(cases)?;
+        let lexical = switch_lexical_names(cases, self.bytecode.strict);
+        let vars = switch_var_names(cases);
         // Switch evaluation creates its case-block lexical environment only
         // after evaluating the discriminant.  A closure created by the
         // discriminant must therefore capture the surrounding binding, while
@@ -923,6 +1184,12 @@ impl Compiler {
         // switch-local binding.
         self.expression(discriminant)?;
         self.enter_scope(lexical, &vars, false)?;
+        // BlockDeclarationInstantiation covers the whole CaseBlock: every
+        // function declared in any case clause exists before the first case
+        // runs.
+        for case in cases {
+            self.function_declarations(&case.consequent)?;
+        }
 
         let mut case_entries = vec![None; cases.len()];
         for (index, case) in cases.iter().enumerate() {
@@ -932,18 +1199,18 @@ impl Compiler {
                 self.emit(Opcode::StrictEqual, 0)?;
                 let no_match = self.emit(Opcode::JumpIfFalse, 0)?;
                 case_entries[index] = Some(self.emit(Opcode::Jump, 0)?);
-                self.patch(no_match, self.offset()?);
+                self.patch(no_match, self.offset());
             }
         }
         let no_match = self.emit(Opcode::Jump, 0)?;
-        let no_match_cleanup = self.offset()?;
+        let no_match_cleanup = self.offset();
         self.emit(Opcode::Pop, 0)?;
         let no_match_exit = self.emit(Opcode::Jump, 0)?;
 
         let mut case_stubs = Vec::with_capacity(cases.len());
         let mut body_jumps = Vec::with_capacity(cases.len());
         for _ in cases {
-            case_stubs.push(self.offset()?);
+            case_stubs.push(self.offset());
             self.emit(Opcode::Pop, 0)?;
             body_jumps.push(self.emit(Opcode::Jump, 0)?);
         }
@@ -969,10 +1236,10 @@ impl Compiler {
             iterator: None,
         });
         for (case, jump) in cases.iter().zip(body_jumps) {
-            self.patch(jump, self.offset()?);
-            self.statements(&case.consequent)?;
+            self.patch(jump, self.offset());
+            self.statements_after_function_declarations(&case.consequent)?;
         }
-        let end = self.offset()?;
+        let end = self.offset();
         self.patch(no_match_exit, end);
         let context = self.loops.pop().expect("switch control is active");
         for (jump, control) in context.breaks {
@@ -992,14 +1259,14 @@ impl Compiler {
         handler: Option<&CatchClause>,
         finalizer: Option<&[Stmt]>,
     ) -> Result<(), CompileError> {
-        let handler_index = u32::try_from(self.bytecode.handlers.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let handler_index = self.metadata_index(self.bytecode.handlers.len())?;
         self.bytecode.handlers.push(Handler {
             try_start: 0,
             try_end: 0,
             catch: None,
             catch_end: None,
             finally: None,
+            finally_end: None,
         });
         self.emit(Opcode::PushHandler, handler_index)?;
 
@@ -1007,28 +1274,30 @@ impl Compiler {
         // the value of the preceding statement into TryStatement's
         // UpdateEmpty step.
         self.emit(Opcode::ClearCompletion, 0)?;
-        self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
-        self.scoped_statements(block)?;
-        self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
-        self.emit(Opcode::PopHandler, 0)?;
-        if finalizer.is_some() {
-            self.emit(Opcode::SaveCompletion, 0)?;
-        }
+        self.bytecode.handlers[handler_index as usize].try_start = self.offset();
+        // A call in the try block is not a tail call: the catch and finally
+        // clauses have to observe how it ends.
+        self.tail_call_blockers += 1;
+        let try_block = self.scoped_statements(block);
+        self.tail_call_blockers -= 1;
+        try_block?;
+        self.bytecode.handlers[handler_index as usize].try_end = self.offset();
+        self.emit(
+            if finalizer.is_some() {
+                Opcode::EnterFinalizer
+            } else {
+                Opcode::PopHandler
+            },
+            0,
+        )?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
 
         let catch_exit = if let Some(catch) = handler {
-            let start = self.offset()?;
+            let start = self.offset();
             self.bytecode.handlers[handler_index as usize].catch = Some(start);
             let parameter_bound_names = catch.param.as_ref().map(pattern_names).unwrap_or_default();
-            if self.bytecode.strict
-                && parameter_bound_names
-                    .iter()
-                    .any(|name| matches!(name.as_str(), "eval" | "arguments"))
-            {
-                return Err(CompileError::InvalidSyntax(
-                    "strict catch parameters cannot bind eval or arguments",
-                ));
-            }
+            // Entry-point early-error validation already rejects strict
+            // catch bindings named eval or arguments.
             if catch_lexical_names(&catch.body)
                 .into_iter()
                 .any(|name| parameter_bound_names.contains(&name))
@@ -1060,28 +1329,38 @@ impl Compiler {
             // completion value.
             self.emit(Opcode::ClearCompletion, 0)?;
             self.enter_scope(
-                block_lexical_names(&catch.body)?,
-                &var_names(&catch.body)?,
+                block_lexical_names(&catch.body, self.bytecode.strict),
+                &var_names(&catch.body),
                 false,
             )?;
-            self.statements_with_disposal(&catch.body)?;
+            // With a finally clause the catch block's call is not a tail
+            // call either: the finalizer runs after it returns.
+            let blocked = u32::from(finalizer.is_some());
+            self.tail_call_blockers += blocked;
+            let catch_body = self.statements_with_disposal(&catch.body);
+            self.tail_call_blockers -= blocked;
+            catch_body?;
             self.leave_scope()?;
             self.catch_var_slots
                 .pop()
                 .expect("catch var override is active");
             self.leave_scope()?;
-            self.bytecode.handlers[handler_index as usize].catch_end = Some(self.offset()?);
-            self.emit(Opcode::PopHandler, 0)?;
-            if finalizer.is_some() {
-                self.emit(Opcode::SaveCompletion, 0)?;
-            }
+            self.bytecode.handlers[handler_index as usize].catch_end = Some(self.offset());
+            self.emit(
+                if finalizer.is_some() {
+                    Opcode::EnterFinalizer
+                } else {
+                    Opcode::PopHandler
+                },
+                0,
+            )?;
             Some(self.emit(Opcode::Jump, 0)?)
         } else {
             None
         };
 
         if let Some(finalizer) = finalizer {
-            let start = self.offset()?;
+            let start = self.offset();
             self.bytecode.handlers[handler_index as usize].finally = Some(start);
             // A normal finally restores its saved prior Completion only when
             // this block remains empty; a non-empty finalizer keeps its own.
@@ -1091,14 +1370,15 @@ impl Compiler {
             // restores the preceding non-empty completion. On an abrupt entry
             // it replays the pending completion after the finalizer finishes.
             self.emit(Opcode::ResumeCompletion, handler_index)?;
-            let end = self.offset()?;
+            let end = self.offset();
+            self.bytecode.handlers[handler_index as usize].finally_end = Some(end);
             self.patch(normal_exit, start);
             if let Some(exit) = catch_exit {
                 self.patch(exit, start);
             }
             debug_assert!(end as usize <= self.bytecode.code.len());
         } else {
-            let end = self.offset()?;
+            let end = self.offset();
             self.patch(normal_exit, end);
             if let Some(exit) = catch_exit {
                 self.patch(exit, end);
@@ -1134,6 +1414,21 @@ impl Compiler {
                 && declaration.init.is_none()
             {
                 continue;
+            }
+            // `var name = init` inside `with`: ResolveBinding(name) runs before
+            // the initializer, so a with object that has the property gets the
+            // assignment and the function-level binding stays untouched.
+            if let (DeclKind::Var, Pattern::Identifier(name), Some(value)) =
+                (kind, &declaration.pattern, &declaration.init)
+            {
+                if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                    let index = self.name_constant(name)?;
+                    self.emit(Opcode::ResolveWithReference, index)?;
+                    self.expression_with_name(value, Some(name.as_str()))?;
+                    self.emit(Opcode::StoreWithReference, 0)?;
+                    self.emit(Opcode::Pop, 0)?;
+                    continue;
+                }
             }
             if let Some(value) = &declaration.init {
                 // "IsAnonymousFunctionDefinition(Initializer)" NamedEvaluation
@@ -1177,27 +1472,63 @@ impl Compiler {
     /// BindingInitialization for every identifier in `pattern`.  The bytecode
     /// keeps iterator records on the stack while descending into an array
     /// pattern so abrupt completions can close every active iterator.
+    /// Whether a `var` binding of `name` here is resolved through the
+    /// enclosing `with` objects (ResolveBinding), rather than being a plain
+    /// function-level variable: it is not shadowed by a binding declared
+    /// inside the innermost `with`.
+    fn var_binding_resolves_through_with(&self, kind: DeclKind, name: &str) -> bool {
+        kind == DeclKind::Var
+            && self.with_depth != 0
+            && self.resolve_inside_innermost_with(name).is_none()
+    }
+
     pub(super) fn bind_pattern(
         &mut self,
         pattern: &Pattern,
         kind: DeclKind,
     ) -> Result<(), CompileError> {
         match pattern {
+            // A `var` binding inside `with` is resolved through the object
+            // environments first (ResolveBinding), so its value can land on a
+            // with object instead of the variable.
+            Pattern::Identifier(name) if self.var_binding_resolves_through_with(kind, name) => {
+                let index = self.name_constant(name)?;
+                self.emit(Opcode::ResolveWithReference, index)?;
+                self.emit(Opcode::StoreResolvedWithReference, 0)?;
+                self.emit(Opcode::Pop, 0)?;
+            }
             Pattern::Identifier(name) => {
                 let slot = if kind == DeclKind::Var {
-                    self.catch_var_slots
+                    let resolved = self
+                        .catch_var_slots
                         .iter()
                         .rev()
                         .find_map(|slots| slots.get(name))
                         .copied()
+                        .or_else(|| self.eval_catch_parameter_slot(name))
                         .or_else(|| self.names[self.local_scope].get(name).copied())
-                        .or_else(|| self.resolve(name))
-                        .expect("var declaration has a function or eval binding")
+                        .or_else(|| self.resolve(name));
+                    let Some(slot) = resolved else {
+                        // A sloppy direct eval does not re-create a `var` that
+                        // an earlier eval already added to the function's
+                        // VariableEnvironment: it has no static slot, and the
+                        // initializer assigns to that dynamic binding.
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::SetUnboundName, index)?;
+                        self.emit(Opcode::Pop, 0)?;
+                        return Ok(());
+                    };
+                    slot
                 } else {
                     self.names.last().unwrap()[name]
                 };
                 if kind == DeclKind::Var {
-                    self.emit(Opcode::StoreBinding, slot)?;
+                    let store = if self.bytecode.bindings[slot as usize].eval_var {
+                        Opcode::StoreEvalVar
+                    } else {
+                        Opcode::StoreBinding
+                    };
+                    self.emit(store, slot)?;
                     self.emit(Opcode::Pop, 0)?;
                 } else {
                     self.emit(Opcode::InitializeBinding, slot)?;
@@ -1233,9 +1564,28 @@ impl Compiler {
                             default,
                         } => {
                             self.property_key(key)?;
-                            self.emit(Opcode::DestructureProperty, 0)?;
-                            self.binding_pattern_default(default.as_ref(), value)?;
-                            self.bind_pattern(value, kind)?;
+                            match value {
+                                // KeyedBindingInitialization resolves the
+                                // binding before the value is read from the
+                                // source (observable through a Proxy `has`
+                                // trap), and the write goes to that reference.
+                                Pattern::Identifier(name)
+                                    if self.var_binding_resolves_through_with(kind, name) =>
+                                {
+                                    let index = self.name_constant(name)?;
+                                    self.emit(Opcode::Dup, 0)?;
+                                    self.emit(Opcode::ResolveWithReference, index)?;
+                                    self.emit(Opcode::DestructurePropertyReference, 0)?;
+                                    self.binding_pattern_default(default.as_ref(), value)?;
+                                    self.emit(Opcode::StoreWithReference, 0)?;
+                                    self.emit(Opcode::Pop, 0)?;
+                                }
+                                _ => {
+                                    self.emit(Opcode::DestructureProperty, 0)?;
+                                    self.binding_pattern_default(default.as_ref(), value)?;
+                                    self.bind_pattern(value, kind)?;
+                                }
+                            }
                         }
                         ObjectPatternProp::Rest(pattern) => {
                             self.emit(Opcode::ObjectRest, 0)?;
@@ -1251,6 +1601,20 @@ impl Compiler {
         Ok(())
     }
 
+    /// Annex B.3.4: the initializer of a `var` in eval code, whose caller is
+    /// inside a catch block with a simple parameter of the same name, assigns
+    /// that catch parameter. The parameter is nearer than the variable
+    /// environment the var itself is declared in.
+    fn eval_catch_parameter_slot(&self, name: &str) -> Option<u32> {
+        if self.function {
+            return None;
+        }
+        let slot = *self.names.first()?.get(name)?;
+        self.bytecode.bindings[slot as usize]
+            .catch_parameter
+            .then_some(slot)
+    }
+
     /// Leaves the array-pattern iterator record below one element value.  A
     /// record remembers exhaustion in the VM, so later elisions do not call
     /// `next` again after the first completed result.
@@ -1258,9 +1622,9 @@ impl Compiler {
         self.emit(Opcode::Dup, 0)?;
         let exhausted = self.emit(Opcode::IteratorStep, 0)?;
         let joined = self.emit(Opcode::Jump, 0)?;
-        self.patch(exhausted, self.offset()?);
+        self.patch(exhausted, self.offset());
         self.constant(Value::Undefined)?;
-        self.patch(joined, self.offset()?);
+        self.patch(joined, self.offset());
         Ok(())
     }
 
@@ -1291,7 +1655,7 @@ impl Compiler {
                 _ => None,
             },
         )?;
-        self.patch(skip, self.offset()?);
+        self.patch(skip, self.offset());
         Ok(())
     }
 
@@ -1315,7 +1679,7 @@ impl Compiler {
                 _ => None,
             },
         )?;
-        self.patch(skip, self.offset()?);
+        self.patch(skip, self.offset());
         Ok(())
     }
 
@@ -1336,6 +1700,7 @@ impl Compiler {
                 params,
                 body,
                 is_async,
+                source_text,
             } if inferred_name.is_some() => {
                 let body = match body {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
@@ -1348,6 +1713,7 @@ impl Compiler {
                         body,
                         generator: false,
                         is_async: *is_async,
+                        source_text: source_text.clone(),
                     },
                     true,
                     inferred_name,
@@ -1370,13 +1736,13 @@ impl Compiler {
         self.emit(Opcode::ClearCompletion, 0)?;
         let lexical = match init {
             Some(ForInit::VarDecl(kind, decls)) if *kind != DeclKind::Var => {
-                declarations_names(*kind, decls)?
+                declarations_names(*kind, decls)
             }
             _ => Vec::new(),
         };
         let own_scope = !lexical.is_empty();
         if own_scope {
-            self.enter_scope(lexical, &var_names(std::slice::from_ref(body))?, false)?;
+            self.enter_scope(lexical, &var_names(std::slice::from_ref(body)), false)?;
         }
         match init {
             Some(ForInit::VarDecl(kind, declarations)) => self.declarations(*kind, declarations)?,
@@ -1386,7 +1752,17 @@ impl Compiler {
             }
             None => {}
         }
-        let start = self.offset()?;
+        // CreatePerIterationEnvironment also runs once before the first test
+        // (ForBodyEvaluation step 2): closures made by the initializer keep
+        // the initial bindings, which the loop never writes again.
+        if own_scope {
+            let scope = *self
+                .scopes
+                .last()
+                .expect("lexical for scope remains active");
+            self.emit(Opcode::CloneScope, scope)?;
+        }
+        let start = self.offset();
         let mut exit = None;
         if !do_first {
             if let Some(test) = test {
@@ -1403,7 +1779,7 @@ impl Compiler {
             iterator: None,
         });
         self.statement(body, false)?;
-        let continue_at = self.offset()?;
+        let continue_at = self.offset();
         // CreatePerIterationEnvironment happens after the body and before
         // the update expression.  That leaves closures made by this turn
         // attached to its old cells while the update writes into the next
@@ -1425,7 +1801,7 @@ impl Compiler {
         } else {
             self.emit(Opcode::Jump, start)?;
         }
-        let end = self.offset()?;
+        let end = self.offset();
         if let Some(exit) = exit {
             self.patch(exit, end);
         }
@@ -1454,3 +1830,6 @@ fn is_labelled_function(statement: &Stmt) -> bool {
     }
     matches!(item, Stmt::FunctionDecl(_))
 }
+
+#[cfg(test)]
+mod tests;

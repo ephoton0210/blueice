@@ -32,28 +32,14 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<(ObjectId, ObjectId)>, HeapError> {
-        Ok(match self.object(object)?.kind {
+        self.object(object).and_then(|stored| match stored.kind {
             ObjectKind::Proxy {
                 target: Some(target),
                 handler: Some(handler),
                 ..
-            } => Some((target, handler)),
-            ObjectKind::Proxy { .. } => return Err(HeapError::RevokedProxy),
-            _ => None,
-        })
-    }
-
-    pub(crate) fn proxy_capabilities(
-        &self,
-        object: ObjectId,
-    ) -> Result<Option<(bool, bool)>, HeapError> {
-        Ok(match self.object(object)?.kind {
-            ObjectKind::Proxy {
-                callable,
-                constructible,
-                ..
-            } => Some((callable, constructible)),
-            _ => None,
+            } => Ok(Some((target, handler))),
+            ObjectKind::Proxy { .. } => Err(HeapError::RevokedProxy),
+            _ => Ok(None),
         })
     }
 
@@ -103,7 +89,7 @@ impl Heap {
         self.alloc(
             ObjectKind::NativeFunction {
                 function,
-                initial_name: name.into(),
+                initial_name: name.to_owned(),
             },
             Some(prototype),
         )
@@ -113,7 +99,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<NativeFunction>, HeapError> {
-        Ok(match self.object(object)?.kind {
+        self.object(object).map(|stored| match stored.kind {
             ObjectKind::NativeFunction { function, .. } => Some(function),
             _ => None,
         })
@@ -122,17 +108,29 @@ impl Heap {
     pub(crate) fn function_initial_name(
         &self,
         object: ObjectId,
-    ) -> Result<Option<&JsString>, HeapError> {
+    ) -> Result<Option<&str>, HeapError> {
         Ok(match &self.object(object)?.kind {
-            ObjectKind::NativeFunction { initial_name, .. } => Some(initial_name),
-            // HostHasSourceTextAvailable is false for compiled functions.
-            // Anonymous NativeFunction syntax is valid for every callable.
+            ObjectKind::NativeFunction { initial_name, .. } => Some(initial_name.as_str()),
+            // Anonymous NativeFunction syntax is valid for every callable that
+            // is not a built-in function.
+            _ => None,
+        })
+    }
+
+    /// The source text `Function.prototype.toString` returns for a function
+    /// created from source, or `None` for any other object.
+    pub(crate) fn function_source_text(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<JsString>, HeapError> {
+        self.object(object).map(|stored| match &stored.kind {
+            ObjectKind::Closure { code, .. } => code.source_text.to_js_string(),
             _ => None,
         })
     }
 
     pub(crate) fn boxed_string(&self, object: ObjectId) -> Result<Option<&JsString>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::String(string) => Some(string),
             _ => None,
         })
@@ -188,10 +186,8 @@ impl Heap {
 
     /// Whether `object` carries generator internal slots (sync or async).
     pub(crate) fn is_generator(&self, object: ObjectId) -> Result<bool, HeapError> {
-        Ok(matches!(
-            self.object(object)?.kind,
-            ObjectKind::Generator { .. }
-        ))
+        self.object(object)
+            .map(|stored| matches!(stored.kind, ObjectKind::Generator { .. }))
     }
 
     pub(crate) fn generator_state_is_done(&self, object: ObjectId) -> Result<bool, HeapError> {
@@ -199,6 +195,23 @@ impl Heap {
             return Err(HeapError::InvalidObject(object));
         };
         Ok(matches!(**state, GeneratorState::Done))
+    }
+
+    fn generator_state_slots_mut(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<(&mut Box<GeneratorState>, &mut usize, &mut usize), HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::Generator {
+            state, state_bytes, ..
+        } = &mut entry.kind
+        else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok((state, state_bytes, &mut entry.bytes))
     }
 
     pub(crate) fn set_generator_state(
@@ -212,15 +225,7 @@ impl Heap {
         // remembered-set barrier as an ordinary property write.
         let references = state.references();
         let state_bytes = state.managed_bytes();
-        let old_state_bytes = match &self
-            .objects
-            .get(&object)
-            .ok_or(HeapError::InvalidObject(object))?
-            .kind
-        {
-            ObjectKind::Generator { state_bytes, .. } => *state_bytes,
-            _ => return Err(HeapError::InvalidObject(object)),
-        };
+        let old_state_bytes = *self.generator_state_slots_mut(object)?.1;
         // Collection may be needed before a suspended frame is restored.
         // Keep both the generator and its incoming references alive across it.
         let protected: Vec<_> = std::iter::once(object)
@@ -228,21 +233,12 @@ impl Heap {
             .collect();
         self.ensure_room(state_bytes.saturating_sub(old_state_bytes), &protected)?;
         {
-            let entry = self
-                .objects
-                .get_mut(&object)
-                .ok_or(HeapError::InvalidObject(object))?;
-            let ObjectKind::Generator {
-                state: current,
-                state_bytes: current_bytes,
-                ..
-            } = &mut entry.kind
-            else {
-                return Err(HeapError::InvalidObject(object));
-            };
+            let (current, current_bytes, entry_bytes) = self
+                .generator_state_slots_mut(object)
+                .expect("protected generator survives collection");
             **current = state;
             *current_bytes = state_bytes;
-            entry.bytes = entry.bytes - old_state_bytes + state_bytes;
+            *entry_bytes = *entry_bytes - old_state_bytes + state_bytes;
         }
         self.managed_bytes = self.managed_bytes - old_state_bytes + state_bytes;
         for reference in references {
@@ -278,6 +274,25 @@ impl Heap {
         Ok(async_control.clone())
     }
 
+    fn async_generator_slots_mut(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<(&mut Option<AsyncGeneratorControl>, &mut usize, &mut usize), HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::Generator {
+            async_control,
+            async_control_bytes,
+            ..
+        } = &mut entry.kind
+        else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok((async_control, async_control_bytes, &mut entry.bytes))
+    }
+
     /// Replaces the async-generator queue and performs the same accounting
     /// and old-to-young barriers as a suspended frame restoration.
     pub(crate) fn set_async_generator_control(
@@ -287,24 +302,15 @@ impl Heap {
     ) -> Result<(), HeapError> {
         let references = control.references();
         let control_bytes = control.managed_bytes();
-        let (old_bytes, old_references) = match &self
-            .objects
-            .get(&object)
-            .ok_or(HeapError::InvalidObject(object))?
-            .kind
-        {
-            ObjectKind::Generator {
-                async_control,
-                async_control_bytes,
-                ..
-            } => (
+        let (old_bytes, old_references) = {
+            let (async_control, async_control_bytes, _) = self.async_generator_slots_mut(object)?;
+            (
                 *async_control_bytes,
                 async_control
                     .iter()
                     .flat_map(AsyncGeneratorControl::references)
                     .collect::<Vec<_>>(),
-            ),
-            _ => return Err(HeapError::InvalidObject(object)),
+            )
         };
         let protected: Vec<_> = std::iter::once(object)
             .chain(references.iter().copied())
@@ -312,21 +318,12 @@ impl Heap {
             .collect();
         self.ensure_room(control_bytes.saturating_sub(old_bytes), &protected)?;
         {
-            let entry = self
-                .objects
-                .get_mut(&object)
-                .ok_or(HeapError::InvalidObject(object))?;
-            let ObjectKind::Generator {
-                async_control,
-                async_control_bytes,
-                ..
-            } = &mut entry.kind
-            else {
-                return Err(HeapError::InvalidObject(object));
-            };
+            let (async_control, async_control_bytes, entry_bytes) = self
+                .async_generator_slots_mut(object)
+                .expect("protected async generator survives collection");
             *async_control = Some(control);
             *async_control_bytes = control_bytes;
-            entry.bytes = entry.bytes - old_bytes + control_bytes;
+            *entry_bytes = *entry_bytes - old_bytes + control_bytes;
         }
         self.managed_bytes = self.managed_bytes - old_bytes + control_bytes;
         for reference in references {
@@ -347,7 +344,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<&BoundFunction>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::BoundFunction(bound) => Some(bound),
             _ => None,
         })
@@ -370,24 +367,25 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::Collator>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::Collator { data, .. } => Some(data.clone()),
             _ => None,
         })
     }
     pub(crate) fn collator_compare(&self, object: ObjectId) -> Option<ObjectId> {
-        let ObjectKind::Collator { compare, .. } = &self.objects.get(&object).unwrap().kind else {
-            unreachable!("VM checks the Collator brand")
+        let ObjectKind::Collator { compare, .. } = &self.objects.get(&object)?.kind else {
+            return None;
         };
         *compare
     }
     pub(crate) fn set_collator_compare(&mut self, object: ObjectId, function: ObjectId) {
-        if let ObjectKind::Collator { compare, .. } =
-            &mut self.objects.get_mut(&object).unwrap().kind
-        {
+        let Some(entry) = self.objects.get_mut(&object) else {
+            return;
+        };
+        if let ObjectKind::Collator { compare, .. } = &mut entry.kind {
             *compare = Some(function);
+            self.write_barrier(object, Some(function));
         }
-        self.write_barrier(object, Some(function));
     }
 
     pub(crate) fn alloc_number_format(
@@ -405,27 +403,27 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::NumberFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::NumberFormat { data, .. } => Some(data.clone()),
             _ => None,
         })
     }
 
     pub(crate) fn number_format_format(&self, object: ObjectId) -> Option<ObjectId> {
-        let ObjectKind::NumberFormat { format, .. } = &self.objects.get(&object).unwrap().kind
-        else {
-            unreachable!("VM checks the NumberFormat brand")
+        let ObjectKind::NumberFormat { format, .. } = &self.objects.get(&object)?.kind else {
+            return None;
         };
         *format
     }
 
     pub(crate) fn set_number_format_format(&mut self, object: ObjectId, function: ObjectId) {
-        if let ObjectKind::NumberFormat { format, .. } =
-            &mut self.objects.get_mut(&object).unwrap().kind
-        {
+        let Some(entry) = self.objects.get_mut(&object) else {
+            return;
+        };
+        if let ObjectKind::NumberFormat { format, .. } = &mut entry.kind {
             *format = Some(function);
+            self.write_barrier(object, Some(function));
         }
-        self.write_barrier(object, Some(function));
     }
 
     pub(crate) fn alloc_date_time_format(
@@ -443,27 +441,27 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::DateTimeFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::DateTimeFormat { data, .. } => Some(data.clone()),
             _ => None,
         })
     }
 
     pub(crate) fn date_time_format_format(&self, object: ObjectId) -> Option<ObjectId> {
-        let ObjectKind::DateTimeFormat { format, .. } = &self.objects.get(&object).unwrap().kind
-        else {
-            unreachable!("VM checks the DateTimeFormat brand")
+        let ObjectKind::DateTimeFormat { format, .. } = &self.objects.get(&object)?.kind else {
+            return None;
         };
         *format
     }
 
     pub(crate) fn set_date_time_format_format(&mut self, object: ObjectId, function: ObjectId) {
-        if let ObjectKind::DateTimeFormat { format, .. } =
-            &mut self.objects.get_mut(&object).unwrap().kind
-        {
+        let Some(entry) = self.objects.get_mut(&object) else {
+            return;
+        };
+        if let ObjectKind::DateTimeFormat { format, .. } = &mut entry.kind {
             *format = Some(function);
+            self.write_barrier(object, Some(function));
         }
-        self.write_barrier(object, Some(function));
     }
 
     pub(crate) fn alloc_display_names(
@@ -478,7 +476,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::DisplayNames>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::DisplayNames(data) => Some(data.clone()),
             _ => None,
         })
@@ -496,7 +494,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::DurationFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::DurationFormat(data) => Some(data.clone()),
             _ => None,
         })
@@ -514,7 +512,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::ListFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::ListFormat(data) => Some(data.clone()),
             _ => None,
         })
@@ -532,7 +530,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::PluralRules>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::PluralRules(data) => Some(data.clone()),
             _ => None,
         })
@@ -550,7 +548,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::RelativeTimeFormat>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::RelativeTimeFormat(data) => Some(data.clone()),
             _ => None,
         })
@@ -568,7 +566,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::Segmenter>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::Segmenter(data) => Some(data.clone()),
             _ => None,
         })
@@ -586,7 +584,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::Segments>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::Segments(data) => Some(data.clone()),
             _ => None,
         })
@@ -637,7 +635,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::intl::Locale>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::IntlLocale(data) => Some(data.clone()),
             _ => None,
         })
@@ -658,7 +656,7 @@ impl Heap {
         self.alloc(ObjectKind::BoxedPrimitive(value), Some(prototype))
     }
     pub(crate) fn boxed_primitive(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::BoxedPrimitive(value) => Some(value.clone()),
             _ => None,
         })
@@ -683,7 +681,7 @@ impl Heap {
         &self,
         id: ObjectId,
     ) -> Result<Option<(ObjectId, u64, bool, ArrayIteratorKind)>, HeapError> {
-        Ok(match self.object(id)?.kind {
+        self.object(id).map(|stored| match stored.kind {
             ObjectKind::ArrayIterator {
                 object,
                 index,
@@ -694,11 +692,14 @@ impl Heap {
         })
     }
     pub(crate) fn advance_array_iterator(&mut self, id: ObjectId, done: bool) {
+        let Some(entry) = self.objects.get_mut(&id) else {
+            return;
+        };
         if let ObjectKind::ArrayIterator {
             index,
             done: finished,
             ..
-        } = &mut self.objects.get_mut(&id).unwrap().kind
+        } = &mut entry.kind
         {
             *index += 1;
             *finished = done;
@@ -719,7 +720,7 @@ impl Heap {
         &self,
         id: ObjectId,
     ) -> Result<Option<(ObjectId, Value)>, HeapError> {
-        Ok(match &self.object(id)?.kind {
+        self.object(id).map(|stored| match &stored.kind {
             ObjectKind::IteratorWrapper { iterator, next } => Some((*iterator, next.clone())),
             _ => None,
         })
@@ -748,7 +749,7 @@ impl Heap {
         &self,
         id: ObjectId,
     ) -> Result<Option<IteratorHelperState>, HeapError> {
-        Ok(match &self.object(id)?.kind {
+        self.object(id).map(|stored| match &stored.kind {
             ObjectKind::IteratorHelper {
                 record,
                 callback,
@@ -830,11 +831,44 @@ impl Heap {
             .expect("take helper is consumed only with a positive remainder");
         Ok(())
     }
+
+    fn regexp_slot_mut(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<(&mut Rc<crate::regexp::RegExp>, &mut usize), HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::RegExp(current) = &mut entry.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok((current, &mut entry.bytes))
+    }
+
+    /// Replaces a RegExp object's [[RegExpMatcher]], [[OriginalSource]] and
+    /// [[OriginalFlags]] in place (Annex B `RegExp.prototype.compile`).
+    pub(crate) fn set_regexp(
+        &mut self,
+        object: ObjectId,
+        regexp: Rc<crate::regexp::RegExp>,
+    ) -> Result<(), HeapError> {
+        let old_bytes = regexp_bytes(self.regexp_slot_mut(object)?.0);
+        let new_bytes = regexp_bytes(&regexp);
+        self.ensure_room(new_bytes.saturating_sub(old_bytes), &[object])?;
+        let (current, entry_bytes) = self
+            .regexp_slot_mut(object)
+            .expect("protected RegExp survives collection");
+        *current = regexp;
+        *entry_bytes = *entry_bytes - old_bytes + new_bytes;
+        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        Ok(())
+    }
     pub(crate) fn regexp(
         &self,
         object: ObjectId,
     ) -> Result<Option<Rc<crate::regexp::RegExp>>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::RegExp(regexp) => Some(regexp.clone()),
             _ => None,
         })
@@ -862,7 +896,7 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<RegExpIteratorState>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::RegExpIterator {
                 matcher,
                 string,
@@ -874,15 +908,16 @@ impl Heap {
         })
     }
     pub(crate) fn finish_regexp_iterator(&mut self, object: ObjectId) {
-        if let ObjectKind::RegExpIterator { done, .. } =
-            &mut self.objects.get_mut(&object).unwrap().kind
-        {
+        let Some(entry) = self.objects.get_mut(&object) else {
+            return;
+        };
+        if let ObjectKind::RegExpIterator { done, .. } = &mut entry.kind {
             *done = true;
         }
     }
 
     pub(crate) fn closure(&self, object: ObjectId) -> Result<Option<ClosureState>, HeapError> {
-        Ok(match &self.object(object)?.kind {
+        self.object(object).map(|stored| match &stored.kind {
             ObjectKind::Closure {
                 code,
                 captures,
@@ -894,7 +929,6 @@ impl Heap {
                     captures.clone(),
                     this.clone(),
                     metadata.and_then(|metadata| metadata.home),
-                    metadata.and_then(|metadata| metadata.class_base.clone()),
                 ))
             }
             _ => None,
@@ -919,33 +953,97 @@ impl Heap {
         Ok(())
     }
 
-    pub(crate) fn set_class_base(
+    /// Install a class constructor's `[[Fields]]` initializer.
+    pub(crate) fn set_class_fields(
         &mut self,
         object: ObjectId,
-        base: Value,
+        initializer: ObjectId,
     ) -> Result<(), HeapError> {
+        self.object(initializer)?;
         if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
             return Err(HeapError::InvalidObject(object));
         }
-        if let Some(target) = base.object_id() {
-            self.ensure_closure_metadata(object, &[target])?;
-        } else {
-            self.ensure_closure_metadata(object, &[])?;
-        }
-        self.write_barrier(object, base.object_id());
+        self.ensure_closure_metadata(object, &[initializer])?;
+        self.write_barrier(object, Some(initializer));
         self.closure_metadata
             .get_mut(&object)
             .expect("metadata was installed")
-            .class_base = Some(base);
+            .fields = Some(initializer);
         Ok(())
     }
 
-    pub(crate) fn class_base(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
+    /// The initializer installed by [`Self::set_class_fields`], if any.
+    pub(crate) fn class_fields(&self, object: ObjectId) -> Result<Option<ObjectId>, HeapError> {
         match &self.object(object)?.kind {
             ObjectKind::Closure { .. } => Ok(self
                 .closure_metadata
                 .get(&object)
-                .and_then(|metadata| metadata.class_base.clone())),
+                .and_then(|metadata| metadata.fields)),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
+    /// Records the with objects a closure created inside `with` closes over.
+    pub(crate) fn set_closure_with_objects(
+        &mut self,
+        object: ObjectId,
+        with_objects: Vec<Value>,
+    ) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        let targets: Vec<ObjectId> = with_objects.iter().filter_map(Value::object_id).collect();
+        self.ensure_closure_metadata(object, &targets)?;
+        for target in &targets {
+            self.write_barrier(object, Some(*target));
+        }
+        self.closure_metadata
+            .get_mut(&object)
+            .expect("metadata was installed")
+            .with_objects = with_objects;
+        Ok(())
+    }
+
+    /// Records the `new.target` an arrow function closes over.
+    pub(crate) fn set_closure_new_target(
+        &mut self,
+        object: ObjectId,
+        new_target: Value,
+    ) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        let target = new_target.object_id();
+        self.ensure_closure_metadata(object, target.as_slice())?;
+        self.write_barrier(object, target);
+        self.closure_metadata
+            .get_mut(&object)
+            .expect("metadata was installed")
+            .new_target = Some(new_target);
+        Ok(())
+    }
+
+    /// The `new.target` captured by an arrow closure (`undefined` when none).
+    pub(crate) fn closure_new_target(&self, object: ObjectId) -> Result<Value, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .and_then(|metadata| metadata.new_target.clone())
+                .unwrap_or(Value::Undefined)),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
+    /// The with objects captured by `object`; empty for a closure that was not
+    /// created inside `with`.
+    pub(crate) fn closure_with_objects(&self, object: ObjectId) -> Result<Vec<Value>, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .map(|metadata| metadata.with_objects.clone())
+                .unwrap_or_default()),
             _ => Err(HeapError::InvalidObject(object)),
         }
     }
@@ -1019,4 +1117,15 @@ impl Heap {
     ) -> Result<Option<PropertyDescriptor>, HeapError> {
         self.get_own_property_descriptor_key(object, key.into())
     }
+}
+
+/// Managed bytes a RegExp object's matcher data accounts for.
+pub(super) fn regexp_bytes(regexp: &crate::regexp::RegExp) -> usize {
+    regexp.source.byte_len()
+        + regexp.flags.len()
+        + regexp
+            .capture_names
+            .iter()
+            .map(|(name, _)| name.len() + size_of::<(String, usize)>())
+            .sum::<usize>()
 }

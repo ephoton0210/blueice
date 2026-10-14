@@ -36,6 +36,7 @@ pub(super) fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnosti
                 Declaration::Import(import) => !import.type_only,
                 Declaration::Variable(variable) => !variable.declared,
                 Declaration::Function(function) => !function.declared && !function.overload,
+                Declaration::Class(_) => true,
                 Declaration::Raw(_) => true,
                 Declaration::DefaultExport(_)
                 | Declaration::ValueExport(_)
@@ -86,6 +87,38 @@ pub(super) fn exported_types(
                             value: exported_interface_value(interface, &declared),
                         },
                     );
+                }
+                Declaration::Class(class) if class.exported => {
+                    values.insert(
+                        class.name.clone(),
+                        TypeDefinition {
+                            kind: TypeDefinitionKind::Class,
+                            parameters: Vec::new(),
+                            value: module::class_instance_type(class),
+                        },
+                    );
+                }
+                Declaration::ValueExport(export) => {
+                    for binding in &export.bindings {
+                        if let Some(definition) = declared
+                            .get(&binding.local)
+                            .filter(|definition| definition.kind == TypeDefinitionKind::Class)
+                        {
+                            values.insert(binding.exported.clone(), definition.clone());
+                        }
+                    }
+                }
+                Declaration::TypeExport(export) if export.specifier.is_none() => {
+                    for binding in &export.bindings {
+                        let (local, exported) = binding
+                            .split_once(" as ")
+                            .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
+                                (local, exported)
+                            });
+                        if let Some(definition) = declared.get(local) {
+                            values.insert(exported.to_string(), definition.clone());
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -146,6 +179,217 @@ pub(super) fn exported_types(
     modules
 }
 
+pub(super) fn exported_classes(
+    project: &Project,
+    max_type_expansions: usize,
+) -> BTreeMap<String, BTreeMap<String, ExportedClass>> {
+    let mut modules = BTreeMap::new();
+    for (id, module) in &project.modules {
+        modules.insert(
+            id.clone(),
+            local_exported_class_surfaces(module, &BTreeMap::new(), max_type_expansions),
+        );
+    }
+    // A derived class may extend a value imported from another closed module.
+    // Advance those exported surfaces one module edge per bounded pass.
+    for _ in 0..project.modules.len() {
+        let snapshot = modules.clone();
+        let mut changed = false;
+        for (module_id, module) in &project.modules {
+            let mut imported = BTreeMap::new();
+            for declaration in &module.declarations {
+                let Declaration::Import(import) = declaration else {
+                    continue;
+                };
+                if import.type_only {
+                    continue;
+                }
+                let Some(source_id) = project
+                    .resolutions
+                    .get(&(module_id.clone(), import.specifier.clone()))
+                else {
+                    continue;
+                };
+                let Some(source_classes) = snapshot.get(source_id) else {
+                    continue;
+                };
+                for binding in &import.bindings {
+                    if binding.type_only {
+                        continue;
+                    }
+                    if let Some(base) = source_classes
+                        .get(&binding.imported)
+                        .filter(|base| base.value_exported)
+                    {
+                        imported.insert(binding.local.clone(), base.clone());
+                    }
+                }
+            }
+            let exports = local_exported_class_surfaces(module, &imported, max_type_expansions);
+            let target = modules.entry(module_id.clone()).or_default();
+            for (name, value) in exports {
+                if target.get(&name) != Some(&value) {
+                    target.insert(name, value);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    for _ in 0..project.modules.len() {
+        let mut changed = false;
+        for (module_id, module) in &project.modules {
+            let mut additions = BTreeMap::new();
+            for declaration in &module.declarations {
+                let Declaration::TypeExport(export) = declaration else {
+                    continue;
+                };
+                let Some(specifier) = &export.specifier else {
+                    continue;
+                };
+                let Some(source_id) = project
+                    .resolutions
+                    .get(&(module_id.clone(), specifier.clone()))
+                else {
+                    continue;
+                };
+                let Some(source_classes) = modules.get(source_id) else {
+                    continue;
+                };
+                for binding in &export.bindings {
+                    if binding == "*" {
+                        additions.extend(source_classes.iter().map(|(name, value)| {
+                            let mut value = value.clone();
+                            value.value_exported = false;
+                            (name.clone(), value)
+                        }));
+                        continue;
+                    }
+                    let (local, exported) = binding
+                        .split_once(" as ")
+                        .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
+                            (local, exported)
+                        });
+                    if let Some(value) = source_classes.get(local) {
+                        let mut value = value.clone();
+                        value.value_exported = false;
+                        additions.insert(exported.to_string(), value);
+                    }
+                }
+            }
+            let target = modules.entry(module_id.clone()).or_default();
+            for (name, value) in additions {
+                if target.get(&name) != Some(&value) {
+                    target.insert(name, value);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    modules
+}
+
+fn local_exported_class_surfaces(
+    module: &Module,
+    imported: &BTreeMap<String, ExportedClass>,
+    max_type_expansions: usize,
+) -> BTreeMap<String, ExportedClass> {
+    let mut declared = BTreeMap::new();
+    for declaration in &module.declarations {
+        let Declaration::Class(class) = declaration else {
+            continue;
+        };
+        let mut value = module::class_export(class);
+        if let Some(base_name) = &class.extends_name {
+            if let Some(base) = declared.get(base_name).or_else(|| imported.get(base_name)) {
+                let depth = base.heritage_depth.saturating_add(1);
+                value.heritage_depth = depth;
+                if depth <= max_type_expansions {
+                    inherit_exported_class_surface(&mut value, base);
+                }
+            }
+        }
+        declared.insert(class.name.clone(), value);
+    }
+    let mut exports = BTreeMap::new();
+    for declaration in &module.declarations {
+        match declaration {
+            Declaration::Class(class) if class.exported => {
+                if let Some(value) = declared.get(&class.name) {
+                    exports.insert(class.name.clone(), value.clone());
+                }
+            }
+            Declaration::ValueExport(export) => {
+                for binding in &export.bindings {
+                    if let Some(value) = declared.get(&binding.local) {
+                        let mut value = value.clone();
+                        value.value_exported = true;
+                        exports.insert(binding.exported.clone(), value);
+                    }
+                }
+            }
+            Declaration::TypeExport(export) if export.specifier.is_none() => {
+                for binding in &export.bindings {
+                    let (local, exported) = binding
+                        .split_once(" as ")
+                        .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
+                            (local, exported)
+                        });
+                    if let Some(value) = declared.get(local) {
+                        let mut value = value.clone();
+                        value.value_exported = false;
+                        exports.insert(exported.to_string(), value);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    exports
+}
+
+fn inherit_exported_class_surface(derived: &mut ExportedClass, base: &ExportedClass) {
+    fn append_unshadowed(own: &mut Type, inherited: &Type) {
+        let (Type::Record(own), Type::Record(inherited)) = (own, inherited) else {
+            return;
+        };
+        let names = own
+            .iter()
+            .map(|field| field.name.clone())
+            .collect::<BTreeSet<_>>();
+        own.extend(
+            inherited
+                .iter()
+                .filter(|field| !names.contains(&field.name))
+                .cloned(),
+        );
+    }
+
+    append_unshadowed(&mut derived.instance_type, &base.instance_type);
+    append_unshadowed(&mut derived.constructor_type, &base.constructor_type);
+    if derived.constructor_binding.inherited && !base.constructor_binding.inherited {
+        derived.constructor_binding.signatures = base
+            .constructor_binding
+            .signatures
+            .iter()
+            .cloned()
+            .map(|mut signature| {
+                signature.return_type = Type::Named {
+                    name: derived.source_name.clone(),
+                    arguments: Vec::new(),
+                };
+                signature
+            })
+            .collect();
+        derived.constructor_binding.inherited = false;
+    }
+}
+
 pub(super) fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDefinition> {
     module
         .declarations
@@ -165,6 +409,14 @@ pub(super) fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDe
                     kind: TypeDefinitionKind::Interface,
                     parameters: interface.type_parameters.clone(),
                     value: interface_value(interface),
+                },
+            )),
+            Declaration::Class(class) => Some((
+                class.name.clone(),
+                TypeDefinition {
+                    kind: TypeDefinitionKind::Class,
+                    parameters: Vec::new(),
+                    value: module::class_instance_type(class),
                 },
             )),
             _ => None,

@@ -9,7 +9,8 @@ use super::*;
 /// through [`crate::Vm::execute_module_graph`], but this distinct goal keeps
 /// module strictness and top-level syntax separate from classic scripts.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
-    let mut parser = Parser::new_module(source);
+    let source = crate::source_encoding::escape(source);
+    let mut parser = Parser::new_module(&source);
     parser.module_await = true;
     parser.module = true;
     parser.strict = true;
@@ -38,9 +39,22 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
                 });
             }
             imports.extend(declaration);
-        } else if parser.check_identifier("export") {
+        } else if parser.check_identifier("export") || parser.check_punct(Punct::At) {
+            // `@dec export class C {}`: decorators may come before `export`.
+            let start = parser.token_start();
+            let decorators = parser.parse_decorators()?;
+            if decorators.is_empty() {
+                // Nothing to add: `export` follows directly.
+            } else if !parser.check_identifier("export") {
+                let class = parser.parse_decorated_class(decorators, start)?;
+                if class.name.is_none() {
+                    return Err(parser.syntax_error("class declarations require a name"));
+                }
+                body.push(Stmt::ClassDecl(class));
+                continue;
+            }
             if let Some((request, module_type)) =
-                parser.parse_export_declaration(&mut body, &mut exports)?
+                parser.parse_export_declaration(decorators, &mut body, &mut exports)?
             {
                 requests.push(RequestedModule {
                     specifier: request,

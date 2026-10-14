@@ -61,6 +61,59 @@ fn smallest_unit_day_balances_to_the_next_day() {
     );
 }
 
+#[test]
+fn day_rounding_preserves_a_non_iso_calendar_annotation() {
+    assert_true(
+        r#"new Temporal.PlainDateTime(2000, 1, 1, 23, 59, 59, 999, 0, 0, "gregory")
+            .round({ smallestUnit: "day" }).toString() === "2000-01-02T00:00:00[u-ca=gregory]""#,
+    );
+}
+
+#[test]
+fn string_rounding_shorthand_preserves_units_and_rejects_bad_receivers() {
+    assert_true(
+        r#"(function() {
+          const date = new Temporal.PlainDateTime(2000, 1, 1, 23, 59, 59, 999);
+          if (date.round("day").toString() !== "2000-01-02T00:00:00") return false;
+          if (date.round("second").toString() !== "2000-01-02T00:00:00") return false;
+          try { Temporal.PlainDateTime.prototype.round.call({}, "day"); return false; }
+          catch (error) { if (!(error instanceof TypeError)) return false; }
+          try { date.round("\uD800"); return false; }
+          catch (error) { return error instanceof RangeError; }
+        })()"#,
+    );
+}
+
+#[test]
+fn round_reads_each_option_before_propagating_a_throwing_getter() {
+    assert_true(
+        r#"(function() {
+          const date = new Temporal.PlainDateTime(2000, 1, 1, 12);
+          const sentinel = {};
+          for (const failed of ["roundingMode", "smallestUnit"]) {
+            const reads = [];
+            const options = {
+              get roundingIncrement() { reads.push("increment"); return 1; },
+              get roundingMode() {
+                reads.push("mode");
+                if (failed === "roundingMode") throw sentinel;
+                return "halfExpand";
+              },
+              get smallestUnit() {
+                reads.push("unit");
+                if (failed === "smallestUnit") throw sentinel;
+                return "day";
+              }
+            };
+            try { date.round(options); return false; }
+            catch (error) { if (error !== sentinel) return false; }
+            if (reads.join() !== (failed === "roundingMode" ? "increment,mode" : "increment,mode,unit")) return false;
+          }
+          return true;
+        })()"#,
+    );
+}
+
 /// `round/roundingincrement-one-day.js`: `roundingIncrement: 1` is
 /// explicitly valid for `smallestUnit: "day"` (not just the default-omitted
 /// case), and a time before noon rounds *down* to midnight under the

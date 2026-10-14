@@ -55,3 +55,16 @@ fn valid_string_with_valid_options_resolves() {
         run(r#"Temporal.PlainMonthDay.from("11-18", { overflow: "constrain" }).day"#).unwrap();
     assert_eq!(result, blueice_bluejs::Value::Number(18.0));
 }
+
+#[test]
+fn malformed_annotations_and_offsets_are_rejected_through_temporal_constructors() {
+    for source in [
+        r#"Temporal.PlainMonthDay.from("--02-29[!foo=bar]")"#,
+        r#"Temporal.PlainTime.from("12:34+25:00")"#,
+    ] {
+        assert!(
+            matches!(run(source), Err(RuntimeError::RangeError(_))),
+            "{source}"
+        );
+    }
+}

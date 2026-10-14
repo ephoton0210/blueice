@@ -489,6 +489,12 @@ fn until_and_since_round_symmetrically_and_reflect_direction_sensitive_modes() {
         // two thirds of a year rounds up under half modes.
         check("eight months halfExpand", "P1Y", () => early.until(new YM(2020, 9), { smallestUnit: "year", roundingMode: "halfExpand" }));
         check("eight months halfEven", "P1Y", () => early.until(new YM(2020, 9), { smallestUnit: "year", roundingMode: "halfEven" }));
+        // 2022-01-01 lies exactly halfway between 2021-01-01 and
+        // 2023-01-01. The lower multiple is even, so the tie rounds to zero.
+        check("halfEven even year window", "PT0S", () => new YM(2021, 1).until(new YM(2022, 1), { smallestUnit: "year", roundingIncrement: 2, roundingMode: "halfEven" }));
+        // 2023-01-01 is halfway between 2022-01-01 and 2024-01-01.
+        // That lower multiple is odd, so the tie rounds up to four years.
+        check("halfEven odd year window", "P4Y", () => new YM(2020, 1).until(new YM(2023, 1), { smallestUnit: "year", roundingIncrement: 2, roundingMode: "halfEven" }));
         check("eight months halfCeil", "P1Y", () => early.until(new YM(2020, 9), { smallestUnit: "year", roundingMode: "halfCeil" }));
         check("eight months halfFloor", "P1Y", () => early.until(new YM(2020, 9), { smallestUnit: "year", roundingMode: "halfFloor" }));
         check("eight months halfTrunc", "P1Y", () => early.until(new YM(2020, 9), { smallestUnit: "year", roundingMode: "halfTrunc" }));
@@ -511,6 +517,13 @@ fn until_and_since_round_symmetrically_and_reflect_direction_sensitive_modes() {
         check("extremes months", "P6570976M", () => new YM(-271821, 5).until(new YM(275760, 9), { largestUnit: "month" }));
         check("minimum month cannot be differenced", "RangeError", () => new YM(-271821, 4).until(new YM(275760, 9)));
         check("minimum month still equals itself", "PT0S", () => new YM(-271821, 4).until(new YM(-271821, 4)));
+        // A very large increment makes the upper rounding boundary invalid.
+        check("rounded month boundary exceeds date range", "RangeError", () => new YM(1970, 1).until(new YM(1971, 1), { smallestUnit: "month", roundingIncrement: 100000000 }));
+        // The Indian calendar cannot construct a year one billion years from
+        // the anchor; the boundary date addition itself must fail cleanly.
+        const indianStart = YM.from({ year: 1970, monthCode: "M01", calendar: "indian" });
+        const indianEnd = YM.from({ year: 1971, monthCode: "M01", calendar: "indian" });
+        check("rounded non-ISO boundary cannot be constructed", "RangeError", () => indianStart.until(indianEnd, { smallestUnit: "year", roundingIncrement: 1000000000 }));
         "#,
     );
 }

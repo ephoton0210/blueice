@@ -64,14 +64,16 @@ fn civil_from_days(days: i128) -> (i128, i128, i128) {
 }
 
 fn date_parts(time: f64) -> Option<DateParts> {
-    if !time.is_finite() {
-        return None;
-    }
+    time.is_finite().then(|| finite_date_parts(time))
+}
+
+/// The calendar parts of a finite time value.
+fn finite_date_parts(time: f64) -> DateParts {
     let days = (time / MILLISECONDS_PER_DAY).floor() as i128;
     let within_day = time - days as f64 * MILLISECONDS_PER_DAY;
     let within_day = within_day.round() as i128;
     let (year, month, day) = civil_from_days(days);
-    Some(DateParts {
+    DateParts {
         year,
         month,
         day,
@@ -80,7 +82,7 @@ fn date_parts(time: f64) -> Option<DateParts> {
         minute: within_day / 60_000 % 60,
         second: within_day / 1_000 % 60,
         millisecond: within_day % 1_000,
-    })
+    }
 }
 
 fn date_year(year: i128) -> String {
@@ -182,17 +184,25 @@ fn date_string(time: f64) -> JsString {
     .into()
 }
 
+/// The value of a run of ASCII decimal digits.
+fn decimal_value(digits: &str) -> i128 {
+    digits
+        .bytes()
+        .fold(0, |value, digit| value * 10 + i128::from(digit - b'0'))
+}
+
 fn parse_date_number(source: &str, width: usize) -> Option<(i128, &str)> {
     let prefix = source.get(..width)?;
     if !prefix.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    Some((prefix.parse().ok()?, &source[width..]))
+    Some((decimal_value(prefix), &source[width..]))
 }
 
 fn parse_date_time(source: &str) -> Option<(i128, i128, i128)> {
     let mut parts = source.split(':');
-    let hour = parts.next()?.parse().ok()?;
+    // `split` always yields at least one piece.
+    let hour = parts.next().unwrap_or_default().parse().ok()?;
     let minute = parts.next()?.parse().ok()?;
     let second = parts.next()?.parse().ok()?;
     (parts.next().is_none() && hour <= 23 && minute <= 59 && second <= 59)
@@ -242,23 +252,66 @@ fn parse_own_date_string(source: &str) -> Option<f64> {
     (parts.year == year && parts.month == month && parts.day == day).then_some(value)
 }
 
+/// The year of an ISO date string, and what follows it: four digits, or a
+/// sign and six digits (`-000000` is not a year).
+fn parse_date_year(source: &str) -> Option<(i128, &str)> {
+    if let Some(rest) = source.strip_prefix('+') {
+        parse_date_number(rest, 6)
+    } else if let Some(rest) = source.strip_prefix('-') {
+        let (year, rest) = parse_date_number(rest, 6)?;
+        (year != 0).then_some((-year, rest))
+    } else {
+        parse_date_number(source, 4)
+    }
+}
+
+/// The milliseconds of a fraction of a second and what follows it: one or
+/// more digits, of which only the first three count.
+fn parse_date_fraction(source: &str) -> Option<(i128, &str)> {
+    let width = source.bytes().take_while(u8::is_ascii_digit).count();
+    if width == 0 {
+        return None;
+    }
+    let digits = &source[..width.min(3)];
+    let milliseconds = decimal_value(digits) * 10_i128.pow(3 - digits.len() as u32);
+    Some((milliseconds, &source[width..]))
+}
+
+/// The time value of the fields of a Date Time String, or `None` when a field
+/// is out of range or the day does not exist in that month.
+fn date_time_from_fields(
+    (year, month, day): (i128, i128, i128),
+    (hour, minute, second, millisecond): (i128, i128, i128, i128),
+    offset_minutes: i128,
+) -> Option<f64> {
+    if !(1..=12).contains(&month)
+        || !(0..=24).contains(&hour)
+        || minute > 59
+        || second > 59
+        || (hour == 24 && (minute != 0 || second != 0 || millisecond != 0))
+    {
+        return None;
+    }
+    // The day is checked on its own: "24:00" is the end of that day, which
+    // is a time on the next one.
+    let day_start = days_from_civil(year, month, day) as f64 * MILLISECONDS_PER_DAY;
+    let parts = finite_date_parts(day_start);
+    if parts.year != year || parts.month != month || parts.day != day {
+        return None;
+    }
+    let local_time = day_start
+        + hour as f64 * 3_600_000.0
+        + minute as f64 * 60_000.0
+        + second as f64 * 1_000.0
+        + millisecond as f64;
+    Some(time_clip(local_time - offset_minutes as f64 * 60_000.0))
+}
+
 fn parse_iso_date(source: &str) -> Option<f64> {
     // ISO 8601's canonical Date Time String Format is the interoperable Date
     // parse subset. Date-only input is UTC; a time without an offset uses the
     // host local zone, which BlueJS currently defines as UTC.
-    let (year, rest, negative_extended_year) = if let Some(rest) = source.strip_prefix('+') {
-        let (year, rest) = parse_date_number(rest, 6)?;
-        (year, rest, false)
-    } else if let Some(rest) = source.strip_prefix('-') {
-        let (year, rest) = parse_date_number(rest, 6)?;
-        (-year, rest, year == 0)
-    } else {
-        let (year, rest) = parse_date_number(source, 4)?;
-        (year, rest, false)
-    };
-    if negative_extended_year {
-        return None;
-    }
+    let (year, rest) = parse_date_year(source)?;
     if rest.is_empty() && !source.starts_with(['+', '-']) {
         return Some(date_from_parts(year, 0, 1, 0, 0, 0, 0));
     }
@@ -283,20 +336,7 @@ fn parse_iso_date(source: &str) -> Option<f64> {
             second = parsed_second;
             rest = after_second;
             if let Some(after_fraction) = rest.strip_prefix('.') {
-                let width = after_fraction
-                    .bytes()
-                    .take_while(u8::is_ascii_digit)
-                    .count();
-                if width == 0 {
-                    return None;
-                }
-                let fraction = &after_fraction[..width];
-                let mut milliseconds = fraction[..fraction.len().min(3)].parse::<i128>().ok()?;
-                for _ in fraction.len().min(3)..3 {
-                    milliseconds *= 10;
-                }
-                millisecond = milliseconds;
-                rest = &after_fraction[width..];
+                (millisecond, rest) = parse_date_fraction(after_fraction)?;
             }
         }
         if rest == "Z" {
@@ -318,24 +358,72 @@ fn parse_iso_date(source: &str) -> Option<f64> {
             return None;
         }
     }
-    if !(1..=12).contains(&month)
-        || !(0..=24).contains(&hour)
-        || minute > 59
-        || second > 59
-        || (hour == 24 && (minute != 0 || second != 0 || millisecond != 0))
-    {
+    date_time_from_fields(
+        (year, month, day),
+        (hour, minute, second, millisecond),
+        offset_minutes,
+    )
+}
+
+/// One or two ASCII digits and what follows them.
+fn parse_short_date_number(source: &str) -> Option<(i128, &str)> {
+    let width = source.bytes().take_while(u8::is_ascii_digit).count().min(2);
+    if width == 0 {
         return None;
     }
-    let local_time = days_from_civil(year, month, day) as f64 * MILLISECONDS_PER_DAY
-        + hour as f64 * 3_600_000.0
-        + minute as f64 * 60_000.0
-        + second as f64 * 1_000.0
-        + millisecond as f64;
-    let parts = date_parts(local_time)?;
-    if parts.year != year || parts.month != month || parts.day != day {
-        return None;
+    Some((decimal_value(&source[..width]), &source[width..]))
+}
+
+// Date.parse may accept more than the ISO format. Like SpiderMonkey and V8,
+// also read the ISO format with a space in place of the `T` and with one or
+// two digits in the month, the day and each time field ("1997-3-8 1:1:1"),
+// and with an offset written `+hh`, `+hhmm` or `+hh:mm`. A `T` keeps the
+// strict format (which parse_iso_date reads), and a time is required.
+fn parse_spaced_date(source: &str) -> Option<f64> {
+    let (year, rest) = parse_date_year(source)?;
+    let (month, rest) = parse_short_date_number(rest.strip_prefix('-')?)?;
+    let (day, rest) = parse_short_date_number(rest.strip_prefix('-')?)?;
+    let (hour, rest) = parse_short_date_number(rest.strip_prefix(' ')?)?;
+    let (minute, mut rest) = parse_short_date_number(rest.strip_prefix(':')?)?;
+    let (mut second, mut millisecond) = (0, 0);
+    if let Some(after_colon) = rest.strip_prefix(':') {
+        (second, rest) = parse_short_date_number(after_colon)?;
+        if let Some(after_fraction) = rest.strip_prefix('.') {
+            (millisecond, rest) = parse_date_fraction(after_fraction)?;
+        }
     }
-    Some(time_clip(local_time - offset_minutes as f64 * 60_000.0))
+    let offset_minutes = if rest.is_empty() || rest == "Z" {
+        0
+    } else {
+        let sign = match rest.chars().next() {
+            Some('+') => 1,
+            Some('-') => -1,
+            _ => return None,
+        };
+        let (offset_hour, rest) = parse_date_number(&rest[1..], 2)?;
+        let (offset_minute, rest) = if rest.is_empty() {
+            (0, rest)
+        } else {
+            parse_date_number(rest.strip_prefix(':').unwrap_or(rest), 2)?
+        };
+        if !rest.is_empty() || offset_hour > 23 || offset_minute > 59 {
+            return None;
+        }
+        sign * (offset_hour * 60 + offset_minute)
+    };
+    date_time_from_fields(
+        (year, month, day),
+        (hour, minute, second, millisecond),
+        offset_minutes,
+    )
+}
+
+/// The time value of a Date string: the ISO format, the two formats
+/// `toString` and `toUTCString` print, or the spaced variant above.
+fn parse_date_string(source: &str) -> Option<f64> {
+    parse_iso_date(source)
+        .or_else(|| parse_own_date_string(source))
+        .or_else(|| parse_spaced_date(source))
 }
 
 fn date_from_parts(
@@ -395,13 +483,17 @@ impl Vm {
                     if let Some(object) = value.object_id() {
                         if let Ok(time) = self.heap.date_value(object) {
                             time
+                        } else if let Some(time) =
+                            self.test262_foreign_date_value(object).ok().flatten()
+                        {
+                            time
                         } else {
                             let primitive = self.coerce_primitive(value, "default")?;
                             if let Value::String(string) = primitive {
                                 string
                                     .to_utf8()
                                     .ok()
-                                    .and_then(|string| parse_iso_date(&string))
+                                    .and_then(|string| parse_date_string(&string))
                                     .unwrap_or(f64::NAN)
                             } else {
                                 time_clip(self.coerce_number(&primitive)?)
@@ -411,16 +503,13 @@ impl Vm {
                         string
                             .to_utf8()
                             .ok()
-                            .and_then(|string| parse_iso_date(&string))
+                            .and_then(|string| parse_date_string(&string))
                             .unwrap_or(f64::NAN)
                     } else {
                         time_clip(self.coerce_number(value)?)
                     }
                 }
-                _ => match self.date_utc(args)? {
-                    Value::Number(time) => time,
-                    _ => unreachable!("Date.UTC returns a Number"),
-                },
+                _ => self.date_utc_time(args)?,
             };
             let default = self
                 .date_prototype
@@ -443,7 +532,7 @@ impl Vm {
             value
                 .to_utf8()
                 .ok()
-                .and_then(|value| parse_iso_date(&value).or_else(|| parse_own_date_string(&value)))
+                .and_then(|value| parse_date_string(&value))
                 .unwrap_or(f64::NAN),
         ))
     }
@@ -476,7 +565,9 @@ impl Vm {
                 .collect::<Result<Vec<_>, _>>()?;
             let first = numbers.first().copied().flatten();
             if numbers.iter().any(Option::is_none) {
-                self.with_roots(|heap| heap.set_date_value(object, f64::NAN))?;
+                self.heap
+                    .set_date_value(object, f64::NAN)
+                    .expect("the receiver was checked to be a live Date");
                 return Ok(Value::Number(f64::NAN));
             }
             let parts = if prior.is_finite() {
@@ -492,7 +583,9 @@ impl Vm {
                 return Ok(Value::Number(f64::NAN));
             };
             let Some(first) = first else {
-                self.with_roots(|heap| heap.set_date_value(object, f64::NAN))?;
+                self.heap
+                    .set_date_value(object, f64::NAN)
+                    .expect("the receiver was checked to be a live Date");
                 return Ok(Value::Number(f64::NAN));
             };
             let optional = |index: usize, default: i128| {
@@ -589,7 +682,9 @@ impl Vm {
                     )
                 }
             };
-            self.with_roots(|heap| heap.set_date_value(object, result))?;
+            self.heap
+                .set_date_value(object, result)
+                .expect("the receiver was checked to be a live Date");
             Ok(Value::Number(result))
         })();
         self.stack.truncate(base);
@@ -639,7 +734,9 @@ impl Vm {
                 // Validate the receiver before observable number conversion.
                 self.date_receiver_time(receiver)?;
                 let time = time_clip(self.coerce_number(value)?);
-                self.with_roots(|heap| heap.set_date_value(object, time))?;
+                self.heap
+                    .set_date_value(object, time)
+                    .expect("the receiver was checked to be a live Date");
                 Ok(Value::Number(time))
             }
             native::DateMethod::ToIsoString => date_iso_string(self.date_receiver_time(receiver)?)
@@ -691,7 +788,10 @@ impl Vm {
                 }
                 for name in names {
                     let method = self.get_property(receiver, &name.into())?;
-                    if !self.is_callable(&method)? {
+                    if !self
+                        .is_callable(&method)
+                        .expect("Get returned a live conversion method")
+                    {
                         continue;
                     }
                     let result = self.call_native(method, receiver.clone(), Vec::new(), false)?;
@@ -721,7 +821,10 @@ impl Vm {
                     }
                 }
                 let to_iso_string = self.get_property(receiver, &"toISOString".into())?;
-                if !self.is_callable(&to_iso_string)? {
+                if !self
+                    .is_callable(&to_iso_string)
+                    .expect("Get returned a live toISOString value")
+                {
                     return Err(RuntimeError::TypeError(
                         "Date toISOString must be callable".into(),
                     ));
@@ -735,6 +838,11 @@ impl Vm {
         &mut self,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_utc_time(args)?))
+    }
+
+    /// The time value `Date.UTC(...args)` returns.
+    fn date_utc_time(&mut self, args: &[Value]) -> Result<f64, RuntimeError> {
         let defaults = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
         let mut components = [0.0; 7];
         let mut invalid = false;
@@ -753,7 +861,7 @@ impl Vm {
             }
         }
         if invalid {
-            return Ok(Value::Number(f64::NAN));
+            return Ok(f64::NAN);
         }
         let mut year = components[0];
         if (0.0..=99.0).contains(&year) {
@@ -763,7 +871,7 @@ impl Vm {
             || components[1].abs() > i64::MAX as f64
             || components[2].abs() > i64::MAX as f64
         {
-            return Ok(Value::Number(f64::NAN));
+            return Ok(f64::NAN);
         }
         let mut year = year as i128;
         let month = components[1] as i128;
@@ -779,9 +887,9 @@ impl Vm {
         let milliseconds =
             days_from_civil(year, month, components[2] as i128) as f64 * 86_400_000.0 + time;
         if !milliseconds.is_finite() || milliseconds.abs() > 8_640_000_000_000_000.0 {
-            Ok(Value::Number(f64::NAN))
+            Ok(f64::NAN)
         } else {
-            Ok(Value::Number(milliseconds.trunc()))
+            Ok(milliseconds.trunc())
         }
     }
 }

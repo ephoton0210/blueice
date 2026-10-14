@@ -90,10 +90,22 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
         attachment.safe_point_map.format,
         BLUEJS_SAFE_POINT_MAP_ABI_V1
     );
-    assert_eq!(
-        attachment.safe_point_map.entries.len(),
-        attachment.provenance.len()
-    );
+    assert!(attachment.safe_point_map.entries.len() >= attachment.provenance.len());
+    for provenance in &attachment.provenance {
+        if let DirectSafePointBinding::Bound(safe_point) = provenance.safe_point {
+            let entry = attachment
+                .safe_point_map
+                .source_span_for_safe_point(
+                    safe_point.code_unit.ordinal(),
+                    safe_point.bytecode_offset,
+                )
+                .expect("every bound top-level statement retains its source span");
+            assert_eq!(
+                (entry.start_byte, entry.end_byte),
+                (provenance.source.start, provenance.source.end)
+            );
+        }
+    }
     attachment
         .safe_point_map
         .validate_against(&registry, handle)
@@ -101,6 +113,207 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
     registry
         .validate_safe_point(handle, installed.safe_points().next().unwrap())
         .unwrap();
+}
+
+#[test]
+fn existing_program_with_same_instructions_but_different_binding_refuses_attachment() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, "const answer: number = 42;")]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let identity =
+        bluejs::BlueJsSourceIdentity::new(ENTRY, artifact.sources[0].content_hash.clone()).unwrap();
+    let replacement = bluejs::BlueJsProgramV1::Script(bluejs::parse("const other=42;").unwrap());
+    let handle = registry.install(identity, &replacement).unwrap();
+    let installed = registry.get(handle).unwrap().bytecode();
+    assert_eq!(installed.bytes(), artifact.bytecode.bytes());
+    assert_eq!(installed.constants(), artifact.bytecode.constants());
+    assert_eq!(
+        installed.root_declaration_binding_slots(),
+        artifact.bytecode.root_declaration_binding_slots()
+    );
+    assert!(matches!(
+        artifact.attach_existing_in(&registry, handle),
+        Err(BridgeError::ProvenanceAttachment(_))
+    ));
+}
+
+#[test]
+fn resolves_a_ts_byte_position_to_the_next_verified_safe_point_or_unbound() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const first: number = 1; const second: number = 2; second;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let attachment = artifact.attach_in(&mut registry).unwrap();
+    let first = &attachment.provenance[0];
+    let second = &attachment.provenance[1];
+    let DirectSafePointBinding::Bound(first_safe_point) = first.safe_point else {
+        panic!("the first declaration must have a verified safe point")
+    };
+    let DirectSafePointBinding::Bound(second_safe_point) = second.safe_point else {
+        panic!("the second declaration must have a verified safe point")
+    };
+
+    let exact = attachment
+        .safe_point_map
+        .source_span_for_safe_point(
+            second_safe_point.code_unit.ordinal(),
+            second_safe_point.bytecode_offset,
+        )
+        .expect("the second bound instruction must retain its original span");
+    assert_eq!(exact.source, ENTRY);
+    assert_eq!(
+        (exact.start_byte, exact.end_byte),
+        (second.source.start, second.source.end)
+    );
+    assert!(attachment
+        .safe_point_map
+        .source_span_for_safe_point(second_safe_point.code_unit.ordinal(), u32::MAX,)
+        .is_none());
+
+    assert_eq!(
+        attachment.breakpoint_at_or_after(ENTRY, first.source.start),
+        DirectSafePointBinding::Bound(first_safe_point)
+    );
+    assert_eq!(
+        attachment.breakpoint_at_or_after(ENTRY, first.source.end),
+        DirectSafePointBinding::Bound(second_safe_point),
+        "a position after the first exclusive span end binds to the next statement"
+    );
+    assert_eq!(
+        attachment
+            .safe_point_map
+            .nearest_bound_safe_point_at_or_after(ENTRY, first.source.end),
+        Some(second_safe_point)
+    );
+    assert_eq!(
+        attachment.breakpoint_at_or_after(ENTRY, usize::MAX),
+        DirectSafePointBinding::Unbound
+    );
+    assert_eq!(
+        attachment.breakpoint_at_or_after("page:///other.ts", 0),
+        DirectSafePointBinding::Unbound
+    );
+}
+
+#[test]
+fn safe_point_map_retains_original_utf16_coordinates_without_source_text() {
+    let source = "// original\r\n/* 🚀 */ const answer: number = 42;";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let attachment = artifact.attach_in(&mut registry).unwrap();
+    let entry = &attachment.safe_point_map.entries[0];
+    assert_eq!(entry.start_byte, source.find("const answer").unwrap());
+    assert_eq!(entry.location.start.line, 1);
+    assert_eq!(entry.location.start.column_utf16, 9);
+    assert_eq!(entry.location.end.line, 1);
+    assert!(entry.location.end.column_utf16 > entry.location.start.column_utf16);
+    assert!(!format!("{entry:?}").contains("const answer"));
+
+    let mut malformed = attachment.safe_point_map.clone();
+    malformed.entries[0].location.end.column_utf16 = usize::MAX;
+    assert!(malformed
+        .validate_against(&registry, attachment.handle)
+        .is_err());
+}
+
+#[test]
+fn classic_and_module_maps_own_root_call_and_child_entry_without_mapping_halt() {
+    let source = "/* 🚀 */ function inner(a: number): number { return a + 1; } inner(3);";
+    let function_start = source.find("function inner").unwrap();
+    let function_end = source.find("} inner").unwrap() + 1;
+    let call_start = source.find("inner(3)").unwrap();
+    for module in [false, true] {
+        let mut registry = bluejs::BlueJsProgramRegistry::default();
+        let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
+        let attachment = if module {
+            compile_direct_module(ENTRY, &loader, CompilerOptions::default())
+                .unwrap()
+                .attach_in(&mut registry)
+                .unwrap()
+        } else {
+            compile_direct_script(ENTRY, &loader, CompilerOptions::default())
+                .unwrap()
+                .attach_in(&mut registry)
+                .unwrap()
+        };
+        let installed = registry.get(attachment.handle).unwrap();
+        let root = installed.code_units()[0].id();
+        let call = installed
+            .bytecode()
+            .instructions()
+            .find(|instruction| instruction.opcode == bluejs::Opcode::Call)
+            .expect("the source call must emit a root Call instruction");
+        let root_span = attachment
+            .safe_point_map
+            .source_span_for_safe_point(root.ordinal(), call.offset as u32)
+            .unwrap();
+        assert_eq!(
+            (root_span.start_byte, root_span.end_byte),
+            (call_start, source.len())
+        );
+        let child = &installed.code_units()[1];
+        let child_span = attachment
+            .safe_point_map
+            .source_span_for_safe_point(child.id().ordinal(), child.instruction_offsets()[0])
+            .unwrap();
+        assert_eq!(
+            (child_span.start_byte, child_span.end_byte),
+            (function_start, function_end)
+        );
+        assert_eq!(child_span.location.start.column_utf16, 9);
+        let halt = installed
+            .bytecode()
+            .instructions()
+            .find(|instruction| instruction.opcode == bluejs::Opcode::Halt)
+            .unwrap();
+        assert!(attachment
+            .safe_point_map
+            .source_span_for_safe_point(root.ordinal(), halt.offset as u32)
+            .is_none());
+    }
+}
+
+#[test]
+fn module_function_source_breakpoint_selects_child_entry_over_declaration_root() {
+    let source = "export function inner(): number { return 41; }";
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = compile_direct_module(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap()
+    .attach_debug_in(&mut registry, &mut debug)
+    .unwrap();
+    let bound = attachment.breakpoint_at_or_after(ENTRY, source.find("function inner").unwrap());
+    let DirectSafePointBinding::Bound(point) = bound else {
+        panic!("a verified module function entry must be source-bound")
+    };
+    assert_eq!(point.code_unit.ordinal(), 1);
+    assert_eq!(point.bytecode_offset, 0);
+    assert_eq!(
+        debug
+            .get(&registry, attachment.handle)
+            .unwrap()
+            .breakpoint_at_or_after(ENTRY, source.find("function inner").unwrap()),
+        bound
+    );
 }
 
 #[test]
@@ -124,6 +337,36 @@ fn rejects_object_methods_without_reparsing_emitted_javascript() {
 }
 
 #[test]
+fn lowers_checked_optional_dot_read_to_bluejs_optional_member_ast() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const receiver: { value: number } | null = null; const read: number | undefined = receiver?.value; read;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(bluejs::Program { body }) = &artifact.program else {
+        panic!("direct compilation must retain a script AST");
+    };
+    assert!(body.iter().any(|statement| matches!(
+        statement,
+        bluejs::Stmt::VarDecl(_, declarations)
+            if declarations.iter().any(|declaration| matches!(
+                &declaration.init,
+                Some(bluejs::Expr::OptionalMember { object, property, computed: false })
+                    if matches!(object.as_ref(), bluejs::Expr::Identifier(name) if name == "receiver")
+                        && matches!(property.as_ref(), bluejs::Expr::Identifier(name) if name == "value")
+            ))
+    )));
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Undefined
+    );
+}
+
+#[test]
 fn lowers_typed_local_functions_and_direct_calls() {
     let artifact = compile_direct_script(
         ENTRY,
@@ -144,6 +387,27 @@ fn lowers_typed_local_functions_and_direct_calls() {
         bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
         bluejs::Value::Number(42.0)
     );
+}
+
+#[test]
+fn direct_lowered_functions_do_not_forge_javascript_source_text() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function identity(value: number): number { return value; } identity(42);",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(bluejs::Program { body }) = artifact.program else {
+        panic!("a direct script must lower to a script program");
+    };
+    let bluejs::Stmt::FunctionDecl(function) = &body[0] else {
+        panic!("the first lowered statement must be the local function");
+    };
+
+    assert_eq!(function.source_text.as_str(), None);
 }
 
 #[test]
@@ -662,6 +926,64 @@ fn lowers_checked_property_delete_expressions() {
         bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
         bluejs::Value::Bool(true)
     );
+}
+
+#[test]
+fn lowers_checked_array_holes_without_materializing_undefined_properties() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const values = [1,,3]; values.length === 3 && !(1 in values) && values[1] === undefined;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    assert!(matches!(
+        artifact.program,
+        bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+            if matches!(
+                body.as_slice(),
+                [bluejs::Stmt::VarDecl(_, declarations), bluejs::Stmt::Expr(_)]
+                    if matches!(
+                        declarations.as_slice(),
+                        [bluejs::VarDeclarator {
+                            init: Some(bluejs::Expr::Array(elements)),
+                            ..
+                        }] if matches!(
+                            elements.as_slice(),
+                            [
+                                Some(bluejs::ArrayElement::Normal(bluejs::Expr::Number(1.0))),
+                                None,
+                                Some(bluejs::ArrayElement::Normal(bluejs::Expr::Number(3.0))),
+                            ]
+                        )
+                    )
+            )
+    ));
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Bool(true)
+    );
+}
+
+#[test]
+fn rejects_array_literals_that_mix_holes_and_spread() {
+    let error = match compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const suffix = [2]; const mixed = [1,,...suffix];",
+        )]),
+        CompilerOptions::default(),
+    ) {
+        Ok(_) => panic!("the direct bridge must reject a mixed hole/spread array"),
+        Err(error) => error,
+    };
+    let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+        panic!("the direct bridge must reject a mixed hole/spread array");
+    };
+    assert!(message.contains("cannot combine holes and spread"));
 }
 
 #[test]

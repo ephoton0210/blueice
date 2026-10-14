@@ -4,6 +4,10 @@
 
 //! String, numeric, comparison, and object-environment VM operations.
 
+use num_bigint::{BigInt, Sign};
+use num_traits::{One, ToPrimitive, Zero};
+use std::cmp::Ordering;
+
 use super::*;
 
 impl Vm {
@@ -67,7 +71,9 @@ impl Vm {
             ));
         }
         let separator = native::argument(args, 0);
-        if !matches!(separator, Value::Null | Value::Undefined) {
+        // Only an Object argument may supply a `@@split` hook; a primitive
+        // must not observe one installed on its wrapper prototype.
+        if matches!(separator, Value::Object(_)) {
             let method = self.get_method(separator, &JsSymbol::well_known("split").into())?;
             if method != Value::Undefined {
                 return self.call_native(
@@ -84,7 +90,7 @@ impl Vm {
         let limit = if matches!(limit, Value::Undefined) {
             u32::MAX
         } else {
-            native::uint32(&Value::Number(self.coerce_number(limit)?))?
+            native::uint32(self.coerce_number(limit)?)
         };
         // Even a zero limit converts the separator first (§22.1.3.23).
         let search = self.coerce_string(separator)?;
@@ -133,7 +139,9 @@ impl Vm {
             ));
         }
         let search = native::argument(args, 0);
-        if !matches!(search, Value::Null | Value::Undefined) {
+        // Only an Object argument may supply a `@@replace` hook (and only an
+        // Object can be a RegExp): primitives are converted to strings.
+        if matches!(search, Value::Object(_)) {
             if all {
                 self.require_global_pattern(search)?;
             }
@@ -211,7 +219,18 @@ impl Vm {
         operation: impl FnOnce(&mut Self, Value, Value) -> Result<Value, RuntimeError>,
     ) -> Result<(), RuntimeError> {
         let base = self.stack.len() - 2;
-        let value = operation(self, self.stack[base].clone(), self.stack[base + 1].clone())?;
+        let result = operation(self, self.stack[base].clone(), self.stack[base + 1].clone());
+        self.replace_operands(base, result)
+    }
+
+    /// The non-generic tail of [`Vm::binary`]: on success the two operands
+    /// starting at `base` are replaced by the result.
+    fn replace_operands(
+        &mut self,
+        base: usize,
+        result: Result<Value, RuntimeError>,
+    ) -> Result<(), RuntimeError> {
+        let value = result?;
         self.stack.truncate(base);
         self.stack.push(value);
         Ok(())
@@ -260,8 +279,8 @@ impl Vm {
                         Opcode::Subtract => left - right,
                         Opcode::Multiply => left * right,
                         Opcode::Divide => left / right,
-                        Opcode::Remainder => left % right,
-                        _ => unreachable!("arithmetic caller selects an arithmetic opcode"),
+                        // `Opcode::Remainder`: the caller passes one of the four.
+                        _ => left % right,
                     };
                     Ok(Value::Number(value))
                 }
@@ -274,8 +293,8 @@ impl Vm {
                         Opcode::Subtract => left - right,
                         Opcode::Multiply => left * right,
                         Opcode::Divide => left / right,
-                        Opcode::Remainder => left % right,
-                        _ => unreachable!("arithmetic caller selects an arithmetic opcode"),
+                        // `Opcode::Remainder`: the caller passes one of the four.
+                        _ => left % right,
                     };
                     Ok(Value::BigInt(value))
                 }
@@ -292,15 +311,7 @@ impl Vm {
             let right = vm.coerce_numeric(&right)?;
             match (left, right) {
                 (primitive::Numeric::Number(left), primitive::Numeric::Number(right)) => {
-                    // libm's powf returns 1 for ±1 raised to ±∞, whereas
-                    // Number::exponentiate explicitly specifies NaN for
-                    // that pair.
-                    let value = if right.is_infinite() && left.abs() == 1.0 {
-                        f64::NAN
-                    } else {
-                        left.powf(right)
-                    };
-                    Ok(Value::Number(value))
+                    Ok(Value::Number(primitive::number_exponentiate(left, right)))
                 }
                 (primitive::Numeric::BigInt(left), primitive::Numeric::BigInt(right)) => {
                     Ok(Value::BigInt(bigint_exponentiate(left, right)?))
@@ -339,8 +350,8 @@ impl Vm {
                     let value = match operation {
                         Opcode::BitAnd => left & right,
                         Opcode::BitXor => left ^ right,
-                        Opcode::BitOr => left | right,
-                        _ => unreachable!("bitwise caller selects a bitwise opcode"),
+                        // `Opcode::BitOr`: the caller passes one of the three.
+                        _ => left | right,
                     };
                     Ok(Value::Number(value as f64))
                 }
@@ -348,8 +359,8 @@ impl Vm {
                     let value = match operation {
                         Opcode::BitAnd => left & right,
                         Opcode::BitXor => left ^ right,
-                        Opcode::BitOr => left | right,
-                        _ => unreachable!("bitwise caller selects a bitwise opcode"),
+                        // `Opcode::BitOr`: the caller passes one of the three.
+                        _ => left | right,
                     };
                     Ok(Value::BigInt(value))
                 }
@@ -371,8 +382,8 @@ impl Vm {
                     let value = match operation {
                         Opcode::ShiftLeft => left.wrapping_shl(right) as f64,
                         Opcode::ShiftRight => (left >> right) as f64,
-                        Opcode::UnsignedShiftRight => ((left as u32) >> right) as f64,
-                        _ => unreachable!("shift caller selects a shift opcode"),
+                        // `Opcode::UnsignedShiftRight`: the caller passes one of the three.
+                        _ => ((left as u32) >> right) as f64,
                     };
                     Ok(Value::Number(value))
                 }
@@ -408,12 +419,12 @@ impl Vm {
             return Ok(left == right);
         }
         if matches!(right, Value::Null | Value::Undefined)
-            && matches!(&left, Value::Object(object) if self.heap.is_html_dda(*object)?)
+            && matches!(&left, Value::Object(object) if self.object_is_html_dda(*object))
         {
             return Ok(true);
         }
         if matches!(left, Value::Null | Value::Undefined)
-            && matches!(&right, Value::Object(object) if self.heap.is_html_dda(*object)?)
+            && matches!(&right, Value::Object(object) if self.object_is_html_dda(*object))
         {
             return Ok(true);
         }
@@ -424,12 +435,8 @@ impl Vm {
             return Ok(true);
         }
         match (left, right) {
-            (Value::Number(left), Value::String(right)) => {
-                Ok(left == primitive::number(&Value::String(right))?)
-            }
-            (Value::String(left), Value::Number(right)) => {
-                Ok(primitive::number(&Value::String(left))? == right)
-            }
+            (Value::Number(left), Value::String(right)) => Ok(left == string_to_number(right)),
+            (Value::String(left), Value::Number(right)) => Ok(string_to_number(left) == right),
             // BigInt/Number and BigInt/String each compare by mathematical
             // value rather than routing the BigInt operand through ToNumber
             // (which would throw): reuse the Abstract Relational Comparison
@@ -439,7 +446,9 @@ impl Vm {
             | (left @ Value::Number(_), right @ Value::BigInt(_))
             | (left @ Value::BigInt(_), right @ Value::String(_))
             | (left @ Value::String(_), right @ Value::BigInt(_)) => {
-                Ok(primitive::compare(&left, &right)? == Some(Ordering::Equal))
+                Ok(primitive::compare(&left, &right)
+                    .expect("a BigInt compares with a Number or String without error")
+                    == Some(Ordering::Equal))
             }
             (Value::Bool(left), right) => {
                 self.loose_equal(Value::Number(if left { 1.0 } else { 0.0 }), right)
@@ -463,6 +472,13 @@ impl Vm {
             }
             _ => Ok(false),
         }
+    }
+
+    /// Whether `object` is a live `[[IsHTMLDDA]]` object.
+    fn object_is_html_dda(&self, object: ObjectId) -> bool {
+        self.heap
+            .is_html_dda(object)
+            .expect("a value on the operand stack is a live object")
     }
 
     pub(super) fn property_in(
@@ -504,7 +520,9 @@ impl Vm {
         let result = (|| {
             let unscopables = self.stack.last().expect("unscopables is rooted").clone();
             let blocked = self.get_property(&unscopables, &name.into())?;
-            Ok(!self.to_boolean(&blocked)?)
+            Ok(!self
+                .to_boolean(&blocked)
+                .expect("a value read from an object is live"))
         })();
         self.stack.pop();
         result
@@ -513,19 +531,27 @@ impl Vm {
     /// Resolve `name` through the active `with` objects, then the enclosing
     /// binding (`fallback`: `Some(Some(v))` initialized, `Some(None)` still
     /// in its temporal dead zone) and finally the global object. `None` means
-    /// the name is unresolvable everywhere.
+    /// the name is unresolvable everywhere. The second element is the with
+    /// object the name was found on (WithBaseObject), `undefined` otherwise.
     fn with_lookup(
         &mut self,
         name: &str,
         fallback: Option<Option<Value>>,
-    ) -> Result<Option<Value>, RuntimeError> {
+    ) -> Result<Option<(Value, Value)>, RuntimeError> {
         for object in self.with_objects.clone().into_iter().rev() {
             if self.with_has_binding(&object, name)? {
-                return self.get_property(&object, &name.into()).map(Some);
+                let value = self.object_environment_get(&object, name)?;
+                // A parameter environment is a declarative record: a function
+                // found there has no WithBaseObject to be called with.
+                let is_env = object
+                    .object_id()
+                    .is_some_and(|id| self.is_parameter_eval_env(id));
+                let base = if is_env { Value::Undefined } else { object };
+                return Ok(Some((value, base)));
             }
         }
         match fallback {
-            Some(Some(value)) => Ok(Some(value)),
+            Some(Some(value)) => Ok(Some((value, Value::Undefined))),
             Some(None) => Err(RuntimeError::ReferenceError(name.into())),
             None => {
                 // Standard globals (`Math`, `Array`, `undefined`, ...) are
@@ -533,9 +559,64 @@ impl Vm {
                 // object; outside `with` the compiler emits a dedicated
                 // opcode for them, so make sure that object exists first.
                 self.global("globalThis")?;
-                self.lookup_global_name(name)
+                Ok(self
+                    .lookup_global_name(name)?
+                    .map(|value| (value, Value::Undefined)))
             }
         }
+    }
+
+    /// GetBindingValue of an object Environment Record (§9.1.1.2.6): the
+    /// binding is probed again with HasProperty (observable through a Proxy
+    /// or an @@unscopables getter that deleted it); a vanished binding reads
+    /// as `undefined` in sloppy code and is a ReferenceError in strict code.
+    pub(super) fn object_environment_get(
+        &mut self,
+        object: &Value,
+        name: &str,
+    ) -> Result<Value, RuntimeError> {
+        let id = object.object_id().expect("with objects are objects");
+        if !self.has_property(id, &name.into())? {
+            return if self.strict {
+                Err(RuntimeError::ReferenceError(name.into()))
+            } else {
+                Ok(Value::Undefined)
+            };
+        }
+        if let Some(cell) = self.parameter_eval_cell(id, name) {
+            return Ok(self
+                .heap
+                .get_own(cell, "value")
+                .expect("a parameter environment's cell is a live object")
+                .unwrap_or(Value::Undefined));
+        }
+        self.get_property(object, &name.into())
+    }
+
+    /// The cell an eval-declared variable of a parameter environment lives
+    /// in, when `object` is one (and `None` for a `with` object).
+    fn parameter_eval_cell(&mut self, object: ObjectId, name: &str) -> Option<ObjectId> {
+        if !self.is_parameter_eval_env(object) {
+            return None;
+        }
+        self.heap
+            .get_own(object, name)
+            .expect("a `with` or parameter environment object is live")
+            .and_then(|value| value.object_id())
+    }
+
+    /// SetMutableBinding on an object environment: through the variable's
+    /// cell for a parameter environment, else an ordinary [[Set]].
+    fn object_environment_set(
+        &mut self,
+        object: ObjectId,
+        name: &str,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
+        if let Some(cell) = self.parameter_eval_cell(object, name) {
+            return self.store_global_cell(cell, value.clone());
+        }
+        self.set_property(&Value::Object(object), &name.into(), value)
     }
 
     pub(super) fn with_get(
@@ -543,6 +624,18 @@ impl Vm {
         name: &str,
         fallback: Option<Option<Value>>,
     ) -> Result<Value, RuntimeError> {
+        self.with_lookup(name, fallback)?
+            .map(|(value, _)| value)
+            .ok_or_else(|| RuntimeError::ReferenceError(name.into()))
+    }
+
+    /// The callee of `name(...)` inside `with`: the function together with
+    /// its `this` value, which is the with object the name was found on.
+    pub(super) fn with_get_method(
+        &mut self,
+        name: &str,
+        fallback: Option<Option<Value>>,
+    ) -> Result<(Value, Value), RuntimeError> {
         self.with_lookup(name, fallback)?
             .ok_or_else(|| RuntimeError::ReferenceError(name.into()))
     }
@@ -556,16 +649,136 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         Ok(self
             .with_lookup(name, fallback)?
-            .unwrap_or(Value::Undefined))
+            .map_or(Value::Undefined, |(value, _)| value))
     }
 
     pub(super) fn with_set(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {
         for object in self.with_objects.clone().into_iter().rev() {
             if self.with_has_binding(&object, name)? {
-                return self.set_property(&object, &name.into(), &value);
+                let id = object.object_id().expect("with objects are objects");
+                let still_exists = self.has_property(id, &name.into())?;
+                if self.strict && !still_exists {
+                    return Err(RuntimeError::ReferenceError(name.into()));
+                }
+                return self.object_environment_set(id, name, &value);
             }
         }
         Err(RuntimeError::ReferenceError(name.into()))
+    }
+
+    /// GetValue for a Reference produced by `ResolveWithReference`: an object
+    /// environment's property, an enclosing binding slot, or an unresolvable
+    /// name (a ReferenceError).
+    pub(super) fn load_with_reference(
+        &mut self,
+        code: &Bytecode,
+        target: &Value,
+        marker: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let reference = WithReference::classify(code, target, marker)
+            .expect("compiler emits a valid with reference");
+        let value = match reference {
+            WithReference::Object(object, name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                self.object_environment_get(&Value::Object(object), &name)?
+            }
+            WithReference::Slot(slot) => self
+                .eval_aware_binding_value(slot, &code.bindings[slot].name)
+                .expect("a binding slot of the running code is live")
+                .ok_or_else(|| RuntimeError::ReferenceError(code.bindings[slot].name.clone()))?,
+            WithReference::Global(name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                if self.global_bindings.contains_key(&name) {
+                    self.global_binding_value(&name)
+                        .expect("a published global binding retains its ordinary cell")
+                        .ok_or(RuntimeError::ReferenceError(name))?
+                } else {
+                    let global = self.global("globalThis").expect(
+                        "ResolveWithReference already materialized the permanent realm global",
+                    );
+                    self.object_environment_get(&global, &name)?
+                }
+            }
+            WithReference::Eval(name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                self.dynamic_eval_binding_value(&name)
+                    .expect("the active eval environments retain their ordinary binding cells")
+                    .ok_or(RuntimeError::ReferenceError(name))?
+            }
+            WithReference::Unresolvable(name) => {
+                return Err(RuntimeError::ReferenceError(
+                    name.to_utf8().expect("compiler emits a UTF-8 identifier"),
+                ));
+            }
+        };
+        Ok(value)
+    }
+
+    /// PutValue for a Reference produced by `ResolveWithReference`.
+    pub(super) fn store_with_reference(
+        &mut self,
+        code: &Bytecode,
+        target: Value,
+        marker: Value,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
+        let reference = WithReference::classify(code, &target, &marker)
+            .expect("compiler emits a valid with reference");
+        match reference {
+            WithReference::Object(object, name) => {
+                // SetMutableBinding of an object Environment Record: the
+                // binding is probed again, and a strict reference to one that
+                // has disappeared since it was resolved is a ReferenceError
+                // (§9.1.1.2.5).
+                let still_exists = self.has_property(object, &name.clone().into())?;
+                if code.strict && !still_exists {
+                    return Err(RuntimeError::ReferenceError(
+                        name.to_utf8().expect("compiler emits a UTF-8 identifier"),
+                    ));
+                }
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                self.object_environment_set(object, &name, value)?;
+            }
+            WithReference::Slot(slot) => {
+                self.assign_binding_slot(code, slot, value.clone(), false)?;
+            }
+            WithReference::Global(name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                if !self.set_global_binding(&name, value.clone())? {
+                    let global = self.global("globalThis").expect(
+                        "ResolveWithReference already materialized the permanent realm global",
+                    );
+                    let object = global.object_id().expect("globalThis is an object");
+                    if code.strict && !self.has_property(object, &name.as_str().into())? {
+                        return Err(RuntimeError::ReferenceError(name));
+                    }
+                    self.set_property(&global, &name.into(), value)?;
+                }
+            }
+            WithReference::Eval(name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                if !self.set_dynamic_eval_binding(&name, value.clone())? {
+                    self.assign_unbound_name(&name, value.clone(), code.strict)?;
+                }
+            }
+            WithReference::Unresolvable(name) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                // PutValue on an unresolvable Reference: a ReferenceError in
+                // strict code (strict eval inside a function that has a
+                // variable environment object, or inside `with`).
+                if code.strict {
+                    return Err(RuntimeError::ReferenceError(name));
+                }
+                // A saved unresolvable Reference always writes the global
+                // object, even if the RHS has since introduced a local eval
+                // binding. It must not resolve the name a second time.
+                let global = self
+                    .global("globalThis")
+                    .expect("ResolveWithReference already materialized the permanent realm global");
+                self.set_property(&global, &name.into(), value)?;
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn add(&mut self, left: Value, right: Value) -> Result<Value, RuntimeError> {
@@ -599,5 +812,207 @@ impl Vm {
                 )),
             }
         }
+    }
+}
+
+/// What a `ResolveWithReference` result -- the `target`/`marker` pair the
+/// interpreter keeps on its stack for a later GetValue/PutValue -- refers to.
+enum WithReference<'a> {
+    /// A property of an object environment: a `with` object or a parameter
+    /// environment.
+    Object(ObjectId, &'a JsString),
+    /// A binding slot of the running code.
+    Slot(usize),
+    /// The realm's global Environment Record, independent of later evals.
+    Global(&'a JsString),
+    /// An eval-created binding in the running or captured variable environment.
+    Eval(&'a JsString),
+    /// A name that no scope binds.
+    Unresolvable(&'a JsString),
+}
+
+impl<'a> WithReference<'a> {
+    /// `None` for a pair the compiler never emits.
+    fn classify(code: &Bytecode, target: &'a Value, marker: &'a Value) -> Option<Self> {
+        match (target, marker) {
+            (Value::Object(object), Value::String(name)) => Some(Self::Object(*object, name)),
+            (Value::Number(slot), Value::Null)
+                if slot.is_finite()
+                    && *slot >= 0.0
+                    && slot.fract() == 0.0
+                    && (*slot as usize) < code.bindings.len() =>
+            {
+                Some(Self::Slot(*slot as usize))
+            }
+            (Value::Undefined, Value::String(name)) => Some(Self::Unresolvable(name)),
+            (Value::Bool(true), Value::String(name)) => Some(Self::Global(name)),
+            (Value::Bool(false), Value::String(name)) => Some(Self::Eval(name)),
+            _ => None,
+        }
+    }
+}
+
+/// StringToNumber of a String value.
+fn string_to_number(string: JsString) -> f64 {
+    primitive::number(&Value::String(string)).expect("a String converts to a Number without error")
+}
+
+/// BigInt shifts use the full signed right operand, unlike Number shifts
+/// whose count is reduced modulo 32. A negative count reverses direction.
+fn bigint_shift(value: BigInt, count: BigInt, left: bool) -> Result<BigInt, RuntimeError> {
+    let reverse = count.sign() == Sign::Minus;
+    let shift_left = left != reverse;
+    let magnitude = count.magnitude().to_usize();
+    let Some(magnitude) = magnitude else {
+        if !shift_left {
+            return Ok(if value.sign() == Sign::Minus {
+                BigInt::from(-1)
+            } else {
+                BigInt::from(0)
+            });
+        }
+        return Err(RuntimeError::RangeError(
+            "BigInt shift count exceeds implementation capacity".into(),
+        ));
+    };
+    Ok(if shift_left {
+        value << magnitude
+    } else {
+        value >> magnitude
+    })
+}
+
+/// BigInt::exponentiate permits only non-negative BigInt exponents. The
+/// standard result is exact; this interpreter additionally bounds the host
+/// exponent representation before allocating the result.
+fn bigint_exponentiate(base: BigInt, exponent: BigInt) -> Result<BigInt, RuntimeError> {
+    if exponent.sign() == Sign::Minus {
+        return Err(RuntimeError::RangeError(
+            "BigInt exponent must be non-negative".into(),
+        ));
+    }
+    if base.is_zero() {
+        return Ok(if exponent.is_zero() {
+            BigInt::one()
+        } else {
+            BigInt::zero()
+        });
+    }
+    if base == BigInt::one() {
+        return Ok(base);
+    }
+    let Some(exponent) = exponent.to_u32() else {
+        return Err(RuntimeError::RangeError(
+            "BigInt exponent exceeds implementation capacity".into(),
+        ));
+    };
+    Ok(base.pow(exponent))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn describe(reference: Option<WithReference>) -> String {
+        match reference {
+            Some(WithReference::Object(_, name)) => {
+                format!("object {}", name.to_utf8().unwrap())
+            }
+            Some(WithReference::Slot(slot)) => format!("slot {slot}"),
+            Some(WithReference::Global(name)) => format!("global {}", name.to_utf8().unwrap()),
+            Some(WithReference::Eval(name)) => format!("eval {}", name.to_utf8().unwrap()),
+            Some(WithReference::Unresolvable(name)) => {
+                format!("unresolvable {}", name.to_utf8().unwrap())
+            }
+            None => "none".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_with_reference_is_an_object_property_a_slot_or_an_unresolvable_name() {
+        let code = crate::compile(&crate::parse("let a = 1; let b = 2; a + b;").unwrap()).unwrap();
+        let slots = code.bindings.len();
+        assert!(slots >= 2);
+        let object = Vm::default().heap.alloc_object(None).unwrap();
+        let name = Value::String("x".into());
+        let classify = |target: Value, marker: &Value| {
+            describe(WithReference::classify(&code, &target, marker))
+        };
+        assert_eq!(classify(Value::Object(object), &name), "object x");
+        assert_eq!(classify(Value::Undefined, &name), "unresolvable x");
+        assert_eq!(classify(Value::Bool(true), &name), "global x");
+        assert_eq!(classify(Value::Bool(false), &name), "eval x");
+        assert_eq!(classify(Value::Number(0.0), &Value::Null), "slot 0");
+        assert_eq!(
+            classify(Value::Number((slots - 1) as f64), &Value::Null),
+            format!("slot {}", slots - 1)
+        );
+        for slot in [slots as f64, -1.0, 0.5, f64::NAN, f64::INFINITY] {
+            assert_eq!(
+                classify(Value::Number(slot), &Value::Null),
+                "none",
+                "{slot}"
+            );
+        }
+        assert_eq!(classify(Value::Undefined, &Value::Null), "none");
+        assert_eq!(classify(Value::Object(object), &Value::Null), "none");
+        assert_eq!(classify(Value::Number(0.0), &name), "none");
+    }
+
+    fn vm_with_object(source: &str) -> (Vm, Value) {
+        let mut vm = Vm::default();
+        let object = vm
+            .execute(&crate::compile(&crate::parse(source).unwrap()).unwrap())
+            .unwrap();
+        vm.with_objects.push(object.clone());
+        (vm, object)
+    }
+
+    #[test]
+    fn with_set_assigns_through_the_innermost_object_that_has_the_binding() {
+        let (mut vm, object) = vm_with_object("({ x: 1 })");
+        assert_eq!(vm.with_set("x", Value::Number(2.0)), Ok(()));
+        assert_eq!(
+            vm.get_property(&object, &"x".into()),
+            Ok(Value::Number(2.0))
+        );
+        assert_eq!(
+            vm.with_set("missing", Value::Number(3.0)),
+            Err(RuntimeError::ReferenceError("missing".into()))
+        );
+    }
+
+    #[test]
+    fn with_set_reports_a_failing_lookup_or_reprobe() {
+        // The `has` trap throws on the lookup itself...
+        let (mut vm, _) = vm_with_object("new Proxy({}, { has() { throw 7 } })");
+        assert_eq!(
+            vm.with_set("x", Value::Number(1.0)),
+            Err(RuntimeError::Thrown(Value::Number(7.0)))
+        );
+        // ...or on the probe made just before the assignment.
+        let (mut vm, _) = vm_with_object(
+            "var calls = 0; new Proxy({}, { has() { if (calls++ === 0) return true; throw 8 } })",
+        );
+        assert_eq!(
+            vm.with_set("x", Value::Number(1.0)),
+            Err(RuntimeError::Thrown(Value::Number(8.0)))
+        );
+    }
+
+    #[test]
+    fn with_set_reprobes_the_binding_and_only_strict_code_rejects_a_vanished_one() {
+        // The `has` trap answers true when the binding is looked up and false
+        // when it is probed again just before the assignment.
+        let source = "var calls = 0; new Proxy({}, { has() { return calls++ === 0 } })";
+        let (mut vm, _) = vm_with_object(source);
+        vm.strict = true;
+        assert_eq!(
+            vm.with_set("z", Value::Number(1.0)),
+            Err(RuntimeError::ReferenceError("z".into()))
+        );
+        let (mut vm, proxy) = vm_with_object(source);
+        assert_eq!(vm.with_set("z", Value::Number(1.0)), Ok(()));
+        assert_eq!(vm.get_property(&proxy, &"z".into()), Ok(Value::Number(1.0)));
     }
 }

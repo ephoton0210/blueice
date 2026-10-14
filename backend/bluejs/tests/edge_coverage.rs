@@ -86,6 +86,21 @@ fn parser_scans_super_calls_inside_class_control_and_expression_containers() {
 }
 
 #[test]
+fn class_field_arguments_scan_checks_nested_class_keys_and_skips_static_blocks() {
+    let error = parse("class Outer { field = class Inner { [arguments]() {} }; }").unwrap_err();
+    assert!(error.known_syntax);
+    assert!(
+        error
+            .message
+            .starts_with("a class field initializer cannot contain a lexical arguments reference"),
+        "{}",
+        error.message
+    );
+
+    assert!(parse("class Outer { field = class Inner { static {} }; }").is_ok());
+}
+
+#[test]
 fn compiler_reports_public_ast_boundaries_without_panicking() {
     assert_eq!(
         CompileError::Unsupported("await").to_string(),
@@ -139,21 +154,20 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
         body: Vec::new(),
         generator: true,
         is_async: false,
+        source_text: Default::default(),
     });
     assert!(matches!(
         compile(&expression_program(generator)),
         Err(CompileError::InvalidSyntax(_))
     ));
-    let invalid_member = Expr::DestructureAssign {
+    // A super property is a valid destructuring target. Whether `super` is
+    // available at all is a property of the enclosing function, checked when
+    // the code runs, so this AST compiles.
+    let super_target = Expr::DestructureAssign {
         pattern: AssignmentPattern::Target(Box::new(super_member(identifier("value"), false))),
         value: Box::new(Expr::Number(1.0)),
     };
-    assert!(matches!(
-        compile(&expression_program(invalid_member)),
-        Err(CompileError::InvalidSyntax(
-            "super member requires a dedicated operation"
-        ))
-    ));
+    assert!(compile(&expression_program(super_target)).is_ok());
     assert!(matches!(
         compile(&expression_program(super_member(Expr::Number(1.0), false))),
         Err(CompileError::InvalidSyntax(
@@ -199,7 +213,9 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
         body: vec![Stmt::Expr(Expr::Class(blueice_bluejs::Class {
             name: None,
             extends: None,
-            elements: Vec::new()
+            elements: Vec::new(),
+            decorators: Vec::new(),
+            source_text: Default::default(),
         }))]
     })
     .is_ok());
@@ -315,6 +331,7 @@ fn arrow_body_ast_remains_a_function_boundary() {
             arg: Box::new(Expr::Number(0.0)),
         })),
         is_async: false,
+        source_text: Default::default(),
     };
     assert!(compile(&expression_program(arrow)).is_ok());
 }

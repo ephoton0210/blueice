@@ -6,16 +6,17 @@ use super::*;
 
 impl Vm {
     pub(in super::super) fn global(&mut self, name: &str) -> Result<Value, RuntimeError> {
-        self.string_intrinsics()?;
+        let (constructor, _) = self.string_intrinsics()?;
         if name == "String" {
             let id = self
                 .string_intrinsics
                 .expect("String intrinsics initialized")
                 .0;
-            if self.globals.insert(name.into(), id).is_none() {
+            if !self.globals.contains_key(name) {
                 if let Some(&global) = self.globals.get("globalThis") {
                     self.define_data(global, name, Value::Object(id), true, false, true)?;
                 }
+                self.globals.insert(name.into(), id);
             }
             return Ok(Value::Object(id));
         }
@@ -51,8 +52,9 @@ impl Vm {
         if let Some(&id) = self.globals.get(name) {
             return Ok(Value::Object(id));
         }
-        let constructor = self.string_intrinsics.unwrap().0;
-        let prototype = self.heap.prototype(constructor)?.unwrap();
+        let prototype = self
+            .function_prototype()
+            .expect("the String intrinsics were initialized by the global lookup");
         let native = match name {
             "Function" => NativeFunction::Function,
             "Symbol" => NativeFunction::Symbol,
@@ -98,6 +100,8 @@ impl Vm {
             "encodeURIComponent" => NativeFunction::EncodeUri { component: true },
             "decodeURI" => NativeFunction::DecodeUri { component: false },
             "decodeURIComponent" => NativeFunction::DecodeUri { component: true },
+            "escape" => NativeFunction::Escape { decode: false },
+            "unescape" => NativeFunction::Escape { decode: true },
             // The remaining compiler-recognized globals are namespace objects.
             _ => NativeFunction::Empty,
         };
@@ -123,7 +127,8 @@ impl Vm {
                         "Iterator" => 0.0,
                         "Proxy" => 2.0,
                         "Date" => 7.0,
-                        "WeakMap" | "WeakSet" => 0.0,
+                        "Map" | "Set" | "WeakMap" | "WeakSet" => 0.0,
+                        "parseInt" => 2.0,
                         "FinalizationRegistry" => 1.0,
                         "DisposableStack" | "AsyncDisposableStack" => 0.0,
                         "ShadowRealm" => 0.0,
@@ -185,7 +190,8 @@ impl Vm {
                 )?;
                 let to_primitive = self
                     .heap
-                    .get(symbol_prototype, JsSymbol::well_known("toPrimitive"))?;
+                    .get(symbol_prototype, JsSymbol::well_known("toPrimitive"))
+                    .expect("the private Symbol prototype owns its installed toPrimitive method");
                 self.define_data(
                     symbol_prototype,
                     JsSymbol::well_known("toPrimitive"),
@@ -193,7 +199,7 @@ impl Vm {
                     false,
                     false,
                     true,
-                )?;
+                ).expect("the private Symbol method only changes attributes of its existing data property");
                 self.define_data(
                     symbol_prototype,
                     JsSymbol::well_known("toStringTag"),
@@ -232,6 +238,12 @@ impl Vm {
                     false,
                     true,
                 )?;
+                self.install_symbol_native_getter(
+                    id,
+                    prototype,
+                    "species",
+                    NativeFunction::CollectionSpecies,
+                )?;
                 self.install_native(id, prototype, "resolve", 1, NativeFunction::PromiseResolve)?;
                 self.install_native(id, prototype, "reject", 1, NativeFunction::PromiseReject)?;
                 self.install_native(id, prototype, "all", 1, NativeFunction::PromiseAll)?;
@@ -244,6 +256,21 @@ impl Vm {
                     1,
                     NativeFunction::PromiseAllSettled,
                 )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "allKeyed",
+                    1,
+                    NativeFunction::PromiseAllKeyed { settled: false },
+                )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "allSettledKeyed",
+                    1,
+                    NativeFunction::PromiseAllKeyed { settled: true },
+                )?;
+                self.install_native(id, prototype, "try", 1, NativeFunction::PromiseTry)?;
                 self.install_native(
                     id,
                     prototype,
@@ -328,7 +355,6 @@ impl Vm {
                 // Date tag, but deliberately does not have a [[DateValue]].
                 let date_prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-                self.date_prototype = Some(date_prototype);
                 self.define_data(
                     id,
                     "prototype",
@@ -386,7 +412,10 @@ impl Vm {
                 }
                 // Annex B requires this to be the same function object, not
                 // merely an equivalent native implementation.
-                let to_utc_string = self.heap.get(date_prototype, "toUTCString")?;
+                let to_utc_string = self
+                    .heap
+                    .get(date_prototype, "toUTCString")
+                    .expect("the private Date prototype owns its installed UTC method");
                 self.define_data(
                     date_prototype,
                     "toGMTString",
@@ -438,7 +467,10 @@ impl Vm {
                             ..PropertyDescriptor::default()
                         },
                     )
-                })?;
+                })
+                .expect(
+                    "the private Date method only changes an existing property's writable flag",
+                );
                 for (name, length, setter) in [
                     ("setDate", 1, native::DateSetter::Date),
                     ("setFullYear", 3, native::DateSetter::FullYear),
@@ -683,7 +715,12 @@ impl Vm {
                     )?;
                 }
             } else if let Some(kind) = typed_array_kind(name) {
-                let typed_array_prototype = self.typed_array_intrinsics()?.1;
+                let typed_array_prototype = self
+                    .typed_array_intrinsics()
+                    .expect(
+                        "the concrete TypedArray constructor already selected its base intrinsic",
+                    )
+                    .1;
                 let typed_prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(typed_array_prototype)))?;
                 self.define_data(
@@ -773,6 +810,15 @@ impl Vm {
                     true,
                     false,
                     true,
+                )?;
+                if name == "Map" {
+                    self.install_native(id, prototype, "groupBy", 2, NativeFunction::MapGroupBy)?;
+                }
+                self.install_symbol_native_getter(
+                    id,
+                    prototype,
+                    "species",
+                    NativeFunction::CollectionSpecies,
                 )?;
             } else if matches!(name, "WeakMap" | "WeakSet") {
                 let collection_prototype = self.weak_collection_prototype(name == "WeakMap")?;
@@ -1045,7 +1091,12 @@ impl Vm {
                         1,
                         NativeFunction::NumberIsSafeInteger,
                     )?;
-                    self.install_native(id, prototype, "parseInt", 2, NativeFunction::ParseInt)?;
+                    // `Number.parseInt` and `Number.parseFloat` are the very
+                    // function objects of the corresponding globals.
+                    for parser in ["parseInt", "parseFloat"] {
+                        let function = self.global(parser)?;
+                        self.define_data(id, parser, function, true, false, true)?;
+                    }
                 }
             } else if name == "globalThis" {
                 self.define_data(id, "String", Value::Object(constructor), true, false, true)?;
@@ -1191,22 +1242,33 @@ impl Vm {
                     )?;
                 }
             }
-            Ok(Value::Object(id))
-        })();
-        if result.is_err() {
-            self.heap.unroot(root)?;
-        } else {
-            self.globals.insert(name.into(), id);
             if name == "globalThis" {
                 let globals = self.globals.clone();
+                // The cache lookup returned before this builder if the global
+                // already existed. Publication happens after this pure loop.
                 for (global_name, value) in globals {
-                    if global_name != "globalThis" {
-                        self.define_data(id, global_name, Value::Object(value), true, false, true)?;
-                    }
+                    self.define_data(id, global_name, Value::Object(value), true, false, true)?;
                 }
             } else if let Some(&global) = self.globals.get("globalThis") {
                 self.define_data(global, name, Value::Object(id), true, false, true)?;
             }
+            Ok(Value::Object(id))
+        })();
+        if result.is_err() {
+            self.release_root(root);
+        } else {
+            if name == "Date" {
+                // Publish only after the constructor and global property have
+                // succeeded; a failed constructor otherwise owns no live edge.
+                self.date_prototype = Some(
+                    self.heap
+                        .get(id, "prototype")
+                        .expect("the rooted Date constructor retains its installed prototype")
+                        .object_id()
+                        .expect("Date.prototype is an object"),
+                );
+            }
+            self.globals.insert(name.into(), id);
         }
         result
     }

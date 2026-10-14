@@ -25,6 +25,11 @@ use blueice_layout::{layout, Constraints, Fragment};
 use blueice_paint::{paint, Color, Frame, PaintCommand, Rect};
 use blueice_raster::{rasterize, Pixmap};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+// A child-visible handle must never numerically alias a node in another
+// document, even when both DOM allocators assign the same internal NodeId.
+static NEXT_SCRIPT_NODE_HANDLE: AtomicU64 = AtomicU64::new(1);
 
 pub struct Page {
     doc: Document,
@@ -35,6 +40,13 @@ pub struct Page {
     viewport_height: f64,
     scroll_y: f64,
     url: Option<String>,
+    /// Monotonically changes whenever this navigable context receives a
+    /// replacement document. Page-script realms use it to distinguish a
+    /// same-origin navigation from the document that preceded it.
+    document_generation: u64,
+    /// Only handles minted for this exact document can resolve to its nodes.
+    script_nodes: HashMap<u64, NodeId>,
+    script_node_handles: HashMap<NodeId, u64>,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     highlighted: Option<NodeId>,
@@ -51,6 +63,9 @@ impl Page {
             viewport_height,
             scroll_y: 0.0,
             url: None,
+            document_generation: 0,
+            script_nodes: HashMap::new(),
+            script_node_handles: HashMap::new(),
             hovered: None,
             focused: None,
             highlighted: None,
@@ -67,11 +82,10 @@ impl Page {
         // an unrelated node that happens to have been assigned the same
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
-        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
-        self.styles = cascade(
-            &self.doc,
-            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
-        );
+        self.document_generation = self.document_generation.wrapping_add(1);
+        self.script_nodes.clear();
+        self.script_node_handles.clear();
+        self.recascade();
         self.scroll_y = 0.0;
         // A fresh document invalidates every NodeId a prior interaction
         // might have recorded -- holding onto a stale ID here would let
@@ -94,6 +108,14 @@ impl Page {
         );
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
+    }
+
+    fn recascade(&mut self) {
+        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
+        self.styles = cascade(
+            &self.doc,
+            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
+        );
     }
 
     /// Test-only direct navigation for exercising the fetch-to-document path.
@@ -166,6 +188,26 @@ impl Page {
         let content_y = y + self.scroll_y;
         let node = hit_test(&self.fragment, x, content_y)?;
         nearest_link_href(&self.doc, node)
+    }
+
+    /// The live element receiving an owner-originated click. Text fragments
+    /// hit-test to text nodes, but the first event profile exposes element
+    /// listeners, so route to their nearest element ancestor.
+    pub(crate) fn click_event_target(&self, x: f64, y: f64) -> Option<NodeId> {
+        let node = hit_test(&self.fragment, x, y + self.scroll_y)?;
+        self.event_element_target(node)
+    }
+
+    pub(crate) fn event_element_target(&self, mut node: NodeId) -> Option<NodeId> {
+        if !self.doc.contains(node) {
+            return None;
+        }
+        loop {
+            if matches!(self.doc.data(node), NodeData::Element { .. }) {
+                return Some(node);
+            }
+            node = self.doc.parent(node)?;
+        }
     }
 
     /// Hit-tests a pointer move the same way [`Page::click`] hit-tests
@@ -262,6 +304,43 @@ impl Page {
         find_element_by_id(&self.doc, self.doc.root(), id)
     }
 
+    /// Mints one stable child-private handle for a node in this document.
+    /// Handles are process-unique, but resolve only in the page that minted
+    /// them; they are not DOM `NodeId`s or page JavaScript values.
+    pub(crate) fn script_handle_for_node(&mut self, node: NodeId) -> u64 {
+        assert!(
+            self.doc.contains(node),
+            "cannot mint a handle for a foreign DOM node"
+        );
+        if let Some(handle) = self.script_node_handles.get(&node) {
+            return *handle;
+        }
+        let handle = NEXT_SCRIPT_NODE_HANDLE
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                next.checked_add(1)
+            })
+            .expect("script node handle space exhausted");
+        self.script_nodes.insert(handle, node);
+        self.script_node_handles.insert(node, handle);
+        handle
+    }
+
+    /// Converts a core hit-test NodeId into the same child-private handle
+    /// used by script IPC, if the hit still belongs to this live document.
+    #[cfg(unix)]
+    pub(crate) fn script_handle_for_raw_node(&mut self, raw: u64) -> Option<u64> {
+        let node = NodeId::from_u64(raw);
+        self.doc
+            .contains(node)
+            .then(|| self.script_handle_for_node(node))
+    }
+
+    /// Checks whether a child-private node handle still belongs to this
+    /// document. Detached nodes remain valid until their subtree is removed.
+    pub(crate) fn script_validate_node(&self, node: u64) -> Result<(), String> {
+        self.script_node(node).map(|_| ())
+    }
+
     /// Creates a detached element for the page-script IPC surface.
     pub(crate) fn script_create_element(&mut self, tag_name: String) -> Result<NodeId, String> {
         if tag_name.is_empty() {
@@ -296,6 +375,9 @@ impl Page {
             return Err("the child node is already attached".to_string());
         }
         self.doc.append_child(parent, child);
+        // Newly created elements have no computed style until they join this
+        // document. Recompute author/UA styles before layout and paint.
+        self.recascade();
         self.relayout();
         Ok(())
     }
@@ -303,6 +385,14 @@ impl Page {
     /// Returns the recursive text content for one live page-script node.
     pub(crate) fn script_text_content(&self, node: u64) -> Result<String, String> {
         Ok(node_text_content(&self.doc, self.script_node(node)?))
+    }
+
+    /// Returns a snapshot of the current document's recursive text content for
+    /// the first read-only BlueJS page binding. The value is copied into the
+    /// realm callback at binding installation, so it grants neither a DOM
+    /// reference nor a cross-document handle to the VM.
+    pub(crate) fn script_document_text_content(&self) -> String {
+        node_text_content(&self.doc, self.doc.root())
     }
 
     /// Implements the narrow page-script `textContent` setter. Existing child
@@ -331,11 +421,11 @@ impl Page {
     }
 
     fn script_node(&self, raw: u64) -> Result<NodeId, String> {
-        let node = NodeId::from_u64(raw);
-        self.doc
-            .contains(node)
-            .then_some(node)
-            .ok_or_else(|| format!("unknown node {raw}"))
+        self.script_nodes
+            .get(&raw)
+            .copied()
+            .filter(|node| self.doc.contains(*node))
+            .ok_or_else(|| "unknown script node handle".to_string())
     }
 
     pub(crate) fn doc(&self) -> &Document {
@@ -360,6 +450,40 @@ impl Page {
 
     pub fn url(&self) -> Option<&str> {
         self.url.as_deref()
+    }
+
+    /// Returns this document's explicitly opted-in BlueTS script declarations
+    /// in source order. The result has no loader, origin, capability, or
+    /// execution authority; an external `src` remains only a declaration for
+    /// a future authorized page-script loader.
+    pub fn blue_ts_script_declarations(&self) -> Vec<crate::script::BlueTsPageScriptDeclaration> {
+        crate::script::discover_blue_ts_page_scripts(&self.doc)
+    }
+
+    /// Returns supported standard JavaScript declarations in source order.
+    /// Like the BlueTS accessor, this is observation only: an external `src`
+    /// remains inert until a core-owned host authorizes a closed source graph.
+    pub fn blue_js_script_declarations(&self) -> Vec<crate::script::BlueJsPageScriptDeclaration> {
+        crate::script::discover_blue_js_page_scripts(&self.doc)
+    }
+
+    /// Returns every supported page-script declaration under one document-order
+    /// sequence. Only the launcher-supervised shared BlueTS/JavaScript host
+    /// consumes this inventory; it remains an observation API with no source
+    /// loader, compiler-profile, DOM, or execution authority.
+    pub fn combined_page_script_declarations(
+        &self,
+    ) -> Vec<crate::script::CombinedPageScriptDeclaration> {
+        crate::script::discover_combined_page_scripts(&self.doc)
+    }
+
+    /// The identity of the currently loaded document within this page.
+    ///
+    /// This is intentionally crate-visible: it is a core lifecycle token, not
+    /// web-observable state. It lets the script host invalidate a realm even
+    /// when a navigation keeps the same origin.
+    pub(crate) fn document_generation(&self) -> u64 {
+        self.document_generation
     }
 
     pub fn viewport_size(&self) -> (f64, f64) {
@@ -618,6 +742,64 @@ mod tests {
     }
 
     #[test]
+    fn page_exposes_only_explicit_blue_ts_script_declarations() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <script>const javascript = true;</script>
+                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
+                <script type="application/x-blueice-typescript-module" src="/module.ts"></script>
+            "#,
+            Some("https://example.test/".to_string()),
+        );
+
+        assert_eq!(
+            page.blue_ts_script_declarations(),
+            vec![
+                crate::script::BlueTsPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    kind: crate::script::direct_page::DirectPageScriptKind::Classic,
+                    source: "const typed: number = 42;".to_string(),
+                },
+                crate::script::BlueTsPageScriptDeclaration::External {
+                    ordinal: 1,
+                    kind: crate::script::direct_page::DirectPageScriptKind::Module,
+                    src: "/module.ts".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn page_exposes_standard_javascript_declarations_separately_from_bluets() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <script>const javascript = true;</script>
+                <script type="module">export const module = true;</script>
+                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
+            "#,
+            Some("https://example.test/".to_string()),
+        );
+
+        assert_eq!(
+            page.blue_js_script_declarations(),
+            vec![
+                crate::script::BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    kind: crate::script::BlueJsPageScriptKind::Classic,
+                    source: "const javascript = true;".to_string(),
+                },
+                crate::script::BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 1,
+                    kind: crate::script::BlueJsPageScriptKind::Module,
+                    source: "export const module = true;".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn navigate_to_about_credits_loads_the_built_in_credits_page_without_network() {
         let mut page = Page::new(320.0, 200.0);
         page.navigate("about:credits").unwrap();
@@ -723,6 +905,33 @@ mod tests {
         page.load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
         assert!(page.dom_dump().contains("<div>"));
         assert!(page.snapshot(0, 1).nodes.is_empty());
+    }
+
+    #[test]
+    fn script_appended_element_receives_author_style_before_rasterization() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'></div>",
+            None,
+        );
+        let mut static_page = Page::new(320.0, 200.0);
+        static_page.load_html_str(
+            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'><span></span></div>",
+            None,
+        );
+        assert_eq!(
+            static_page.render_visible().get_pixel(0, 0),
+            [255, 0, 0, 255]
+        );
+        let baseline = page.render_visible();
+        let parent = page.script_get_element_by_id("target").unwrap();
+        let child = page.script_create_element("span".to_string()).unwrap();
+        let parent = page.script_handle_for_node(parent);
+        let child = page.script_handle_for_node(child);
+        page.script_append_child(parent, child).unwrap();
+        let appended = page.render_visible();
+        assert_ne!(baseline.get_pixel(0, 0), appended.get_pixel(0, 0));
+        assert_eq!(appended.get_pixel(0, 0), [255, 0, 0, 255]);
     }
 
     fn all_text(frame: &Frame) -> String {

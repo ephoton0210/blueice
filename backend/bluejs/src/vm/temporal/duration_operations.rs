@@ -24,10 +24,9 @@ impl Vm {
 
     pub(in super::super) fn temporal_duration_with(
         &mut self,
-        receiver: &Value,
+        record: blueice_ecma402::DurationRecord,
         like: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
         if !matches!(like, Value::Object(_)) {
             return Err(RuntimeError::TypeError(
                 "Temporal.Duration.prototype.with requires a Duration-like object".into(),
@@ -64,10 +63,9 @@ impl Vm {
 
     pub(in super::super) fn temporal_duration_negated(
         &mut self,
-        receiver: &Value,
+        record: blueice_ecma402::DurationRecord,
         absolute: bool,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
         let map = |value: i128| if absolute { value.abs() } else { -value };
         // Negating or taking the magnitude of every field at once preserves
         // both the common-sign and the range invariants, so this cannot fail.
@@ -90,11 +88,10 @@ impl Vm {
 
     pub(in super::super) fn temporal_duration_add(
         &mut self,
-        receiver: &Value,
+        one: blueice_ecma402::DurationRecord,
         other: &Value,
         negate: bool,
     ) -> Result<Value, RuntimeError> {
-        let one = self.temporal_duration_receiver(receiver)?;
         let mut two = self.temporal_duration_from_value(other)?;
         if negate {
             two = blueice_ecma402::DurationRecord {
@@ -115,8 +112,9 @@ impl Vm {
         // so it is rejected outright rather than balanced.
         let largest = Self::temporal_duration_largest_unit(&one)
             .max(Self::temporal_duration_largest_unit(&two));
+        // The selected largest unit includes both operands, so this checks
+        // calendar fields in either duration.
         Self::temporal_duration_require_no_calendar_units(&one, &[largest])?;
-        Self::temporal_duration_require_no_calendar_units(&two, &[])?;
         let total = duration_math::TimeDuration::from_record_with_24_hour_days(&one)
             .total_nanoseconds()
             + duration_math::TimeDuration::from_record_with_24_hour_days(&two).total_nanoseconds();
@@ -138,10 +136,9 @@ impl Vm {
 
     pub(in super::super) fn temporal_duration_round(
         &mut self,
-        receiver: &Value,
+        record: blueice_ecma402::DurationRecord,
         round_to: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
         let base = self.stack.len();
         let result = (|| {
             let (shorthand, options) = self.temporal_duration_round_to(round_to, "round")?;
@@ -304,10 +301,9 @@ impl Vm {
 
     pub(in super::super) fn temporal_duration_total(
         &mut self,
-        receiver: &Value,
+        record: blueice_ecma402::DurationRecord,
         total_of: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
         let base = self.stack.len();
         let result = (|| {
             let (shorthand, options) = self.temporal_duration_round_to(total_of, "total")?;
@@ -529,7 +525,9 @@ impl Vm {
         if value == Value::Undefined {
             return Ok(None);
         }
-        if !matches!(value, Value::Number(_)) {
+        let digits = if let Value::Number(digits) = value {
+            digits
+        } else {
             let text = self
                 .coerce_string(&value)?
                 .to_utf8()
@@ -540,8 +538,7 @@ impl Vm {
             return Err(RuntimeError::RangeError(
                 "invalid fractionalSecondDigits".into(),
             ));
-        }
-        let digits = self.coerce_number(&value)?;
+        };
         if !digits.is_finite() {
             return Err(RuntimeError::RangeError(
                 "invalid fractionalSecondDigits".into(),
@@ -623,10 +620,9 @@ impl Vm {
 
     pub(in super::super) fn temporal_duration_to_string(
         &mut self,
-        receiver: &Value,
+        record: blueice_ecma402::DurationRecord,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
         let base = self.stack.len();
         let result = (|| {
             let options = self.temporal_duration_options(options)?;
@@ -732,17 +728,15 @@ impl Vm {
     pub(in super::super) fn temporal_duration_to_locale_string(
         &mut self,
         receiver: &Value,
+        _record: blueice_ecma402::DurationRecord,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
         let base = self.stack.len();
+        self.stack.push(receiver.clone());
         let result = (|| {
             let formatter = self.duration_format_for_locale_string(args)?;
             self.stack.push(formatter.clone());
-            let duration =
-                self.alloc_temporal_value(Self::temporal_duration_value(record), false)?;
-            self.stack.push(duration.clone());
-            self.duration_format_format(&formatter, &duration)
+            self.duration_format_format(&formatter, receiver)
         })();
         self.stack.truncate(base);
         result

@@ -561,11 +561,7 @@ fn config_target_and_runtime_policy_are_validated_and_applied() {
             .run(&["check", "--config", "bluetsc.json"])
             .assert_failure(message);
     }
-    for (policy, expected) in [
-        ("transpile-only", "transpile-only"),
-        ("checked", "checked"),
-        ("strict-runtime", "strict-runtime"),
-    ] {
+    for (policy, expected) in [("transpile-only", "transpile-only"), ("checked", "checked")] {
         scratch.write(
             "bluetsc.json",
             &format!(
@@ -579,7 +575,34 @@ fn config_target_and_runtime_policy_are_validated_and_applied() {
             serde_json::from_str(&scratch.read("dist/bluetsc.manifest.json")).unwrap();
         assert_eq!(manifest["runtimePolicy"], expected);
         assert_eq!(manifest["target"], "es2020");
+        assert!(manifest.get("runtimeHelper").is_none());
+        assert!(manifest.get("strictBoundaries").is_none());
+        assert!(manifest.get("strictArtifacts").is_none());
+        assert!(!scratch
+            .read("dist/src/main.js")
+            .contains("__bluetsValidateStringV1("));
     }
+    scratch.write(
+        "bluetsc.json",
+        r#"{"entries": ["src/main.ts"], "outDir": "strict-dist", "runtimePolicy": "strict-runtime"}"#,
+    );
+    // This declaration yields a real, reifiable static contract plan. A
+    // successful strict check must still not be mistaken for evidence that
+    // standalone emitted JavaScript has installed a live boundary helper.
+    scratch.write(
+        "src/main.ts",
+        "export interface Model { id: string }\nexport const model: Model = { id: 'ok' };\n",
+    );
+    scratch
+        .run(&["check", "--config", "bluetsc.json"])
+        .assert_success();
+    scratch
+        .run(&["build", "--config", "bluetsc.json"])
+        .assert_failure("strict-runtime build requires owner-selected strictBoundaries in config");
+    assert!(
+        !scratch.path("strict-dist").exists(),
+        "a strict-runtime build without its helper must not publish an artifact"
+    );
 }
 
 #[test]

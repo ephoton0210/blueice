@@ -6,11 +6,8 @@
 //! Allocating instructions root all VM-held objects around heap
 //! safepoints. The collector itself additionally protects store inputs.
 
-use crate::bytecode::{Binding, ModuleExport, ModuleImportName};
-use crate::heap::{
-    ArrayIteratorKind, GeneratorHandlerFrame, GeneratorHandlerState, GeneratorPendingCompletion,
-    GeneratorState, PrivateElement,
-};
+use crate::bytecode::{Binding, ModuleExport, ModuleImportName, TemplateSiteId};
+use crate::heap::{GeneratorState, PrivateElement};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
@@ -20,29 +17,169 @@ use crate::{
 use num_bigint::{BigInt, Sign};
 use num_traits::{One, ToPrimitive, Zero};
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 mod builtins;
+mod classification;
+mod completion;
+mod debugger;
 mod errors;
 mod execution;
+mod for_in;
 mod functions;
+mod host_objects;
+mod host_registration;
+use host_registration::{host_function_index, host_registration_index};
 mod interpreter;
 mod intl;
+mod intrinsics;
 mod json;
+mod lifecycle;
 mod modules;
+mod native_stack;
 mod operations;
+mod promise_reactions;
 mod properties;
+mod realm_reentrancy;
 mod regexp;
 mod shadow_realm;
 mod temporal;
 mod test262;
 mod test262_agents;
-use std::cmp::Ordering;
+// Coverage builds run internal boundary fixtures against the ordinary library
+// instance as well as the unit-test instance. This preserves raw LLVM coverage
+// semantics without exposing fixture APIs in normal builds.
+#[cfg(any(test, coverage))]
+#[path = "../tests/fixtures/vm_execution_boundaries.rs"]
+mod execution_boundaries;
+use completion::{
+    call_stack_exhausted, Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
+};
+use debugger::{
+    DebuggerContinuation, DebuggerFrameKind, DebuggerInterpreterExit, ModuleDebuggerContinuation,
+    ModuleDebuggerPauseRequest, NestedDebuggerContinuation, NestedDebuggerPauseRequest,
+};
+pub use debugger::{
+    VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
+    VmDebuggerScopeEntry, VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite,
+    VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
+    VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
+};
+use host_objects::{
+    ActiveHostClickEvent, HostClickListener, HostObjectFactoryRegistration, HostObjectFamilyState,
+    HostObjectMethodRegistration, HostObjectPairMethodRegistration,
+};
+pub use host_objects::{
+    HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod, HostObjectPairMethod,
+};
 use std::fmt;
+
+/// A private interpreter suspension boundary. `Offset` is also used by
+/// generator/module setup; only the debugger requests one executed root
+/// instruction before the next suspension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InterpreterSuspensionPoint {
+    Offset(usize),
+    AfterRootInstruction,
+}
+
+/// An opaque object created by [`Vm::install_host_object`]. It can only be
+/// populated through the VM that created it, preventing an embedder from
+/// accidentally attaching a host method to an object from another realm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostObject(ObjectId);
+
+/// A primitive value permitted to cross the synchronous host callback
+/// boundary. JavaScript object identities intentionally cannot cross this
+/// boundary: retaining one in Rust would evade the VM collector.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HostValue {
+    Undefined,
+    Null,
+    Bool(bool),
+    Number(f64),
+    String(JsString),
+}
+
+impl TryFrom<&Value> for HostValue {
+    type Error = HostFunctionError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Undefined => Ok(Self::Undefined),
+            Value::Null => Ok(Self::Null),
+            Value::Bool(value) => Ok(Self::Bool(*value)),
+            Value::Number(value) => Ok(Self::Number(*value)),
+            Value::String(value) => Ok(Self::String(value.clone())),
+            Value::BigInt(_) | Value::Symbol(_) | Value::Object(_) => Err(HostFunctionError::new(
+                "host functions accept primitive values only",
+            )),
+        }
+    }
+}
+
+impl From<HostValue> for Value {
+    fn from(value: HostValue) -> Self {
+        match value {
+            HostValue::Undefined => Self::Undefined,
+            HostValue::Null => Self::Null,
+            HostValue::Bool(value) => Self::Bool(value),
+            HostValue::Number(value) => Self::Number(value),
+            HostValue::String(value) => Self::String(value),
+        }
+    }
+}
+
+/// A synchronous capability supplied by the embedding host.
+///
+/// The callback receives primitive [`HostValue`] arguments but no heap, VM, or
+/// JavaScript object identity. Constructors are never dispatched to host
+/// functions.
+pub trait HostFunction: 'static {
+    fn call(&mut self, args: &[HostValue]) -> Result<HostValue, HostFunctionError>;
+}
+
+impl<F> HostFunction for F
+where
+    F: for<'args> FnMut(&'args [HostValue]) -> Result<HostValue, HostFunctionError> + 'static,
+{
+    fn call(&mut self, args: &[HostValue]) -> Result<HostValue, HostFunctionError> {
+        self(args)
+    }
+}
+
+/// A host callback failure that becomes a JavaScript `TypeError` at the call
+/// boundary. The message is host-controlled; page data must not be reflected
+/// into it without the embedding host's own policy check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostFunctionError(String);
+
+impl HostFunctionError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self(message.into())
+    }
+}
+
+impl fmt::Display for HostFunctionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for HostFunctionError {}
+
+fn host_property_name_is_valid(name: &str) -> bool {
+    let mut chars = name.bytes();
+    matches!(chars.next(), Some(b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'$'))
+        && chars.all(|byte| matches!(byte, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'$'))
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct VmConfig {
     pub heap: HeapConfig,
+    /// Bytecode and metadata limits for source compiled by direct or indirect eval.
+    pub eval_compile_limits: crate::compiler::CompileLimits,
     /// Per-execute dispatch limit, including branches/scopes and native
     /// raw/split/replace loop steps; not a wall-clock or whole-native-work limit.
     pub instruction_budget: u64,
@@ -57,6 +194,7 @@ impl Default for VmConfig {
     fn default() -> Self {
         Self {
             heap: HeapConfig::default(),
+            eval_compile_limits: crate::compiler::CompileLimits::default(),
             instruction_budget: 1_000_000,
             max_string_bytes: 1024 * 1024,
             regex_timeout: crate::regex_worker::DEFAULT_TIMEOUT,
@@ -133,9 +271,22 @@ impl From<HeapError> for RuntimeError {
 
 impl RuntimeError {
     /// Language exceptions participate in ECMAScript completion propagation.
-    /// Limits, allocation failures and failed isolated host workers remain
+    /// Allocation failures and failed isolated host workers remain
     /// uncatchable host aborts: user code must not turn a resource boundary
     /// into an apparent JavaScript success.
+    ///
+    /// `StringLimit` is the one resource boundary that IS catchable: real
+    /// engines (V8, SpiderMonkey, JSC) throw a catchable `RangeError` when a
+    /// string operation would exceed their own maximum string length, not an
+    /// uncatchable abort, and Test262 fixtures observe it that way (e.g.
+    /// `staging/sm/String/replace-math.js`'s `catch (e) { // OOM also
+    /// acceptable }`). Unlike `InstructionLimit`/`Heap`/`RegexTimeout`, a
+    /// string that has merely reached BlueJS's own configured byte ceiling
+    /// is not a sign that anything is actually out of resources; the check
+    /// runs *before* the over-sized allocation is attempted, so there is
+    /// nothing to unwind, no risk of a partially-allocated string escaping
+    /// into an apparent success, and no retry-until-genuinely-out-of-memory
+    /// concern for a fixed, deliberately-chosen ceiling.
     fn is_catchable(&self) -> bool {
         matches!(
             self,
@@ -145,119 +296,10 @@ impl RuntimeError {
                 | Self::SyntaxError(_)
                 | Self::Thrown(_)
                 | Self::Test262(_)
+                | Self::StringLimit { .. }
         )
     }
 }
-
-#[derive(Clone)]
-enum Completion {
-    Throw(RuntimeError),
-    Return(Value),
-    TailRecur(Vec<Value>),
-    Yield(Value),
-    Jump { cleanup: usize, target: usize },
-    Resume(usize),
-    Halt(Value),
-}
-
-impl Completion {
-    /// Convert a catchable completion to the heap-owned representation used
-    /// by a suspended generator.  Every other RuntimeError is a host abort
-    /// and is rejected by the interpreter before it reaches this boundary.
-    fn into_generator_pending(self) -> Result<GeneratorPendingCompletion, RuntimeError> {
-        match self {
-            Self::Throw(RuntimeError::Thrown(value)) => {
-                Ok(GeneratorPendingCompletion::Throw(value))
-            }
-            Self::Throw(RuntimeError::ReferenceError(message)) => {
-                Ok(GeneratorPendingCompletion::ReferenceError(message))
-            }
-            Self::Throw(RuntimeError::TypeError(message)) => {
-                Ok(GeneratorPendingCompletion::TypeError(message))
-            }
-            Self::Throw(RuntimeError::RangeError(message)) => {
-                Ok(GeneratorPendingCompletion::RangeError(message))
-            }
-            Self::Throw(RuntimeError::SyntaxError(message)) => {
-                Ok(GeneratorPendingCompletion::SyntaxError(message))
-            }
-            Self::Throw(RuntimeError::Test262(message)) => {
-                Ok(GeneratorPendingCompletion::Test262(message))
-            }
-            Self::Return(value) => Ok(GeneratorPendingCompletion::Return(value)),
-            Self::TailRecur(values) => Ok(GeneratorPendingCompletion::TailRecur(values)),
-            Self::Jump { cleanup, target } => {
-                Ok(GeneratorPendingCompletion::Jump { cleanup, target })
-            }
-            Self::Throw(error) => Err(error),
-            Self::Yield(_) | Self::Resume(_) | Self::Halt(_) => Err(RuntimeError::Unsupported(
-                "cannot suspend a generator with an internal completion",
-            )),
-        }
-    }
-
-    fn from_generator_pending(completion: GeneratorPendingCompletion) -> Self {
-        match completion {
-            GeneratorPendingCompletion::Throw(value) => Self::Throw(RuntimeError::Thrown(value)),
-            GeneratorPendingCompletion::ReferenceError(message) => {
-                Self::Throw(RuntimeError::ReferenceError(message))
-            }
-            GeneratorPendingCompletion::TypeError(message) => {
-                Self::Throw(RuntimeError::TypeError(message))
-            }
-            GeneratorPendingCompletion::RangeError(message) => {
-                Self::Throw(RuntimeError::RangeError(message))
-            }
-            GeneratorPendingCompletion::SyntaxError(message) => {
-                Self::Throw(RuntimeError::SyntaxError(message))
-            }
-            GeneratorPendingCompletion::Test262(message) => {
-                Self::Throw(RuntimeError::Test262(message))
-            }
-            GeneratorPendingCompletion::Return(value) => Self::Return(value),
-            GeneratorPendingCompletion::TailRecur(values) => Self::TailRecur(values),
-            GeneratorPendingCompletion::Jump { cleanup, target } => Self::Jump { cleanup, target },
-        }
-    }
-}
-
-type HandlerState = GeneratorHandlerState;
-type HandlerFrame = GeneratorHandlerFrame;
-
-enum CompletionAction {
-    Continue,
-    Jump(usize),
-    Return(Value),
-    TailRecur(Vec<Value>),
-    Throw(RuntimeError),
-}
-
-enum InterpreterExit {
-    Return(Value),
-    Yield {
-        value: Value,
-        pc: usize,
-        iterators: Vec<Value>,
-        handlers: Vec<HandlerFrame>,
-    },
-    Suspend {
-        pc: usize,
-    },
-    /// An async execution context reaches an Await expression. Its execution
-    /// context is moved into a continuation before the next Promise job turn
-    /// resumes it.
-    Await {
-        promise: ObjectId,
-        pc: usize,
-        handlers: Vec<HandlerFrame>,
-    },
-}
-
-// Ordinary calls still nest the Rust interpreter. The public 32-frame bound
-// makes recursive JavaScript report a catchable RangeError on the normal
-// process stack; an embedding that executes BlueJS on a deliberately smaller
-// worker stack must provision enough host stack for that documented bound.
-const MAX_RECURSIVE_CALL_DEPTH: usize = 32;
 
 /// A realm-level declarative or object-backed global binding. The cell is
 /// permanently rooted for the realm lifetime so script closures and later
@@ -265,7 +307,6 @@ const MAX_RECURSIVE_CALL_DEPTH: usize = 32;
 struct GlobalBinding {
     cell: ObjectId,
     mutable: bool,
-    strict_immutable: bool,
     property: bool,
     _root: RootId,
 }
@@ -403,8 +444,30 @@ impl PromiseStatus {
     }
 }
 
+/// A PromiseCapability Record: a promise together with the functions that
+/// resolve and reject it. For a promise made by a user constructor these are
+/// whatever that constructor handed its executor.
+#[derive(Clone)]
+struct PromiseCapability {
+    promise: Value,
+    resolve: Value,
+    reject: Value,
+}
+
+/// Where a reaction job delivers its result.
+#[derive(Clone)]
+enum ReactionTarget {
+    /// A promise the VM created itself for `%Promise%`-constructed results
+    /// (`then` with the default species): its resolving functions are never
+    /// observable, so the job resolves or rejects it directly.
+    Native(ObjectId),
+    /// The capability of a promise built by another constructor (a subclass
+    /// or a custom species): its resolve/reject functions are called.
+    Capability(PromiseCapability),
+}
+
 struct PromiseThenReaction {
-    target: ObjectId,
+    target: ReactionTarget,
     on_fulfilled: Value,
     on_rejected: Value,
 }
@@ -437,6 +500,15 @@ enum PromiseReaction {
 enum AsyncGeneratorDelegateKind {
     Return,
     Throw,
+    /// The operand of a `return(value)` request to a generator suspended at a
+    /// `yield` is being awaited (AsyncGeneratorUnwrapYieldResumption).
+    AwaitReturn,
+    /// The delegate of a `yield*` has no `return` method, so the operand is
+    /// awaited a second time before it is returned.
+    AwaitReturnNoMethod,
+    /// AsyncIteratorClose is awaiting `return()` because `yield*`'s delegate
+    /// has no `throw` method. Its completion is thrown at the delegation site.
+    CloseMissingThrow,
 }
 
 struct PromiseRecord {
@@ -474,6 +546,10 @@ pub(super) struct DisposableResource {
     // depends on this field and this implementation's does not).
     #[allow(dead_code)]
     pub(super) hint: DisposeHint,
+    /// An `async-dispose` resource whose method is the sync `@@dispose`
+    /// fallback: `Dispose` still awaits, but the method's result is
+    /// discarded rather than awaited (its promise may never settle).
+    pub(super) sync_fallback: bool,
 }
 
 /// The DisposeCapability Record backing one `DisposableStack`/
@@ -487,30 +563,9 @@ pub(super) struct DisposeCapabilityState {
     pub(super) disposed: bool,
 }
 
-/// Aggregation bookkeeping for `Promise.all`. Each input observes its own
-/// resolution job; the target is fulfilled only after every indexed slot has
-/// settled, so a pending dependency never becomes a host-level unsupported
-/// condition.
-struct PromiseAllState {
-    values: Vec<Option<Value>>,
-    remaining: usize,
-}
-
-/// Bookkeeping for `Promise.any`: each rejection occupies its input-indexed
-/// slot so the eventual AggregateError preserves iterator order.
-struct PromiseAnyState {
-    errors: Vec<Option<Value>>,
-    remaining: usize,
-}
-
-struct PromiseAllSettledState {
-    results: Vec<Option<(Value, bool)>>,
-    remaining: usize,
-}
-
 enum PromiseJob {
     Reaction {
-        target: ObjectId,
+        target: ReactionTarget,
         handler: Value,
         value: Value,
         fulfilled: bool,
@@ -602,12 +657,10 @@ struct Test262Realm {
 
 /// The two roots keep an opaque membrane transport value alive in each heap.
 /// Such a value preserves identity across a call boundary. Ordinary-object
-/// stand-ins additionally record child-created data properties at the call
-/// boundary, then write them back through the parent VM's [[Set]] operation;
-/// no parent-heap handle is exposed to child heap storage.
+/// facades forward property operations through the reverse membrane as they
+/// happen; no parent-heap handle is exposed to child heap storage.
 struct Test262ImportedValue {
     value: Value,
-    property_forwarding: bool,
     _source_root: RootId,
     _target_root: RootId,
 }
@@ -670,6 +723,38 @@ struct Test262ForeignValue {
     _target_root: RootId,
 }
 
+/// The reverse Test262 membrane's own per-facade record -- symmetric with
+/// [`Test262ForeignValue`], but keyed by the *parent's* own heap identity
+/// (`home_heap`, the same tag [`realm_reentrancy::register_active`]/
+/// [`realm_reentrancy::resolve_active`] use) rather than a `test262_realms`
+/// `ObjectId`, since a child realm has no map back to its own parent -- the
+/// parent is reachable only dynamically, through `ACTIVE`, while a call from
+/// this child is actually in flight.
+///
+/// Stored on the *child* `Vm` (`test262_reverse_values`, keyed by `wrapper`,
+/// the local facade object living in this child's own heap); `target` is the
+/// real object living in the parent's heap that `wrapper` stands in for.
+struct Test262ReverseValue {
+    home_heap: u64,
+    target: ObjectId,
+    callable: bool,
+    constructible: bool,
+    /// Mirrors [`Test262ForeignValue::prototype_override`]'s same purpose,
+    /// for a reverse facade's own [[Prototype]]. Never set by
+    /// `test262_transport_value` itself today (nothing yet needs it), kept
+    /// for structural symmetry and because `test262_reverse_get_prototype`
+    /// already has to check it exactly like its forward counterpart.
+    prototype_override: Option<ObjectId>,
+    /// Roots `wrapper` (the map key above) in *this* (the child's) own heap:
+    /// nothing else in this heap's own reachability graph necessarily still
+    /// references it.
+    _wrapper_root: RootId,
+    /// Roots `target` in the *parent's* heap, for the identical reason
+    /// `Test262ForeignValue::_target_root` roots its own target in the
+    /// foreign realm it belongs to.
+    _target_root: RootId,
+}
+
 /// A local ArrayBuffer and its equivalent backing buffer in a Test262 child
 /// Realm. The two heaps cannot store one another's object identities, so the
 /// bridge copies ordinary-buffer bytes at the boundary and synchronizes them
@@ -711,12 +796,11 @@ struct SuspendedModuleExecution {
     script_global_slots: HashMap<usize, String>,
     variable_scope: u32,
     variable_scope_lexicals: Vec<String>,
-    templates: HashMap<u64, ObjectId>,
+    templates: HashMap<TemplateSiteId, ObjectId>,
     new_target: Value,
     new_target_allowed: bool,
     home_object: Option<ObjectId>,
-    class_constructor: Option<ObjectId>,
-    class_field_initializer_depth: u32,
+    class_field_initializer: bool,
     active_module_name: Option<String>,
 }
 
@@ -728,11 +812,41 @@ pub struct Vm {
     heap: Heap,
     object_prototype: ObjectId,
     array_prototype: ObjectId,
+    /// Whether `%Object.prototype%.hasOwnProperty` / `.propertyIsEnumerable`
+    /// have been installed. Both are created on first use, so absence of the
+    /// property alone cannot mean "not installed yet": after a script deletes
+    /// one, the next lookup must not silently create it again.
+    has_own_property_installed: bool,
+    property_is_enumerable_installed: bool,
     string_intrinsics: Option<(ObjectId, ObjectId)>,
+    /// The original, permanently rooted `%Function.prototype%`. Mutable
+    /// constructor `[[Prototype]]` links cannot identify a realm intrinsic.
+    function_intrinsic_prototype: Option<ObjectId>,
     /// `%TypedArray%` and `%TypedArray%.prototype`, kept outside the global
     /// object but permanently reachable from every concrete constructor.
     typed_array_intrinsics: Option<(ObjectId, ObjectId)>,
+    /// Annex B legacy static properties of this realm's `%RegExp%`.
+    regexp_legacy: crate::regexp::LegacyStatics,
     result_root: Option<RootId>,
+    /// A deliberately narrow debugger-owned root-script continuation. It is
+    /// installed only at a compiler-verified root-code-unit instruction
+    /// boundary and keeps the active frame out of every ordinary execution
+    /// entry point until it is resumed or the VM is dropped.
+    debugger_continuation: Option<DebuggerContinuation>,
+    debugger_module_pause_request: Option<ModuleDebuggerPauseRequest>,
+    debugger_module_continuation: Option<ModuleDebuggerContinuation>,
+    debugger_nested_pause_request: Option<NestedDebuggerPauseRequest>,
+    debugger_nested_continuation: Option<NestedDebuggerContinuation>,
+    debugger_nested_parent_execution: Option<SuspendedModuleExecution>,
+    debugger_nested_direct_call: bool,
+    debugger_nested_direct_caller_generation: Option<u64>,
+    next_debugger_frame_serial: u64,
+    /// Transient origin while a catchable throw propagates through frames.
+    pending_throw_site: Option<VmDebuggerThrowSite>,
+    /// Published only after an outer execution ends with an uncaught throw.
+    uncaught_throw_site: Option<VmDebuggerThrowSite>,
+    /// Distinguishes a new callee throw from its propagation through `Call`.
+    throw_epoch: u64,
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
     bindings: Vec<Option<Value>>,
@@ -747,6 +861,13 @@ pub struct Vm {
     // Values in suspended finally paths live here rather than in Rust-only
     // handler records, so VM safepoints root them during allocations.
     pending_completions: Vec<Completion>,
+    /// The parameter environment of the running sloppy function while its
+    /// parameter list is being evaluated: the object that receives the `var`s
+    /// a direct eval there declares (`Vm::call_closure` creates it).
+    parameter_eval_env: Option<ObjectId>,
+    /// A `TailCall` whose frame has been torn down: `[callee, this, args...]`,
+    /// consumed by the `call_with_target` that ran that frame.
+    pending_tail_call: Option<Vec<Value>>,
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
     cells: HashMap<usize, ObjectId>,
@@ -853,6 +974,18 @@ pub struct Vm {
     // substitute the realm global when `this` is first observed.
     top_level_module: bool,
     globals: HashMap<String, ObjectId>,
+    /// Host callbacks are private to this realm. Native function objects hold
+    /// only an index into this vector, so GC sees no Rust references.
+    host_functions: Vec<Box<dyn HostFunction>>,
+    /// Opaque host-object factories and their collector-rooted, realm-private
+    /// identity tables. Neither a JavaScript value nor a raw host key enters
+    /// a Rust callback through the primitive-only HostValue ABI.
+    host_object_factories: Vec<HostObjectFactoryRegistration>,
+    host_object_methods: Vec<HostObjectMethodRegistration>,
+    host_object_pair_methods: Vec<HostObjectPairMethodRegistration>,
+    host_object_families: Vec<HostObjectFamilyState>,
+    host_click_listeners: Vec<HostClickListener>,
+    active_host_click_event: Option<ActiveHostClickEvent>,
     global_bindings: HashMap<String, GlobalBinding>,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an
     /// individual Realm. Test262 child realms share this handle; independent
@@ -878,21 +1011,22 @@ pub struct Vm {
     variable_scope_lexicals: Vec<String>,
     iterator_prototype: Option<ObjectId>,
     regexp_iterator_prototype: Option<ObjectId>,
-    templates: HashMap<u64, ObjectId>,
+    templates: HashMap<TemplateSiteId, ObjectId>,
     new_target: Value,
     new_target_allowed: bool,
     // The `[[HomeObject]]` of the currently executing method or class
     // constructor. It is runtime frame state because `super` is lexical.
     home_object: Option<ObjectId>,
-    // A class constructor's home object is its instance prototype for
-    // `super.property`; `super()` separately needs the constructor closure
-    // that owns the evaluated superclass metadata.
-    class_constructor: Option<ObjectId>,
-    // A direct eval in an instance field is outside a constructor for the
-    // `super()` early-error rules even though fields are lowered into the
-    // constructor bytecode.
-    class_field_initializer_depth: u32,
+    // Running a class field initializer (or an arrow function created in
+    // one): a direct eval there is outside a constructor for the `super()`
+    // early-error rules and may not refer to `arguments`.
+    class_field_initializer: bool,
     iterator_base: Option<ObjectId>,
+    /// The lazily installed `%Iterator.prototype%` helpers (`flatMap`,
+    /// `chunks`, `windows`) that have already been offered to the realm. Each
+    /// is installed at most once, so deleting one never lets a later
+    /// observation put a fresh copy back.
+    iterator_helpers_installed: Vec<&'static str>,
     /// `%WrapForValidIteratorPrototype%`, shared by the iterator wrappers
     /// created by `Iterator.from`.
     iterator_wrapper_prototype: Option<ObjectId>,
@@ -906,6 +1040,7 @@ pub struct Vm {
     generator_prototype: Option<ObjectId>,
     async_iterator_base: Option<ObjectId>,
     async_generator_prototype: Option<ObjectId>,
+    async_generator_function_prototype: Option<ObjectId>,
     /// `%AsyncFunction.prototype%`, permanently rooted with the realm once
     /// the first async closure needs it. Its `constructor` property keeps
     /// `%AsyncFunction%` reachable without exposing a global binding.
@@ -957,10 +1092,11 @@ pub struct Vm {
     /// boundary and registered by every allocation safepoint.
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
-    promise_all: HashMap<ObjectId, PromiseAllState>,
-    promise_any: HashMap<ObjectId, PromiseAnyState>,
-    promise_all_settled: HashMap<ObjectId, PromiseAllSettledState>,
     promise_jobs: VecDeque<PromiseJob>,
+    /// Heap edges of displaced async frames and active iterator records that
+    /// live outside the operand stack. Nested frames retain their own suffix
+    /// until they return, fail, or hand ownership to a suspended frame.
+    async_frame_roots: Vec<ObjectId>,
     test262_done: Option<Result<(), Value>>,
     /// Test262-only host scheduler state. Ordinary realms never install or
     /// expose it; agent VMs receive the same Arc while retaining their own
@@ -971,12 +1107,30 @@ pub struct Vm {
     test262_realms: HashMap<ObjectId, Test262Realm>,
     test262_foreign_values: HashMap<ObjectId, Test262ForeignValue>,
     test262_foreign_buffer_mirrors: HashMap<(ObjectId, ObjectId), Test262ForeignBufferMirror>,
-    /// Object identities in this realm that stand in for a callable value
-    /// owned by the parent Test262 realm.  The ordinary imported-value
-    /// record remains owned by that parent (so it can keep both heaps alive),
-    /// but `ShadowRealm` needs the callable bit locally when it applies
-    /// `GetWrappedValue` before any call can cross its own boundary.
-    test262_imported_callables: HashSet<ObjectId>,
+    /// Whether the most recent function [[Construct]] this realm finished
+    /// failed one of the completion checks the specification performs after
+    /// the callee's execution context has been removed (a derived
+    /// constructor returning a non-object or never initializing `this`).
+    /// Those errors belong to the *caller's* realm; a Test262 membrane reads
+    /// the flag to tell them apart from errors raised by the callee's body.
+    construct_completion_check_failed: bool,
+    /// The Test262 realm (a key of `test262_realms`) whose built-in function
+    /// is running in this `Vm` on its behalf, because the function's
+    /// operands live here rather than in its own realm. Fresh objects and
+    /// errors the function creates belong to that realm. Cleared while any
+    /// nested call runs, so callbacks and getters are unaffected.
+    acting_realm: Option<ObjectId>,
+    /// The reverse Test262 membrane: object identities in *this* realm that
+    /// stand in for a value owned by a Test262 *parent* realm (one that
+    /// created this `Vm` via `$262.createRealm()`), crossing in the opposite
+    /// direction from `test262_foreign_values`. Every `Vm` can play the
+    /// "child" role generically -- there is no reverse analog of
+    /// `test262_realms` here, since a child has no map back to its parent;
+    /// the live parent pointer is instead resolved dynamically through
+    /// [`realm_reentrancy::resolve_active`], keyed by `home_heap`. See
+    /// [`test262::reverse`] for the forwarding functions that dispatch
+    /// through this map.
+    test262_reverse_values: HashMap<ObjectId, Test262ReverseValue>,
     shadow_realm_prototype: Option<ObjectId>,
     shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
     /// Reverse index from a `ShadowRealm` child's own heap tag back to the
@@ -985,251 +1139,179 @@ pub struct Vm {
     shadow_realm_by_heap: HashMap<u64, ObjectId>,
     shadow_wrapped_functions: HashMap<ObjectId, ShadowWrappedFunction>,
     throw_type_error: Option<ObjectId>,
+    /// The shared `caller` / `arguments` getters of sloppy functions' legacy
+    /// own accessors, created on first use.
+    legacy_function_getters: Option<(ObjectId, ObjectId)>,
+    /// The closures whose bodies are currently running, innermost last. Only
+    /// legacy `f.caller` reads it: eval frames, natives, generators resumed
+    /// from a call and async continuations do not appear.
+    call_stack: Vec<ObjectId>,
+    /// Synchronous delegate callbacks execute while their saved frame remains
+    /// in the heap for GC. These identities block resumption until the callback
+    /// and its result getters finish; the call operands already retain each one.
+    active_generator_delegations: HashSet<ObjectId>,
+    /// How many of `with_objects` the running function inherited from the
+    /// scope it was created in (the rest were entered by its own `with`).
+    inherited_with_depth: usize,
     joining: Vec<ObjectId>,
 }
 
-impl Default for Vm {
-    fn default() -> Self {
-        Self::new(VmConfig::default()).expect("default VM configuration is valid")
-    }
-}
-
 impl Vm {
-    /// Creates an isolated VM and its rooted object/array prototypes.
-    /// The heap budget must accommodate both prototype records.
-    pub fn new(config: VmConfig) -> Result<Self, HeapError> {
-        let mut heap = Heap::new(config.heap)?;
-        let object_prototype = heap.alloc_object(None)?;
-        // Permanent root, released with the heap. Builtin properties and
-        // callable methods are installed lazily by string_intrinsics.
-        heap.root(object_prototype)?;
-        let array_prototype = heap.alloc_array(0, Some(object_prototype))?;
-        heap.root(array_prototype)?;
-        Ok(Self {
-            config,
-            heap,
-            object_prototype,
-            array_prototype,
-            string_intrinsics: None,
-            typed_array_intrinsics: None,
-            result_root: None,
-            stack: Vec::new(),
-            bindings: Vec::new(),
-            binding_metadata: Vec::new(),
-            completion: Value::Undefined,
-            completion_empty: true,
-            active_scopes: Vec::new(),
-            active_scope_slots: Vec::new(),
-            with_objects: Vec::new(),
-            pending_completions: Vec::new(),
-            completion_saves: Vec::new(),
-            remaining_instructions: 0,
-            cells: HashMap::new(),
-            module_registry: HashMap::new(),
-            json_module_sources: HashMap::new(),
-            text_module_sources: HashMap::new(),
-            bytes_module_sources: HashMap::new(),
-            dynamic_module_sources: HashMap::new(),
-            module_source_registry: HashSet::new(),
-            module_source_cache: HashMap::new(),
-            module_source_roots: HashMap::new(),
-            module_import_meta: HashMap::new(),
-            module_import_meta_roots: HashMap::new(),
-            abstract_module_source_prototype: None,
-            host_module_source_prototype: None,
-            last_module_namespace: None,
-            last_module_namespace_root: None,
-            module_namespace_cache: HashMap::new(),
-            module_namespace_roots: HashMap::new(),
-            deferred_namespaces: HashMap::new(),
-            module_deferred_namespace_cache: HashMap::new(),
-            module_deferred_namespace_roots: HashMap::new(),
-            module_graph: None,
-            evaluating_linked: None,
-            nested_module_roots: Vec::new(),
-            deferred_import_waiters: Vec::new(),
-            last_deferred_dependencies: Vec::new(),
-            module_continuations: HashMap::new(),
-            next_module_continuation: 0,
-            async_continuations: HashMap::new(),
-            next_async_continuation: 0,
-            module_pending_dependencies: HashMap::new(),
-            module_async_parents: HashMap::new(),
-            module_import_waiters: HashMap::new(),
-            active_module_name: None,
-            module_closure_referrers: HashMap::new(),
-            dynamic_eval_bindings: HashMap::new(),
-            eval_dynamic_slots: HashMap::new(),
-            dynamic_eval_outer_bindings: Vec::new(),
-            this: Value::Undefined,
-            arguments: Vec::new(),
-            callee: Value::Undefined,
-            strict: false,
-            call_depth: 0,
-            top_level_module: false,
-            globals: HashMap::new(),
-            global_bindings: HashMap::new(),
-            symbol_registry: Rc::new(RefCell::new(HashMap::new())),
-            intl_legacy_constructed_symbol: None,
-            script_global_slots: HashMap::new(),
-            variable_scope: 0,
-            variable_scope_lexicals: Vec::new(),
-            iterator_prototype: None,
-            regexp_iterator_prototype: None,
-            templates: HashMap::new(),
-            new_target: Value::Undefined,
-            new_target_allowed: false,
-            home_object: None,
-            class_constructor: None,
-            class_field_initializer_depth: 0,
-            iterator_base: None,
-            iterator_wrapper_prototype: None,
-            iterator_helper_prototype: None,
-            array_iterator_prototype: None,
-            map_iterator_prototype: None,
-            set_iterator_prototype: None,
-            generator_function_prototype: None,
-            generator_prototype: None,
-            async_iterator_base: None,
-            async_generator_prototype: None,
-            async_function_prototype: None,
-            promise_prototype: None,
-            date_prototype: None,
-            map_prototype: None,
-            set_prototype: None,
-            weak_map_prototype: None,
-            weak_set_prototype: None,
-            weak_ref_prototype: None,
-            finalization_registry_prototype: None,
-            disposable_stack_prototype: None,
-            async_disposable_stack_prototype: None,
-            async_dispose_helper: None,
-            disposable_stacks: HashMap::new(),
-            async_disposable_stacks: HashMap::new(),
-            disposables: Vec::new(),
-            dispose_marks: Vec::new(),
-            kept_weak_objects: Vec::new(),
-            promises: HashMap::new(),
-            promise_all: HashMap::new(),
-            promise_any: HashMap::new(),
-            promise_all_settled: HashMap::new(),
-            promise_jobs: VecDeque::new(),
-            test262_done: None,
-            test262_agent_host: None,
-            test262_agent_control: None,
-            test262_async_waits: std::sync::Arc::new(test262_agents::Test262AsyncWaits::new()),
-            test262_realms: HashMap::new(),
-            test262_foreign_values: HashMap::new(),
-            test262_foreign_buffer_mirrors: HashMap::new(),
-            test262_imported_callables: HashSet::new(),
-            shadow_realm_prototype: None,
-            shadow_realms: HashMap::new(),
-            shadow_realm_by_heap: HashMap::new(),
-            shadow_wrapped_functions: HashMap::new(),
-            throw_type_error: None,
-            joining: Vec::new(),
+    /// Installs one non-constructable host function as an own property of
+    /// `globalThis`. The name is rejected when a global property already
+    /// exists, so an embedder cannot silently replace an ECMAScript global.
+    pub fn install_host_function(
+        &mut self,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is always an object");
+        if !host_property_name_is_valid(name)
+            || self
+                .heap
+                .get_own(global, name)
+                .expect("the materialized realm global remains rooted during host installation")
+                .is_some()
+        {
+            return Err(RuntimeError::TypeError(
+                "host global name is invalid or already defined".into(),
+            ));
+        }
+        self.install_host_callable(global, name, length, function)
+    }
+
+    /// Installs one non-callable host object as an own property of
+    /// `globalThis`. The name is rejected when a property already exists, so
+    /// an embedder cannot silently replace an ECMAScript global.
+    pub fn install_host_object(&mut self, name: &str) -> Result<HostObject, RuntimeError> {
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is always an object");
+        if !host_property_name_is_valid(name)
+            || self
+                .heap
+                .get_own(global, name)
+                .expect("the materialized realm global remains rooted during host installation")
+                .is_some()
+        {
+            return Err(RuntimeError::TypeError(
+                "host global name is invalid or already defined".into(),
+            ));
+        }
+        let prototype = self.object_prototype;
+        let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(object));
+        let result = self.define_data(global, name, Value::Object(object), false, false, false);
+        self.stack.pop();
+        result?;
+        Ok(HostObject(object))
+    }
+
+    /// Installs one non-constructable host callback on a host object returned
+    /// by [`Self::install_host_object`]. Method names and collisions are
+    /// rejected before the callback is retained.
+    pub fn install_host_method(
+        &mut self,
+        owner: HostObject,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
+        if owner.0.heap != self.object_prototype.heap || !host_property_name_is_valid(name) {
+            return Err(RuntimeError::TypeError(
+                "host object or method name is invalid".into(),
+            ));
+        }
+        // HostObject is an opaque capability published as a non-configurable
+        // property of this realm's permanently rooted global object.
+        if self
+            .heap
+            .get_own(owner.0, name)
+            .expect("a validated host object remains rooted by its global property")
+            .is_some()
+        {
+            return Err(RuntimeError::TypeError(
+                "host method is already defined".into(),
+            ));
+        }
+        self.install_host_callable(owner.0, name, length, function)
+    }
+
+    fn install_host_callable(
+        &mut self,
+        owner: ObjectId,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
+        // Check the tag's representation before publishing either the heap
+        // function or its callback. The integer boundary can be validated
+        // without constructing an impossibly large callback registry.
+        host_function_index(self.host_functions.len()).and_then(|index| {
+            self.install_host_callable_native(owner, name, length, NativeFunction::Host(index))?;
+            self.host_functions.push(Box::new(function));
+            Ok(())
         })
     }
 
-    pub fn heap(&self) -> &Heap {
-        &self.heap
-    }
-
-    /// Executes only bytecode produced by [`crate::compile`] with fresh
-    /// bindings. A returned object and its reachable graph stay alive until
-    /// the next execute (including a failing execute), or until this VM is
-    /// dropped. Both success and error paths release temporary runtime roots.
-    pub fn execute(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
-        self.execute_with_global_bindings(code, false, false)
-    }
-
-    /// Executes a classic script in this realm and publishes successful
-    /// top-level `var` and function declarations on `globalThis` for a later
-    /// classic script. Lexical bindings retain their script-local boundary.
-    pub fn execute_script(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
-        self.execute_with_global_bindings(code, true, false)
-    }
-
-    /// Evaluates one dependency-free module. Its declarations are scoped to
-    /// this evaluation and are never exposed as classic global properties.
-    /// Use [`Vm::execute_module_graph`] when the code has import/export
-    /// entries that need static linking.
-    pub fn execute_module(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
-        self.execute_with_global_bindings(code, false, true)
-    }
-
-    /// Installs the bounded module-loader context used by dynamic `import()`
-    /// from classic script code. The host supplies precompiled Module-goal
-    /// bytecode and an opaque referrer key; BlueJS never reads module files
-    /// itself.
-    pub fn set_module_loader_context(
+    fn install_host_callable_native(
         &mut self,
-        referrer: impl Into<String>,
-        modules: HashMap<String, Bytecode>,
-    ) {
-        self.module_registry = modules;
-        self.active_module_name = Some(referrer.into());
+        owner: ObjectId,
+        name: &str,
+        length: u32,
+        function: NativeFunction,
+    ) -> Result<(), RuntimeError> {
+        let prototype = self.function_prototype().expect(
+            "host installation materializes globalThis and Function before publishing its owner",
+        );
+        let id = self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
+        self.stack.push(Value::Object(id));
+        let result = (|| {
+            let metadata = [
+                ("length", Value::Number(f64::from(length))),
+                ("name", Value::String(name.into())),
+            ];
+            for (key, value) in metadata {
+                self.define_data(id, key, value, false, false, true)?;
+            }
+            self.define_data(owner, name, Value::Object(id), true, false, true)
+        })();
+        self.stack.pop();
+        result?;
+        Ok(())
     }
 
-    /// Installs the host's canonical names for source-phase module records.
-    /// These records produce Module Source Objects and must not be supplied as
-    /// executable Source Text Module bytecode.
-    pub fn set_module_source_loader_context(&mut self, sources: Vec<String>) {
-        self.module_source_registry = sources.into_iter().collect();
-    }
-
-    /// Installs the host's raw JSON text for `type: "json"` module requests,
-    /// keyed by resolved module name (the same resolution `set_module_loader_context`'s
-    /// `modules` map keys use). `ensure_synthetic_module` (`vm/modules.rs`)
-    /// parses and synthesizes a Synthetic Module Record from this text the
-    /// first time each resolved path is actually requested.
-    pub fn set_json_module_sources(&mut self, sources: HashMap<String, String>) {
-        self.json_module_sources = sources;
-    }
-
-    /// Installs the host's text for `type: "text"` module requests, keyed by
-    /// resolved module name. The host has already decoded the resource as
-    /// UTF-8 (import-text's HostLoadImportedModule step); the module's
-    /// `default` export is exactly this string.
-    pub fn set_text_module_sources(&mut self, sources: HashMap<String, String>) {
-        self.text_module_sources = sources;
-    }
-
-    /// Installs the host's raw bytes for `type: "bytes"` module requests,
-    /// keyed by resolved module name. The module's `default` export is a
-    /// `Uint8Array` over an immutable `ArrayBuffer` holding these bytes.
-    pub fn set_bytes_module_sources(&mut self, sources: HashMap<String, Vec<u8>>) {
-        self.bytes_module_sources = sources;
-    }
-
-    /// Installs the host's raw JavaScript text for modules it did not
-    /// pre-compile into `set_module_loader_context`'s `modules` map, keyed
-    /// by resolved module name. `ensure_dynamic_module_compiled`
-    /// (`vm/modules.rs`) parses and compiles this text on demand, only when
-    /// a dynamic import actually resolves to a path not already present in
-    /// the registry -- so a module invalid *only as a module* (but valid,
-    /// and reachable only, as something a dynamic import happens to target)
-    /// fails lazily as that import's own promise rejection, rather than
-    /// eagerly before any code has even run.
-    pub fn set_dynamic_module_sources(&mut self, sources: HashMap<String, String>) {
-        self.dynamic_module_sources = sources;
-    }
-
-    /// Links and synchronously evaluates one static module graph.
-    ///
-    /// Keys in `modules` are host-resolved module names. Relative requests
-    /// are resolved against their referrer's slash-separated key, so callers
-    /// normally use canonical paths such as `directory/entry.js`.  This is a
-    /// deliberately synchronous subset: dynamic import and top-level await
-    /// remain outside this API, but normal static cycles and live bindings
-    /// use the same instantiate-before-evaluate shape as Source Text Module
-    /// Records.
-    pub fn execute_module_graph(
+    fn host_function_call(
         &mut self,
-        entry: &str,
-        modules: &HashMap<String, Bytecode>,
+        index: u32,
+        _receiver: Value,
+        args: &[Value],
+        construct: bool,
     ) -> Result<Value, RuntimeError> {
-        self.execute_module_graph_inner(entry, modules, true, false, ImportPhase::Evaluation)
+        if construct {
+            return Err(RuntimeError::TypeError(
+                "host functions are not constructors".into(),
+            ));
+        }
+        let args = args
+            .iter()
+            .map(HostValue::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
+        let result = self
+            .host_functions
+            .get_mut(index as usize)
+            .ok_or_else(|| RuntimeError::TypeError("host function is unavailable".into()))?
+            .call(&args)
+            .map_err(|error| RuntimeError::TypeError(error.to_string()))?
+            .into();
+        self.check_string(&result)?;
+        Ok(result)
     }
 }
 
@@ -1244,530 +1326,16 @@ impl Vm {
 }
 
 impl Vm {
-    fn string_intrinsics(&mut self) -> Result<(ObjectId, ObjectId), RuntimeError> {
-        if let Some(intrinsics) = self.string_intrinsics {
-            return Ok(intrinsics);
-        }
-        let object_prototype = self.object_prototype;
-        let function_prototype = self.with_roots(|heap| {
-            heap.alloc_native_function(NativeFunction::Empty, "", object_prototype)
-        })?;
-        let constructor = self.with_roots(|heap| {
-            heap.alloc_native_function(NativeFunction::String, "String", function_prototype)
-        })?;
-        let root = self.heap.root(constructor)?;
-        let result = (|| {
-            let prototype = self.with_roots(|heap| {
-                heap.alloc_string(JsString::default(), Some(object_prototype))
-            })?;
-            self.define_data(
-                constructor,
-                "prototype",
-                Value::Object(prototype),
-                false,
-                false,
-                false,
-            )?;
-            self.define_data(
-                prototype,
-                "constructor",
-                Value::Object(constructor),
-                true,
-                false,
-                true,
-            )?;
-            self.define_data(
-                constructor,
-                "name",
-                Value::String("String".into()),
-                false,
-                false,
-                true,
-            )?;
-            self.define_data(
-                constructor,
-                "length",
-                Value::Number(1.0),
-                false,
-                false,
-                true,
-            )?;
-            self.define_data(
-                function_prototype,
-                "length",
-                Value::Number(0.0),
-                false,
-                false,
-                true,
-            )?;
-            self.define_data(
-                function_prototype,
-                "name",
-                Value::String(JsString::default()),
-                false,
-                false,
-                true,
-            )?;
-            self.install_native(
-                function_prototype,
-                function_prototype,
-                "call",
-                1,
-                NativeFunction::Call,
-            )?;
-            self.install_native(
-                function_prototype,
-                function_prototype,
-                "apply",
-                2,
-                NativeFunction::Apply,
-            )?;
-            self.install_native(
-                function_prototype,
-                function_prototype,
-                "bind",
-                1,
-                NativeFunction::Bind,
-            )?;
-            self.install_symbol_native(
-                function_prototype,
-                function_prototype,
-                "hasInstance",
-                1,
-                NativeFunction::HasInstance,
-            )?;
-            self.install_native(
-                function_prototype,
-                function_prototype,
-                "toString",
-                0,
-                NativeFunction::FunctionToString,
-            )?;
-            self.install_native(
-                constructor,
-                function_prototype,
-                "fromCharCode",
-                1,
-                NativeFunction::FromCharCode,
-            )?;
-            self.install_native(
-                constructor,
-                function_prototype,
-                "fromCodePoint",
-                1,
-                NativeFunction::FromCodePoint,
-            )?;
-            self.install_native(
-                constructor,
-                function_prototype,
-                "raw",
-                1,
-                NativeFunction::Raw,
-            )?;
-            self.install_native(
-                prototype,
-                function_prototype,
-                "split",
-                2,
-                NativeFunction::Split,
-            )?;
-            self.install_native(
-                prototype,
-                function_prototype,
-                "replace",
-                2,
-                NativeFunction::Replace,
-            )?;
-            self.install_native(
-                prototype,
-                function_prototype,
-                "replaceAll",
-                2,
-                NativeFunction::ReplaceAll,
-            )?;
-            for &(name, length, method) in native::STRING_METHODS {
-                self.install_native(
-                    prototype,
-                    function_prototype,
-                    name,
-                    length,
-                    NativeFunction::StringMethod(method),
-                )?;
-            }
-            for (name, length, method) in [
-                ("toLocaleLowerCase", 0, NativeFunction::ToLocaleLowerCase),
-                ("toLocaleUpperCase", 0, NativeFunction::ToLocaleUpperCase),
-                ("localeCompare", 1, NativeFunction::LocaleCompare),
-            ] {
-                self.install_native(prototype, function_prototype, name, length, method)?;
-            }
-            for (alias, original) in [("trimLeft", "trimStart"), ("trimRight", "trimEnd")] {
-                let function = self.heap.get(prototype, original)?;
-                self.define_data(prototype, alias, function, true, false, true)?;
-            }
-            self.install_symbol_native(
-                prototype,
-                function_prototype,
-                "iterator",
-                0,
-                NativeFunction::StringIterator,
-            )?;
-            for (name, method) in [
-                ("match", native::PatternMethod::Match),
-                ("matchAll", native::PatternMethod::MatchAll),
-                ("search", native::PatternMethod::Search),
-            ] {
-                self.install_native(
-                    prototype,
-                    function_prototype,
-                    name,
-                    1,
-                    NativeFunction::Pattern(method),
-                )?;
-            }
-            self.install_native(
-                object_prototype,
-                function_prototype,
-                "toString",
-                0,
-                NativeFunction::ObjectToString,
-            )?;
-            self.install_native(
-                object_prototype,
-                function_prototype,
-                "toLocaleString",
-                0,
-                NativeFunction::ObjectToLocaleString,
-            )?;
-            self.install_native(
-                object_prototype,
-                function_prototype,
-                "valueOf",
-                0,
-                NativeFunction::ObjectValueOf,
-            )?;
-            self.install_native(
-                object_prototype,
-                function_prototype,
-                "isPrototypeOf",
-                1,
-                NativeFunction::ObjectIsPrototypeOf,
-            )?;
-            for (name, length, function) in [
-                (
-                    "__defineGetter__",
-                    2,
-                    NativeFunction::ObjectDefineAccessor { getter: true },
-                ),
-                (
-                    "__defineSetter__",
-                    2,
-                    NativeFunction::ObjectDefineAccessor { getter: false },
-                ),
-                (
-                    "__lookupGetter__",
-                    1,
-                    NativeFunction::ObjectLookupAccessor { getter: true },
-                ),
-                (
-                    "__lookupSetter__",
-                    1,
-                    NativeFunction::ObjectLookupAccessor { getter: false },
-                ),
-            ] {
-                self.install_native(object_prototype, function_prototype, name, length, function)?;
-            }
-            self.install_native_accessor(
-                object_prototype,
-                function_prototype,
-                "__proto__",
-                NativeFunction::ObjectPrototypeGetter,
-                NativeFunction::ObjectPrototypeSetter,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "at",
-                1,
-                NativeFunction::ArrayAt,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "fill",
-                1,
-                NativeFunction::ArrayFill,
-            )?;
-            for (name, length, function) in [
-                ("copyWithin", 2, NativeFunction::ArrayCopyWithin),
-                ("flat", 0, NativeFunction::ArrayFlat),
-                ("flatMap", 1, NativeFunction::ArrayFlatMap),
-                ("toReversed", 0, NativeFunction::ArrayToReversed),
-                ("toSorted", 1, NativeFunction::ArrayToSorted),
-                ("toSpliced", 2, NativeFunction::ArrayToSpliced),
-                ("with", 2, NativeFunction::ArrayWith),
-            ] {
-                self.install_native(
-                    self.array_prototype,
-                    function_prototype,
-                    name,
-                    length,
-                    function,
-                )?;
-            }
-            for (name, kind) in [
-                ("entries", ArrayIteratorKind::Entries),
-                ("keys", ArrayIteratorKind::Keys),
-                ("values", ArrayIteratorKind::Values),
-            ] {
-                self.install_native(
-                    self.array_prototype,
-                    function_prototype,
-                    name,
-                    0,
-                    NativeFunction::ArrayIterator(kind),
-                )?;
-            }
-            // Array.prototype[Symbol.iterator] is the same function object
-            // as Array.prototype.values.
-            let values = self.heap.get(self.array_prototype, "values")?;
-            self.define_data(
-                self.array_prototype,
-                JsSymbol::well_known("iterator"),
-                values,
-                true,
-                false,
-                true,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "toString",
-                0,
-                NativeFunction::ArrayToString,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "toLocaleString",
-                0,
-                NativeFunction::ArrayToLocaleString,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "concat",
-                1,
-                NativeFunction::ArrayConcat,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "join",
-                1,
-                NativeFunction::ArrayJoin,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "forEach",
-                1,
-                NativeFunction::ArrayForEach,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "filter",
-                1,
-                NativeFunction::ArrayFilter,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "map",
-                1,
-                NativeFunction::ArrayMap,
-            )?;
-            for (name, function) in [
-                ("find", NativeFunction::ArrayFind),
-                ("findIndex", NativeFunction::ArrayFindIndex),
-                ("findLast", NativeFunction::ArrayFindLast),
-                ("findLastIndex", NativeFunction::ArrayFindLastIndex),
-            ] {
-                self.install_native(self.array_prototype, function_prototype, name, 1, function)?;
-            }
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "every",
-                1,
-                NativeFunction::ArrayEvery,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "some",
-                1,
-                NativeFunction::ArraySome,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "includes",
-                1,
-                NativeFunction::ArrayIncludes,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "reduce",
-                1,
-                NativeFunction::ArrayReduce,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "reduceRight",
-                1,
-                NativeFunction::ArrayReduceRight,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "push",
-                1,
-                NativeFunction::ArrayPush,
-            )?;
-            for (name, length, function) in [
-                ("pop", 0, NativeFunction::ArrayPop),
-                ("shift", 0, NativeFunction::ArrayShift),
-                ("unshift", 1, NativeFunction::ArrayUnshift),
-                ("reverse", 0, NativeFunction::ArrayReverse),
-            ] {
-                self.install_native(
-                    self.array_prototype,
-                    function_prototype,
-                    name,
-                    length,
-                    function,
-                )?;
-            }
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "indexOf",
-                1,
-                NativeFunction::ArrayIndexOf,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "lastIndexOf",
-                1,
-                NativeFunction::ArrayLastIndexOf,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "slice",
-                2,
-                NativeFunction::ArraySlice,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "splice",
-                2,
-                NativeFunction::ArraySplice,
-            )?;
-            self.install_native(
-                self.array_prototype,
-                function_prototype,
-                "sort",
-                1,
-                NativeFunction::ArraySort,
-            )?;
-            self.install_array_unscopables()?;
-            Ok((constructor, prototype))
-        })();
-        match result {
-            Ok(intrinsics) => {
-                self.string_intrinsics = Some(intrinsics);
-                Ok(intrinsics)
-            }
-            Err(error) => {
-                // The only pre-existing owners modified by bootstrap are
-                // these two empty prototypes. Roll back published edges too.
-                for (owner, key) in [
-                    (object_prototype, PropertyName::from("toString")),
-                    (object_prototype, "toLocaleString".into()),
-                    (object_prototype, "valueOf".into()),
-                    (object_prototype, "isPrototypeOf".into()),
-                    (object_prototype, "__defineGetter__".into()),
-                    (object_prototype, "__defineSetter__".into()),
-                    (object_prototype, "__lookupGetter__".into()),
-                    (object_prototype, "__lookupSetter__".into()),
-                    (object_prototype, "__proto__".into()),
-                    (object_prototype, "hasOwnProperty".into()),
-                    (self.array_prototype, "at".into()),
-                    (self.array_prototype, "fill".into()),
-                    (self.array_prototype, "copyWithin".into()),
-                    (self.array_prototype, "flat".into()),
-                    (self.array_prototype, "flatMap".into()),
-                    (self.array_prototype, "toReversed".into()),
-                    (self.array_prototype, "toSorted".into()),
-                    (self.array_prototype, "toSpliced".into()),
-                    (self.array_prototype, "with".into()),
-                    (
-                        self.array_prototype,
-                        PropertyName::from(JsSymbol::well_known("unscopables")),
-                    ),
-                    (self.array_prototype, "entries".into()),
-                    (self.array_prototype, "keys".into()),
-                    (self.array_prototype, "values".into()),
-                    (self.array_prototype, "toString".into()),
-                    (self.array_prototype, "concat".into()),
-                    (self.array_prototype, "join".into()),
-                    (self.array_prototype, "forEach".into()),
-                    (self.array_prototype, "filter".into()),
-                    (self.array_prototype, "map".into()),
-                    (self.array_prototype, "find".into()),
-                    (self.array_prototype, "findIndex".into()),
-                    (self.array_prototype, "findLast".into()),
-                    (self.array_prototype, "findLastIndex".into()),
-                    (self.array_prototype, "every".into()),
-                    (self.array_prototype, "some".into()),
-                    (self.array_prototype, "includes".into()),
-                    (self.array_prototype, "reduce".into()),
-                    (self.array_prototype, "reduceRight".into()),
-                    (self.array_prototype, "push".into()),
-                    (self.array_prototype, "indexOf".into()),
-                    (self.array_prototype, "lastIndexOf".into()),
-                    (self.array_prototype, "slice".into()),
-                    (self.array_prototype, "splice".into()),
-                    (self.array_prototype, "sort".into()),
-                    (
-                        self.array_prototype,
-                        JsSymbol::well_known("iterator").into(),
-                    ),
-                ] {
-                    self.heap.delete(owner, key)?;
-                }
-                self.heap.unroot(root)?;
-                Err(error)
-            }
-        }
-    }
-
     /// Native functions inherit from %Function.prototype%, not from
     /// %String.prototype%. The String intrinsic cache deliberately stores
     /// the latter as its second member, so callers that install a callable
-    /// must use this helper rather than indexing that cache directly.
+    /// must use this helper rather than indexing that cache directly or
+    /// reading String's user-mutable `[[Prototype]]`.
     fn function_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
-        let (string_constructor, _) = self.string_intrinsics()?;
-        self.heap
-            .prototype(string_constructor)?
-            .ok_or_else(|| RuntimeError::TypeError("Function prototype is unavailable".into()))
+        self.string_intrinsics()?;
+        Ok(self.function_intrinsic_prototype.expect(
+            "String bootstrap publishes the original Function prototype with its permanent root",
+        ))
     }
 
     fn install_native(
@@ -1891,14 +1459,14 @@ impl Vm {
         let getter = self.with_roots(|heap| {
             heap.alloc_native_function(getter_native, &getter_name, prototype)
         })?;
-        // Allocating the setter can collect immediately under a one-object
-        // nursery. Keep the getter live before that second allocation.
-        self.stack.push(Value::Object(getter));
-        let setter = self.with_roots(|heap| {
-            heap.alloc_native_function(setter_native, &setter_name, prototype)
-        })?;
-        self.stack.push(Value::Object(setter));
         let result = (|| {
+            // The setter allocation may collect or fail. Protect the getter
+            // until publication and restore the caller's stack on either path.
+            self.stack.push(Value::Object(getter));
+            let setter = self.with_roots(|heap| {
+                heap.alloc_native_function(setter_native, &setter_name, prototype)
+            })?;
+            self.stack.push(Value::Object(setter));
             self.define_data(getter, "length", Value::Number(0.0), false, false, true)?;
             self.define_data(
                 getter,
@@ -1942,39 +1510,49 @@ impl Vm {
     }
 
     fn property_is_enumerable_intrinsic(&mut self) -> Result<(), RuntimeError> {
-        if self
-            .heap
-            .get_own_property_descriptor(self.object_prototype, "propertyIsEnumerable")?
-            .is_some()
-        {
+        if self.property_is_enumerable_installed {
             return Ok(());
         }
-        let function_prototype = self.function_prototype()?;
-        self.install_native(
-            self.object_prototype,
-            function_prototype,
-            "propertyIsEnumerable",
-            1,
-            NativeFunction::ObjectMethod(native::ObjectMethod::PropertyIsEnumerable),
-        )
+        if self
+            .heap
+            .get_own_property_descriptor(self.object_prototype, "propertyIsEnumerable")
+            .expect("Object.prototype is a permanent VM root and this read cannot allocate")
+            .is_none()
+        {
+            let function_prototype = self.function_prototype()?;
+            self.install_native(
+                self.object_prototype,
+                function_prototype,
+                "propertyIsEnumerable",
+                1,
+                NativeFunction::ObjectMethod(native::ObjectMethod::PropertyIsEnumerable),
+            )?;
+        }
+        self.property_is_enumerable_installed = true;
+        Ok(())
     }
 
     fn has_own_property_intrinsic(&mut self) -> Result<(), RuntimeError> {
-        if self
-            .heap
-            .get_own_property_descriptor(self.object_prototype, "hasOwnProperty")?
-            .is_some()
-        {
+        if self.has_own_property_installed {
             return Ok(());
         }
-        let function_prototype = self.function_prototype()?;
-        self.install_native(
-            self.object_prototype,
-            function_prototype,
-            "hasOwnProperty",
-            1,
-            NativeFunction::ObjectMethod(native::ObjectMethod::HasOwnProperty),
-        )
+        if self
+            .heap
+            .get_own_property_descriptor(self.object_prototype, "hasOwnProperty")
+            .expect("Object.prototype is a permanent VM root and this read cannot allocate")
+            .is_none()
+        {
+            let function_prototype = self.function_prototype()?;
+            self.install_native(
+                self.object_prototype,
+                function_prototype,
+                "hasOwnProperty",
+                1,
+                NativeFunction::ObjectMethod(native::ObjectMethod::HasOwnProperty),
+            )?;
+        }
+        self.has_own_property_installed = true;
+        Ok(())
     }
 
     fn call_native(
@@ -2000,29 +1578,47 @@ impl Vm {
         construct: bool,
         target: Value,
     ) -> Result<Value, RuntimeError> {
-        if self.call_depth >= MAX_RECURSIVE_CALL_DEPTH {
+        let mut result = self.enter_call(callee, receiver, args, construct, target);
+        // A frame that ended in a `TailCall` has already been torn down; its
+        // callee runs here, at the same depth, instead of nesting under it.
+        while let Some(mut call) = self.pending_tail_call.take() {
+            let args = call.split_off(2);
+            let receiver = call.pop().expect("a tail call carries its receiver");
+            let callee = call.pop().expect("a tail call carries its callee");
+            result = self.enter_call(callee, receiver, args, false, Value::Undefined);
+        }
+        result
+    }
+
+    fn enter_call(
+        &mut self,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+        target: Value,
+    ) -> Result<Value, RuntimeError> {
+        // Refuse before the native stack can overflow (see `CALL_STACK_RED_ZONE`).
+        if call_stack_exhausted(native_stack::remaining_stack(), self.call_depth) {
             return Err(RuntimeError::RangeError(
                 "maximum call depth exceeded".into(),
             ));
         }
-        // Arrow functions inherit their enclosing `new.target`.  This is
-        // observable when a derived-constructor arrow invokes `super()`:
-        // the superclass must allocate with the original derived class.
-        let arrow = if !construct {
-            match callee.object_id() {
-                Some(id) => self
-                    .heap
-                    .closure(id)?
-                    .is_some_and(|(code, _, _, _, _)| code.arrow),
-                None => false,
-            }
-        } else {
-            false
+        // An arrow function's `new.target` is lexical: the value its creating
+        // function had, captured when the closure was created (not whatever
+        // the caller happens to be running with). This is observable when a
+        // derived-constructor arrow invokes `super()`: the superclass must
+        // allocate with the original derived class.
+        let closure_code = match callee.object_id() {
+            Some(id) => self.heap.closure(id)?.map(|(code, _, _, _)| code),
+            None => None,
         };
-        let target = if arrow {
-            self.new_target.clone()
-        } else {
-            target
+        let arrow = !construct && closure_code.as_ref().is_some_and(|code| code.arrow);
+        let target = match (arrow, callee.object_id()) {
+            (true, Some(id)) => self.heap.closure_new_target(id).expect(
+                "the preceding closure lookup verified this arrow without running JavaScript",
+            ),
+            _ => target,
         };
         self.charge_step()?;
         let base = self.stack.len();
@@ -2030,14 +1626,11 @@ impl Vm {
         self.stack.extend(args.iter().cloned());
         self.stack.push(target.clone());
         let previous_target = std::mem::replace(&mut self.new_target, target);
-        let regular_function = matches!(
-            callee.object_id(),
-            Some(id) if self
-                .heap
-                .closure(id)?
-                .is_some_and(|(code, _, _, _, _)| !code.arrow)
-        );
-        let next_new_target_allowed = (arrow && self.new_target_allowed) || regular_function;
+        // Whether direct eval may use `new.target` is lexical too: it was
+        // decided when the function's own code was compiled.
+        let next_new_target_allowed = closure_code
+            .as_ref()
+            .is_some_and(|code| code.new_target_allowed);
         let previous_new_target_allowed =
             std::mem::replace(&mut self.new_target_allowed, next_new_target_allowed);
         let previous_module = callee.object_id().and_then(|id| {
@@ -2047,12 +1640,30 @@ impl Vm {
                 .map(|module| self.active_module_name.replace(module))
         });
         self.call_depth += 1;
+        // Whatever this call runs belongs to its own realm, not to the realm a
+        // running native is acting for (see `acting_realm`).
+        let acting_realm = self.acting_realm.take();
         let result = self
             .dispatch_call(callee, receiver, args, construct)
             .and_then(|value| {
                 self.check_string(&value)?;
                 Ok(value)
             });
+        self.acting_realm = acting_realm;
+        // The acting native turns its own unmaterialized language errors into
+        // the acting realm's; create the callee's here so they are not
+        // mistaken for that.
+        let result = match result {
+            Err(
+                error @ (RuntimeError::TypeError(_)
+                | RuntimeError::RangeError(_)
+                | RuntimeError::ReferenceError(_)
+                | RuntimeError::SyntaxError(_)),
+            ) if acting_realm.is_some() => self
+                .error_value(error)
+                .and_then(|value| Err(RuntimeError::Thrown(value))),
+            result => result,
+        };
         self.new_target = previous_target;
         self.new_target_allowed = previous_new_target_allowed;
         if let Some(module) = previous_module {
@@ -2106,13 +1717,26 @@ impl Vm {
             }
         }
         if let Value::Object(id) = callee {
+            if self.test262_reverse_reference(id).is_some() {
+                return self.test262_reverse_call(id, receiver, args, construct);
+            }
+        }
+        if let Value::Object(id) = callee {
             if self.shadow_wrapped_functions.contains_key(&id) {
                 return self.shadow_call_wrapped(id, receiver, args, construct);
             }
         }
         if let Value::Object(id) = callee {
-            if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
+            if let Some((code, captures, lexical_this, home)) = self
+                .heap
+                .closure(id)
+                .expect("bound and Proxy dispatch already validated the unchanged callee")
+            {
                 let receiver = if code.arrow { lexical_this } else { receiver };
+                let with_objects = self
+                    .heap
+                    .closure_with_objects(id)
+                    .expect("the immediately preceding closure lookup verified this live object");
                 return self.call_closure(builtins::ClosureCall {
                     code,
                     captures,
@@ -2121,12 +1745,14 @@ impl Vm {
                     args,
                     construct,
                     home,
-                    class_base,
+                    with_objects,
                 });
             }
         }
         let function = if let Value::Object(id) = callee {
-            self.heap.native_function(id)?
+            self.heap
+                .native_function(id)
+                .expect("the validated callee remains live during native tag lookup")
         } else {
             None
         };
@@ -2162,6 +1788,8 @@ impl Vm {
                     | NativeFunction::Promise
                     | NativeFunction::Function
                     | NativeFunction::AsyncFunction
+                    | NativeFunction::GeneratorFunction
+                    | NativeFunction::AsyncGeneratorFunction
                     | NativeFunction::Iterator
                     | NativeFunction::PrimitiveConstructor(_)
                     // Reaches native_call so its own NewTarget-is-defined
@@ -2176,58 +1804,6 @@ impl Vm {
     }
 }
 
-/// BigInt shifts use the full signed right operand, unlike Number shifts
-/// whose count is reduced modulo 32. A negative count reverses direction.
-fn bigint_shift(value: BigInt, count: BigInt, left: bool) -> Result<BigInt, RuntimeError> {
-    let reverse = count.sign() == Sign::Minus;
-    let shift_left = left != reverse;
-    let magnitude = count.magnitude().to_usize();
-    let Some(magnitude) = magnitude else {
-        if !shift_left {
-            return Ok(if value.sign() == Sign::Minus {
-                BigInt::from(-1)
-            } else {
-                BigInt::from(0)
-            });
-        }
-        return Err(RuntimeError::RangeError(
-            "BigInt shift count exceeds implementation capacity".into(),
-        ));
-    };
-    Ok(if shift_left {
-        value << magnitude
-    } else {
-        value >> magnitude
-    })
-}
-
-/// BigInt::exponentiate permits only non-negative BigInt exponents.  The
-/// standard result is exact; this interpreter additionally bounds the host
-/// exponent representation before allocating the result.
-fn bigint_exponentiate(base: BigInt, exponent: BigInt) -> Result<BigInt, RuntimeError> {
-    if exponent.sign() == Sign::Minus {
-        return Err(RuntimeError::RangeError(
-            "BigInt exponent must be non-negative".into(),
-        ));
-    }
-    if base.is_zero() {
-        return Ok(if exponent.is_zero() {
-            BigInt::one()
-        } else {
-            BigInt::zero()
-        });
-    }
-    if base == BigInt::one() {
-        return Ok(base);
-    }
-    let Some(exponent) = exponent.to_u32() else {
-        return Err(RuntimeError::RangeError(
-            "BigInt exponent exceeds implementation capacity".into(),
-        ));
-    };
-    Ok(base.pow(exponent))
-}
-
-#[cfg(test)]
-#[path = "vm/tests.rs"]
+#[cfg(any(test, coverage))]
+#[path = "../tests/fixtures/vm_internal.rs"]
 mod tests;

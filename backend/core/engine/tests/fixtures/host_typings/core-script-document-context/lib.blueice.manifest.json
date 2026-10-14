@@ -1,0 +1,9 @@
+{
+  "format": "blueice-host-typings-v1",
+  "language_version": "blue-ts-0.1",
+  "host_api_version": "blueice-core-script-v1",
+  "schema_hash": "blueice-host-schema-ec62c1c43ed53dc4",
+  "declaration_hash": "blueice-host-declaration-f3bf9a4146012757",
+  "enabled_feature_profile": "core-script-document-context-v1",
+  "binding_ids": ["dom.document-origin", "dom.document-text"]
+}

@@ -16,7 +16,11 @@
 //! interpreter, not the lexer, is where it becomes meaningful.
 //!
 //! Source characters use Rust `char`; cooked literals use UTF-16 code
-//! units so Unicode escapes can preserve lone surrogates losslessly.
+//! units so Unicode escapes can preserve lone surrogates losslessly. The
+//! input is *lexer text* (see [`crate::source_encoding`]): an unpaired
+//! surrogate in the source arrives as one reserved private-use character
+//! and is turned back into its code unit wherever the source becomes a
+//! JavaScript value (string and template literals, RegExp patterns).
 
 use crate::JsString;
 use icu_properties::{props, CodePointSetData};
@@ -87,7 +91,7 @@ pub enum Keyword {
 }
 
 impl Keyword {
-    fn from_str(s: &str) -> Option<Keyword> {
+    pub(crate) fn from_str(s: &str) -> Option<Keyword> {
         Some(match s {
             "var" => Keyword::Var,
             "let" => Keyword::Let,
@@ -182,6 +186,8 @@ pub enum Punct {
     QuestionQuestion,
     QuestionQuestionAssign,
     QuestionDot,
+    /// `@`, which only ever begins a decorator.
+    At,
 }
 
 /// One lexical error -- a plain message rather than a structured enum,
@@ -225,6 +231,12 @@ impl LexError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpannedToken {
     pub token: Token,
+    /// Where the token's first character sits, as a character offset from the
+    /// start of the source (after the whitespace and comments before it). The
+    /// token ends where the tokenizer's [`Tokenizer::position`] is once it has
+    /// been scanned; a function's source text (its `[[SourceText]]`) is the
+    /// range from the start of its first token to the end of its last.
+    pub start: usize,
     pub newline_before: bool,
     /// Whether this IdentifierName used a Unicode escape.  Contextual
     /// keywords such as `await` cannot be escaped when the grammar requires
@@ -234,6 +246,10 @@ pub struct SpannedToken {
     /// escape. These escapes are accepted only by non-strict script code;
     /// retain the lexical fact so the parser can enforce that early error.
     pub legacy_octal_escape: bool,
+    /// Whether this token's string literal contained any escape sequence or
+    /// line continuation. A Use Strict Directive must be spelled exactly
+    /// `"use strict"` or `'use strict'`, so an escaped spelling never counts.
+    pub string_escaped: bool,
 }
 
 pub(crate) type TaggedTemplateData = (Vec<JsString>, Vec<Option<JsString>>, Vec<String>);
@@ -247,14 +263,15 @@ pub struct Tokenizer {
     line_start: bool,
     identifier_escaped: bool,
     legacy_octal_escape: bool,
+    string_escaped: bool,
     html_comments_enabled: bool,
 }
 
-fn is_ident_start(c: char) -> bool {
+pub(crate) fn is_ident_start(c: char) -> bool {
     matches!(c, '_' | '$') || CodePointSetData::new::<props::IdStart>().contains(c)
 }
 
-fn is_ident_continue(c: char) -> bool {
+pub(crate) fn is_ident_continue(c: char) -> bool {
     matches!(c, '_' | '$' | '\u{200c}' | '\u{200d}')
         || CodePointSetData::new::<props::IdContinue>().contains(c)
 }
@@ -282,22 +299,22 @@ impl Tokenizer {
         loop {
             let c = self
                 .advance()
-                .ok_or_else(|| LexError::new("unterminated RegExp literal"))?;
+                .ok_or_else(|| LexError::syntax("unterminated RegExp literal"))?;
             if is_line_terminator(c) {
-                return Err(LexError::new("line terminator in RegExp literal"));
+                return Err(LexError::syntax("line terminator in RegExp literal"));
             }
             if c == '/' && !class {
                 break;
             }
-            pattern.push_code_point(c as u32);
+            pattern.push_code_point(self.source_code_point(c));
             if c == '\\' {
                 let escaped = self
                     .advance()
-                    .ok_or_else(|| LexError::new("unterminated RegExp escape"))?;
+                    .ok_or_else(|| LexError::syntax("unterminated RegExp escape"))?;
                 if is_line_terminator(escaped) {
-                    return Err(LexError::new("line terminator in RegExp escape"));
+                    return Err(LexError::syntax("line terminator in RegExp escape"));
                 }
-                pattern.push_code_point(escaped as u32);
+                pattern.push_code_point(self.source_code_point(escaped));
             } else if c == '[' {
                 class = true;
             } else if c == ']' {
@@ -339,17 +356,14 @@ impl Tokenizer {
                     .advance()
                     .ok_or_else(|| LexError::new("unterminated tagged template escape"))?;
                 if c == '\r' {
-                    if self.peek() == Some('\n') {
-                        self.advance();
-                    }
+                    // The consumed CR already marked a line start.
+                    self.pos += usize::from(self.peek() == Some('\n'));
                     current.push('\n');
                 } else {
                     current.push(c);
                 }
             } else if c == '\r' {
-                if self.peek() == Some('\n') {
-                    self.advance();
-                }
+                self.pos += usize::from(self.peek() == Some('\n'));
                 current.push('\n');
             } else {
                 current.push(c);
@@ -363,24 +377,47 @@ impl Tokenizer {
                 while let Some(c) = lexer.advance() {
                     if c == '\\' {
                         match lexer.scan_escape() {
+                            // Legacy octal and `\8`/`\9` escapes are
+                            // NotEscapeSequences in a template: the cooked
+                            // value of that string is undefined.
+                            Ok(Some(_)) if lexer.legacy_octal_escape => return None,
                             Ok(Some(c)) => result.push_code_point(c),
                             Ok(None) => {}
                             Err(_) => return None,
                         }
                     } else {
-                        result.push_code_point(c as u32);
+                        result.push_code_point(lexer.source_code_point(c));
                     }
                 }
                 Some(result)
             })
             .collect();
         Ok((
-            raw.into_iter().map(Into::into).collect(),
+            raw.iter()
+                .map(|raw| crate::source_encoding::decode(raw))
+                .collect(),
             cooked,
             expressions,
         ))
     }
 
+    /// The code point the source character `c` (just consumed) stands for in
+    /// a literal's value. Ordinary characters stand for themselves; the
+    /// lexer-text encoding of an unpaired surrogate stands for that code
+    /// unit, and its escape character makes the character after it literal
+    /// (consumed here too).
+    #[inline]
+    fn source_code_point(&mut self, c: char) -> u32 {
+        if (c as u32) < crate::source_encoding::RESERVED_START {
+            return c as u32;
+        }
+        if c == crate::source_encoding::ESCAPE {
+            return self.advance().map_or(c as u32, |next| next as u32);
+        }
+        crate::source_encoding::lone_surrogate(c).map_or(c as u32, u32::from)
+    }
+
+    /// `input` is lexer text: see [`crate::source_encoding`].
     pub fn new(input: &str) -> Tokenizer {
         Tokenizer {
             input: input.chars().collect(),
@@ -388,6 +425,7 @@ impl Tokenizer {
             line_start: true,
             identifier_escaped: false,
             legacy_octal_escape: false,
+            string_escaped: false,
             html_comments_enabled: true,
         }
     }
@@ -397,6 +435,18 @@ impl Tokenizer {
         Tokenizer {
             html_comments_enabled: false,
             ..Self::new(input)
+        }
+    }
+
+    /// Consumes a Hashbang comment (`#!` through the end of the line, not
+    /// including the line terminator) when it is the first thing in the
+    /// source text. Callers apply this only to complete Script or Module
+    /// text; the line terminator that ends it is ordinary trivia.
+    pub(crate) fn skip_hashbang(&mut self) {
+        if self.pos == 0 && self.peek() == Some('#') && self.peek_at(1) == Some('!') {
+            while self.peek().is_some_and(|c| !is_line_terminator(c)) {
+                self.advance();
+            }
         }
     }
 
@@ -525,12 +575,16 @@ impl Tokenizer {
         let newline_before = self.skip_trivia()?;
         self.identifier_escaped = false;
         self.legacy_octal_escape = false;
+        self.string_escaped = false;
+        let start = self.pos;
         let token = self.next_token()?;
         Ok(SpannedToken {
             token,
+            start,
             newline_before,
             identifier_escaped: self.identifier_escaped,
             legacy_octal_escape: self.legacy_octal_escape,
+            string_escaped: self.string_escaped,
         })
     }
 
@@ -583,6 +637,12 @@ impl Tokenizer {
             }
         }
         let mut text = self.scan_digits(10, !leading_zero)?;
+        // A LegacyOctalIntegerLiteral (`010`) or NonOctalDecimalIntegerLiteral
+        // (`08`, `019`) is an Annex B extension that strict code rejects, so
+        // the parser must learn that this token used one.
+        if leading_zero && text.len() > 1 {
+            self.legacy_octal_escape = true;
+        }
         if self.peek() == Some('n') {
             self.advance();
             if leading_zero && text.len() > 1 {
@@ -697,8 +757,10 @@ impl Tokenizer {
                     consumed_extra += 1;
                 }
                 // A bare `\\0` is the ordinary NullEscape. Every other
-                // form here is legacy-only and invalid in strict code.
-                self.legacy_octal_escape = first != 0 || consumed_extra != 0;
+                // form here is legacy-only and invalid in strict code,
+                // including `\\0` directly followed by `8` or `9`.
+                self.legacy_octal_escape =
+                    first != 0 || consumed_extra != 0 || matches!(self.peek(), Some('8' | '9'));
                 value
             }
             // NonOctalDecimalEscapeSequence is likewise prohibited in
@@ -747,18 +809,25 @@ impl Tokenizer {
                     Self::hex_escape(&hex, "\\u")?
                 }
             }
-            other => other as u32, // NonEscapeCharacter, including astral source characters.
+            // NonEscapeCharacter, including astral source characters and an
+            // unpaired surrogate (one code unit, however it was spelled).
+            other => self.source_code_point(other),
         }))
     }
 
     fn hex_escape(hex: &str, kind: &str) -> Result<u32, LexError> {
         // ECMA-262 (2026) §12.9.4 requires HexDigits, not the optional
         // leading '+' accepted by Rust's from_str_radix.
+        let invalid = || {
+            LexError::new(format!(
+                "invalid {kind} escape '{}'",
+                crate::source_encoding::describe(hex)
+            ))
+        };
         if hex.is_empty() || !hex.bytes().all(|c| c.is_ascii_hexdigit()) {
-            return Err(LexError::new(format!("invalid {kind} escape '{hex}'")));
+            return Err(invalid());
         }
-        u32::from_str_radix(hex, 16)
-            .map_err(|_| LexError::new(format!("invalid {kind} escape '{hex}'")))
+        u32::from_str_radix(hex, 16).map_err(|_| invalid())
     }
 
     fn scan_string(&mut self, quote: char) -> Result<Token, LexError> {
@@ -778,13 +847,14 @@ impl Tokenizer {
                 }
                 Some('\\') => {
                     self.advance();
+                    self.string_escaped = true;
                     if let Some(c) = self.scan_escape()? {
                         out.push_code_point(c);
                     }
                 }
                 Some(c) => {
                     self.advance();
-                    out.push_code_point(c as u32);
+                    out.push_code_point(self.source_code_point(c));
                 }
             }
         }
@@ -828,6 +898,14 @@ impl Tokenizer {
                     if let Some(c) = self.scan_escape()? {
                         current.push_code_point(c);
                     }
+                    // A tagged template re-scans its own text and may carry
+                    // such an escape (cooked value `undefined`); an untagged
+                    // template may not (§13.2.8.1, NotEscapeSequence).
+                    if self.legacy_octal_escape {
+                        return Err(LexError::syntax(
+                            "octal escape sequences are not allowed in template literals",
+                        ));
+                    }
                 }
                 Some('\r') => {
                     self.advance();
@@ -838,7 +916,7 @@ impl Tokenizer {
                 }
                 Some(c) => {
                     self.advance();
-                    current.push_code_point(c as u32);
+                    current.push_code_point(self.source_code_point(c));
                 }
             }
         }
@@ -894,9 +972,13 @@ impl Tokenizer {
             }
             text.push(character);
         }
+        // A keyword spelled with a Unicode escape is never that keyword
+        // (§12.7.2): it stays an IdentifierName, valid as a property name,
+        // and the parser rejects it wherever a reserved word cannot be an
+        // IdentifierReference or BindingIdentifier.
         match Keyword::from_str(&text) {
-            Some(kw) => Ok(Token::Keyword(kw)),
-            None => Ok(Token::Identifier(text)),
+            Some(kw) if !self.identifier_escaped => Ok(Token::Keyword(kw)),
+            _ => Ok(Token::Identifier(text)),
         }
     }
 
@@ -1155,6 +1237,7 @@ impl Tokenizer {
             }
             '^' => two!('=', Punct::XorAssign, Punct::Xor),
             '~' => Punct::Tilde,
+            '@' => Punct::At,
             '?' => {
                 if self.peek() == Some('?') {
                     self.advance();
@@ -1173,7 +1256,13 @@ impl Tokenizer {
                     Punct::Question
                 }
             }
-            other => return Err(LexError::new(format!("unexpected character '{other}'"))),
+            other => {
+                let code = self.source_code_point(other);
+                return Err(LexError::new(format!(
+                    "unexpected character '{}'",
+                    crate::source_encoding::describe_code_point(code)
+                )));
+            }
         };
         Ok(Token::Punct(punct))
     }
@@ -1650,14 +1739,339 @@ mod tests {
     }
 
     #[test]
+    fn spanned_tokens_record_where_they_start() {
+        // Offsets count characters (not UTF-8 bytes or UTF-16 units) from the
+        // start of the source, and skip the whitespace and comments before a
+        // token; the tokenizer position after a token is where it ends.
+        let source = "  foo /* c */ 'b\u{1F600}r' // x\n\u{3042}\u{3044}";
+        let mut t = Tokenizer::new(source);
+        let mut spans = Vec::new();
+        loop {
+            let spanned = t.next_spanned().unwrap();
+            if spanned.token == Token::Eof {
+                break;
+            }
+            spans.push((spanned.start, t.position()));
+        }
+        assert_eq!(spans, vec![(2, 5), (14, 19), (25, 27)]);
+        assert_eq!(t.next_spanned().unwrap().start, 27);
+    }
+
+    #[test]
     fn unexpected_character_is_an_error_not_a_panic() {
-        assert!(Tokenizer::new("@").next_spanned().is_err());
+        assert!(Tokenizer::new("\\").next_spanned().is_err());
         assert!(Tokenizer::new("#").next_spanned().is_err());
+    }
+
+    #[test]
+    fn at_sign_is_the_decorator_punctuator() {
+        assert_eq!(
+            tokens("@dec"),
+            vec![
+                Token::Punct(Punct::At),
+                Token::Identifier("dec".into()),
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
     fn empty_input_yields_immediate_eof() {
         assert_eq!(tokens(""), vec![Token::Eof]);
         assert_eq!(tokens("   \n\t  "), vec![Token::Eof]);
+    }
+
+    /// Lexer text for `units`, as the entry points of `eval` produce it.
+    fn encoded(units: &[u16]) -> String {
+        crate::source_encoding::encode(&JsString::from_code_units(units.to_vec()))
+    }
+
+    fn js(units: &[u16]) -> JsString {
+        JsString::from_code_units(units.to_vec())
+    }
+
+    #[test]
+    fn a_string_literal_holds_an_unpaired_surrogate_as_that_code_unit() {
+        for unit in [0xD800, 0xDBFF, 0xDC00, 0xDFFF] {
+            let source = encoded(&[0x27, 0x61, unit, 0x62, 0x27]);
+            assert_eq!(
+                tokens(&source),
+                vec![Token::String(js(&[0x61, unit, 0x62])), Token::Eof]
+            );
+            // An escaped surrogate is a NonEscapeCharacter: the backslash is dropped.
+            let source = encoded(&[0x22, 0x5C, unit, 0x22]);
+            assert_eq!(
+                tokens(&source),
+                vec![Token::String(js(&[unit])), Token::Eof]
+            );
+        }
+    }
+
+    #[test]
+    fn a_string_literal_holds_a_genuine_reserved_character_as_itself() {
+        for code in [0x10F000, 0x10F7FF, 0x10F800] {
+            let genuine = char::from_u32(code).unwrap();
+            let source =
+                crate::source_encoding::escape(&format!("'{genuine}\\{genuine}'")).into_owned();
+            assert_eq!(
+                tokens(&source),
+                vec![
+                    Token::String(JsString::from(format!("{genuine}{genuine}"))),
+                    Token::Eof
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn a_template_literal_holds_unpaired_surrogates_in_its_cooked_pieces() {
+        let source = encoded(&[0x60, 0xD800, 0x24, 0x7B, 0x31, 0x7D, 0xDC00, 0x60]);
+        assert_eq!(
+            tokens(&source),
+            vec![
+                Token::Template {
+                    quasis: vec![js(&[0xD800]), js(&[0xDC00])],
+                    raw_expressions: vec!["1".into()],
+                },
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn a_placeholder_keeps_its_source_in_lexer_text() {
+        let source = encoded(&[0x60, 0x24, 0x7B, 0x27, 0xD800, 0x27, 0x7D, 0x60]);
+        let expression = encoded(&[0x27, 0xD800, 0x27]);
+        assert_eq!(
+            tokens(&source),
+            vec![
+                Token::Template {
+                    quasis: vec!["".into(), "".into()],
+                    raw_expressions: vec![expression.clone()],
+                },
+                Token::Eof,
+            ]
+        );
+        assert_eq!(tokens(&expression)[0], Token::String(js(&[0xD800])));
+    }
+
+    #[test]
+    fn helper_entry_points_preserve_template_errors_and_crlf() {
+        assert!(Tokenizer::new("`${").tagged_template_at(0).is_err());
+        assert!(Tokenizer::new_module("<!-- /x/").next_spanned().is_err());
+        assert!(Tokenizer::new_module("<!-- `x`").next_spanned().is_err());
+        for source in ["`\\\r\nx`", "`\r\nx`"] {
+            assert!(Tokenizer::new(source).tagged_template_at(0).is_ok());
+        }
+    }
+
+    #[test]
+    fn private_identifier_escapes_validate_each_code_point() {
+        assert_eq!(
+            Tokenizer::new("#\\u0061\\u0062")
+                .next_spanned()
+                .unwrap()
+                .token,
+            Token::PrivateIdentifier("ab".into())
+        );
+        for source in ["#\\u0030", "#a\\u0020", "#\\u{xyz}", "#\\u00zz"] {
+            assert!(Tokenizer::new(source).next_spanned().is_err(), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_tagged_template_reports_cooked_and_raw_strings_with_the_surrogate_intact() {
+        let source = encoded(&[0x60, 0xD800, 0x5C, 0xDC00, 0x60]);
+        let (raw, cooked, expressions) = Tokenizer::new(&source).tagged_template_at(0).unwrap();
+        assert_eq!(raw, vec![js(&[0xD800, 0x5C, 0xDC00])]);
+        assert_eq!(cooked, vec![Some(js(&[0xD800, 0xDC00]))]);
+        assert!(expressions.is_empty());
+    }
+
+    #[test]
+    fn a_regexp_literal_keeps_an_unpaired_surrogate_in_its_pattern() {
+        let source = encoded(&[0x2F, 0x5B, 0xD800, 0x5D, 0x5C, 0xDC00, 0xDBFF, 0x2F, 0x67]);
+        let (pattern, flags) = Tokenizer::new(&source).regexp_at(0).unwrap();
+        assert_eq!(pattern, js(&[0x5B, 0xD800, 0x5D, 0x5C, 0xDC00, 0xDBFF]));
+        assert_eq!(flags, JsString::from("g"));
+    }
+
+    #[test]
+    fn a_regexp_literal_keeps_a_genuine_reserved_character_after_a_backslash() {
+        let source = crate::source_encoding::escape("/\\\u{10F000}\u{10F800}/u").into_owned();
+        let (pattern, _) = Tokenizer::new(&source).regexp_at(0).unwrap();
+        assert_eq!(pattern, JsString::from("\\\u{10F000}\u{10F800}"));
+    }
+
+    #[test]
+    fn comments_skip_unpaired_surrogates_and_only_line_terminators_end_a_line_comment() {
+        let source = encoded(&[0x2F, 0x2F, 0xD800, 0x2F, 0x2A, 0xDC00, 0x0A, 0x37]);
+        assert_eq!(tokens(&source), vec![Token::Number(7.0), Token::Eof]);
+        let source = encoded(&[0x2F, 0x2A, 0xD800, 0x2A, 0x2F, 0x37, 0xDFFF]);
+        let mut tokenizer = Tokenizer::new(&source);
+        assert_eq!(tokenizer.next_spanned().unwrap().token, Token::Number(7.0));
+        assert!(tokenizer.next_spanned().is_err());
+    }
+
+    #[test]
+    fn an_unpaired_surrogate_is_never_an_identifier_or_punctuator() {
+        for source in [
+            encoded(&[0xD800]),
+            encoded(&[0x61, 0xDFFF]),
+            encoded(&[0x31, 0xDC00]),
+        ] {
+            let mut tokenizer = Tokenizer::new(&source);
+            let failed = (0..3).any(|_| tokenizer.next_spanned().is_err());
+            assert!(failed, "{source:?}");
+        }
+        let error = Tokenizer::new(&encoded(&[0xD800]))
+            .next_spanned()
+            .unwrap_err();
+        assert_eq!(error.message, "unexpected character '\\uD800'");
+        let error = Tokenizer::new(&crate::source_encoding::escape("\u{10F800}"))
+            .next_spanned()
+            .unwrap_err();
+        assert_eq!(error.message, "unexpected character '\u{10F800}'");
+    }
+
+    #[test]
+    fn re_scanning_a_template_or_regexp_reports_broken_leading_trivia() {
+        // Both re-scans first skip trivia from the position they are given.
+        assert!(Tokenizer::new("/* open").regexp_at(0).is_err());
+        assert!(Tokenizer::new("/* open").tagged_template_at(0).is_err());
+        assert!(!Tokenizer::new("/* open").at_template(0));
+        assert!(Tokenizer::new(" /a/").regexp_at(0).is_ok());
+        assert!(Tokenizer::new(" `a`").at_template(0));
+    }
+
+    #[test]
+    fn a_tagged_template_normalizes_lone_carriage_returns() {
+        for (source, raw) in [
+            ("`a\\\rb`", "a\\\nb"),
+            ("`a\\\r\nb`", "a\\\nb"),
+            ("`a\rb`", "a\nb"),
+            ("`a\r\nb`", "a\nb"),
+        ] {
+            let (raws, _, expressions) = Tokenizer::new(source).tagged_template_at(0).unwrap();
+            assert_eq!(raws, vec![JsString::from(raw)], "{source:?}");
+            assert!(expressions.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_tagged_template_placeholder_must_close_and_a_trailing_escape_must_finish() {
+        assert!(Tokenizer::new("`a${ b").tagged_template_at(0).is_err());
+        assert!(Tokenizer::new("`a\\").tagged_template_at(0).is_err());
+        assert!(Tokenizer::new("`a").tagged_template_at(0).is_err());
+    }
+
+    #[test]
+    fn private_identifiers_accept_valid_unicode_escapes_only() {
+        assert_eq!(
+            tokens("#\\u0061b"),
+            vec![Token::PrivateIdentifier("ab".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens("#a\\u{62}"),
+            vec![Token::PrivateIdentifier("ab".into()), Token::Eof]
+        );
+        for source in [
+            "#\\u0031",  // a digit cannot start a name
+            "#a\\u0020", // a space cannot continue one
+            "#\\u{110000}",
+            "#\\u{zz}",
+            "#\\u{}",
+            "#\\u00zz",
+            "#\\u00",
+            "#\\u{61",
+            "#\\x0061",
+            "#\\ud800",
+            "#",
+        ] {
+            assert!(Tokenizer::new(source).next_spanned().is_err(), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_string_or_template_that_ends_inside_an_escape_is_an_error() {
+        for source in [
+            "'\\",
+            "'\\x",
+            "'\\x1",
+            "'\\u",
+            "'\\u12",
+            "'\\u{",
+            "'\\u{12",
+            "'\\u{110000}'",
+            "'\\u{zz}'",
+            "'\\u{ffffffffff}'",
+            "'\\xzz'",
+            "'\\uzzzz'",
+            "`\\",
+            "`\\x1",
+            "`\\u{12",
+            "`\\u12",
+        ] {
+            assert!(Tokenizer::new(source).next_spanned().is_err(), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn html_like_comments_end_at_the_line_terminator() {
+        assert_eq!(
+            tokens("<!-- comment\n1"),
+            vec![Token::Number(1.0), Token::Eof]
+        );
+        assert_eq!(
+            tokens("0\n--> comment\n1"),
+            vec![Token::Number(0.0), Token::Number(1.0), Token::Eof]
+        );
+    }
+
+    #[test]
+    fn an_identifier_escape_must_form_an_identifier_character() {
+        for source in ["\\u0031", "a\\u0020", "\\u{31}b"] {
+            let error = Tokenizer::new(source).next_spanned().unwrap_err();
+            assert_eq!(
+                error.message, "unicode escape does not form a valid identifier character",
+                "{source:?}"
+            );
+        }
+        assert_eq!(
+            tokens("\\u0061\\u{62}c"),
+            vec![Token::Identifier("abc".into()), Token::Eof]
+        );
+    }
+
+    #[test]
+    fn a_regexp_that_ends_early_is_an_error() {
+        for source in ["/abc", "/abc\\", "/a\nb/", "/a\\\nb/", "/[a"] {
+            assert!(Tokenizer::new(source).regexp_at(0).is_err(), "{source:?}");
+        }
+        assert_eq!(
+            Tokenizer::new("/a[/]b\\//gi").regexp_at(0).unwrap(),
+            (JsString::from("a[/]b\\/"), JsString::from("gi"))
+        );
+    }
+
+    #[test]
+    fn only_a_leading_hashbang_line_is_skipped() {
+        let mut tokenizer = Tokenizer::new("#!/bin/node\n1");
+        tokenizer.skip_hashbang();
+        assert_eq!(tokenizer.next_spanned().unwrap().token, Token::Number(1.0));
+        let mut tokenizer = Tokenizer::new("1 #!x");
+        tokenizer.skip_hashbang();
+        assert_eq!(tokenizer.next_spanned().unwrap().token, Token::Number(1.0));
+        assert!(tokenizer.next_spanned().is_err());
+        // Without the `!` it is the start of a private name, not a comment.
+        let mut tokenizer = Tokenizer::new("#x\n1");
+        tokenizer.skip_hashbang();
+        assert_eq!(
+            tokenizer.next_spanned().unwrap().token,
+            Token::PrivateIdentifier("x".into())
+        );
+        let mut tokenizer = Tokenizer::new("#!");
+        tokenizer.skip_hashbang();
+        assert_eq!(tokenizer.next_spanned().unwrap().token, Token::Eof);
     }
 }

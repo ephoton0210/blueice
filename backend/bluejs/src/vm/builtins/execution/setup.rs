@@ -32,8 +32,7 @@ impl Vm {
         if let Some(prototype) = self.iterator_base {
             return Ok(prototype);
         }
-        let constructor = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(constructor)?.unwrap();
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(prototype)?;
@@ -95,7 +94,9 @@ impl Vm {
             self.install_iterator_to_string_tag_accessor(prototype, function_prototype)
         })();
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.heap
+                .unroot(root)
+                .expect("the prototype's root was just registered");
             return Err(error);
         }
         self.iterator_base = Some(prototype);
@@ -113,9 +114,7 @@ impl Vm {
         owner: ObjectId,
         key: &PropertyName,
     ) -> Result<(), RuntimeError> {
-        if self.iterator_base != Some(owner)
-            || self.heap.get_own_property_descriptor(owner, key)?.is_some()
-        {
+        if self.iterator_base != Some(owner) {
             return Ok(());
         }
         let (name, length, method) = if key == &PropertyName::from("flatMap") {
@@ -127,14 +126,29 @@ impl Vm {
         } else {
             return Ok(());
         };
-        let function_prototype = self.function_prototype()?;
+        // Once offered, the helper is an ordinary property: a script that has
+        // deleted it must not see it come back.
+        if self.iterator_helpers_installed.contains(&name)
+            || self
+                .heap
+                .get_own_property_descriptor(owner, key)
+                .expect("the Iterator prototype is live")
+                .is_some()
+        {
+            return Ok(());
+        }
+        let function_prototype = self
+            .function_prototype()
+            .expect("the Iterator prototype exists, so the String intrinsics do");
         self.install_native(
             owner,
             function_prototype,
             name,
             length,
             NativeFunction::IteratorHelper(method),
-        )
+        )?;
+        self.iterator_helpers_installed.push(name);
+        Ok(())
     }
 
     pub(in super::super::super) fn install_iterator_to_string_tag_accessor(
@@ -204,8 +218,10 @@ impl Vm {
         if let Some(prototype) = self.iterator_wrapper_prototype {
             return Ok(prototype);
         }
-        let function_prototype = self.function_prototype()?;
         let base = self.base_iterator_prototype()?;
+        let function_prototype = self
+            .function_prototype()
+            .expect("base_iterator_prototype built the String intrinsics");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
         let root = self.heap.root(prototype)?;
         let result = (|| {
@@ -226,7 +242,9 @@ impl Vm {
             Ok(())
         })();
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.heap
+                .unroot(root)
+                .expect("the prototype's root was just registered");
             return Err(error);
         }
         self.iterator_wrapper_prototype = Some(prototype);
@@ -239,8 +257,10 @@ impl Vm {
         if let Some(prototype) = self.iterator_helper_prototype {
             return Ok(prototype);
         }
-        let function_prototype = self.function_prototype()?;
         let base = self.base_iterator_prototype()?;
+        let function_prototype = self
+            .function_prototype()
+            .expect("base_iterator_prototype built the String intrinsics");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
         let root = self.heap.root(prototype)?;
         let result = (|| {
@@ -268,7 +288,9 @@ impl Vm {
             )
         })();
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.heap
+                .unroot(root)
+                .expect("the prototype's root was just registered");
             return Err(error);
         }
         self.iterator_helper_prototype = Some(prototype);
@@ -295,9 +317,13 @@ impl Vm {
                 )
             })?
         };
+        let stack_base = self.stack.len();
         self.stack.push(Value::Object(iterator));
         let result = (|| {
             let next = self.get_property(&Value::Object(iterator), &"next".into())?;
+            // A getter or Proxy `get` trap may have produced `next` just now;
+            // the prototype walk below runs user code and allocates.
+            self.stack.push(next.clone());
             let base = self.base_iterator_prototype()?;
             let mut prototype = Some(iterator);
             while let Some(current) = prototype {
@@ -311,7 +337,7 @@ impl Vm {
                 heap.alloc_iterator_wrapper(iterator, next, prototype)
             })?))
         })();
-        self.stack.pop();
+        self.stack.truncate(stack_base);
         result
     }
 
@@ -324,7 +350,11 @@ impl Vm {
                 "Iterator wrapper next requires an iterator wrapper".into(),
             ));
         };
-        let Some((iterator, next)) = self.heap.iterator_wrapper(*wrapper)? else {
+        let Some((iterator, next)) = self
+            .heap
+            .iterator_wrapper(*wrapper)
+            .expect("a receiver object is live")
+        else {
             return Err(RuntimeError::TypeError(
                 "Iterator wrapper next requires an iterator wrapper".into(),
             ));
@@ -346,7 +376,11 @@ impl Vm {
                 "Iterator wrapper return requires an iterator wrapper".into(),
             ));
         };
-        let Some((iterator, _)) = self.heap.iterator_wrapper(*wrapper)? else {
+        let Some((iterator, _)) = self
+            .heap
+            .iterator_wrapper(*wrapper)
+            .expect("a receiver object is live")
+        else {
             return Err(RuntimeError::TypeError(
                 "Iterator wrapper return requires an iterator wrapper".into(),
             ));
@@ -373,6 +407,63 @@ impl Vm {
             self.call_native(return_method, receiver.clone(), Vec::new(), false)?;
         }
         Ok(Value::Undefined)
+    }
+
+    /// `%AsyncIteratorPrototype% [ @@asyncDispose ] ( )`: a promise that
+    /// fulfils with `undefined` once the iterator's `return` (called without
+    /// arguments) has run and whatever it returned has settled. Every failure
+    /// along the way rejects that promise instead of throwing.
+    pub(in super::super::super) fn async_iterator_dispose(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(receiver.clone());
+        let result = (|| {
+            let promise = self.new_promise()?;
+            self.stack.push(Value::Object(promise));
+            let outcome: Result<(), RuntimeError> = (|| {
+                let return_method = self.get_method(receiver, &"return".into())?;
+                if return_method == Value::Undefined {
+                    return self.resolve_promise(promise, Value::Undefined);
+                }
+                let returned =
+                    self.call_native(return_method, receiver.clone(), Vec::new(), false)?;
+                self.stack.push(returned.clone());
+                let wrapper = self.promise_resolve(returned)?;
+                self.stack.push(wrapper.clone());
+                let wrapper = wrapper
+                    .object_id()
+                    .expect("PromiseResolve returns a promise object");
+                // The `unwrap` closure: ignore the value, return undefined.
+                let state = self.promise_state()?;
+                self.stack.push(Value::Object(state));
+                let unwrap = self.promise_native_function(
+                    NativeFunction::PromiseValueThunk {
+                        state,
+                        thrower: false,
+                    },
+                    1,
+                )?;
+                self.stack.push(unwrap.clone());
+                self.perform_promise_then(
+                    wrapper,
+                    unwrap,
+                    Value::Undefined,
+                    ReactionTarget::Native(promise),
+                )
+                .expect("PromiseResolve returned a registered disposal Promise");
+                Ok(())
+            })();
+            if let Err(error) = outcome {
+                let reason = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(reason))
+                    .expect("the fresh disposal Promise remains registered for rejection");
+            }
+            Ok(Value::Object(promise))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super::super) fn iterator_close_direct(
@@ -540,6 +631,11 @@ impl Vm {
         self.stack.push(Value::Object(metadata));
         self.stack.push(iterables.clone());
         let result = (|| {
+            // Initialize the private configuration before opening iterators.
+            // The final count update then replaces an existing Number and
+            // cannot introduce a collection after the outer record is closed.
+            self.with_roots(|heap| heap.set(metadata, "zipCount", Value::Number(0.0)))?;
+            self.with_roots(|heap| heap.set(metadata, "zipMode", Value::String(mode.into())))?;
             let outer_method =
                 self.get_method(iterables, &JsSymbol::well_known("iterator").into())?;
             if outer_method == Value::Undefined {
@@ -601,8 +697,9 @@ impl Vm {
                     return Err(error);
                 }
             }
-            self.with_roots(|heap| heap.set(metadata, "zipCount", Value::Number(count as f64)))?;
-            self.with_roots(|heap| heap.set(metadata, "zipMode", Value::String(mode.into())))?;
+            self.heap
+                .set(metadata, "zipCount", Value::Number(count as f64))
+                .expect("the private zip metadata replaces its initialized Number without growing");
             let prototype = self.iterator_helper_prototype()?;
             self.with_roots(|heap| {
                 heap.alloc_iterator_helper(
@@ -752,22 +849,30 @@ impl Vm {
         count: u64,
         padding_option: &Value,
     ) -> Result<(), RuntimeError> {
-        for index in 0..count {
-            let value = if *padding_option == Value::Undefined {
-                Value::Undefined
-            } else {
-                let key = self
-                    .heap
-                    .get_own(metadata, format!("zipKey{index}"))?
-                    .expect("zipKeyed metadata stores every source key");
-                let key = self.coerce_property_key(&key)?;
-                self.get_property(padding_option, &key)?
-            };
-            self.stack.push(value.clone());
-            self.with_roots(|heap| heap.set(metadata, format!("zipPadding{index}"), value))?;
-            self.stack.pop();
-        }
-        Ok(())
+        let base = self.stack.len();
+        let result = (|| {
+            for index in 0..count {
+                let value = if *padding_option == Value::Undefined {
+                    Value::Undefined
+                } else {
+                    let key = self
+                        .heap
+                        .get_own(metadata, format!("zipKey{index}"))
+                        .expect("the zipKeyed metadata object is live")
+                        .expect("zipKeyed metadata stores every source key");
+                    let key = self
+                        .coerce_property_key(&key)
+                        .expect("a stored own property key is a String or Symbol");
+                    self.get_property(padding_option, &key)?
+                };
+                self.stack.push(value.clone());
+                self.with_roots(|heap| heap.set(metadata, format!("zipPadding{index}"), value))?;
+                self.stack.pop();
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super::super) fn iterator_zip_collect_padding(
@@ -784,6 +889,7 @@ impl Vm {
             }
             return Ok(());
         }
+        let base = self.stack.len();
         self.stack.push(padding_option.clone());
         let result = (|| {
             let method =
@@ -825,7 +931,7 @@ impl Vm {
             self.stack.pop();
             Ok(())
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 

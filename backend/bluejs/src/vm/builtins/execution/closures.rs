@@ -4,13 +4,64 @@
 
 use super::*;
 
+/// How the first, synchronous stretch of an async function's body ended.
+enum AsyncBody {
+    Returned(Value),
+    Awaiting {
+        promise: ObjectId,
+        pc: usize,
+        handlers: Vec<HandlerFrame>,
+    },
+    Failed(RuntimeError),
+}
+
+impl AsyncBody {
+    /// An async function that is not a generator contains no `yield`, and only
+    /// generators suspend on entry, so those two exits are failures here.
+    fn classify(result: Result<InterpreterExit, RuntimeError>) -> Self {
+        match result {
+            Ok(InterpreterExit::Return(value)) => Self::Returned(value),
+            Ok(InterpreterExit::Await {
+                promise,
+                pc,
+                handlers,
+            }) => Self::Awaiting {
+                promise,
+                pc,
+                handlers,
+            },
+            Ok(InterpreterExit::Yield { .. }) => Self::Failed(RuntimeError::TypeError(
+                "yield requires an async generator function".into(),
+            )),
+            Ok(InterpreterExit::Suspend { .. }) => Self::Failed(RuntimeError::TypeError(
+                "an ordinary async function has no entry suspend".into(),
+            )),
+            Err(error) => Self::Failed(error),
+        }
+    }
+}
+
 impl Vm {
+    /// Marks a generator this call has just allocated as an async generator.
+    fn enable_async_generator(&mut self, generator: ObjectId) {
+        self.heap
+            .enable_async_generator(generator)
+            .expect("the generator was allocated by this call");
+    }
+
     pub(in super::super::super) fn binding_value(
         &mut self,
         slot: usize,
     ) -> Result<Option<Value>, RuntimeError> {
         if let Some(cell) = self.cells.get(&slot) {
-            Ok(self.heap.get_own(*cell, "value")?)
+            let value = self.heap.get_own(*cell, "value")?;
+            if value.is_none() && self.binding_metadata[slot].eval_var {
+                // The eval-created binding was deleted: the name resolves
+                // outward again, as a fresh reference would.
+                let name = self.binding_metadata[slot].name.clone();
+                return self.lookup_global_name(&name);
+            }
+            Ok(value)
         } else {
             Ok(self.bindings[slot].clone())
         }
@@ -56,8 +107,41 @@ impl Vm {
             args,
             construct,
             home,
-            class_base,
+            with_objects: closure_with_objects,
         } = call;
+        let nested_debugger_target = self
+            .debugger_nested_pause_request
+            .as_ref()
+            .filter(|request| {
+                code.debugger_program_generation == Some(request.program_generation)
+                    && code.debugger_code_unit_ordinal == Some(request.code_unit_ordinal)
+                    && request.caller_program_generation.is_none_or(|generation| {
+                        self.debugger_nested_direct_caller_generation == Some(generation)
+                    })
+            })
+            .map(|request| (request.bytecode_offset, request.code_unit_ordinal));
+        if nested_debugger_target.is_some()
+            && (self.call_depth != 1
+                || !self.debugger_nested_direct_call
+                || construct
+                || code.async_function
+                || code.generator
+                || code.class_constructor)
+        {
+            return Err(RuntimeError::Unsupported(
+                "nested debugger pause requires a direct synchronous closure call",
+            ));
+        }
+        // Reject serial exhaustion before replacing the caller's bindings,
+        // stack and execution context. An early error in the nested body path
+        // would otherwise skip the common frame restoration below.
+        let next_debugger_frame_serial = if nested_debugger_target.is_some() {
+            Some(self.next_debugger_frame_serial.checked_add(1).ok_or(
+                RuntimeError::Unsupported("nested debugger frame serial exhausted"),
+            )?)
+        } else {
+            None
+        };
         if code.class_constructor && !construct {
             // §10.2.1.1's class-constructor rejection is created in the
             // function's Realm. Materialize it before a Test262 membrane can
@@ -93,15 +177,27 @@ impl Vm {
         } else {
             Value::Object(self.coerce_object(&receiver)?)
         };
+        if construct && code.class_constructor && !code.derived_constructor {
+            // A base class constructor's InitializeInstanceElements runs
+            // right after `this` is created, before the body (and even
+            // before its parameters are evaluated). A derived constructor's
+            // runs when its `super()` returns.
+            self.initialize_instance_elements(&callee, &receiver)?;
+        }
         if code.generator {
             let async_generator = code.async_function;
+            // Creating the generator function (in the interpreter or the
+            // dynamic function constructors) already materialized both
+            // prototypes, so neither lookup can allocate here.
             let default_prototype = if code.async_function {
-                self.async_generator_prototype()?
+                self.async_generator_prototype()
             } else {
-                self.generator_prototype()?
-            };
+                self.generator_prototype()
+            }
+            .expect(GENERATOR_INTRINSICS);
             let prototype = self
-                .get_property(&callee, &"prototype".into())?
+                .get_property(&callee, &"prototype".into())
+                .expect(GENERATOR_PROTOTYPE)
                 .object_id()
                 .unwrap_or(default_prototype);
             if !code.generator_initializes_parameters {
@@ -112,10 +208,11 @@ impl Vm {
                     receiver,
                     args,
                     home,
+                    with_objects: closure_with_objects,
                 };
                 let generator = self.with_roots(|heap| heap.alloc_generator(state, prototype))?;
                 if async_generator {
-                    self.heap.enable_async_generator(generator)?;
+                    self.enable_async_generator(generator);
                 }
                 return Ok(Value::Object(generator));
             }
@@ -131,17 +228,25 @@ impl Vm {
                         receiver: receiver.clone(),
                         args: args.clone(),
                         home,
+                        with_objects: closure_with_objects.clone(),
                     },
                     prototype,
                 )
             })?;
             if async_generator {
-                self.heap.enable_async_generator(generator)?;
+                self.enable_async_generator(generator);
             }
             let base = self.stack.len();
             self.stack.push(Value::Object(generator));
-            let state =
-                self.initialize_generator(code, captures, callee.clone(), receiver, args, home);
+            let state = self.initialize_generator(
+                code,
+                captures,
+                callee.clone(),
+                receiver,
+                args,
+                home,
+                closure_with_objects,
+            );
             self.stack.truncate(base);
             let state = state?;
             // FunctionDeclarationInstantiation is observable to a parameter
@@ -149,11 +254,17 @@ impl Vm {
             // default such as `(g.prototype = null)` must affect the freshly
             // created generator object's [[Prototype]].
             let prototype = self
-                .get_property(&callee, &"prototype".into())?
+                .get_property(&callee, &"prototype".into())
+                .expect(GENERATOR_PROTOTYPE)
                 .object_id()
                 .unwrap_or(default_prototype);
-            self.heap.set_prototype(generator, Some(prototype))?;
-            self.heap.set_generator_state(generator, state)?;
+            self.heap
+                .set_prototype(generator, Some(prototype))
+                .expect("a freshly allocated generator cannot form a prototype cycle");
+            self.stack.push(Value::Object(generator));
+            let stored = self.with_roots(|heap| heap.set_generator_state(generator, state));
+            self.stack.pop();
+            stored?;
             return Ok(Value::Object(generator));
         }
         self.stack.push(receiver.clone());
@@ -163,7 +274,14 @@ impl Vm {
             .extend(self.cells.values().copied().map(Value::Object));
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
+        // A resumed async/generator caller is absent from call_stack. Its
+        // function must survive while the callee replaces Vm::callee and
+        // allocates, so restoring the caller cannot publish a collected ID.
+        self.stack.push(self.callee.clone());
         self.stack.extend(self.arguments.iter().cloned());
+        // The callee sees only the with objects it closed over, not the
+        // caller's; keep the caller's rooted on the stack meanwhile.
+        self.stack.extend(self.with_objects.iter().cloned());
         let frame_base = self.stack.len();
         let mut frame_bindings = vec![None; code.bindings.len()];
         if let Some(slot) = code.self_slot {
@@ -200,27 +318,35 @@ impl Vm {
         let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, home);
-        let next_field_initializer_depth = if code.arrow {
-            self.class_field_initializer_depth
-        } else {
-            0
-        };
-        let class_field_initializer_depth = std::mem::replace(
-            &mut self.class_field_initializer_depth,
-            next_field_initializer_depth,
-        );
-        let derived_constructor_arrow = code.arrow && class_base.is_some();
-        let class_constructor = std::mem::replace(
-            &mut self.class_constructor,
-            (code.class_constructor || derived_constructor_arrow).then(|| {
-                callee
-                    .object_id()
-                    .expect("class and arrow closures are objects")
-            }),
+        let class_field_initializer = std::mem::replace(
+            &mut self.class_field_initializer,
+            code.class_field_initializer,
         );
         let pending_completions = self.pending_completions.clone();
         let completion_saves = self.completion_saves.clone();
-        let with_objects = self.with_objects.clone();
+        let with_objects = std::mem::replace(&mut self.with_objects, closure_with_objects);
+        let inherited_with_depth =
+            std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
+        let parameter_eval_env = self.parameter_eval_env.take();
+        if code.parameter_eval_scope {
+            // Roots: `with_objects` is a root, and so is the callee frame's
+            // stack, which holds the caller's copy until the call returns.
+            let env = match self.new_parameter_eval_env() {
+                Ok(env) => env,
+                Err(error) => {
+                    self.with_objects = with_objects;
+                    self.inherited_with_depth = inherited_with_depth;
+                    self.parameter_eval_env = parameter_eval_env;
+                    self.stack.truncate(base - 1);
+                    return Err(error);
+                }
+            };
+            self.with_objects.push(Value::Object(env));
+            // The environment is nested inside the objects the function was
+            // created in, and the function's own bindings inside it.
+            self.inherited_with_depth = self.with_objects.len();
+            self.parameter_eval_env = Some(env);
+        }
         let frame_dynamic_eval_outer_bindings = self.dynamic_eval_outer_bindings.clone();
         let top_level_module = self.top_level_module;
         let remaining_instructions = self.remaining_instructions;
@@ -230,15 +356,19 @@ impl Vm {
         let result_root = self.result_root.take();
         let mut suspended_parent_stack = None;
         let mut suspended_async = None;
+        let running = callee
+            .object_id()
+            .expect("a closure call has a function object as its callee");
+        self.call_stack.push(running);
         let result = if async_function {
             let mut iterators = Vec::new();
-            match self.interpret(&code, &mut iterators, 0, None, None, None) {
-                Ok(InterpreterExit::Return(value)) => Ok(value),
-                Ok(InterpreterExit::Await {
+            match AsyncBody::classify(self.interpret(&code, &mut iterators, 0, None, None, None)) {
+                AsyncBody::Returned(value) => Ok(value),
+                AsyncBody::Awaiting {
                     promise,
                     pc,
                     handlers,
-                }) => {
+                } => {
                     let stack = self.stack.split_off(frame_base);
                     let mut execution = self.suspend_module_execution();
                     let parent_stack = std::mem::replace(&mut execution.stack, stack);
@@ -258,13 +388,7 @@ impl Vm {
                     suspended_async = Some((state, promise));
                     Ok(Value::Undefined)
                 }
-                Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
-                    "yield requires an async generator function".into(),
-                )),
-                Ok(InterpreterExit::Suspend { .. }) => {
-                    unreachable!("ordinary async functions have no entry suspend")
-                }
-                Err(error) => {
+                AsyncBody::Failed(error) => {
                     let base = self.stack.len();
                     if let RuntimeError::Thrown(value) = &error {
                         self.stack.push(value.clone());
@@ -277,10 +401,78 @@ impl Vm {
                     Err(error)
                 }
             }
+        } else if let Some((target_offset, target_ordinal)) = nested_debugger_target {
+            let frame_serial = self.next_debugger_frame_serial;
+            let next_frame_serial = next_debugger_frame_serial
+                .expect("nested invocation reserved its serial before installing the frame");
+            let pending_base = self.pending_completions.len();
+            let save_base = self.completion_saves.len();
+            let mut iterators = Vec::new();
+            let result = match DebuggerInterpreterExit::classify(
+                self.interpret(
+                    &code,
+                    &mut iterators,
+                    0,
+                    None,
+                    Some(InterpreterSuspensionPoint::Offset(target_offset)),
+                    None,
+                ),
+                DebuggerFrameKind::NestedEntry,
+            ) {
+                DebuggerInterpreterExit::Suspended {
+                    pc,
+                    iterators,
+                    handlers,
+                } => {
+                    let stack = self.stack.split_off(frame_base);
+                    let mut execution = self.suspend_module_execution();
+                    let parent_stack = std::mem::replace(&mut execution.stack, stack);
+                    self.next_debugger_frame_serial = next_frame_serial;
+                    self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
+                        frame_serial,
+                        code_unit_ordinal: target_ordinal,
+                        code: code.as_ref().clone(),
+                        pc,
+                        execution,
+                        iterators,
+                        handlers,
+                    });
+                    suspended_parent_stack = Some(parent_stack);
+                    Ok(Value::Undefined)
+                }
+                DebuggerInterpreterExit::Completed(result) => result,
+            };
+            if result.is_err() {
+                let base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &result {
+                    self.stack.push(value.clone());
+                }
+                self.stack.extend(iterators.iter().cloned());
+                for record in iterators.into_iter().rev() {
+                    let _ = self.iterator_close(&record);
+                }
+                self.stack.truncate(base);
+            }
+            if suspended_parent_stack.is_none() {
+                self.pending_completions.truncate(pending_base);
+                self.completion_saves.truncate(save_base);
+            }
+            result
         } else {
             self.run(&code)
         };
-        let constructed = self.this.clone();
+        self.call_stack.pop();
+        // A derived constructor's `this` lives in its hidden binding (which
+        // `super()` in the constructor or in a nested arrow or eval bound);
+        // every other constructor's is the receiver allocated at entry.
+        let constructed = match code.derived_this_slot {
+            Some(slot) => self
+                .binding_value(slot as usize)
+                .ok()
+                .flatten()
+                .unwrap_or(Value::Undefined),
+            None => self.this.clone(),
+        };
         let suspended = suspended_parent_stack.is_some();
         if let Some(stack) = suspended_parent_stack {
             self.stack = stack;
@@ -288,6 +480,8 @@ impl Vm {
             self.pending_completions = pending_completions;
             self.completion_saves = completion_saves;
             self.with_objects = with_objects;
+            self.inherited_with_depth = inherited_with_depth;
+            self.parameter_eval_env = parameter_eval_env;
             self.dynamic_eval_outer_bindings = frame_dynamic_eval_outer_bindings;
             self.top_level_module = top_level_module;
             self.remaining_instructions = remaining_instructions;
@@ -296,6 +490,9 @@ impl Vm {
             self.active_module_name = active_module_name;
         } else {
             self.result_root = result_root;
+            self.with_objects = with_objects;
+            self.inherited_with_depth = inherited_with_depth;
+            self.parameter_eval_env = parameter_eval_env;
         }
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
@@ -309,14 +506,7 @@ impl Vm {
         self.script_global_slots = script_global_slots;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
-        // `super()` in a derived-constructor arrow initializes the enclosing
-        // constructor's lexical `this` binding. Nested arrows propagate that
-        // initialized receiver one frame at a time on return.
-        self.this = if derived_constructor_arrow && matches!(constructed, Value::Object(_)) {
-            constructed.clone()
-        } else {
-            this
-        };
+        self.this = this;
         self.arguments = arguments;
         self.callee = frame_callee;
         self.completion = completion;
@@ -325,15 +515,19 @@ impl Vm {
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
         self.home_object = home_object;
-        self.class_constructor = class_constructor;
-        self.class_field_initializer_depth = class_field_initializer_depth;
+        self.class_field_initializer = class_field_initializer;
         self.stack.truncate(base - 1);
-        if let Some((state, awaited)) = suspended_async {
-            self.suspend_async_await(state, awaited)?;
-        }
+        // A failure to suspend takes the same route as a failure of the body:
+        // it ends the call (or rejects the async function's promise) below.
+        let result = match suspended_async {
+            Some((state, awaited)) => self.suspend_async_await(state, awaited).and(result),
+            None => result,
+        };
+        let mut completion_check_failed = false;
         let result = result.and_then(|value| {
             if construct && !matches!(value, Value::Object(_)) {
                 if code.derived_constructor && value != Value::Undefined {
+                    completion_check_failed = true;
                     return Err(RuntimeError::TypeError(
                         "derived constructor returned a non-object value".into(),
                     ));
@@ -341,6 +535,7 @@ impl Vm {
                 if matches!(constructed, Value::Object(_)) {
                     Ok(constructed)
                 } else {
+                    completion_check_failed = true;
                     Err(RuntimeError::ReferenceError(
                         "derived constructor did not call super()".into(),
                     ))
@@ -349,6 +544,7 @@ impl Vm {
                 Ok(value)
             }
         });
+        self.construct_completion_check_failed = completion_check_failed;
         if !async_function {
             return result;
         }
@@ -361,9 +557,21 @@ impl Vm {
             Ok(_) => {}
             Err(error) => {
                 let value = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+                self.settle_tracked_promise(promise, PromiseStatus::Rejected(value));
             }
         }
         Ok(Value::Object(promise))
     }
 }
+
+/// The `expect` message for a generator prototype looked up by a call to a
+/// generator function that already exists.
+const GENERATOR_INTRINSICS: &str = "a generator function's prototypes are already materialized";
+
+/// A generator function's own `prototype` is a writable, non-configurable data
+/// property, so reading it can neither throw nor allocate.
+const GENERATOR_PROTOTYPE: &str = "a generator function's prototype is a data property";
+
+#[cfg(any(test, coverage))]
+#[path = "../../../../tests/fixtures/closure_execution_internal.rs"]
+mod tests;

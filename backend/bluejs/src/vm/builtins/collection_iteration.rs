@@ -30,7 +30,9 @@ impl Vm {
             return Ok(prototype);
         }
         let base = self.base_iterator_prototype()?;
-        let function_prototype = self.function_prototype()?;
+        let function_prototype = self
+            .function_prototype()
+            .expect("the base iterator prototype already initialized Function.prototype");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
         let root = self.heap.root(prototype)?;
         let result = (|| {
@@ -61,7 +63,9 @@ impl Vm {
                 Ok(prototype)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.heap
+                    .unroot(root)
+                    .expect("the temporary iterator-prototype root is still registered");
                 Err(error)
             }
         }

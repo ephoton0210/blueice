@@ -55,7 +55,9 @@ impl Vm {
         // RequireInternalSlot([[ArrayBufferData]]) plus the SharedArrayBuffer
         // rejection is exactly the ordinary ArrayBuffer receiver check.
         let buffer = self.array_buffer_receiver(receiver)?;
-        Ok(Value::Bool(self.heap.buffer_is_immutable(buffer)?))
+        Ok(Value::Bool(self.heap.buffer_is_immutable(buffer).expect(
+            "the receiver was checked to be a live ArrayBuffer",
+        )))
     }
 
     /// Steps 1-7 of ArrayBufferCopyAndDetach, shared by `transfer`,
@@ -75,15 +77,27 @@ impl Vm {
         } else {
             Some(self.buffer_index(&args[0])?)
         };
-        if self.heap.buffer_is_detached(source)? {
+        // `source` is a live ArrayBuffer, so the heap queries below cannot fail.
+        if self
+            .heap
+            .buffer_is_detached(source)
+            .expect("the receiver was checked to be a live ArrayBuffer")
+        {
             return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
         }
-        if self.heap.buffer_is_immutable(source)? {
+        if self
+            .heap
+            .buffer_is_immutable(source)
+            .expect("the receiver was checked to be a live ArrayBuffer")
+        {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer is immutable and cannot be detached".into(),
             ));
         }
-        let source_length = self.heap.buffer_byte_length(source)?;
+        let source_length = self
+            .heap
+            .buffer_byte_length(source)
+            .expect("the receiver was checked to be a live ArrayBuffer");
         Ok((source, source_length, new_length.unwrap_or(source_length)))
     }
 
@@ -106,12 +120,18 @@ impl Vm {
         }
         let mut bytes = self
             .heap
-            .array_buffer_copy(source, 0, source_length.min(length))?;
+            .array_buffer_copy(source, 0, source_length.min(length))
+            .expect("the copied range lies within the source");
         bytes.resize(length, 0);
-        let prototype = self.buffer_prototype("ArrayBuffer")?;
+        // A live ArrayBuffer receiver means %ArrayBuffer.prototype% exists.
+        let prototype = self
+            .buffer_prototype("ArrayBuffer")
+            .expect("the ArrayBuffer intrinsics exist");
         let target =
             self.with_roots(|heap| heap.alloc_immutable_array_buffer(bytes, Some(prototype)))?;
-        self.with_roots(|heap| heap.detach_array_buffer(source))?;
+        self.heap
+            .detach_array_buffer(source)
+            .expect("an attached, mutable ArrayBuffer can be detached");
         Ok(Value::Object(target))
     }
 
@@ -125,10 +145,19 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let buffer = self.array_buffer_receiver(receiver)?;
-        if self.heap.buffer_is_detached(buffer)? {
+        // `buffer` is a live ArrayBuffer, so the heap queries below cannot
+        // fail (a detached one is rejected before it is measured).
+        if self
+            .heap
+            .buffer_is_detached(buffer)
+            .expect("the receiver was checked to be a live ArrayBuffer")
+        {
             return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
         }
-        let length = self.heap.array_buffer_byte_length(buffer)?;
+        let length = self
+            .heap
+            .array_buffer_byte_length(buffer)
+            .expect("an attached ArrayBuffer has a length");
         let first = self.relative_buffer_index(native::argument(args, 0), length)?;
         let last = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
             self.relative_buffer_index(native::argument(args, 1), length)?
@@ -137,16 +166,30 @@ impl Vm {
         };
         let new_length = last.saturating_sub(first);
         // Bounds resolution may have detached or resized the source.
-        if self.heap.buffer_is_detached(buffer)? {
+        if self
+            .heap
+            .buffer_is_detached(buffer)
+            .expect("the receiver was checked to be a live ArrayBuffer")
+        {
             return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
         }
-        if self.heap.array_buffer_byte_length(buffer)? < last {
+        if self
+            .heap
+            .array_buffer_byte_length(buffer)
+            .expect("an attached ArrayBuffer has a length")
+            < last
+        {
             return Err(RuntimeError::RangeError(
                 "ArrayBuffer shrank below the requested slice".into(),
             ));
         }
-        let bytes = self.heap.array_buffer_copy(buffer, first, new_length)?;
-        let prototype = self.buffer_prototype("ArrayBuffer")?;
+        let bytes = self
+            .heap
+            .array_buffer_copy(buffer, first, new_length)
+            .expect("the slice lies within the buffer");
+        let prototype = self
+            .buffer_prototype("ArrayBuffer")
+            .expect("the ArrayBuffer intrinsics exist");
         let result =
             self.with_roots(|heap| heap.alloc_immutable_array_buffer(bytes, Some(prototype)))?;
         Ok(Value::Object(result))
@@ -163,7 +206,15 @@ impl Vm {
         let Some(object) = receiver.object_id() else {
             return Ok(());
         };
-        if self.heap.is_typed_array(object)? && self.heap.typed_array_is_immutable(object)? {
+        if self
+            .heap
+            .is_typed_array(object)
+            .expect("a receiver object is live")
+            && self
+                .heap
+                .typed_array_is_immutable(object)
+                .expect("a TypedArray has a buffer")
+        {
             return Err(RuntimeError::TypeError(
                 "TypedArray is backed by an immutable ArrayBuffer".into(),
             ));

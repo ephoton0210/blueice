@@ -6,10 +6,11 @@
 //! overriding harness functions; failures remain distinct from engine errors.
 use super::*;
 
+mod assertions;
 mod cases;
-mod descriptors;
 mod foreign;
 mod harness;
+mod reverse;
 /// The four numbering-system digit sets selected by the pinned precision
 /// matrix. These are the same `numberingSystemDigits` entries consumed by its
 /// upstream JavaScript helper.
@@ -77,4 +78,17 @@ fn test262_localize_number(raw: &str, digits: &str, pattern: &(String, String, S
     }
     result.push_str(&pattern.2);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test262_number_format_pattern_parts;
+
+    #[test]
+    fn number_format_pattern_accepts_a_trailing_affix() {
+        assert_eq!(
+            test262_number_format_pattern_parts("1.1+", "0123456789"),
+            Some((String::new(), ".".into(), "+".into()))
+        );
+    }
 }

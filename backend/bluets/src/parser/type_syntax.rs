@@ -8,6 +8,42 @@ use super::runtime_syntax::*;
 use super::*;
 
 impl Parser {
+    pub(super) fn parse_method_signature(&mut self, result_stop: &[&str]) -> Type {
+        self.expect("(");
+        let mut parameters = Vec::new();
+        while !self.at_eof() && !self.consume(")") {
+            let start = self.current().start;
+            if self.consume("...") {
+                self.unsupported(
+                    self.previous().span(&self.id),
+                    "rest parameters in method signatures are not supported",
+                );
+            }
+            let name = self.require_identifier("expected a method parameter name");
+            let optional = self.consume("?");
+            self.expect(":");
+            let annotation = self.parse_type_until(&[",", ")"]);
+            let end = self.previous().end;
+            parameters.push(Parameter {
+                name,
+                rest: false,
+                optional,
+                annotation: Some(annotation),
+                default: None,
+                span: SourceSpan::new(&self.id, start, end),
+            });
+            if !self.consume(",") {
+                self.expect(")");
+                break;
+            }
+        }
+        self.expect(":");
+        Type::Function {
+            parameters,
+            result: Box::new(self.parse_type_until(result_stop)),
+        }
+    }
+
     pub(super) fn parse_type_parameters(&mut self) -> Vec<TypeParameter> {
         if !self.consume("<") {
             return Vec::new();
@@ -102,8 +138,77 @@ impl Parser {
             self.parse_type_primary(&[])
         } else if self.consume("[") {
             let mut values = Vec::new();
+            let mut saw_optional = false;
+            let mut saw_rest = false;
             while !self.at_eof() && !self.consume("]") {
-                values.push(self.parse_type_until(&[",", "]"]));
+                let start = self.current().start;
+                let rest = self.consume("...");
+                let labeled = matches!(
+                    self.current().kind,
+                    TokenKind::Identifier | TokenKind::Keyword
+                ) && (self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is(":"))
+                    || (self
+                        .tokens
+                        .get(self.index + 1)
+                        .is_some_and(|token| token.is("?"))
+                        && self
+                            .tokens
+                            .get(self.index + 2)
+                            .is_some_and(|token| token.is(":"))));
+                let (label, optional) = if labeled {
+                    let label = self.consume_identifier_or_keyword();
+                    let optional = self.consume("?");
+                    self.expect(":");
+                    (label, optional)
+                } else {
+                    (None, false)
+                };
+                let annotation = self.parse_type_until(if labeled {
+                    &[",", "]"]
+                } else {
+                    &["?", ",", "]"]
+                });
+                let end = self.previous().end;
+                let optional = optional || (!labeled && self.consume("?"));
+                if saw_rest {
+                    if rest {
+                        self.error_at(
+                            SourceSpan::new(&self.id, start, end),
+                            DiagnosticCode::ParseError,
+                            "a second tuple rest element is not allowed",
+                        );
+                    } else if optional {
+                        self.error_at(
+                            SourceSpan::new(&self.id, start, end),
+                            DiagnosticCode::ParseError,
+                            "an optional tuple element cannot follow a rest element",
+                        );
+                    }
+                }
+                if rest && !matches!(annotation, Type::Array(_) | Type::Named { .. }) {
+                    self.unsupported(
+                        SourceSpan::new(&self.id, start, end),
+                        "tuple rest element must have an array or named tuple annotation",
+                    );
+                }
+                if saw_optional && !optional && !rest {
+                    self.error_at(
+                        SourceSpan::new(&self.id, start, end),
+                        DiagnosticCode::ParseError,
+                        "a required tuple element cannot follow an optional element",
+                    );
+                }
+                saw_optional |= optional;
+                saw_rest |= rest;
+                values.push(TupleTypeElement {
+                    optional,
+                    label,
+                    rest,
+                    ..TupleTypeElement::required(annotation)
+                });
                 if !self.consume(",") {
                     self.expect("]");
                     break;
@@ -114,14 +219,19 @@ impl Parser {
             let mut fields = Vec::new();
             while !self.at_eof() && !self.consume("}") {
                 let start = self.current().start;
-                self.consume("readonly");
-                let name = self.require_identifier("expected a record field name");
+                let readonly = self.consume("readonly");
+                let name = self.require_property_name("expected a record field name");
                 let optional = self.consume("?");
-                self.expect(":");
-                let value = self.parse_type_until(&[";", ",", "}"]);
+                let value = if self.peek("(") {
+                    self.parse_method_signature(&[";", ",", "}"])
+                } else {
+                    self.expect(":");
+                    self.parse_type_until(&[";", ",", "}"])
+                };
                 let end = self.previous().end;
                 fields.push(TypeField {
                     name,
+                    readonly,
                     optional,
                     value,
                     span: SourceSpan::new(&self.id, start, end),
@@ -130,6 +240,33 @@ impl Parser {
                 self.consume(",");
             }
             Type::Record(fields)
+        } else if self.consume("(") {
+            let mut parameters = Vec::new();
+            while !self.at_eof() && !self.consume(")") {
+                let start = self.current().start;
+                let name = self.require_identifier("expected a function type parameter name");
+                let optional = self.consume("?");
+                self.expect(":");
+                let annotation = self.parse_type_until(&[",", ")"]);
+                let end = self.previous().end;
+                parameters.push(Parameter {
+                    name,
+                    rest: false,
+                    optional,
+                    annotation: Some(annotation),
+                    default: None,
+                    span: SourceSpan::new(&self.id, start, end),
+                });
+                if !self.consume(",") {
+                    self.expect(")");
+                    break;
+                }
+            }
+            self.expect("=>");
+            Type::Function {
+                parameters,
+                result: Box::new(self.parse_type_until(_stop)),
+            }
         } else if self.current().kind == TokenKind::String
             || self.current().kind == TokenKind::Number
             || self.peek("true")
@@ -242,6 +379,13 @@ impl Parser {
 
     pub(super) fn require_identifier(&mut self, message: impl Into<String>) -> String {
         self.consume_identifier().unwrap_or_else(|| {
+            self.error_here(DiagnosticCode::ParseError, message);
+            "<error>".to_string()
+        })
+    }
+
+    pub(super) fn require_property_name(&mut self, message: impl Into<String>) -> String {
+        self.consume_identifier_or_keyword().unwrap_or_else(|| {
             self.error_here(DiagnosticCode::ParseError, message);
             "<error>".to_string()
         })

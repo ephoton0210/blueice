@@ -340,6 +340,8 @@ mod unix {
                 UserEvent::Server(
                     ServerMessage::Representation(_)
                     | ServerMessage::Dom(_)
+                    | ServerMessage::BlueTsScriptReports(_)
+                    | ServerMessage::BlueJsScriptReports(_)
                     | ServerMessage::Hello { .. }
                     | ServerMessage::Unknown
                     | ServerMessage::TabOpened { .. }

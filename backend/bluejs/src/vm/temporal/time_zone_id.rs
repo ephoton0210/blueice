@@ -207,8 +207,45 @@ mod tests {
         assert_eq!(parse_offset_minutes("01:30"), None);
         assert_eq!(parse_offset_minutes("+0"), None);
         assert_eq!(parse_offset_minutes("+1:30"), None);
+        assert_eq!(parse_offset_minutes("+ab"), None);
+        assert_eq!(parse_offset_minutes("+01:ab"), None);
         assert_eq!(parse_offset_minutes("+"), None);
         assert_eq!(parse_offset_minutes(""), None);
+    }
+
+    #[test]
+    fn rejects_offsets_whose_hour_or_minute_is_not_two_digits() {
+        assert_eq!(parse_offset_minutes("+ab"), None);
+        assert_eq!(parse_offset_minutes("+a1"), None);
+        assert_eq!(parse_offset_minutes("+0a"), None);
+        assert_eq!(parse_offset_minutes("+01ab"), None);
+        assert_eq!(parse_offset_minutes("+01:ab"), None);
+        assert_eq!(parse_offset_minutes("+01:3a"), None);
+        assert_eq!(parse_offset_minutes("+ab:30"), None);
+    }
+
+    #[test]
+    fn iana_name_components_may_continue_with_digits_signs_and_dots() {
+        for name in ["Etc/GMT+5", "Etc/GMT-14", "Etc/GMT0", "a.b_c", "_x/.y"] {
+            assert_eq!(
+                parse_identifier(name),
+                Some(TimeZoneIdentifier::Named(name.to_string())),
+                "{name}"
+            );
+        }
+        for name in [
+            "9abc", "-abc", "a$b", "a/b c", "a/", "/a", "a/./b", "a/../b",
+        ] {
+            assert_eq!(parse_identifier(name), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn date_strings_without_a_time_or_closed_annotation_name_no_zone() {
+        // A bracket that is never closed.
+        assert_eq!(resolve("2000-05-02[UTC"), Err(()));
+        // A date with neither annotation nor time has no zone either.
+        assert_eq!(resolve("2000-05-02"), Err(()));
     }
 
     #[test]
@@ -237,6 +274,28 @@ mod tests {
         assert_eq!(parse_identifier("-12:12:59.9"), None);
         assert_eq!(parse_identifier("America//Vancouver"), None);
         assert_eq!(parse_identifier(".."), None);
+    }
+
+    #[test]
+    fn iana_component_boundaries_accept_only_the_allowed_ascii_bytes() {
+        for name in [
+            "Europe/.Hidden",
+            "Europe/_Hidden",
+            "Europe/P1",
+            "Europe/P-A",
+            "Europe/P+A",
+        ] {
+            assert!(is_iana_name(name), "{name}");
+        }
+        for name in [
+            "Europe/",
+            "Europe/.",
+            "Europe/..",
+            "Europe/+A",
+            "Europe/P@A",
+        ] {
+            assert!(!is_iana_name(name), "{name}");
+        }
     }
 
     #[test]
@@ -315,6 +374,9 @@ mod tests {
         assert_eq!(resolve("-000000-10-31T17:45Z"), Err(()));
         assert_eq!(resolve("-000000-10-31T17:45+00:00[UTC]"), Err(()));
         assert_eq!(resolve("2021-08-19T17:30[Mars/Olympus_Mons]"), Err(()));
+        assert_eq!(resolve("2000-05-02[u-ca=hebrew]"), Err(()));
+        assert!(super::super::iso::parse_date("2000-05-02[UTC").is_some());
+        assert_eq!(resolve("2000-05-02[UTC"), Err(()));
     }
 
     #[test]

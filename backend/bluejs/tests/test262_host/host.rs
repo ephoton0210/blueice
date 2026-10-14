@@ -90,8 +90,7 @@ fn object_entries_roots_intermediate_temporal_range_arguments() {
 
 #[test]
 fn property_helper_observes_writes_and_receiver_setters() {
-    let mut vm = Vm::default();
-    vm.install_test262_harness().unwrap();
+    let mut vm = super::harness::property_helper_vm();
     let source = r#"
         let sealed = Object.preventExtensions({});
         let accessor = {};
@@ -115,7 +114,8 @@ fn property_helper_observes_writes_and_receiver_setters() {
         verifyWritable(created, "created", "created");
         verifyWritable([], "length");
         verifyNotWritable(locked, "value");
-        assert.throws(Test262Error, () => verifyWritable({}, "missing"));
+        // No own descriptor to read `writable` from: upstream dereferences it.
+        assert.throws(TypeError, () => verifyWritable({}, "missing"));
         assert.throws(Test262Error, () => verifyWritable(locked, "value"));
         assert.throws(Test262Error, () => verifyNotWritable(existing, "value", "value"));
         assert.throws(Test262Error, () => verifyWritable(throwing, "value", "value"));
@@ -174,6 +174,50 @@ fn weak_collection_constructors_use_a_foreign_new_target_realm_prototype() {
         vm.execute(&compile(&parse(source).unwrap()).unwrap()),
         Ok(Value::Bool(true))
     );
+}
+
+#[test]
+fn test262_agent_shutdown_joins_a_quiescent_agent_and_preserves_vm_reuse() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let start = compile(
+        &parse(
+            r#"
+                $262.agent.start(`
+                    Promise.resolve().then(() => $262.agent.report('drained'));
+                `);
+            "#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&start).unwrap();
+
+    let report = compile(&parse("$262.agent.getReport()").unwrap()).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        match vm.execute_script(&report).unwrap() {
+            Value::Null => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "agent did not drain its job"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            value => {
+                assert_eq!(value, Value::String("drained".into()));
+                break;
+            }
+        }
+    }
+    // The agent has no remaining jobs, timers, waits, or leaving() request.
+    // Give its quiescent loop scheduler time before requesting host shutdown.
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert_eq!(vm.execute_script(&report), Ok(Value::Null));
+    assert_eq!(vm.shutdown_test262_agents(), Ok(()));
+    assert_eq!(vm.shutdown_test262_agents(), Ok(()));
+    let reuse = compile(&parse("6 * 7").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&reuse), Ok(Value::Number(42.0)));
 }
 
 #[test]
@@ -449,6 +493,9 @@ fn test262_agents_wait_async_registers_two_waiters_before_notify() {
         }
         $262.agent.broadcast(buffer);
         while (Atomics.load(view, 2) !== 2) {}
+        // Let both agent event loops park on their registered async waits
+        // before the notifier resolves the promises.
+        $262.agent.sleep(100);
         Atomics.notify(view, 0, 2)
     "#;
     assert_eq!(

@@ -3,17 +3,20 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use crate::native::RegExpMethod;
+use crate::native::{LegacyRegExpStatic, RegExpMethod};
 use crate::regexp::{advance, RegExp};
 use std::rc::Rc;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/regexp_builder_boundaries.rs"]
+mod builder_boundaries;
 
 impl Vm {
     pub(super) fn regexp_global(&mut self) -> Result<Value, RuntimeError> {
         if let Some(&id) = self.globals.get("RegExp") {
             return Ok(Value::Object(id));
         }
-        let string = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(string)?.unwrap();
+        let function_prototype = self.function_prototype()?;
         let constructor = self.with_roots(|heap| {
             heap.alloc_native_function(NativeFunction::RegExp, "RegExp", function_prototype)
         })?;
@@ -64,15 +67,16 @@ impl Vm {
                 ("exec", RegExpMethod::Exec),
                 ("test", RegExpMethod::Test),
                 ("toString", RegExpMethod::ToString),
+                ("compile", RegExpMethod::Compile),
             ] {
                 self.install_native(
                     prototype,
                     function_prototype,
                     name,
-                    if method == RegExpMethod::ToString {
-                        0
-                    } else {
-                        1
+                    match method {
+                        RegExpMethod::ToString => 0,
+                        RegExpMethod::Compile => 2,
+                        _ => 1,
                     },
                     NativeFunction::RegExpMethod(method),
                 )?;
@@ -119,25 +123,26 @@ impl Vm {
                 "get [Symbol.species]",
                 NativeFunction::RegExpGetter("species"),
             )?;
+            self.install_legacy_accessors(constructor, function_prototype)?;
+            if let Some(&global) = self.globals.get("globalThis") {
+                self.define_data(
+                    global,
+                    "RegExp",
+                    Value::Object(constructor),
+                    true,
+                    false,
+                    true,
+                )?;
+            }
             Ok(Value::Object(constructor))
         })();
         match result {
             Ok(value) => {
                 self.globals.insert("RegExp".into(), constructor);
-                if let Some(&global) = self.globals.get("globalThis") {
-                    self.define_data(
-                        global,
-                        "RegExp",
-                        Value::Object(constructor),
-                        true,
-                        false,
-                        true,
-                    )?;
-                }
                 Ok(value)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.release_root(root);
                 Err(error)
             }
         }
@@ -170,57 +175,181 @@ impl Vm {
         native: NativeFunction,
     ) -> Result<(), RuntimeError> {
         let id = self.with_roots(|heap| heap.alloc_native_function(native, name, prototype))?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(id));
-        self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
-        self.define_data(id, "length", Value::Number(0.0), false, false, true)?;
-        self.with_roots(|heap| {
-            heap.define_own_property(
-                owner,
-                key,
-                PropertyDescriptor {
-                    get: Some(Value::Object(id)),
-                    set: Some(Value::Undefined),
-                    enumerable: Some(false),
-                    configurable: Some(true),
-                    ..Default::default()
-                },
-            )
-        })?;
-        self.stack.pop();
-        Ok(())
+        let result = (|| {
+            self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
+            self.define_data(id, "length", Value::Number(0.0), false, false, true)?;
+            self.with_roots(|heap| {
+                heap.define_own_property(
+                    owner,
+                    key,
+                    PropertyDescriptor {
+                        get: Some(Value::Object(id)),
+                        set: Some(Value::Undefined),
+                        enumerable: Some(false),
+                        configurable: Some(true),
+                        ..Default::default()
+                    },
+                )
+            })?;
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        result
     }
 
+    /// RegExpCreate and regular expression literals: an ordinary `%RegExp%`
+    /// allocation that is never a construction on behalf of some `new.target`.
     pub(super) fn regexp_create(
         &mut self,
         pattern: &Value,
         flags: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = if let Value::Object(id) = pattern {
-            self.heap
-                .regexp(*id)?
-                .map(|regexp| (regexp.source.clone(), regexp.flags.clone()))
-                .or(self.test262_foreign_regexp_data(*id)?)
-        } else {
-            None
+        let pattern_is_regexp = self.is_regexp(pattern)?;
+        self.regexp_allocate(pattern, pattern_is_regexp, flags, false)
+    }
+
+    /// ECMA-262 §22.2.4.1 RegExp ( pattern, flags ), called or constructed.
+    pub(super) fn regexp_constructor(
+        &mut self,
+        pattern: &Value,
+        flags: &Value,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let pattern_is_regexp = self.is_regexp(pattern)?;
+        if !construct && *flags == Value::Undefined && pattern_is_regexp {
+            let constructor = self.get_property(pattern, &"constructor".into())?;
+            if constructor == self.regexp_global()? {
+                return Ok(pattern.clone());
+            }
+        }
+        self.regexp_allocate(pattern, pattern_is_regexp, flags, construct)
+    }
+
+    /// The (source, flags) of a pattern that has a [[RegExpMatcher]] slot,
+    /// including one living in a Test262 child realm.
+    fn regexp_slots(&self, pattern: &Value) -> Result<Option<(JsString, String)>, RuntimeError> {
+        let Value::Object(id) = pattern else {
+            return Ok(None);
         };
-        let (source, flags) = if let Some((source, existing_flags)) = existing {
-            (
-                source,
-                if *flags == Value::Undefined {
-                    existing_flags.into()
+        Ok(self
+            .heap
+            .regexp(*id)?
+            .map(|regexp| (regexp.source.clone(), regexp.flags.clone()))
+            .or(self.test262_foreign_regexp_data(*id)?))
+    }
+
+    /// RegExpAlloc + RegExpInitialize for the constructor's steps 3-10.
+    /// `construct` selects `self.new_target` as NewTarget; otherwise NewTarget
+    /// is `%RegExp%` itself. `pattern_is_regexp` must already have been
+    /// computed (IsRegExp is observable and precedes the slot reads).
+    ///
+    /// The observable order is: read `source`/`flags` of a regexp-like
+    /// pattern, RegExpAlloc's `newTarget.prototype` lookup, and only then
+    /// ToString of the pattern and of the flags (RegExpInitialize).
+    fn regexp_allocate(
+        &mut self,
+        pattern: &Value,
+        pattern_is_regexp: bool,
+        flags: &Value,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        let result = (|| {
+            let (source, flags) =
+                if let Some((source, existing_flags)) = self.regexp_slots(pattern)? {
+                    (
+                        Value::String(source),
+                        if *flags == Value::Undefined {
+                            Value::String(existing_flags.into())
+                        } else {
+                            flags.clone()
+                        },
+                    )
+                } else if pattern_is_regexp {
+                    let source = self.get_property(pattern, &"source".into())?;
+                    self.stack.push(source.clone());
+                    let flags = if *flags == Value::Undefined {
+                        self.get_property(pattern, &"flags".into())?
+                    } else {
+                        flags.clone()
+                    };
+                    (source, flags)
                 } else {
-                    self.coerce_string(flags)?
-                },
-            )
-        } else if self.is_regexp(pattern)? {
-            let source = self.get_property(pattern, &"source".into())?;
+                    (pattern.clone(), flags.clone())
+                };
             self.stack.push(source.clone());
-            let flags = if *flags == Value::Undefined {
-                self.get_property(pattern, &"flags".into())?
+            self.stack.push(flags.clone());
+            let constructor = self.regexp_global()?;
+            let prototype = self
+                .heap
+                .get(
+                    constructor
+                        .object_id()
+                        .expect("RegExp is an intrinsic constructor"),
+                    "prototype",
+                )
+                .expect("the rooted intrinsic constructor owns an immutable data prototype")
+                .object_id()
+                .expect("RegExp construction installs its object prototype");
+            let prototype = if construct {
+                self.constructor_prototype(prototype)?
             } else {
-                flags.clone()
+                prototype
             };
-            (self.coerce_string(&source)?, self.coerce_string(&flags)?)
+            self.stack.push(Value::Object(prototype));
+            let source = if source == Value::Undefined {
+                JsString::default()
+            } else {
+                self.coerce_string(&source)?
+            };
+            let flags = if flags == Value::Undefined {
+                JsString::default()
+            } else {
+                self.coerce_string(&flags)?
+            };
+            // ToString(source) already enforced the configured string limit.
+            // Converting flags cannot change that immutable source or limit.
+            let mut regexp =
+                RegExp::compile_with_timeout(source, &flags, self.config.regex_timeout)?;
+            regexp.legacy_features = !construct || self.new_target == constructor;
+            let object = self.with_roots(|heap| heap.alloc_regexp(Rc::new(regexp), prototype))?;
+            self.stack.push(Value::Object(object));
+            self.define_data(object, "lastIndex", Value::Number(0.0), true, false, false)?;
+            Ok(Value::Object(object))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// B.2.4.1 RegExp.prototype.compile ( pattern, flags ). A RegExp object
+    /// always lives in the realm whose VM runs this method (a foreign
+    /// receiver is an opaque facade without a matcher slot), so the
+    /// specification's realm comparison holds by construction.
+    fn regexp_compile(
+        &mut self,
+        receiver: ObjectId,
+        pattern: &Value,
+        flags: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Some(current) = self.heap.regexp(receiver)? else {
+            return Err(RuntimeError::TypeError(
+                "RegExp.prototype.compile requires a RegExp".into(),
+            ));
+        };
+        if !current.legacy_features {
+            return Err(RuntimeError::TypeError(
+                "RegExp.prototype.compile is unavailable on a RegExp subclass instance".into(),
+            ));
+        }
+        let (source, flags) = if let Some((source, existing_flags)) = self.regexp_slots(pattern)? {
+            if *flags != Value::Undefined {
+                return Err(RuntimeError::TypeError(
+                    "RegExp.prototype.compile cannot take flags with a RegExp pattern".into(),
+                ));
+            }
+            (source, existing_flags.into())
         } else {
             (
                 if *pattern == Value::Undefined {
@@ -236,26 +365,139 @@ impl Vm {
             )
         };
         self.check_string(&Value::String(source.clone()))?;
-        let regexp = Rc::new(RegExp::compile_with_timeout(
-            source,
-            &flags,
-            self.config.regex_timeout,
-        )?);
-        let constructor = self.regexp_global()?;
-        let prototype = self
-            .get_property(&constructor, &"prototype".into())?
-            .object_id()
-            .unwrap();
-        let prototype = if self.new_target != Value::Undefined {
-            self.constructor_prototype(prototype)?
-        } else {
-            prototype
-        };
-        let object = self.with_roots(|heap| heap.alloc_regexp(regexp, prototype))?;
-        self.stack.push(Value::Object(object));
-        self.define_data(object, "lastIndex", Value::Number(0.0), true, false, false)?;
-        self.stack.pop();
-        Ok(Value::Object(object))
+        let regexp = RegExp::compile_with_timeout(source, &flags, self.config.regex_timeout)?;
+        self.heap.set_regexp(receiver, Rc::new(regexp))?;
+        self.set_required(&Value::Object(receiver), "lastIndex", Value::Number(0.0))?;
+        Ok(Value::Object(receiver))
+    }
+
+    /// Installs the Annex B legacy static accessors on `%RegExp%`.
+    fn install_legacy_accessors(
+        &mut self,
+        constructor: ObjectId,
+        function_prototype: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        use LegacyRegExpStatic::*;
+        let base = self.stack.len();
+        let result = (|| {
+            let mut read_only = vec![
+                ("lastMatch", LastMatch),
+                ("$&", LastMatch),
+                ("lastParen", LastParen),
+                ("$+", LastParen),
+                ("leftContext", LeftContext),
+                ("$`", LeftContext),
+                ("rightContext", RightContext),
+                ("$'", RightContext),
+            ];
+            let digits: Vec<String> = (1..=9).map(|digit| format!("${digit}")).collect();
+            for (index, name) in digits.iter().enumerate() {
+                read_only.push((name.as_str(), Paren(index as u8 + 1)));
+            }
+            for (name, which) in read_only {
+                self.install_getter(
+                    constructor,
+                    function_prototype,
+                    name.into(),
+                    &format!("get {name}"),
+                    NativeFunction::RegExpLegacyGetter(which),
+                )?;
+            }
+            for name in ["input", "$_"] {
+                let getter = self.with_roots(|heap| {
+                    heap.alloc_native_function(
+                        NativeFunction::RegExpLegacyGetter(Input),
+                        &format!("get {name}"),
+                        function_prototype,
+                    )
+                })?;
+                self.stack.push(Value::Object(getter));
+                let setter = self.with_roots(|heap| {
+                    heap.alloc_native_function(
+                        NativeFunction::RegExpLegacySetter(Input),
+                        &format!("set {name}"),
+                        function_prototype,
+                    )
+                })?;
+                self.stack.push(Value::Object(setter));
+                for (function, function_name, length) in [
+                    (getter, format!("get {name}"), 0.0),
+                    (setter, format!("set {name}"), 1.0),
+                ] {
+                    self.define_data(
+                        function,
+                        "name",
+                        Value::String(function_name.as_str().into()),
+                        false,
+                        false,
+                        true,
+                    )?;
+                    self.define_data(
+                        function,
+                        "length",
+                        Value::Number(length),
+                        false,
+                        false,
+                        true,
+                    )?;
+                }
+                self.with_roots(|heap| {
+                    heap.define_own_property(
+                        constructor,
+                        PropertyName::from(name),
+                        PropertyDescriptor {
+                            get: Some(Value::Object(getter)),
+                            set: Some(Value::Object(setter)),
+                            enumerable: Some(false),
+                            configurable: Some(true),
+                            ..Default::default()
+                        },
+                    )
+                })?;
+                self.stack.pop();
+                self.stack.pop();
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// GetLegacyRegExpStaticProperty (RegExp legacy features proposal).
+    pub(super) fn regexp_legacy_get(
+        &mut self,
+        which: LegacyRegExpStatic,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if *receiver != self.regexp_global()? {
+            return Err(RuntimeError::TypeError(
+                "legacy RegExp static property requires %RegExp% as receiver".into(),
+            ));
+        }
+        match self.regexp_legacy.get(which) {
+            Some(string) => Ok(Value::String(string)),
+            None => Err(RuntimeError::TypeError(
+                "legacy RegExp static property is unavailable after a non-legacy match".into(),
+            )),
+        }
+    }
+
+    /// SetLegacyRegExpStaticProperty for `RegExp.input` / `RegExp.$_`.
+    pub(super) fn regexp_legacy_set(
+        &mut self,
+        which: LegacyRegExpStatic,
+        receiver: &Value,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        debug_assert_eq!(which, LegacyRegExpStatic::Input);
+        if *receiver != self.regexp_global()? {
+            return Err(RuntimeError::TypeError(
+                "legacy RegExp static property requires %RegExp% as receiver".into(),
+            ));
+        }
+        let string = self.coerce_string(value)?;
+        self.regexp_legacy.set_input(string);
+        Ok(Value::Undefined)
     }
 
     pub(super) fn regexp_getter(
@@ -266,13 +508,10 @@ impl Vm {
         if name == "species" {
             return Ok(receiver.clone());
         }
-        let Value::Object(id) = receiver else {
+        if !matches!(receiver, Value::Object(_)) {
             return Err(RuntimeError::TypeError(
                 "RegExp getter requires an object".into(),
             ));
-        };
-        if self.test262_foreign_reference(*id).is_some() {
-            return self.test262_foreign_get(*id, receiver, &name.into());
         }
         if name == "flags" {
             let mut flags = String::new();
@@ -287,15 +526,27 @@ impl Vm {
                 ("sticky", 'y'),
             ] {
                 let enabled = self.get_property(receiver, &property.into())?;
-                if self.to_boolean(&enabled)? {
+                if self
+                    .to_boolean(&enabled)
+                    .expect("the flag getter returned a live value and ToBoolean runs no user code")
+                {
                     flags.push(flag);
                 }
             }
             return Ok(Value::String(flags.into()));
         }
-        let Some(regexp) = self.heap.regexp(*id)? else {
+        // A RegExp owned by another realm still has [[OriginalSource]] and
+        // [[OriginalFlags]]; any other foreign object (including that
+        // realm's own %RegExp.prototype%) is not a RegExp of this getter's
+        // realm and takes the same TypeError path as a local one.
+        let Some((regexp_source, regexp_flags)) = self.regexp_slots(receiver)? else {
             let constructor = self.globals["RegExp"];
-            if self.heap.get(constructor, "prototype")? == *receiver {
+            if self
+                .heap
+                .get(constructor, "prototype")
+                .expect("the cached RegExp constructor has its permanent root")
+                == *receiver
+            {
                 return Ok(if name == "source" {
                     Value::String("(?:)".into())
                 } else {
@@ -307,23 +558,61 @@ impl Vm {
             ));
         };
         if name == "source" {
-            if regexp.source.is_empty() {
+            if regexp_source.is_empty() {
                 return Ok(Value::String("(?:)".into()));
             }
-            let mut source = JsString::default();
-            let mut escaped = false;
-            for &unit in regexp.source.as_code_units() {
-                let part = match unit {
-                    0x2f if !escaped => "\\/".into(),
-                    0x0a => "\\n".into(),
-                    0x0d => "\\r".into(),
-                    0x2028 => "\\u2028".into(),
-                    0x2029 => "\\u2029".into(),
-                    _ => JsString::from_code_units(vec![unit]),
+            // EscapeRegExpPattern: `/` and line terminators must be escaped so
+            // that "/" + source + "/" reparses as the same pattern. A `/` in a
+            // character class needs no escape, and a backslash that already
+            // precedes a line terminator is absorbed into that terminator's
+            // escape (`\<LF>` is `\n`, not a backslash followed by `\n`).
+            let unicode_sets = regexp_flags.contains('v');
+            let mut units = Vec::with_capacity(regexp_source.as_code_units().len());
+            let (mut escaped, mut class_depth) = (false, 0usize);
+            for &unit in regexp_source.as_code_units() {
+                let terminator = match unit {
+                    0x0a => Some("\\n"),
+                    0x0d => Some("\\r"),
+                    0x2028 => Some("\\u2028"),
+                    0x2029 => Some("\\u2029"),
+                    _ => None,
                 };
-                native::append(&mut source, &part, self.config.max_string_bytes)?;
-                escaped = unit == 0x5c && !escaped;
+                if let Some(escape) = terminator {
+                    if escaped {
+                        units.pop();
+                    }
+                    units.extend(escape.encode_utf16());
+                    escaped = false;
+                    continue;
+                }
+                if escaped {
+                    units.push(unit);
+                    escaped = false;
+                    continue;
+                }
+                match unit {
+                    0x5c => {
+                        units.push(unit);
+                        escaped = true;
+                    }
+                    0x2f if class_depth == 0 => units.extend("\\/".encode_utf16()),
+                    0x5b => {
+                        if unicode_sets || class_depth == 0 {
+                            class_depth += 1;
+                        }
+                        units.push(unit);
+                    }
+                    0x5d => {
+                        if class_depth > 0 {
+                            class_depth = if unicode_sets { class_depth - 1 } else { 0 };
+                        }
+                        units.push(unit);
+                    }
+                    _ => units.push(unit),
+                }
             }
+            let source = JsString::from_code_units(units);
+            self.check_string(&Value::String(source.clone()))?;
             return Ok(Value::String(source));
         }
         let flag = match name {
@@ -336,7 +625,7 @@ impl Vm {
             "sticky" => 'y',
             _ => 'd',
         };
-        Ok(Value::Bool(regexp.flags.contains(flag)))
+        Ok(Value::Bool(regexp_flags.contains(flag)))
     }
 
     pub(super) fn set_required(
@@ -345,10 +634,10 @@ impl Vm {
         key: &str,
         value: Value,
     ) -> Result<(), RuntimeError> {
-        let strict = std::mem::replace(&mut self.strict, true);
-        let result = self.set_property(receiver, &key.into(), &value);
-        self.strict = strict;
-        result
+        let object = receiver
+            .object_id()
+            .expect("the RegExp algorithm validated its object receiver before required writes");
+        self.object_set_or_throw(object, &key.into(), &value)
     }
 
     pub(super) fn require_global_pattern(&mut self, pattern: &Value) -> Result<(), RuntimeError> {
@@ -372,136 +661,172 @@ impl Vm {
         Ok(())
     }
 
-    fn regexp_exec(
+    pub(super) fn regexp_exec(
         &mut self,
         receiver: &Value,
         string: &JsString,
         builtin: bool,
     ) -> Result<Value, RuntimeError> {
-        if !builtin {
-            let exec = self.get_property(receiver, &"exec".into())?;
-            if self.is_callable(&exec)? {
-                let result = self.call_native(
-                    exec,
-                    receiver.clone(),
-                    vec![Value::String(string.clone())],
-                    false,
-                )?;
-                return if matches!(result, Value::Null | Value::Object(_)) {
-                    Ok(result)
-                } else {
-                    Err(RuntimeError::TypeError(
-                        "RegExp exec must return object or null".into(),
-                    ))
-                };
+        let base = self.stack.len();
+        let outcome = (|| {
+            if !builtin {
+                let exec = self.get_property(receiver, &"exec".into())?;
+                if self
+                    .is_callable(&exec)
+                    .expect("the exec getter returned a live value in this realm")
+                {
+                    let result = self.call_native(
+                        exec,
+                        receiver.clone(),
+                        vec![Value::String(string.clone())],
+                        false,
+                    )?;
+                    return if matches!(result, Value::Null | Value::Object(_)) {
+                        Ok(result)
+                    } else {
+                        Err(RuntimeError::TypeError(
+                            "RegExp exec must return object or null".into(),
+                        ))
+                    };
+                }
             }
-        }
-        let Value::Object(id) = receiver else {
-            return Err(RuntimeError::TypeError(
-                "RegExp exec requires a RegExp".into(),
-            ));
-        };
-        let Some(regexp) = self.heap.regexp(*id)? else {
-            return Err(RuntimeError::TypeError(
-                "RegExp exec requires a RegExp".into(),
-            ));
-        };
-        let last_index = self.get_property(receiver, &"lastIndex".into())?;
-        let last_index = self.coerce_length(&last_index)?;
-        let stateful = regexp.flags.contains(['g', 'y']);
-        let start = if stateful { last_index as usize } else { 0 };
-        self.charge_step()?;
-        let matched = if start > string.len() {
-            None
-        } else {
-            regexp
-                .find(string, start, self.config.regex_timeout)?
-                .filter(|m| !regexp.flags.contains('y') || m.start() == start)
-        };
-        let Some(matched) = matched else {
+            let Value::Object(id) = receiver else {
+                return Err(RuntimeError::TypeError(
+                    "RegExp exec requires a RegExp".into(),
+                ));
+            };
+            if self.heap.regexp(*id)?.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "RegExp exec requires a RegExp".into(),
+                ));
+            }
+            // RegExpAllocate publishes the matcher only after defining its
+            // non-configurable own data property. Reading it cannot invoke
+            // an accessor or a prototype trap; ToLength below remains observable.
+            let last_index = self
+                .heap
+                .get_own(*id, "lastIndex")
+                .expect("the matcher-slot query validated this retained RegExp")
+                .expect("RegExpAllocate installs a non-configurable own lastIndex data property");
+            let last_index = self.coerce_length(&last_index)?;
+            // ToLength(lastIndex) can run user code that recompiles the RegExp
+            // (`compile`): RegExpBuiltinExec reads [[OriginalFlags]] and
+            // [[RegExpMatcher]] only after it.
+            let regexp = self
+                .heap
+                .regexp(*id)
+                .expect("the validated RegExp receiver remains rooted during lastIndex coercion")
+                .expect("a RegExp keeps its matcher slot for its whole life");
+            let stateful = regexp.flags.contains(['g', 'y']);
+            let start = if stateful { last_index as usize } else { 0 };
+            self.charge_step()?;
+            let matched = if start > string.len() {
+                None
+            } else {
+                regexp
+                    .find(string, start, self.config.regex_timeout)?
+                    .filter(|m| !regexp.flags.contains('y') || m.start() == start)
+            };
+            let Some(matched) = matched else {
+                if stateful {
+                    self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
+                }
+                return Ok(Value::Null);
+            };
             if stateful {
-                self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
+                self.set_required(receiver, "lastIndex", Value::Number(matched.end() as f64))?;
             }
-            return Ok(Value::Null);
-        };
-        if stateful {
-            self.set_required(receiver, "lastIndex", Value::Number(matched.end() as f64))?;
-        }
-        let values = matched
-            .groups()
-            .map(|range| {
-                range.map_or(Value::Undefined, |range| {
-                    Value::String(JsString::from_code_units(
-                        string.as_code_units()[range].to_vec(),
-                    ))
+            if regexp.legacy_features {
+                self.regexp_legacy.update(
+                    string,
+                    matched.start(),
+                    matched.end(),
+                    matched.groups().skip(1).collect(),
+                );
+            } else {
+                self.regexp_legacy.invalidate();
+            }
+            let values = matched
+                .groups()
+                .map(|range| {
+                    range.map_or(Value::Undefined, |range| {
+                        Value::String(JsString::from_code_units(
+                            string.as_code_units()[range].to_vec(),
+                        ))
+                    })
                 })
-            })
-            .collect();
-        let array = self.array_from(values)?;
-        self.stack.push(array.clone());
-        let array_id = array.object_id().unwrap();
-        self.with_roots(|heap| heap.set(array_id, "index", Value::Number(matched.start() as f64)))?;
-        self.with_roots(|heap| heap.set(array_id, "input", Value::String(string.clone())))?;
-        let named: Vec<_> = matched
-            .named_groups()
-            .map(|(name, range)| (name.to_string(), range))
-            .collect();
-        let groups = if named.is_empty() {
-            Value::Undefined
-        } else {
-            let object = self.with_roots(|heap| heap.alloc_object(None))?;
-            self.stack.push(Value::Object(object));
-            for (name, range) in &named {
-                let value = range.as_ref().map_or(Value::Undefined, |r| {
-                    Value::String(JsString::from_code_units(
-                        string.as_code_units()[r.clone()].to_vec(),
-                    ))
-                });
-                self.with_roots(|heap| heap.set(object, name.as_str(), value))?;
-            }
-            self.stack.pop();
-            Value::Object(object)
-        };
-        self.with_roots(|heap| heap.set(array_id, "groups", groups))?;
-        if regexp.flags.contains('d') {
-            let mut pairs = Vec::new();
-            for range in matched.groups() {
-                let pair = if let Some(range) = range {
-                    self.array_from(vec![
-                        Value::Number(range.start as f64),
-                        Value::Number(range.end as f64),
-                    ])?
-                } else {
-                    Value::Undefined
-                };
-                self.stack.push(pair.clone());
-                pairs.push(pair);
-            }
-            let indices = self.array_from(pairs)?;
-            self.stack.push(indices.clone());
+                .collect();
+            let array = self.array_from(values)?;
+            self.stack.push(array.clone());
+            let array_id = array.object_id().unwrap();
+            self.with_roots(|heap| {
+                heap.set(array_id, "index", Value::Number(matched.start() as f64))
+            })?;
+            self.with_roots(|heap| heap.set(array_id, "input", Value::String(string.clone())))?;
+            let named: Vec<_> = matched
+                .named_groups()
+                .map(|(name, range)| (name.to_string(), range))
+                .collect();
             let groups = if named.is_empty() {
                 Value::Undefined
             } else {
                 let object = self.with_roots(|heap| heap.alloc_object(None))?;
                 self.stack.push(Value::Object(object));
-                for (name, _) in named {
-                    let capture = regexp.capture_names.iter().find(|(candidate, index)| {
-                        candidate == &name && matched.group(*index).is_some()
+                for (name, range) in &named {
+                    let value = range.as_ref().map_or(Value::Undefined, |r| {
+                        Value::String(JsString::from_code_units(
+                            string.as_code_units()[r.clone()].to_vec(),
+                        ))
                     });
-                    let pair = if let Some((_, index)) = capture {
-                        self.heap
-                            .get(indices.object_id().unwrap(), index.to_string())?
+                    self.with_roots(|heap| heap.set(object, name.as_str(), value))?;
+                }
+                self.stack.pop();
+                Value::Object(object)
+            };
+            self.with_roots(|heap| heap.set(array_id, "groups", groups))?;
+            if regexp.flags.contains('d') {
+                let mut pairs = Vec::new();
+                for range in matched.groups() {
+                    let pair = if let Some(range) = range {
+                        self.array_from(vec![
+                            Value::Number(range.start as f64),
+                            Value::Number(range.end as f64),
+                        ])?
                     } else {
                         Value::Undefined
                     };
-                    self.with_roots(|heap| heap.set(object, name, pair))?;
+                    self.stack.push(pair.clone());
+                    pairs.push(pair);
                 }
-                Value::Object(object)
-            };
-            self.with_roots(|heap| heap.set(indices.object_id().unwrap(), "groups", groups))?;
-            self.with_roots(|heap| heap.set(array_id, "indices", indices))?;
-        }
-        Ok(array)
+                let indices = self.array_from(pairs)?;
+                self.stack.push(indices.clone());
+                let groups = if named.is_empty() {
+                    Value::Undefined
+                } else {
+                    let object = self.with_roots(|heap| heap.alloc_object(None))?;
+                    self.stack.push(Value::Object(object));
+                    for (name, _) in named {
+                        let capture = regexp.capture_names.iter().find(|(candidate, index)| {
+                            candidate == &name && matched.group(*index).is_some()
+                        });
+                        let pair = if let Some((_, index)) = capture {
+                            self.heap
+                                .get(indices.object_id().unwrap(), index.to_string())
+                                .expect("the fresh indices array is still on the VM stack")
+                        } else {
+                            Value::Undefined
+                        };
+                        self.with_roots(|heap| heap.set(object, name, pair))?;
+                    }
+                    Value::Object(object)
+                };
+                self.with_roots(|heap| heap.set(indices.object_id().unwrap(), "groups", groups))?;
+                self.with_roots(|heap| heap.set(array_id, "indices", indices))?;
+            }
+            Ok(array)
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 
     pub(super) fn regexp_method(
@@ -510,122 +835,132 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        use RegExpMethod::*;
-        if !matches!(receiver, Value::Object(_)) {
-            return Err(RuntimeError::TypeError(
-                "RegExp method requires an object".into(),
-            ));
-        }
-        if method == Exec && self.heap.regexp(receiver.object_id().unwrap())?.is_none() {
-            return Err(RuntimeError::TypeError(
-                "RegExp exec requires a RegExp".into(),
-            ));
-        }
-        let string = if method == ToString {
-            JsString::default()
-        } else {
-            self.coerce_string(native::argument(args, 0))?
-        };
-        match method {
-            Exec => self.regexp_exec(receiver, &string, true),
-            Test => Ok(Value::Bool(
-                self.regexp_exec(receiver, &string, false)? != Value::Null,
-            )),
-            Search => {
-                let previous = self.get_property(receiver, &"lastIndex".into())?;
-                self.stack.push(previous.clone());
-                if !crate::heap::same_value(&previous, &Value::Number(0.0)) {
-                    self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
-                }
-                let result = self.regexp_exec(receiver, &string, false)?;
-                self.stack.push(result.clone());
-                let current = self.get_property(receiver, &"lastIndex".into())?;
-                if !crate::heap::same_value(&previous, &current) {
-                    self.set_required(receiver, "lastIndex", previous)?;
-                }
-                if result == Value::Null {
-                    Ok(Value::Number(-1.0))
-                } else {
-                    self.get_property(&result, &"index".into())
-                }
+        let base = self.stack.len();
+        let outcome = (|| {
+            use RegExpMethod::*;
+            let Value::Object(object) = receiver else {
+                return Err(RuntimeError::TypeError(
+                    "RegExp method requires an object".into(),
+                ));
+            };
+            if method == Exec && self.heap.regexp(*object)?.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "RegExp exec requires a RegExp".into(),
+                ));
             }
-            Match => {
-                let flags = self.get_property(receiver, &"flags".into())?;
-                let flags = self.coerce_string(&flags)?;
-                if !flags.as_code_units().contains(&u16::from(b'g')) {
-                    return self.regexp_exec(receiver, &string, false);
-                }
-                let unicode = flags
-                    .as_code_units()
-                    .iter()
-                    .any(|&c| c == u16::from(b'u') || c == u16::from(b'v'));
-                self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
-                let mut results = Vec::new();
-                loop {
-                    self.charge_step()?;
+            let string = if matches!(method, Compile | ToString) {
+                JsString::default()
+            } else {
+                self.coerce_string(native::argument(args, 0))?
+            };
+            match method {
+                Compile => self.regexp_compile(
+                    *object,
+                    native::argument(args, 0),
+                    native::argument(args, 1),
+                ),
+                Exec => self.regexp_exec(receiver, &string, true),
+                Test => Ok(Value::Bool(
+                    self.regexp_exec(receiver, &string, false)? != Value::Null,
+                )),
+                Search => {
+                    let previous = self.get_property(receiver, &"lastIndex".into())?;
+                    self.stack.push(previous.clone());
+                    if !crate::heap::same_value(&previous, &Value::Number(0.0)) {
+                        self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
+                    }
                     let result = self.regexp_exec(receiver, &string, false)?;
-                    if result == Value::Null {
-                        break;
-                    }
                     self.stack.push(result.clone());
-                    let matched = self.get_property(&result, &"0".into())?;
-                    let matched = self.coerce_string(&matched)?;
-                    if matched.is_empty() {
-                        self.advance_last_index(receiver, &string, unicode)?;
+                    let current = self.get_property(receiver, &"lastIndex".into())?;
+                    if !crate::heap::same_value(&previous, &current) {
+                        self.set_required(receiver, "lastIndex", previous)?;
                     }
-                    results.push(Value::String(matched));
+                    if result == Value::Null {
+                        Ok(Value::Number(-1.0))
+                    } else {
+                        self.get_property(&result, &"index".into())
+                    }
                 }
-                if results.is_empty() {
-                    Ok(Value::Null)
-                } else {
-                    self.array_from(results)
+                Match => {
+                    let flags = self.get_property(receiver, &"flags".into())?;
+                    let flags = self.coerce_string(&flags)?;
+                    if !flags.as_code_units().contains(&u16::from(b'g')) {
+                        return self.regexp_exec(receiver, &string, false);
+                    }
+                    let unicode = flags
+                        .as_code_units()
+                        .iter()
+                        .any(|&c| c == u16::from(b'u') || c == u16::from(b'v'));
+                    self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
+                    let mut results = Vec::new();
+                    loop {
+                        self.charge_step()?;
+                        let result = self.regexp_exec(receiver, &string, false)?;
+                        if result == Value::Null {
+                            break;
+                        }
+                        self.stack.push(result.clone());
+                        let matched = self.get_property(&result, &"0".into())?;
+                        let matched = self.coerce_string(&matched)?;
+                        if matched.is_empty() {
+                            self.advance_last_index(receiver, &string, unicode)?;
+                        }
+                        results.push(Value::String(matched));
+                    }
+                    if results.is_empty() {
+                        Ok(Value::Null)
+                    } else {
+                        self.array_from(results)
+                    }
+                }
+                MatchAll => {
+                    let constructor = self.regexp_species_constructor(receiver)?;
+                    self.stack.push(constructor.clone());
+                    let flags = self.get_property(receiver, &"flags".into())?;
+                    let flags = self.coerce_string(&flags)?;
+                    let matcher = self.call_native(
+                        constructor,
+                        Value::Undefined,
+                        vec![receiver.clone(), Value::String(flags.clone())],
+                        true,
+                    )?;
+                    self.stack.push(matcher.clone());
+                    let last_index = self.get_property(receiver, &"lastIndex".into())?;
+                    let last_index = self.coerce_length(&last_index)?;
+                    self.set_required(&matcher, "lastIndex", Value::Number(last_index))?;
+                    let global = flags.as_code_units().contains(&u16::from(b'g'));
+                    let unicode = flags
+                        .as_code_units()
+                        .iter()
+                        .any(|&c| c == u16::from(b'u') || c == u16::from(b'v'));
+                    let prototype = self.regexp_iterator_prototype()?;
+                    Ok(Value::Object(self.with_roots(|heap| {
+                        heap.alloc_regexp_iterator(
+                            matcher.object_id().unwrap(),
+                            string,
+                            global,
+                            unicode,
+                            prototype,
+                        )
+                    })?))
+                }
+                Split => self.regexp_split(receiver, &string, native::argument(args, 1)),
+                Replace => self.regexp_replace(receiver, &string, native::argument(args, 1)),
+                ToString => {
+                    let source = self.get_property(receiver, &"source".into())?;
+                    let source = self.coerce_string(&source)?;
+                    let flags = self.get_property(receiver, &"flags".into())?;
+                    let flags = self.coerce_string(&flags)?;
+                    let mut result = JsString::from("/");
+                    for part in [source, "/".into(), flags] {
+                        native::append(&mut result, &part, self.config.max_string_bytes)?;
+                    }
+                    Ok(Value::String(result))
                 }
             }
-            MatchAll => {
-                let constructor = self.regexp_species_constructor(receiver)?;
-                self.stack.push(constructor.clone());
-                let flags = self.get_property(receiver, &"flags".into())?;
-                let flags = self.coerce_string(&flags)?;
-                let matcher = self.call_native(
-                    constructor,
-                    Value::Undefined,
-                    vec![receiver.clone(), Value::String(flags.clone())],
-                    true,
-                )?;
-                self.stack.push(matcher.clone());
-                let last_index = self.get_property(receiver, &"lastIndex".into())?;
-                let last_index = self.coerce_length(&last_index)?;
-                self.set_required(&matcher, "lastIndex", Value::Number(last_index))?;
-                let global = flags.as_code_units().contains(&u16::from(b'g'));
-                let unicode = flags
-                    .as_code_units()
-                    .iter()
-                    .any(|&c| c == u16::from(b'u') || c == u16::from(b'v'));
-                let prototype = self.regexp_iterator_prototype()?;
-                Ok(Value::Object(self.with_roots(|heap| {
-                    heap.alloc_regexp_iterator(
-                        matcher.object_id().unwrap(),
-                        string,
-                        global,
-                        unicode,
-                        prototype,
-                    )
-                })?))
-            }
-            Split => self.regexp_split(receiver, &string, native::argument(args, 1)),
-            Replace => self.regexp_replace(receiver, &string, native::argument(args, 1)),
-            ToString => {
-                let source = self.get_property(receiver, &"source".into())?;
-                let source = self.coerce_string(&source)?;
-                let flags = self.get_property(receiver, &"flags".into())?;
-                let flags = self.coerce_string(&flags)?;
-                let mut result = JsString::from("/");
-                for part in [source, "/".into(), flags] {
-                    native::append(&mut result, &part, self.config.max_string_bytes)?;
-                }
-                Ok(Value::String(result))
-            }
-        }
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 
     fn advance_last_index(
@@ -654,7 +989,10 @@ impl Vm {
             let species =
                 self.get_property(&constructor, &JsSymbol::well_known("species").into())?;
             if !matches!(species, Value::Undefined | Value::Null) {
-                if !self.is_constructor(&species)? {
+                if !self
+                    .is_constructor(&species)
+                    .expect("the species getter returned a live value in this realm")
+                {
                     return Err(RuntimeError::TypeError(
                         "RegExp species must be a constructor".into(),
                     ));
@@ -669,8 +1007,7 @@ impl Vm {
         if let Some(prototype) = self.regexp_iterator_prototype {
             return Ok(prototype);
         }
-        let constructor = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(constructor)?.unwrap();
+        let function_prototype = self.function_prototype()?;
         let iterator_base = self.base_iterator_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(iterator_base)))?;
         let root = self.heap.root(prototype)?;
@@ -693,7 +1030,7 @@ impl Vm {
             Ok(prototype)
         })();
         if result.is_err() {
-            self.heap.unroot(root)?;
+            self.release_root(root);
         } else {
             self.regexp_iterator_prototype = Some(prototype);
         }
@@ -759,7 +1096,7 @@ impl Vm {
         let limit = if *limit == Value::Undefined {
             u32::MAX
         } else {
-            native::uint32(&Value::Number(self.coerce_number(limit)?))?
+            native::uint32(self.coerce_number(limit)?)
         } as usize;
         let mut values = Vec::new();
         if limit == 0 {
@@ -820,95 +1157,101 @@ impl Vm {
         string: &JsString,
         replacement: &Value,
     ) -> Result<Value, RuntimeError> {
-        let callable = self.is_callable(replacement)?;
-        let template = if callable {
-            JsString::default()
-        } else {
-            self.coerce_string(replacement)?
-        };
-        let flags = self.get_property(receiver, &"flags".into())?;
-        let flags = self.coerce_string(&flags)?;
-        let global = flags.as_code_units().contains(&u16::from(b'g'));
-        let unicode = flags
-            .as_code_units()
-            .iter()
-            .any(|&c| c == u16::from(b'u') || c == u16::from(b'v'));
-        if global {
-            self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
-        }
-        let mut results = Vec::new();
-        loop {
-            self.charge_step()?;
-            let result = self.regexp_exec(receiver, string, false)?;
-            if result == Value::Null {
-                break;
-            }
-            self.stack.push(result.clone());
-            results.push(result.clone());
-            if !global {
-                break;
-            }
-            let matched = self.get_property(&result, &"0".into())?;
-            if self.coerce_string(&matched)?.is_empty() {
-                self.advance_last_index(receiver, string, unicode)?;
-            }
-        }
-        let mut output = JsString::default();
-        let mut next = 0;
-        for result in results {
-            let length = self.get_property(&result, &"length".into())?;
-            let length = self.coerce_length(&length)? as usize;
-            let matched = self.get_property(&result, &"0".into())?;
-            let matched = self.coerce_string(&matched)?;
-            let position = self.get_property(&result, &"index".into())?;
-            let position = native::integer(&Value::Number(self.coerce_number(&position)?))?
-                .clamp(0.0, string.len() as f64) as usize;
-            let mut captures = Vec::new();
-            for index in 1..length {
-                self.charge_step()?;
-                let capture = self.get_property(&result, &index.to_string().into())?;
-                captures.push(if capture == Value::Undefined {
-                    Value::Undefined
-                } else {
-                    Value::String(self.coerce_string(&capture)?)
-                });
-            }
-            let groups = self.get_property(&result, &"groups".into())?;
-            self.stack.push(groups.clone());
-            let replacement = if callable {
-                let mut args = vec![Value::String(matched.clone())];
-                args.extend(captures.iter().cloned());
-                args.extend([
-                    Value::Number(position as f64),
-                    Value::String(string.clone()),
-                ]);
-                if groups != Value::Undefined {
-                    args.push(groups);
-                }
-                let result =
-                    self.call_native(replacement.clone(), Value::Undefined, args, false)?;
-                self.coerce_string(&result)?
+        let root_base = self.stack.len();
+        let result = (|| {
+            let callable = self.is_callable(replacement)?;
+            let template = if callable {
+                JsString::default()
             } else {
-                self.capture_substitution(
-                    string, &matched, position, &captures, &groups, &template,
-                )?
+                self.coerce_string(replacement)?
             };
-            if position >= next {
-                native::append(
-                    &mut output,
-                    &JsString::from_code_units(string.as_code_units()[next..position].to_vec()),
-                    self.config.max_string_bytes,
-                )?;
-                native::append(&mut output, &replacement, self.config.max_string_bytes)?;
-                next = (position + matched.len()).min(string.len());
+            let flags = self.get_property(receiver, &"flags".into())?;
+            let flags = self.coerce_string(&flags)?;
+            let global = flags.as_code_units().contains(&u16::from(b'g'));
+            let unicode = flags
+                .as_code_units()
+                .iter()
+                .any(|&c| c == u16::from(b'u') || c == u16::from(b'v'));
+            if global {
+                self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
             }
-        }
-        native::append(
-            &mut output,
-            &JsString::from_code_units(string.as_code_units()[next..].to_vec()),
-            self.config.max_string_bytes,
-        )?;
-        Ok(Value::String(output))
+            let mut results = Vec::new();
+            loop {
+                self.charge_step()?;
+                let result = self.regexp_exec(receiver, string, false)?;
+                if result == Value::Null {
+                    break;
+                }
+                self.stack.push(result.clone());
+                results.push(result.clone());
+                if !global {
+                    break;
+                }
+                let matched = self.get_property(&result, &"0".into())?;
+                if self.coerce_string(&matched)?.is_empty() {
+                    self.advance_last_index(receiver, string, unicode)?;
+                }
+            }
+            let mut output = JsString::default();
+            let mut next = 0;
+            for result in results {
+                let length = self.get_property(&result, &"length".into())?;
+                let length = self.coerce_length(&length)? as usize;
+                let matched = self.get_property(&result, &"0".into())?;
+                let matched = self.coerce_string(&matched)?;
+                let position = self.get_property(&result, &"index".into())?;
+                let position = native::integer(&Value::Number(self.coerce_number(&position)?))
+                    .expect("ToIntegerOrInfinity cannot fail for the converted Number")
+                    .clamp(0.0, string.len() as f64) as usize;
+                let mut captures = Vec::new();
+                for index in 1..length {
+                    self.charge_step()?;
+                    let capture = self.get_property(&result, &index.to_string().into())?;
+                    captures.push(if capture == Value::Undefined {
+                        Value::Undefined
+                    } else {
+                        Value::String(self.coerce_string(&capture)?)
+                    });
+                }
+                let groups = self.get_property(&result, &"groups".into())?;
+                self.stack.push(groups.clone());
+                let replacement = if callable {
+                    let mut args = vec![Value::String(matched.clone())];
+                    args.extend(captures.iter().cloned());
+                    args.extend([
+                        Value::Number(position as f64),
+                        Value::String(string.clone()),
+                    ]);
+                    if groups != Value::Undefined {
+                        args.push(groups);
+                    }
+                    let result =
+                        self.call_native(replacement.clone(), Value::Undefined, args, false)?;
+                    self.coerce_string(&result)?
+                } else {
+                    self.capture_substitution(
+                        string, &matched, position, &captures, &groups, &template,
+                    )?
+                };
+                if position >= next {
+                    native::append(
+                        &mut output,
+                        &JsString::from_code_units(string.as_code_units()[next..position].to_vec()),
+                        self.config.max_string_bytes,
+                    )?;
+                    native::append(&mut output, &replacement, self.config.max_string_bytes)?;
+                    next = (position + matched.len()).min(string.len());
+                }
+            }
+            native::append(
+                &mut output,
+                &JsString::from_code_units(string.as_code_units()[next..].to_vec()),
+                self.config.max_string_bytes,
+            )?;
+            Ok(Value::String(output))
+        })();
+        self.stack.truncate(root_base);
+        result
     }
 
     fn capture_substitution(

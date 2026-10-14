@@ -1,0 +1,11 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+class Reader {
+    read(value: number): number;
+    read(value: string): string;
+    read(value: number | string): number | string { return value; }
+}
+const reader = new Reader();
+reader.read(true);

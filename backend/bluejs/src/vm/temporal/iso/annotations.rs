@@ -158,7 +158,9 @@ pub(super) fn scan_annotations(
                 return Err(());
             }
             time_zone = Some(name.to_string());
-            cursor.take_bracket().ok_or(())?;
+            cursor
+                .take_bracket()
+                .expect("the checked bracket remains at the cursor");
         }
     }
     let mut calendar = None;
@@ -207,4 +209,148 @@ pub(crate) fn is_time_zone_identifier(value: &str) -> bool {
                     byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'+' | b'-')
                 })
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn annotation_suffix_rejects_malformed_and_critical_entries() {
+        for source in [
+            "[UTC",
+            "[UTC][foo",
+            "[+01:02:03]",
+            "[UTC]tail",
+            "[u-ca=]",
+            "[u-ca=iso8601][!u-ca=hebrew]",
+            "[!foo=bar]",
+            "[u-ca=iso8601][UTC]",
+            "[bad key=value]",
+        ] {
+            assert_eq!(parse_annotation_suffix(source), Err(()), "{source}");
+        }
+        assert_eq!(
+            parse_annotation_suffix("[u-ca=hebrew][u-ca=iso8601]")
+                .unwrap()
+                .calendar,
+            Some("hebrew".into())
+        );
+    }
+
+    #[test]
+    fn cursor_annotation_scan_rejects_missing_brackets_and_invalid_values() {
+        for source in [
+            "[UTC",
+            "[UTC][foo",
+            "[UTC][foo]",
+            "[UTC][!foo=bar]",
+            "[u-ca=iso8601][!u-ca=hebrew]",
+            "[u-ca=]",
+            "[foo=bad/value]",
+        ] {
+            assert!(
+                scan_annotations(&mut Cursor::new(source)).is_err(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn time_zone_name_shapes_reject_invalid_components_and_precision() {
+        for source in [
+            "+01:02:03",
+            "A/",
+            "A/.",
+            "A/..",
+            "A/!",
+            "A/B!C",
+            "A/abcdefghijklmnop",
+        ] {
+            assert!(!is_valid_time_zone_identifier(source), "{source}");
+        }
+        for source in ["+01:02", "A/B", "A/_", "A/.hidden", "A/B+C", "A/B-C"] {
+            assert!(is_valid_time_zone_identifier(source), "{source}");
+            assert!(is_time_zone_identifier(source), "{source}");
+        }
+        assert!(!is_time_zone_identifier("+01:02:03"));
+        assert!(!is_time_zone_identifier("A/!"));
+        assert!(!is_time_zone_identifier("A/B!C"));
+    }
+
+    #[test]
+    fn suffix_annotations_must_be_terminated_and_keyed() {
+        assert_eq!(
+            parse_annotation_suffix("[Etc/GMT+5][u-ca=iso8601]"),
+            Ok(Annotations {
+                time_zone: Some("Etc/GMT+5".into()),
+                calendar: Some("iso8601".into()),
+            })
+        );
+        assert_eq!(parse_annotation_suffix("[UTC"), Err(()));
+        assert_eq!(parse_annotation_suffix("[UTC][u-ca=iso8601"), Err(()));
+        assert_eq!(parse_annotation_suffix("[UTC][u-ca]"), Err(()));
+        assert_eq!(parse_annotation_suffix("[UTC]tail"), Err(()));
+        assert_eq!(parse_annotation_suffix("[UTC][=x]"), Err(()));
+        assert_eq!(parse_annotation_suffix("[UTC][u-ca=]"), Err(()));
+        assert_eq!(parse_annotation_suffix("[UTC][Bad=x]"), Err(()));
+        assert_eq!(parse_annotation_suffix("[UTC][k=a_b]"), Err(()));
+        assert_eq!(parse_annotation_suffix("[UTC][!x=y]"), Err(()));
+        assert_eq!(parse_annotation_suffix("[UTC][u-ca=a][!u-ca=b]"), Err(()));
+        assert_eq!(parse_annotation_suffix("[bad zone]"), Err(()));
+    }
+
+    #[test]
+    fn scanned_annotations_must_be_terminated_and_valid() {
+        let scan = |source: &str| {
+            let mut cursor = Cursor::new(source);
+            scan_annotations(&mut cursor)
+        };
+        assert_eq!(scan("[UTC"), Err(()));
+        assert_eq!(scan("[UTC][u-ca=iso8601"), Err(()));
+        assert_eq!(scan("[UTC][u-ca]"), Err(()));
+        assert_eq!(scan("[bad zone]"), Err(()));
+        assert_eq!(scan("[UTC][k=a_b]"), Err(()));
+        assert_eq!(scan("[UTC][!x=y]"), Err(()));
+        assert_eq!(scan("[UTC][u-ca=a][!u-ca=b]"), Err(()));
+        assert_eq!(
+            scan("[Etc/GMT+5][u-ca=hebrew]"),
+            Ok((Some("Etc/GMT+5".into()), Some("hebrew".into())))
+        );
+        assert_eq!(scan("[_x][x-y=1]"), Ok((Some("_x".into()), None)));
+        assert_eq!(scan("[.a/b.c-d]"), Ok((Some(".a/b.c-d".into()), None)));
+    }
+
+    #[test]
+    fn time_zone_identifier_shapes() {
+        for accepted in [
+            "UTC",
+            "America/Port-au-Prince",
+            "Etc/GMT+5",
+            "_x",
+            ".x",
+            "a.b_c",
+            "+01:00",
+            "-0130",
+        ] {
+            assert!(is_time_zone_identifier(accepted), "{accepted}");
+        }
+        for rejected in ["", "1x", "a//b", "a/", "+01:00:00", "-", "a b", "x/a$"] {
+            assert!(!is_time_zone_identifier(rejected), "{rejected}");
+        }
+        for accepted in ["UTC", "Etc/GMT+5", "_x", ".x", "a.b_c", "+01:00"] {
+            assert!(is_valid_time_zone_identifier(accepted), "{accepted}");
+        }
+        for rejected in [
+            "",
+            ".",
+            "..",
+            "1x",
+            "+01:00:00",
+            "a/verylongcomponentname",
+            "a b",
+        ] {
+            assert!(!is_valid_time_zone_identifier(rejected), "{rejected}");
+        }
+    }
 }

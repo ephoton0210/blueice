@@ -13,14 +13,17 @@
 
 use blueice_bluejs as bluejs;
 use blueice_bluets::{
-    compile, lex, BlueTsDebugInfo, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem,
-    FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, Module, ModuleLoader, Project,
-    SourceSpan, Token, TokenKind, VariableDeclaration, VariableKind, LANGUAGE_VERSION,
+    compile, lex, source_locations_for_spans, BlueTsDebugInfo, CompilerOptions,
+    DebugSourceLocation, Declaration, Diagnostic, FunctionBodyItem, FunctionDeclaration,
+    FunctionElseBranch, FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, Module,
+    ModuleLoader, Project, SourceId, SourceSpan, SymbolId, SymbolKind, Token, TokenKind, TypeId,
+    VariableDeclaration, VariableKind, LANGUAGE_VERSION,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
 mod debug_attachment;
+pub mod page_host_typings;
 mod page_runtime;
 pub use debug_attachment::{
     DirectDebugAttachmentError, DirectDebugRegistry, DirectDebugRetentionLimits,
@@ -50,6 +53,9 @@ pub struct BridgeSource {
 pub struct LoweringProvenance {
     pub source: SourceSpan,
     pub kind: LoweringProvenanceKind,
+    /// Precomputed original-source coordinates. The source text is discarded
+    /// before the program enters the live debugger registry.
+    pub location: DebugSourceLocation,
 }
 
 /// How a TypeScript source span contributed a direct BlueJS AST statement.
@@ -113,6 +119,157 @@ pub struct DirectProgramAttachment {
     pub provenance: Vec<AttachedLoweringProvenance>,
     /// Deterministic, validated safe-point entries for bound lowering spans.
     pub safe_point_map: BlueTsSafePointMapV1,
+    /// Checked, generation-bound static symbol/type IDs for unambiguous root
+    /// declaration slots. This is not a runtime value or type assertion.
+    root_symbol_slots: Vec<DirectRootSymbolSlot>,
+}
+
+/// One exact root-code-unit lexical slot joined to compiler-owned BlueTS
+/// static evidence. It carries no runtime value or static type display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DirectRootSymbolSlot {
+    pub program: bluejs::BlueJsProgramHandle,
+    pub code_unit: bluejs::BlueJsCodeUnitId,
+    pub slot_ordinal: u32,
+    pub source_id: SourceId,
+    pub symbol_id: SymbolId,
+    pub type_id: TypeId,
+}
+
+impl DirectProgramAttachment {
+    /// Counts heap payload owned by this attachment, excluding its inline
+    /// fields and the separately retained static debugger registry record.
+    pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        let mut bytes = self
+            .provenance
+            .capacity()
+            .checked_mul(std::mem::size_of::<AttachedLoweringProvenance>())?
+            .checked_add(self.safe_point_map.owned_heap_payload_bytes()?)?
+            .checked_add(
+                self.root_symbol_slots
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<DirectRootSymbolSlot>())?,
+            )?;
+        for provenance in &self.provenance {
+            bytes = bytes.checked_add(provenance.source.module.capacity())?;
+        }
+        Some(bytes)
+    }
+
+    /// Returns only structurally verified root declaration slots after
+    /// rechecking the exact installed generation. A stale or moved attachment
+    /// refuses before returning any static IDs; no runtime value is read.
+    pub fn live_root_symbol_slots(
+        &self,
+        registry: &bluejs::BlueJsProgramRegistry,
+    ) -> Result<&[DirectRootSymbolSlot], BridgeError> {
+        validate_live_root_symbol_slots(
+            registry,
+            self.handle,
+            &self.safe_point_map,
+            &self.root_symbol_slots,
+        )?;
+        Ok(&self.root_symbol_slots)
+    }
+
+    /// Resolves a TypeScript UTF-8 byte position in this exact program
+    /// generation. A verified nested instruction takes precedence over an
+    /// overlapping root declaration; otherwise the nearest following span
+    /// wins. An unbound selected span or exhausted source remains explicitly
+    /// unbound. This never guesses a bytecode offset.
+    pub fn breakpoint_at_or_after(
+        &self,
+        source: &str,
+        source_byte: usize,
+    ) -> DirectSafePointBinding {
+        resolve_breakpoint_at_or_after(
+            self.provenance
+                .iter()
+                .map(|provenance| {
+                    (
+                        provenance.source.module.as_str(),
+                        provenance.source.start,
+                        provenance.source.end,
+                        provenance.safe_point,
+                    )
+                })
+                .chain(verified_child_breakpoint_spans(&self.safe_point_map)),
+            source,
+            source_byte,
+        )
+    }
+}
+
+fn validate_live_root_symbol_slots(
+    registry: &bluejs::BlueJsProgramRegistry,
+    handle: bluejs::BlueJsProgramHandle,
+    safe_point_map: &BlueTsSafePointMapV1,
+    slots: &[DirectRootSymbolSlot],
+) -> Result<(), BridgeError> {
+    let compiled = registry.get(handle).map_err(BridgeError::BlueJsDebug)?;
+    safe_point_map.validate_against(registry, handle)?;
+    let root = compiled.code_units().first().ok_or_else(|| {
+        BridgeError::ProvenanceAttachment("the installed program has no root code unit".to_string())
+    })?;
+    let root_slots = compiled.bytecode().root_declaration_binding_slots();
+    let mut seen = BTreeSet::new();
+    if slots.iter().any(|slot| {
+        slot.program != handle
+            || slot.code_unit != root.id()
+            || !root_slots.contains(&Some(slot.slot_ordinal))
+            || !seen.insert(slot.slot_ordinal)
+    }) {
+        return Err(BridgeError::ProvenanceAttachment(
+            "root symbol slots do not belong to this live program".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn verified_child_breakpoint_spans(
+    map: &BlueTsSafePointMapV1,
+) -> impl Iterator<Item = (&str, usize, usize, DirectSafePointBinding)> {
+    map.entries.iter().filter_map(|entry| {
+        (entry.code_unit.ordinal() != 0).then_some((
+            entry.source.as_str(),
+            entry.start_byte,
+            entry.end_byte,
+            DirectSafePointBinding::Bound(bluejs::BlueJsSafePoint {
+                code_unit: entry.code_unit,
+                bytecode_offset: entry.bytecode_offset,
+            }),
+        ))
+    })
+}
+
+fn resolve_breakpoint_at_or_after<'a>(
+    spans: impl Iterator<Item = (&'a str, usize, usize, DirectSafePointBinding)>,
+    source: &str,
+    source_byte: usize,
+) -> DirectSafePointBinding {
+    // Prefer the most specific containing span, then the nearest following
+    // span. Identical declaration/function ranges prefer the verified child
+    // entry; multiple instructions in one range choose the earliest offset.
+    spans
+        .filter(|(module, _, end, _)| *module == source && *end > source_byte)
+        .min_by_key(|(_, start, end, binding)| {
+            let (ordinal, offset) = match binding {
+                DirectSafePointBinding::Bound(point) => {
+                    (point.code_unit.ordinal() as usize, point.bytecode_offset)
+                }
+                DirectSafePointBinding::Unbound => (0, u32::MAX),
+            };
+            (
+                start.saturating_sub(source_byte),
+                usize::MAX - start,
+                *end,
+                usize::MAX - ordinal,
+                offset,
+            )
+        })
+        .map_or(DirectSafePointBinding::Unbound, |(_, _, _, binding)| {
+            binding
+        })
 }
 
 /// One source-level lowering span attached to a generated BlueJS AST node.
@@ -122,6 +279,8 @@ pub struct AttachedLoweringProvenance {
     pub source: SourceSpan,
     /// How the source span contributed its generated AST statement.
     pub kind: LoweringProvenanceKind,
+    /// Exact original-source UTF-16 coordinates from the checked artifact.
+    pub location: DebugSourceLocation,
     /// The generation-bound BlueJS structured AST node.
     pub node_id: bluejs::BlueJsAstNodeId,
     /// The exact compiler-recorded instruction boundary for this node, or an
@@ -152,12 +311,13 @@ pub struct BlueTsSafePointMapV1 {
     pub compiler_options_fingerprint: String,
     /// Deterministic fingerprint of the canonical source identities.
     pub source_set_hash: String,
-    /// Sorted, unique bound entries. Unbound spans remain in attachment
-    /// provenance instead of acquiring a guessed instruction location.
+    /// Sorted, unique bound instructions owned by compiler-recorded root
+    /// statement ranges or their direct child functions. Unbound spans remain
+    /// in attachment provenance instead of acquiring guessed locations.
     pub entries: Vec<BlueTsSafePointEntryV1>,
 }
 
-/// One bound top-level TypeScript lowering span.
+/// One compiler-owned instruction mapped to its original TypeScript span.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlueTsSafePointEntryV1 {
     /// BlueJS code unit that owns the instruction.
@@ -170,6 +330,8 @@ pub struct BlueTsSafePointEntryV1 {
     pub start_byte: usize,
     /// Exclusive UTF-8 source-byte end.
     pub end_byte: usize,
+    /// Original-source UTF-16 coordinates for this exact bound span.
+    pub location: DebugSourceLocation,
     /// How the original source supplied the executable statement.
     pub provenance_kind: LoweringProvenanceKind,
 }
@@ -265,6 +427,7 @@ impl DirectScript {
             &self.program,
             &self.provenance,
             &self.compiler_options_fingerprint,
+            &self.debug_info,
         )
     }
 
@@ -281,9 +444,13 @@ impl DirectScript {
             registry,
             handle,
             &self.sources,
-            Some(&self.bytecode),
+            DirectArtifactProgram {
+                program: &self.program,
+                expected_bytecode: Some(&self.bytecode),
+            },
             &self.provenance,
             &self.compiler_options_fingerprint,
+            &self.debug_info,
         )
     }
 
@@ -334,6 +501,7 @@ impl DirectModule {
             &self.program,
             &self.provenance,
             &self.compiler_options_fingerprint,
+            &self.debug_info,
         )
     }
 
@@ -346,9 +514,13 @@ impl DirectModule {
             registry,
             handle,
             &self.sources,
-            Some(&self.bytecode),
+            DirectArtifactProgram {
+                program: &self.program,
+                expected_bytecode: Some(&self.bytecode),
+            },
             &self.provenance,
             &self.compiler_options_fingerprint,
+            &self.debug_info,
         )
     }
 
@@ -389,7 +561,8 @@ impl DirectModule {
 /// `delete` with a property target; arithmetic, relational (including `in` and
 /// `instanceof`), equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
-/// non-hole array literals with spread elements, object literals with
+/// array literals with holes or spread elements (but never both in one
+/// literal), object literals with
 /// identifier/string/numeric/computed keys and spread properties, template literals
 /// whose substitutions use the same bounded expression subset, dot or bracket
 /// property reads, comma sequences, identifier/property prefix/postfix updates,
@@ -635,6 +808,10 @@ fn debug_info_for_module(debug_info: &BlueTsDebugInfo, module_id: &str) -> BlueT
         .iter()
         .filter_map(|symbol| symbol.static_type)
         .collect::<BTreeSet<_>>();
+    let contract_ids = symbols
+        .iter()
+        .filter_map(|symbol| symbol.contract)
+        .collect::<BTreeSet<_>>();
     BlueTsDebugInfo {
         language_version: debug_info.language_version.clone(),
         compiler_options_hash: debug_info.compiler_options_hash.clone(),
@@ -651,574 +828,13 @@ fn debug_info_for_module(debug_info: &BlueTsDebugInfo, module_id: &str) -> BlueT
             .cloned()
             .collect(),
         symbols,
+        contracts: debug_info
+            .contracts
+            .iter()
+            .filter(|contract| contract_ids.contains(&contract.id))
+            .cloned()
+            .collect(),
     }
-}
-
-fn source_identity(sources: &[BridgeSource]) -> Result<bluejs::BlueJsSourceIdentity, BridgeError> {
-    let executable_sources = sources
-        .iter()
-        .filter(|source| !source.module.ends_with(".d.ts"))
-        .collect::<Vec<_>>();
-    let [source] = executable_sources.as_slice() else {
-        return Err(BridgeError::InvalidSourceIdentity(
-            "a direct script or module must retain exactly one executable source".to_string(),
-        ));
-    };
-    bluejs::BlueJsSourceIdentity::new(source.module.clone(), source.content_hash.clone())
-        .map_err(BridgeError::BlueJsDebug)
-}
-
-fn attach_direct_program(
-    registry: &mut bluejs::BlueJsProgramRegistry,
-    sources: &[BridgeSource],
-    program: &bluejs::BlueJsProgramV1,
-    provenance: &[LoweringProvenance],
-    compiler_options_fingerprint: &str,
-) -> Result<DirectProgramAttachment, BridgeError> {
-    let source = source_identity(sources)?;
-    let handle = registry
-        .install(source, program)
-        .map_err(BridgeError::BlueJsDebug)?;
-    match attach_existing_direct_program(
-        registry,
-        handle,
-        sources,
-        None,
-        provenance,
-        compiler_options_fingerprint,
-    ) {
-        Ok(attachment) => Ok(attachment),
-        Err(error) => {
-            registry.invalidate(handle);
-            Err(error)
-        }
-    }
-}
-
-fn attach_existing_direct_program(
-    registry: &bluejs::BlueJsProgramRegistry,
-    handle: bluejs::BlueJsProgramHandle,
-    sources: &[BridgeSource],
-    expected_bytecode: Option<&bluejs::Bytecode>,
-    provenance: &[LoweringProvenance],
-    compiler_options_fingerprint: &str,
-) -> Result<DirectProgramAttachment, BridgeError> {
-    let source = source_identity(sources)?;
-    let compiled = registry.get(handle).map_err(BridgeError::BlueJsDebug)?;
-    if compiled.source() != &source {
-        return Err(BridgeError::ProvenanceAttachment(
-            "the live program source identity does not match this direct artifact".to_string(),
-        ));
-    }
-    if expected_bytecode.is_some_and(|expected| !bytecode_matches(expected, compiled.bytecode())) {
-        return Err(BridgeError::ProvenanceAttachment(
-            "the live program bytecode does not match this direct artifact".to_string(),
-        ));
-    }
-    let nodes = compiled
-        .ast_nodes()
-        .iter()
-        .filter(|node| node.is_top_level_statement())
-        .map(|node| node.id())
-        .collect::<Vec<_>>();
-    if nodes.len() != provenance.len() {
-        return Err(BridgeError::ProvenanceAttachment(format!(
-            "BlueTS retained {} top-level lowering spans but BlueJS generated {} top-level statements",
-            provenance.len(),
-            nodes.len()
-        )));
-    }
-    let attached_provenance = provenance
-        .iter()
-        .zip(nodes)
-        .map(|(provenance, node_id)| {
-            let safe_point = match registry.safe_point_for_ast_node(handle, node_id) {
-                Ok(safe_point) => DirectSafePointBinding::Bound(safe_point),
-                Err(bluejs::BlueJsProgramDebugError::AstNodeUnbound) => {
-                    DirectSafePointBinding::Unbound
-                }
-                Err(error) => return Err(BridgeError::BlueJsDebug(error)),
-            };
-            Ok(AttachedLoweringProvenance {
-                source: provenance.source.clone(),
-                kind: provenance.kind,
-                node_id,
-                safe_point,
-            })
-        })
-        .collect::<Result<Vec<_>, BridgeError>>()?;
-    let safe_point_map = build_safe_point_map(
-        handle,
-        compiler_options_fingerprint,
-        sources,
-        &attached_provenance,
-    )?;
-    Ok(DirectProgramAttachment {
-        handle,
-        provenance: attached_provenance,
-        safe_point_map,
-    })
-}
-
-fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> bool {
-    expected.bytes() == actual.bytes()
-        && expected.constants() == actual.constants()
-        && expected.root_statement_offsets() == actual.root_statement_offsets()
-        && expected
-            .child_code_units()
-            .zip(actual.child_code_units())
-            .all(|(expected, actual)| bytecode_matches(expected, actual))
-        && expected.child_code_units().count() == actual.child_code_units().count()
-}
-
-impl BlueTsSafePointMapV1 {
-    /// Verifies this map against its exact live BlueJS generation. The caller
-    /// must separately compare the retained compiler/source fingerprints with
-    /// its authorized page-load request before exposing the map.
-    pub fn validate_against(
-        &self,
-        registry: &bluejs::BlueJsProgramRegistry,
-        handle: bluejs::BlueJsProgramHandle,
-    ) -> Result<(), BridgeError> {
-        if self.format != BLUEJS_SAFE_POINT_MAP_ABI_V1
-            || self.program_abi != bluejs::BLUEJS_PROGRAM_ABI_V1
-            || self.program_generation != handle.generation().as_u64()
-        {
-            return Err(BridgeError::ProvenanceAttachment(
-                "safe-point map ABI or generation does not match the live program".to_string(),
-            ));
-        }
-        for entry in &self.entries {
-            registry
-                .validate_safe_point(
-                    handle,
-                    bluejs::BlueJsSafePoint {
-                        code_unit: entry.code_unit,
-                        bytecode_offset: entry.bytecode_offset,
-                    },
-                )
-                .map_err(BridgeError::BlueJsDebug)?;
-        }
-        if !safe_point_entries_are_strictly_valid(&self.entries) {
-            return Err(BridgeError::ProvenanceAttachment(
-                "safe-point map entries are not sorted and unique".to_string(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-fn build_safe_point_map(
-    handle: bluejs::BlueJsProgramHandle,
-    compiler_options_fingerprint: &str,
-    sources: &[BridgeSource],
-    provenance: &[AttachedLoweringProvenance],
-) -> Result<BlueTsSafePointMapV1, BridgeError> {
-    let mut entries = provenance
-        .iter()
-        .filter_map(|provenance| match provenance.safe_point {
-            DirectSafePointBinding::Bound(safe_point) => Some(BlueTsSafePointEntryV1 {
-                code_unit: safe_point.code_unit,
-                bytecode_offset: safe_point.bytecode_offset,
-                source: provenance.source.module.clone(),
-                start_byte: provenance.source.start,
-                end_byte: provenance.source.end,
-                provenance_kind: provenance.kind,
-            }),
-            DirectSafePointBinding::Unbound => None,
-        })
-        .collect::<Vec<_>>();
-    entries.sort_by(safe_point_entry_order);
-    if !safe_point_entries_are_strictly_valid(&entries) {
-        return Err(BridgeError::ProvenanceAttachment(
-            "multiple lowering spans resolved to the same safe-point map entry".to_string(),
-        ));
-    }
-    Ok(BlueTsSafePointMapV1 {
-        format: BLUEJS_SAFE_POINT_MAP_ABI_V1,
-        program_abi: bluejs::BLUEJS_PROGRAM_ABI_V1,
-        program_generation: handle.generation().as_u64(),
-        compiler_options_fingerprint: compiler_options_fingerprint.to_string(),
-        source_set_hash: source_set_hash(sources),
-        entries,
-    })
-}
-
-fn safe_point_entries_are_strictly_valid(entries: &[BlueTsSafePointEntryV1]) -> bool {
-    entries.windows(2).all(|pair| {
-        safe_point_entry_order(&pair[0], &pair[1]).is_lt()
-            && (pair[0].code_unit != pair[1].code_unit
-                || pair[0].bytecode_offset != pair[1].bytecode_offset)
-    })
-}
-
-fn safe_point_entry_order(
-    left: &BlueTsSafePointEntryV1,
-    right: &BlueTsSafePointEntryV1,
-) -> std::cmp::Ordering {
-    (
-        left.code_unit.generation(),
-        left.code_unit.ordinal(),
-        left.bytecode_offset,
-        &left.source,
-        left.start_byte,
-        left.end_byte,
-        left.provenance_kind,
-    )
-        .cmp(&(
-            right.code_unit.generation(),
-            right.code_unit.ordinal(),
-            right.bytecode_offset,
-            &right.source,
-            right.start_byte,
-            right.end_byte,
-            right.provenance_kind,
-        ))
-}
-
-fn source_set_hash(sources: &[BridgeSource]) -> String {
-    let mut source_identities = sources
-        .iter()
-        .map(|source| (&source.module, &source.content_hash))
-        .collect::<Vec<_>>();
-    source_identities.sort_unstable();
-    let mut hash = 0xcbf29ce484222325u64;
-    for (module, content_hash) in source_identities {
-        for byte in module
-            .bytes()
-            .chain(std::iter::once(0xff))
-            .chain(content_hash.bytes())
-            .chain(std::iter::once(0xfe))
-        {
-            hash ^= u64::from(byte);
-            hash = hash.wrapping_mul(0x100000001b3);
-        }
-    }
-    format!("bts-source-set-{hash:016x}")
-}
-
-fn lower_script(
-    module: &Module,
-) -> Result<(Vec<bluejs::Stmt>, Vec<LoweringProvenance>), BridgeError> {
-    let mut body = Vec::new();
-    let mut provenance = Vec::new();
-    for declaration in &module.declarations {
-        match declaration {
-            Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
-            Declaration::Variable(variable) if !variable.declared && !variable.exported => {
-                body.push(lower_variable(module, variable)?);
-                provenance.push(LoweringProvenance {
-                    source: variable.span.clone(),
-                    kind: LoweringProvenanceKind::LoweredSyntax,
-                });
-            }
-            Declaration::Raw(raw) => {
-                body.push(bluejs::Stmt::Expr(
-                    ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
-                ));
-                provenance.push(LoweringProvenance {
-                    source: raw.span.clone(),
-                    kind: LoweringProvenanceKind::Copied,
-                });
-            }
-            Declaration::Import(import) if import.type_only => {}
-            Declaration::DefaultExport(export) => {
-                return Err(unsupported(
-                    export.span.clone(),
-                    "ESM default exports require the module bridge",
-                ));
-            }
-            Declaration::ValueExport(export) => {
-                return Err(unsupported(
-                    export.span.clone(),
-                    "ESM named exports require the module bridge",
-                ));
-            }
-            Declaration::Import(import) => {
-                return Err(unsupported(
-                    import.span.clone(),
-                    "runtime imports require the module bridge",
-                ));
-            }
-            Declaration::Variable(variable) => {
-                return Err(unsupported(
-                    variable.span.clone(),
-                    "declared or exported variables require a non-script bridge mode",
-                ));
-            }
-            Declaration::Function(function)
-                if !function.exported
-                    && !function.default_export
-                    && !function.declared
-                    && !function.overload =>
-            {
-                body.push(lower_function(module, function)?);
-                provenance.push(LoweringProvenance {
-                    source: function.span.clone(),
-                    kind: LoweringProvenanceKind::LoweredSyntax,
-                });
-            }
-            Declaration::Function(function) => {
-                return Err(unsupported(
-                    function.span.clone(),
-                    "declared, overloaded, or exported functions require a non-script bridge mode",
-                ));
-            }
-        }
-    }
-    Ok((body, provenance))
-}
-
-fn lower_module(
-    project: Option<&Project>,
-    module: &Module,
-) -> Result<(bluejs::Module, Vec<LoweringProvenance>), BridgeError> {
-    let mut body = Vec::new();
-    let mut imports = Vec::new();
-    let mut exports = Vec::new();
-    let mut requests = Vec::new();
-    let mut provenance = Vec::new();
-    for declaration in &module.declarations {
-        match declaration {
-            Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
-            Declaration::Variable(variable) if !variable.declared => {
-                body.push(lower_variable(module, variable)?);
-                provenance.push(LoweringProvenance {
-                    source: variable.span.clone(),
-                    kind: LoweringProvenanceKind::LoweredSyntax,
-                });
-                if variable.exported {
-                    exports.push(bluejs::ExportEntry::Local {
-                        export_name: variable.name.clone(),
-                        local_name: variable.name.clone(),
-                    });
-                }
-            }
-            Declaration::Function(function) if !function.declared && !function.overload => {
-                body.push(lower_function(module, function)?);
-                provenance.push(LoweringProvenance {
-                    source: function.span.clone(),
-                    kind: LoweringProvenanceKind::LoweredSyntax,
-                });
-                if function.default_export {
-                    exports.push(bluejs::ExportEntry::Local {
-                        export_name: "default".to_string(),
-                        local_name: function.name.clone(),
-                    });
-                } else if function.exported {
-                    exports.push(bluejs::ExportEntry::Local {
-                        export_name: function.name.clone(),
-                        local_name: function.name.clone(),
-                    });
-                }
-            }
-            Declaration::Raw(raw) => {
-                body.push(bluejs::Stmt::Expr(
-                    ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
-                ));
-                provenance.push(LoweringProvenance {
-                    source: raw.span.clone(),
-                    kind: LoweringProvenanceKind::Copied,
-                });
-            }
-            Declaration::DefaultExport(export) => exports.push(bluejs::ExportEntry::Local {
-                export_name: "default".to_string(),
-                local_name: export.name.clone(),
-            }),
-            Declaration::ValueExport(export) => {
-                exports.extend(
-                    export
-                        .bindings
-                        .iter()
-                        .map(|binding| bluejs::ExportEntry::Local {
-                            export_name: binding.exported.clone(),
-                            local_name: binding.local.clone(),
-                        }),
-                );
-            }
-            Declaration::Import(import) if import.type_only => {}
-            Declaration::Import(import) => {
-                let Some(project) = project else {
-                    return Err(unsupported(
-                        import.span.clone(),
-                        "runtime imports require the direct module-graph bridge",
-                    ));
-                };
-                let request = project
-                    .resolved_module(&module.id, &import.specifier)
-                    .map(str::to_owned)
-                    .ok_or_else(|| {
-                        unsupported(
-                            import.specifier_span.clone(),
-                            "BlueTS did not retain a canonical target for this runtime import",
-                        )
-                    })?;
-                if !requests.contains(&request) {
-                    requests.push(request.clone());
-                }
-                if import.bindings.is_empty() {
-                    imports.push(bluejs::ImportEntry {
-                        module_request: request,
-                        import_name: bluejs::ImportName::Named("default".to_string()),
-                        local_name: None,
-                        module_type: bluejs::ModuleType::JavaScript,
-                    });
-                } else {
-                    imports.extend(import.bindings.iter().map(|binding| bluejs::ImportEntry {
-                        module_request: request.clone(),
-                        import_name: if binding.imported == "*" {
-                            bluejs::ImportName::Namespace
-                        } else {
-                            bluejs::ImportName::Named(binding.imported.clone())
-                        },
-                        local_name: Some(binding.local.clone()),
-                        module_type: bluejs::ModuleType::JavaScript,
-                    }));
-                }
-            }
-            Declaration::Variable(variable) => {
-                return Err(unsupported(
-                    variable.span.clone(),
-                    "declared variables cannot be lowered to a direct module",
-                ));
-            }
-            Declaration::Function(function) => {
-                return Err(unsupported(
-                    function.span.clone(),
-                    "declared or overloaded functions cannot be lowered to a direct module",
-                ));
-            }
-        }
-    }
-    Ok((
-        bluejs::Module {
-            body,
-            imports,
-            exports,
-            // BlueTS has no `import defer` / source-phase syntax: every runtime
-            // import is an ordinary evaluation-phase request.
-            requests: requests
-                .into_iter()
-                .map(|specifier| bluejs::RequestedModule {
-                    specifier,
-                    module_type: bluejs::ModuleType::JavaScript,
-                    phase: bluejs::ImportPhase::Evaluation,
-                })
-                .collect(),
-        },
-        provenance,
-    ))
-}
-
-fn lower_function(
-    module: &Module,
-    function: &FunctionDeclaration,
-) -> Result<bluejs::Stmt, BridgeError> {
-    let mut params = Vec::with_capacity(function.parameters.len());
-    for (index, parameter) in function.parameters.iter().enumerate() {
-        if parameter.rest && index + 1 != function.parameters.len() {
-            return Err(unsupported(
-                parameter.span.clone(),
-                "a rest parameter must be the final direct function parameter",
-            ));
-        }
-        params.push(bluejs::Param {
-            pattern: bluejs::Pattern::Identifier(parameter.name.clone()),
-            default: parameter
-                .default
-                .as_deref()
-                .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
-                .transpose()?,
-            rest: parameter.rest,
-        });
-    }
-
-    let body = lower_function_body(module, &function.body)?;
-
-    Ok(bluejs::Stmt::FunctionDecl(bluejs::Function {
-        name: Some(function.name.clone()),
-        params,
-        body,
-        generator: false,
-        is_async: false,
-    }))
-}
-
-fn lower_function_body(
-    module: &Module,
-    items: &[FunctionBodyItem],
-) -> Result<Vec<bluejs::Stmt>, BridgeError> {
-    let mut body = Vec::with_capacity(items.len());
-    for item in items {
-        match item {
-            FunctionBodyItem::Variable(variable) => body.push(lower_variable(module, variable)?),
-            FunctionBodyItem::Expression { tokens, .. } => body.push(bluejs::Stmt::Expr(
-                ExpressionLowerer::new(&module.id, tokens).parse()?,
-            )),
-            FunctionBodyItem::Throw { tokens, .. } => body.push(bluejs::Stmt::Throw(
-                ExpressionLowerer::new(&module.id, tokens).parse()?,
-            )),
-            FunctionBodyItem::Return { tokens, .. } => {
-                let value = (!tokens.is_empty())
-                    .then(|| ExpressionLowerer::new(&module.id, tokens).parse())
-                    .transpose()?;
-                body.push(bluejs::Stmt::Return(value));
-            }
-            FunctionBodyItem::If(statement) => body.push(lower_function_if(module, statement)?),
-            FunctionBodyItem::Opaque(span) => {
-                return Err(unsupported(
-                    span.clone(),
-                    "function body syntax is not yet in the v1 direct bridge subset",
-                ));
-            }
-        }
-    }
-    Ok(body)
-}
-
-fn lower_function_if(
-    module: &Module,
-    statement: &FunctionIfStatement,
-) -> Result<bluejs::Stmt, BridgeError> {
-    let test = ExpressionLowerer::new(&module.id, &statement.test).parse()?;
-    let consequent = Box::new(bluejs::Stmt::Block(lower_function_body(
-        module,
-        &statement.consequent,
-    )?));
-    let alternate = match &statement.alternate {
-        Some(FunctionElseBranch::Braced(alternate)) => Some(Box::new(bluejs::Stmt::Block(
-            lower_function_body(module, alternate)?,
-        ))),
-        Some(FunctionElseBranch::ElseIf(alternate)) => {
-            Some(Box::new(lower_function_if(module, alternate)?))
-        }
-        None => None,
-    };
-    Ok(bluejs::Stmt::If {
-        test,
-        consequent,
-        alternate,
-    })
-}
-
-fn lower_variable(
-    module: &Module,
-    variable: &VariableDeclaration,
-) -> Result<bluejs::Stmt, BridgeError> {
-    let init = (!variable.initializer.is_empty())
-        .then(|| ExpressionLowerer::new(&module.id, &variable.initializer).parse())
-        .transpose()?;
-    Ok(bluejs::Stmt::VarDecl(
-        match variable.kind {
-            VariableKind::Const => bluejs::DeclKind::Const,
-            VariableKind::Let => bluejs::DeclKind::Let,
-            VariableKind::Var => bluejs::DeclKind::Var,
-        },
-        vec![bluejs::VarDeclarator {
-            pattern: bluejs::Pattern::Identifier(variable.name.clone()),
-            init,
-        }],
-    ))
 }
 
 fn unsupported(span: SourceSpan, message: impl Into<String>) -> BridgeError {
@@ -1254,8 +870,16 @@ impl DirectModuleGraph {
     }
 }
 
+mod attachment;
 mod expression;
+mod lowering;
+use attachment::{
+    attach_direct_program, attach_existing_direct_program, build_safe_point_map, source_identity,
+    DirectArtifactProgram,
+};
+#[cfg(test)]
 use expression::ExpressionLowerer;
+use lowering::{lower_module, lower_script};
 
 #[cfg(test)]
 mod tests;

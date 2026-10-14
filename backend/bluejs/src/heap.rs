@@ -40,9 +40,12 @@ use std::time::Duration;
 
 mod binary_data;
 pub(crate) use binary_data::{f16_bits_to_f64, f64_to_f16_bits};
+mod capabilities;
+pub(crate) use capabilities::ObjectCapabilities;
 mod collection_iteration;
 pub(crate) use collection_iteration::CollectionEntry;
 mod core;
+mod debugger;
 mod exotic;
 mod lifecycle;
 mod object_storage;
@@ -177,13 +180,7 @@ pub(crate) struct IteratorHelperState {
     pub executing: bool,
     pub kind: IteratorHelperKind,
 }
-pub(crate) type ClosureState = (
-    Rc<Bytecode>,
-    Vec<ObjectId>,
-    Value,
-    Option<ObjectId>,
-    Option<Value>,
-);
+pub(crate) type ClosureState = (Rc<Bytecode>, Vec<ObjectId>, Value, Option<ObjectId>);
 
 /// The class-declaration side of an ECMAScript private element.  These
 /// entries live on the declaring class's home object, never in ordinary
@@ -220,14 +217,24 @@ impl PrivateElement {
 #[derive(Default)]
 struct ClosureMetadata {
     home: Option<ObjectId>,
-    class_base: Option<Value>,
+    /// A class constructor's `[[Fields]]`: the method-like function that
+    /// defines its instance elements on a newly constructed object.
+    fields: Option<ObjectId>,
+    /// The with objects (outermost first) that were active where a function
+    /// created inside `with` was created.
+    with_objects: Vec<Value>,
+    /// The `new.target` an arrow function inherits from the function it was
+    /// created in (unset when that was `undefined`).
+    new_target: Option<Value>,
 }
 
 impl ClosureMetadata {
     fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
         self.home
             .into_iter()
-            .chain(self.class_base.iter().filter_map(Value::object_id))
+            .chain(self.fields)
+            .chain(self.with_objects.iter().filter_map(Value::object_id))
+            .chain(self.new_target.iter().filter_map(Value::object_id))
     }
 }
 
@@ -336,6 +343,8 @@ pub(crate) enum GeneratorState {
         receiver: Value,
         args: Vec<Value>,
         home: Option<ObjectId>,
+        /// The `with` objects the generator function closed over.
+        with_objects: Vec<Value>,
     },
     Suspended {
         code: Rc<Bytecode>,
@@ -369,6 +378,10 @@ pub(crate) enum GeneratorState {
         dynamic_bindings: Vec<(String, ObjectId, Vec<ObjectId>)>,
         home: Option<ObjectId>,
         callee: Value,
+        /// The `with` objects in scope at the suspension point: the ones the
+        /// function closed over, its parameter environment and any `with`
+        /// statement the body is inside.
+        with_objects: Vec<Value>,
     },
     /// The frame is executing: its state has moved into the interpreter, and
     /// GeneratorValidate makes a re-entrant `next`/`return`/`throw` a
@@ -384,12 +397,28 @@ pub(crate) enum AsyncGeneratorCompletion {
     Next(Value),
     Return(Value),
     Throw(Value),
+    /// A `return(value)` request whose operand has been awaited, as
+    /// AsyncGeneratorUnwrapYieldResumption does for a generator suspended at a
+    /// `yield`. It is forwarded to an active `yield*` delegate, if any.
+    ReturnAwaited(Value),
+    /// A return completion that is injected into the generator as is: the
+    /// `yield*` delegate had no `return` method and the operand was awaited
+    /// a second time.
+    ResumeReturn(Value),
+    /// The throw that a rejected second await of a `yield*` return raises at
+    /// the `yield*` itself (it is not forwarded to the delegate).
+    ResumeThrow(Value),
 }
 
 impl AsyncGeneratorCompletion {
     fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
         match self {
-            Self::Next(value) | Self::Return(value) | Self::Throw(value) => value.object_id(),
+            Self::Next(value)
+            | Self::Return(value)
+            | Self::Throw(value)
+            | Self::ReturnAwaited(value)
+            | Self::ResumeReturn(value)
+            | Self::ResumeThrow(value) => value.object_id(),
         }
         .into_iter()
     }
@@ -444,7 +473,10 @@ impl AsyncGeneratorControl {
                 .map(|request| match &request.completion {
                     AsyncGeneratorCompletion::Next(value)
                     | AsyncGeneratorCompletion::Return(value)
-                    | AsyncGeneratorCompletion::Throw(value) => value.payload_bytes(),
+                    | AsyncGeneratorCompletion::Throw(value)
+                    | AsyncGeneratorCompletion::ReturnAwaited(value)
+                    | AsyncGeneratorCompletion::ResumeReturn(value)
+                    | AsyncGeneratorCompletion::ResumeThrow(value) => value.payload_bytes(),
                 })
                 .sum::<usize>()
     }
@@ -505,6 +537,7 @@ impl GeneratorState {
                 receiver,
                 args,
                 home,
+                with_objects,
                 ..
             } => captures
                 .iter()
@@ -513,6 +546,7 @@ impl GeneratorState {
                 .chain(receiver.object_id())
                 .chain(args.iter().filter_map(Value::object_id))
                 .chain(*home)
+                .chain(with_objects.iter().filter_map(Value::object_id))
                 .collect(),
             Self::Suspended {
                 stack,
@@ -529,10 +563,12 @@ impl GeneratorState {
                 dynamic_bindings,
                 home,
                 callee,
+                with_objects,
                 ..
             } => {
                 let mut references = stack
                     .iter()
+                    .chain(with_objects.iter())
                     .chain(bindings.iter().flatten())
                     .chain(std::iter::once(this))
                     .chain(args.iter())
@@ -867,7 +903,7 @@ enum ObjectKind {
     String(JsString),
     NativeFunction {
         function: NativeFunction,
-        initial_name: JsString,
+        initial_name: String,
     },
     Closure {
         code: Rc<Bytecode>,
@@ -1065,21 +1101,21 @@ impl SharedBuffer {
         timeout: Option<Duration>,
     ) -> SharedWaitResult {
         let (status_lock, ready) = &*waiter.signal;
-        let mut status = status_lock
+        let status = status_lock
             .lock()
             .expect("SharedArrayBuffer waiter status lock poisoned");
-        if status.is_none() {
-            if let Some(timeout) = timeout {
-                let (next, _) = ready
-                    .wait_timeout_while(status, timeout, |status| status.is_none())
-                    .expect("SharedArrayBuffer waiter condition poisoned");
-                status = next;
-            } else {
-                status = ready
-                    .wait_while(status, |status| status.is_none())
-                    .expect("SharedArrayBuffer waiter condition poisoned");
-            }
-        }
+        // Both predicate waits return immediately when notify already set
+        // the status before this waiter acquired its condition lock.
+        let status = if let Some(timeout) = timeout {
+            let (status, _) = ready
+                .wait_timeout_while(status, timeout, |status| status.is_none())
+                .expect("SharedArrayBuffer waiter condition poisoned");
+            status
+        } else {
+            ready
+                .wait_while(status, |status| status.is_none())
+                .expect("SharedArrayBuffer waiter condition poisoned")
+        };
         let result = status.unwrap_or(SharedWaitResult::TimedOut);
         drop(status);
         self.waiters
@@ -1565,6 +1601,9 @@ pub struct Heap {
     scoped_roots: Vec<Vec<ObjectId>>,
     managed_bytes: usize,
     next_major_bytes: usize,
+    /// First refused request in a test allocation sweep, after normal GC.
+    #[cfg(any(test, coverage))]
+    first_failed_allocation: Option<usize>,
     minor_collections: u64,
     major_collections: u64,
     root_registrations: u64,

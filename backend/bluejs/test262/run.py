@@ -83,7 +83,14 @@ DYNAMIC_SOURCE_PHASE_IMPORT_REQUEST = re.compile(
 )
 # Test262's host-provided Module Source specifier (INTERPRETING.md).
 HOST_MODULE_SOURCE_SPECIFIER = "<module source>"
-NATIVE_INCLUDES = frozenset({"sta.js", "assert.js", "propertyHelper.js", "isConstructor.js"})
+# Only `sta.js` and `assert.js` are replaced by native helpers: a JavaScript
+# `assert.js` costs enough dispatches per call to push loop-driven fixtures
+# (e.g. `built-ins/Math/sqrt/results.js`) past the ordinary instruction budget,
+# and the native `assert` family is differentially tested against the upstream
+# source. `propertyHelper.js` and `isConstructor.js` run unchanged: their
+# behaviour (destructive `delete`/write probes, `restore`, exact messages) is
+# defined by that source, and executing it costs no fixture its budget.
+NATIVE_INCLUDES = frozenset({"sta.js", "assert.js"})
 # Test262's general deepEqual harness is preserved by default. The two
 # DateTimeFormat fixtures compare wide arrays of two-/three-field part data
 # records, and this TypedArray fixture compares 39 view/species pairs; their
@@ -188,6 +195,56 @@ WALL_CLOCK_BUSY_WAIT_FIXTURES = frozenset(
     {"language/expressions/dynamic-import/await-import-evaluation.js"}
 )
 WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET = 10_000_000
+# `annexB/.../String/prototype/substr/start-and-length-as-numbers.js` checks
+# `substr` against a reference implementation for 4 strings x 35 starts x 36
+# lengths (5,040 finite calls), each followed by a per-character comparison
+# loop and several assertions. The matrix is fixed and only its size exceeds
+# the default. Measured minimum: 1,496,386 dispatches, identical in both
+# modes; the allowance is 4x that (the factor the Temporal table fixtures
+# use), applies to this exact path only, and the ordinary two-second wall
+# deadline still bounds it (about 0.7-0.9 s at the measured cost).
+STRING_SUBSTR_NUMBER_MATRIX_FIXTURES = frozenset(
+    {"annexB/built-ins/String/prototype/substr/start-and-length-as-numbers.js"}
+)
+STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET = 6_000_000
+# Fixed, finite staging fixtures whose size only just exceeds the default: each
+# is straight-line or a bounded loop (a few hundred iterations, or a run of
+# assertions that build their failure message eagerly), and each finishes in a
+# small fraction of a second. Every entry is an exact path with an allowance of
+# 4x its measured minimum, which is identical in sloppy and strict mode; the
+# ordinary two-second wall deadline still bounds them.
+#   with-dense.js                          178,125  (63 receivers x 13 indices)
+#   parse-reviver-array-delete.js          185,937  (about 4,100 reviver calls)
+#   log2-approx.js                         325,000  (2,097 assertNear checks)
+#   es5ish-defineGetter-defineSetter.js    110,156  (about 60 descriptor checks)
+# A fixture that is too slow for that deadline even with fuel is deliberately
+# not listed here: it needs a wall-deadline allowance too, which only
+# `LARGE_FIXTURE_RESOURCES` below can express (staging/sm/Array/toSpliced-dense.js
+# needs 19.6M dispatches and about 7 s; each
+# staging/sm/Date/dst-offset-caching-N-of-8.js part needs 100M-130M dispatches
+# and runs for more than half a minute).
+FINITE_FIXTURE_INSTRUCTION_BUDGETS = {
+    "staging/sm/Array/with-dense.js": 750_000,
+    "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
+    "staging/sm/Math/log2-approx.js": 1_300_000,
+    "staging/sm/extensions/es5ish-defineGetter-defineSetter.js": 450_000,
+}
+# `staging/sm/String/unicode-braced.js` evaluates a source string built from
+# 2**24 zeros, which is 32 MiB of UTF-16 by itself: it needs a string limit of at
+# least 33,558,528 bytes (33,554,432 is not enough) against the ordinary 1 MiB.
+# The remainder is a few dozen assertions and it runs in about a second with the
+# default dispatch budget and heap. The limit is 64 MiB, twice the requirement
+# (a data size, so more headroom would buy nothing), for this exact path only.
+FIXTURE_STRING_LIMITS = {
+    "staging/sm/String/unicode-braced.js": 64 * 1024 * 1024,
+}
+
+
+def fixture_string_limit(relative):
+    """Return the exact-path string limit for a fixture, or None for the default."""
+    return FIXTURE_STRING_LIMITS.get(relative)
+
+
 TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET = 50_000_000
 # `testIntl.js` runs every asserted result through a finite locale and
 # numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
@@ -545,6 +602,77 @@ REGEXP_BMP_LITERAL_FIXTURES = {
 }
 REGEXP_NON_WHITESPACE_BMP_FIXTURE = "built-ins/RegExp/character-class-escape-non-whitespace.js"
 
+# ECMA-262's Agent Record [[CanBlock]] field is host-defined (AgentCanSuspend
+# returns it verbatim; the spec's own note on it gives a browser's main
+# thread as one example of a host that might reasonably choose false, not a
+# universal rule). Test262 tags each Atomics.wait-suspend fixture with the
+# host capability it assumes (CanBlockIsTrue / CanBlockIsFalse) rather than
+# asserting both are achievable by the same host at once, and INTERPRETING.md
+# says a fixture "should only be run" against a host whose own [[CanBlock]]
+# matches. BlueJS's Atomics.wait genuinely suspends the agent (see
+# atomics_wait/atomics_wait_status in
+# backend/bluejs/src/vm/builtins/binary_data.rs), and every CanBlockIsTrue
+# fixture already passes against that behavior, so this host's own
+# [[CanBlock]] is true. A CanBlockIsFalse fixture is therefore inapplicable
+# to this host, not an engine gap: making it pass would mean making
+# Atomics.wait always throw, which would break every already-passing
+# CanBlockIsTrue fixture. This is a host capability declaration, distinct
+# from a capability BlueJS actually lacks, so it gets its own "excluded"
+# outcome instead of being folded into "unsupported".
+HOST_CAN_BLOCK = True
+CANBLOCK_FLAG_REQUIREMENT = {"CanBlockIsTrue": True, "CanBlockIsFalse": False}
+
+
+def canblock_exclusion(flags):
+    """The reason a CanBlockIsTrue/CanBlockIsFalse-flagged fixture does not
+    apply to this host's declared HOST_CAN_BLOCK, or None if it does (or
+    carries neither flag)."""
+    for flag, required in CANBLOCK_FLAG_REQUIREMENT.items():
+        if flag in flags and required != HOST_CAN_BLOCK:
+            return f"host declares [[CanBlock]] = {str(HOST_CAN_BLOCK).lower()}, fixture requires {flag}"
+    return None
+
+
+# A fixture whose own assertions contradict the *current* ECMA-262 draft --
+# verified by reading the live spec text, not inferred from disagreeing with
+# BlueJS -- and which upstream Test262 has already independently identified
+# and drafted a fix for, is a different thing from an engine gap ("fail") or
+# a capability BlueJS lacks ("unsupported"): the corpus itself hasn't caught
+# up yet. "stale_corpus" says exactly that -- this host already matches the
+# current draft (like every other engine that implements it), and the test
+# will presumably start passing on its own once the upstream fix lands,
+# without any BlueJS change. Keyed by exact path only, each entry documents
+# the live spec citation and the upstream issue/PR, never "we disagree with
+# this test" alone.
+STALE_CORPUS_FIXTURES = {
+    # Verified 2026-09-23 against the live ECMA-262 draft's
+    # `FunctionDeclarationInstantiation` Annex B web-compat insertion point
+    # (https://tc39.es/ecma262/multipage/ordinary-and-exotic-objects-behaviours.html#step-functiondeclarationinstantiation-web-compat-insertion-point):
+    # the `funcName is not "arguments"` guard there gates only *creating a
+    # new* var binding; the sibling step that runs when the block function
+    # is evaluated (`funcEnv.SetMutableBinding(funcName, funcObj, false)`)
+    # has no such guard and still overwrites an existing `arguments`
+    # binding. This fixture (2017) was written against an older edition
+    # that appended `"arguments"` to `parameterNames` itself, a step the
+    # current algorithm no longer has -- V8 and SpiderMonkey both match the
+    # current text, as does BlueJS. tc39/test262#5113 documents this exact
+    # contradiction (it conflicts with
+    # staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments.js,
+    # which is NOT in this table -- that fixture already matches the
+    # current draft); tc39/test262#5112 is the open, unmerged fix.
+    "annexB/language/function-code/block-decl-func-skip-arguments.js": (
+        "contradicts the current FunctionDeclarationInstantiation Annex B "
+        "web-compat insertion point (verified against the live spec text); "
+        "see tc39/test262#5113, fix pending in tc39/test262#5112"
+    ),
+}
+
+
+def stale_corpus_reason(relative):
+    """The reason `relative` is a known-stale corpus fixture (see
+    STALE_CORPUS_FIXTURES), or None for every other path."""
+    return STALE_CORPUS_FIXTURES.get(relative)
+
 
 def fetch(destination):
     if destination.exists():
@@ -832,6 +960,16 @@ def selected_files(all_files, corpus, pattern, excluded=""):
     return files
 
 
+def scheduling_groups(files, corpus, jobs):
+    """Isolate explicitly budgeted long fixtures without extending deadlines."""
+    ordinary, heavy = [], []
+    for path in files:
+        relative = path.relative_to(corpus / "test").as_posix()
+        group = heavy if LARGE_FIXTURE_RESOURCES.get(relative, {}).get("timeout", 0) >= 60 else ordinary
+        group.append(path)
+    return [("ordinary", ordinary, jobs), ("heavy", heavy, min(jobs, 2))]
+
+
 def execution_source(relative, source):
     """Return semantic native adapters for bounded, pinned stress fixtures."""
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
@@ -893,6 +1031,14 @@ def classify(reply, negative):
     kind = reply.get("kind")
     if kind == "unsupported":
         return "unsupported"
+    if kind == "excluded":
+        # A host-capability declaration disagreeing with a fixture's own
+        # applicability (see HOST_CAN_BLOCK), never a negative-error match.
+        return "excluded"
+    if kind == "stale_corpus":
+        # The fixture contradicts the current spec text (see
+        # STALE_CORPUS_FIXTURES); it is recorded without being dispatched.
+        return "stale_corpus"
     if kind in {"timeout", "resource_error"}:
         return "timeout" if kind == "timeout" else "fail"
     if kind in {"harness_error", "worker_error"}:
@@ -922,8 +1068,136 @@ def format_progress(completed, total, counts, active, now, checkpoint=False):
     )
 
 
+# Finite fixtures whose real size exceeds the default per-string ceiling
+# (1 MiB), the default managed-heap ceiling (16 MiB, which also caps an
+# ArrayBuffer), the dispatch budget or the wall deadline. Each entry is exact
+# path only and keeps the fixture bounded: it is roughly 3-4x the measured
+# minimum (README, "Large finite fixtures"), never "unlimited". Keys are
+# `string_limit` and `heap_limit` in bytes, `instruction_budget` in dispatches
+# and `timeout` in seconds; an absent key leaves that default alone.
+LARGE_FIXTURE_RESOURCES = {
+    # new DataView(new ArrayBuffer(20 * 1024 * 1024)); the heap needs 21 MiB.
+    "staging/sm/extensions/dataview.js": {"heap_limit": 64 * 1024 * 1024},
+    # Two regular expressions with a 2**24-zero braced escape, built by eval
+    # and by the RegExp constructor: 32 MiB strings, a 36 MiB heap, 2.2 s.
+    "staging/sm/RegExp/unicode-braced.js": {
+        "string_limit": 128 * 1024 * 1024,
+        "heap_limit": 128 * 1024 * 1024,
+        "timeout": 20,
+    },
+    "staging/sm/RegExp/unicode-class-braced.js": {
+        "string_limit": 128 * 1024 * 1024,
+        "heap_limit": 128 * 1024 * 1024,
+        "timeout": 20,
+    },
+    # eval of 2**21, about 2**22 and about 2**22 empty blocks: 16 MiB of
+    # source, a 36 MiB heap, 20-30 million dispatches, about 25 s.
+    "staging/sm/regress/regress-610026.js": {
+        "string_limit": 64 * 1024 * 1024,
+        "heap_limit": 128 * 1024 * 1024,
+        "instruction_budget": 100_000_000,
+        "timeout": 90,
+    },
+    # 21 string doublings from "0," peak at a single 2**22 + 3 (4,194,307)
+    # char string, which as UTF-16 is 8,388,614 bytes -- just past both the
+    # default 1 MiB per-string ceiling and, measured, past 8 MiB too (8 MiB
+    # is 8,388,608 bytes, 6 short); 16 MiB clears it with headroom. Parsing
+    # the resulting 2**21+1-element JSON array is what actually drives the
+    # heap requirement, not the peak string: measured to fail at a 256 MiB
+    # ceiling and pass at 512 MiB, so 512 MiB is the fixture's real
+    # (approximate) minimum, not a comfortable multiple of it -- this one
+    # genuinely needs that much live/tenured data, unlike the other
+    # entries here which use 3-4x headroom over a smaller minimum.
+    "staging/sm/JSON/parse-mega-huge-array.js": {
+        "string_limit": 16 * 1024 * 1024,
+        "heap_limit": 512 * 1024 * 1024,
+        "instruction_budget": 50_000_000,
+        "timeout": 20,
+    },
+    # `puff("1", 1 << 20)` builds x by doubling up to exactly 2**20 (1,048,576)
+    # chars -- 2,097,152 bytes as UTF-16, already past the default 1 MiB
+    # (1,048,576 byte) string ceiling, *before* the fixture's own try/catch
+    # even starts. This is not a catchability gap by itself: only enough
+    # headroom to let x (and the much smaller rep) finish building is
+    # needed. The fixture's actual `x.replace(/(.+)/g, rep)` deliberately
+    # tries to build a ~2**36-char result (rep is "$1" repeated ~32,768
+    # times, each substituting the whole ~2**20-char match) -- about 2**37
+    # bytes, i.e. 128 GiB, which must and will still exceed any reasonable
+    # limit here and throw. That throw is the fixture's own "OOM also
+    # acceptable" catch path, which needs `StringLimit` to be catchable
+    # (see `RuntimeError::is_catchable`) but not a bigger ceiling.
+    "staging/sm/String/replace-math.js": {
+        "string_limit": 4 * 1024 * 1024,
+    },
+    # `runDSTOffsetCachingTestsFraction` sweeps the full representable Unix
+    # timestamp range (through 2037) in fixed steps, computing a DST offset
+    # at each one; each of the 8 parts independently needs 100-130 million
+    # dispatches and runs for more than half a minute in a debug-interpreter
+    # worker. Measured passing (both modes, all 8 parts) at a 200 million
+    # dispatch / 70 s envelope -- comfortable margin over the documented
+    # minimum, not a tight multiple of it, since the per-part cost already
+    # varies within that 100-130 million range.
+    **{
+        f"staging/sm/Date/dst-offset-caching-{part}-of-8.js": {
+            "instruction_budget": 200_000_000,
+            "timeout": 70,
+        }
+        for part in range(1, 9)
+    },
+    # 100 years x 12 months x 31 days of two/four-digit-year Date-parsing
+    # comparisons. Measured: fails at 5 million dispatches, passes at 8
+    # million (about 1.3 s); 30 million is roughly 4x that measured minimum.
+    "staging/sm/Date/two-digit-years.js": {
+        "instruction_budget": 30_000_000,
+        "timeout": 10,
+    },
+    # 13 start indices x 7 delete counts x 7 insert counts x several array
+    # shapes. Measured: 19.6 million dispatches, about 7 s; 80 million is
+    # roughly 4x that measured minimum.
+    "staging/sm/Array/toSpliced-dense.js": {
+        "instruction_budget": 80_000_000,
+        "timeout": 20,
+    },
+    # `TestGC2` chains 99,999 objects through a WeakMap (`m.set(key, new
+    # Object)` per link) before `$262.gc()`. The chain itself is cheap in
+    # dispatches but the live object count exceeds the default 16 MiB
+    # managed-heap ceiling well before instruction fuel is the limiting
+    # factor; 64 MiB (about 4x the default ceiling) gives headroom without
+    # granting an unbounded heap. Measured: fails at 5 million dispatches
+    # (two ~100,000-iteration loops, each iteration a native `WeakMap`
+    # `set`/`get` call plus loop bookkeeping), passes at 10 million (about
+    # 3.5 s); 30 million is roughly 4x that measured minimum.
+    "staging/sm/regress/regress-1507322-deep-weakmap.js": {
+        "instruction_budget": 30_000_000,
+        "heap_limit": 64 * 1024 * 1024,
+        "timeout": 15,
+    },
+}
+
+
+ATOMIC_COVERAGE_FIXTURE_TIMEOUTS = {
+    **{f"staging/sm/Date/dst-offset-caching-{part}-of-8.js": 180 for part in range(1, 9)},
+    # Native Windows measurements (ordinary / atomic seconds):
+    # toSpliced 15.9-16.3 / 24.4-24.7, deep WeakMap 12.2-12.4 / 15.5-15.6,
+    # counting sort 36.3-36.4 / 60.8-60.9. Preserve every matrix assertion,
+    # the ordinary wall guards and all original dispatch/heap bounds.
+    "staging/sm/Array/toSpliced-dense.js": 40,
+    "staging/sm/regress/regress-1507322-deep-weakmap.js": 30,
+    "staging/sm/TypedArray/sort_large_countingsort.js": 120,
+}
+
+
+def large_fixture_limits(relative):
+    """The adapter request's `string_limit`/`heap_limit` for an exact path."""
+    large = LARGE_FIXTURE_RESOURCES.get(relative, {})
+    return {key: large[key] for key in ("string_limit", "heap_limit") if key in large}
+
+
 def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
+    large = LARGE_FIXTURE_RESOURCES.get(relative, {})
+    if "instruction_budget" in large:
+        return max(default, large["instruction_budget"])
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET)
     if relative in ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES:
@@ -946,6 +1220,10 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET)
     if relative in WALL_CLOCK_BUSY_WAIT_FIXTURES:
         return max(default, WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET)
+    if relative in STRING_SUBSTR_NUMBER_MATRIX_FIXTURES:
+        return max(default, STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET)
+    if relative in FINITE_FIXTURE_INSTRUCTION_BUDGETS:
+        return max(default, FINITE_FIXTURE_INSTRUCTION_BUDGETS[relative])
     if relative in FINITE_STRESS_FIXTURES:
         return max(default, FINITE_STRESS_INSTRUCTION_BUDGET)
     if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
@@ -965,8 +1243,13 @@ def instruction_budget(data, default, relative=None, source=""):
     return default
 
 
-def case_timeout(data, default, relative=None, source=""):
+def case_timeout(data, default, relative=None, source="", *, atomic_coverage=False):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
+    if atomic_coverage and relative in ATOMIC_COVERAGE_FIXTURE_TIMEOUTS:
+        return max(default, ATOMIC_COVERAGE_FIXTURE_TIMEOUTS[relative])
+    large = LARGE_FIXTURE_RESOURCES.get(relative, {})
+    if "timeout" in large:
+        return max(default, large["timeout"])
     if relative in SM_TYPED_ARRAY_LONG_FIXTURES:
         return max(default, SM_TYPED_ARRAY_LONG_TIMEOUT)
     if relative in TYPED_ARRAY_DETACH_COERCION_FIXTURES:
@@ -1025,9 +1308,21 @@ class Worker:
         self.timeout = timeout
         self.process = None
 
-    def close(self):
+    def close(self, flush_profile=False):
         if self.process is not None:
             process = self.process
+            if flush_profile:
+                # LLVM writes its execution profile when the adapter exits.
+                # Closing stdin lets its JSON-lines loop finish normally.
+                process.stdin.close()
+                try:
+                    process.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    pass
+                else:
+                    process.stdout.close()
+                    self.process = None
+                    return
             # The group also contains any isolated regex helper. This is needed
             # for crashes/whole-case timeouts outside the regex API deadline.
             try:
@@ -1050,7 +1345,8 @@ class Worker:
             except ProcessLookupError:
                 pass
             process.wait()
-            process.stdin.close()
+            if not process.stdin.closed:
+                process.stdin.close()
             process.stdout.close()
             self.process = None
 
@@ -1170,7 +1466,17 @@ def main():
         help="seconds between live progress reports; zero disables periodic reports",
     )
     parser.add_argument("--fetch", action="store_true")
+    parser.add_argument(
+        "--flush-profiles",
+        action="store_true",
+        help="let adapters exit normally so LLVM coverage profiles are written",
+    )
     args = parser.parse_args()
+    atomic_coverage = (
+        os.environ.get("CARGO_LLVM_COV") == "1"
+        and "-instrprof-atomic-counter-update-all"
+        in os.environ.get("CARGO_ENCODED_RUSTFLAGS", "")
+    )
     if args.fetch:
         fetch(args.corpus)
     marker = args.corpus / ".bluejs-snapshot.json"
@@ -1277,14 +1583,33 @@ def main():
             for mode in modes(data):
                 report_case(mode)
                 negative = data.get("negative")
+                exclusion = canblock_exclusion(data.get("flags", []))
+                if exclusion is not None:
+                    # Never dispatched: this host's own [[CanBlock]]
+                    # declaration already answers the fixture, so running it
+                    # would only ever produce the wrong outcome for it.
+                    results.append({"path": relative, "mode": mode, "status": "excluded", "expected": negative, "actual": {"kind": "excluded", "reason": exclusion}, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
+                    continue
+                stale_reason = stale_corpus_reason(relative)
+                if stale_reason is not None:
+                    # Never dispatched: this fixture's own assertions
+                    # contradict the current spec text (verified directly,
+                    # not inferred), so running it would only ever fail --
+                    # not because of an engine gap, but because the fixture
+                    # itself is stale pending an upstream Test262 fix.
+                    results.append({"path": relative, "mode": mode, "status": "stale_corpus", "expected": negative, "actual": {"kind": "stale_corpus", "reason": stale_reason}, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
+                    continue
                 request = {"source": source_for_execution, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget, relative, source_for_execution)}
                 if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
                     request["string_limit"] = REGEXP_PROPERTY_ESCAPES_STRING_LIMIT
                     request["regex_timeout_ms"] = REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS
                 elif relative in REGEXP_CLASS_ESCAPE_FIXTURES:
                     request["string_limit"] = REGEXP_CLASS_ESCAPE_STRING_LIMIT
+                elif fixture_string_limit(relative) is not None:
+                    request["string_limit"] = fixture_string_limit(relative)
                 if relative == STRING_CASE_MAPPING_FIXTURE:
                     request["heap_limit"] = STRING_CASE_MAPPING_HEAP_LIMIT
+                request.update(large_fixture_limits(relative))
                 has_dynamic_import_expression = bool(
                     DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution)
                 )
@@ -1320,8 +1645,12 @@ def main():
                     request["module_text_sources"] = text_sources
                     request["module_bytes_sources"] = bytes_sources
                     request["module_source_requests"] = module_source_requests(sources)
-                reply = local.worker.run(request, case_timeout(data, args.timeout, relative, source_for_execution))
-                results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
+                mode_started = time.monotonic()
+                reply = local.worker.run(request, case_timeout(
+                    data, args.timeout, relative, source_for_execution,
+                    atomic_coverage=atomic_coverage,
+                ))
+                results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest, "elapsed_seconds": round(time.monotonic() - mode_started, 6)})
             return results
         finally:
             with lock:
@@ -1345,26 +1674,32 @@ def main():
         reporter = threading.Thread(target=report_progress, name="test262-progress", daemon=True)
         reporter.start()
 
+    scheduling = scheduling_groups(files, args.corpus, args.jobs)
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool, (args.output / "results.jsonl").open("w") as output:
-            for index, results in enumerate(pool.map(run_file, files), 1):
-                with lock:
-                    for result in results:
-                        output.write(json.dumps(result, ensure_ascii=True) + "\n")
-                        counters[result["status"]] += 1
-                        for feature in result.get("features", []):
-                            features[feature][result["status"]] += 1
-                        groups[result["path"].split("/")[0]][result["status"]] += 1
-                    completed_files = index
-                if index % 1000 == 0:
-                    output.flush()
-                    print(progress_line(time.monotonic(), checkpoint=True), flush=True)
+        with (args.output / "results.jsonl").open("w") as output:
+            for _, selected, concurrency in scheduling:
+                if not selected:
+                    continue
+                with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+                    for results in pool.map(run_file, selected):
+                        with lock:
+                            for result in results:
+                                output.write(json.dumps(result, ensure_ascii=True) + "\n")
+                                counters[result["status"]] += 1
+                                for feature in result.get("features", []):
+                                    features[feature][result["status"]] += 1
+                                groups[result["path"].split("/")[0]][result["status"]] += 1
+                            completed_files += 1
+                        if completed_files % 1000 == 0:
+                            output.flush()
+                            print(progress_line(time.monotonic(), checkpoint=True), flush=True)
+                output.flush()
     finally:
         stop_progress.set()
         if reporter:
             reporter.join()
         for worker in workers:
-            worker.close()
+            worker.close(flush_profile=args.flush_profiles)
     report = {
         "snapshot": SNAPSHOT,
         "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(),
@@ -1381,7 +1716,10 @@ def main():
         "groups": groups,
         "features": features,
         "elapsed_seconds": round(time.monotonic() - start, 3),
+        "scheduling": [{"group": name, "test_files": len(selected), "jobs": concurrency}
+                       for name, selected, concurrency in scheduling],
         "timeout_seconds": args.timeout,
+        "atomic_coverage": atomic_coverage,
         "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT,
         "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET,
         "sm_typed_array_harness_timeout_seconds": SM_TYPED_ARRAY_HARNESS_TIMEOUT,
@@ -1403,7 +1741,7 @@ def main():
             "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
             "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
             "harness sources still require supported grammar and APIs",
-            "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
+            "native overrides for sta.js and assert.js (propertyHelper.js and isConstructor.js run their upstream source), the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
             "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets",
         ],
     }

@@ -4,7 +4,36 @@
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/object_internal.rs"]
+mod boundary_tests;
+
 impl Vm {
+    /// `%Object.prototype%.hasOwnProperty` and `.propertyIsEnumerable` are
+    /// installed on first ordinary lookup. Every reflective internal method
+    /// on that object ([[GetOwnProperty]], [[DefineOwnProperty]], [[Delete]],
+    /// [[OwnPropertyKeys]]) must see them as the ordinary own properties they
+    /// are: without this a first `Object.defineProperty` would define a fresh
+    /// non-configurable property, and a first `delete` would report success
+    /// yet leave the method to be installed again by the next lookup. `key` is
+    /// `None` for [[OwnPropertyKeys]].
+    pub(in super::super) fn materialize_object_prototype_methods(
+        &mut self,
+        object: ObjectId,
+        key: Option<&PropertyName>,
+    ) -> Result<(), RuntimeError> {
+        if object != self.object_prototype {
+            return Ok(());
+        }
+        if key.is_none_or(|key| key == "propertyIsEnumerable") {
+            self.property_is_enumerable_intrinsic()?;
+        }
+        if key.is_none_or(|key| key == "hasOwnProperty") {
+            self.has_own_property_intrinsic()?;
+        }
+        Ok(())
+    }
+
     /// [[GetOwnProperty]] dispatch used by descriptor APIs, Proxy invariants,
     /// and receiver-aware [[Set]].  Ordinary heap records stay below this
     /// boundary; every Proxy operation re-enters through the VM so its trap
@@ -14,40 +43,54 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
-        self.trigger_deferred_namespace(object, Some(key))?;
-        // Intrinsic globals are lazily initialized, but reflective descriptor
-        // operations must observe the same own properties as ordinary Get.
-        self.materialize_global_object_property(object, key)?;
-        // Keep the lazily-installed Iterator helper visible to every
-        // [[GetOwnProperty]] consumer. Test262's descriptor harness reaches
-        // this internal operation through both public reflection APIs and its
-        // host fast paths, so materializing only at public call sites made the
-        // same property inconsistently observable.
-        self.materialize_iterator_helper_property(object, key)?;
-        // These %Object.prototype% methods are installed on first ordinary
-        // lookup. [[GetOwnProperty]] is also observable through descriptor
-        // APIs, however, so it must not expose a transient lazy-intrinsic
-        // absence to Object.getOwnPropertyDescriptor.
-        if object == self.object_prototype {
-            if key == "propertyIsEnumerable" {
-                self.property_is_enumerable_intrinsic()?;
+        let proxy = self.heap.proxy(object)?.is_some();
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            if !proxy && self.test262_foreign_reference(object).is_some() {
+                return self.test262_foreign_get_own_property(object, key);
             }
-            if key == "hasOwnProperty" {
-                self.has_own_property_intrinsic()?;
+            self.trigger_deferred_namespace(object, Some(key))?;
+            // Intrinsic globals are lazily initialized, but reflective descriptor
+            // operations must observe the same own properties as ordinary Get.
+            self.materialize_global_object_property(object, key)?;
+            // Keep the lazily-installed Iterator helper visible to every
+            // [[GetOwnProperty]] consumer. Test262's descriptor harness reaches
+            // this internal operation through both public reflection APIs and its
+            // host fast paths, so materializing only at public call sites made the
+            // same property inconsistently observable.
+            self.materialize_iterator_helper_property(object, key)?;
+            // These %Object.prototype% methods are installed on first ordinary
+            // lookup. [[GetOwnProperty]] is also observable through descriptor
+            // APIs, however, so it must not expose a transient lazy-intrinsic
+            // absence to Object.getOwnPropertyDescriptor.
+            self.materialize_object_prototype_methods(object, Some(key))?;
+            // Likewise, %Function.prototype%'s constructor is installed while
+            // materializing %Function%. A reflective lookup needs the same
+            // observable property that `fn.constructor` receives through [[Get]].
+            if key == "constructor" && object == self.function_prototype()? {
+                self.global("Function")?;
             }
-        }
-        // Likewise, %Function.prototype%'s constructor is installed while
-        // materializing %Function%. A reflective lookup needs the same
-        // observable property that `fn.constructor` receives through [[Get]].
-        if key == "constructor" && object == self.function_prototype()? {
-            self.global("Function")?;
-        }
-        if self.heap.proxy(object)?.is_some() {
-            return self.proxy_get_own_property(object, key);
-        }
-        self.heap
-            .get_own_property_descriptor(object, key)
-            .map_err(Into::into)
+            if proxy {
+                return self.proxy_get_own_property(object, key);
+            }
+            // A foreign/reverse facade is intentionally an empty local object
+            // (see `test262_transport_value`'s doc comment), so without this
+            // check every own-property query -- `Object.keys`/`getOwnProperty
+            // Descriptor`/`hasOwnProperty`/`in`/spread/`for-in`/JSON.stringify,
+            // all of which ultimately reach [[GetOwnProperty]] -- would report
+            // every real own property as absent.
+            if self.test262_reverse_reference(object).is_some() {
+                return self.test262_reverse_get_own_property(object, key);
+            }
+            // A live namespace may still expose an uninitialized export.
+            // Preserve that ReferenceError as well as the rooted receiver.
+            self.heap
+                .get_own_property_descriptor(object, key)
+                .map_err(Into::into)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn object_define_own_property(
@@ -56,14 +99,42 @@ impl Vm {
         key: PropertyName,
         descriptor: PropertyDescriptor,
     ) -> Result<bool, RuntimeError> {
-        self.trigger_deferred_namespace(object, Some(&key))?;
-        if self.heap.proxy(object)?.is_some() {
-            return self.proxy_define_own_property(object, key, descriptor);
-        }
-        if let Some(numeric) = self.heap.typed_array_numeric_key(object, &key)? {
-            return self.typed_array_define_own_property(object, numeric, descriptor);
-        }
-        self.with_roots(|heap| heap.define_own_property(object, key, descriptor))
+        let proxy = self.heap.proxy(object)?.is_some();
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        self.stack.extend(
+            [
+                descriptor.value.as_ref(),
+                descriptor.get.as_ref(),
+                descriptor.set.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .cloned(),
+        );
+        let result = (|| {
+            self.trigger_deferred_namespace(object, Some(&key))?;
+            if proxy {
+                return self.proxy_define_own_property(object, key, descriptor);
+            }
+            self.materialize_object_prototype_methods(object, Some(&key))?;
+            if self.test262_foreign_reference(object).is_some() {
+                return self.test262_foreign_define_own_property(object, key, descriptor);
+            }
+            if self.test262_reverse_reference(object).is_some() {
+                return self.test262_reverse_define_own_property(object, key, descriptor);
+            }
+            if let Some(numeric) = self
+                .heap
+                .typed_array_numeric_key(object, &key)
+                .expect("the receiver remains rooted after its initial heap validation")
+            {
+                return self.typed_array_define_own_property(object, numeric, descriptor);
+            }
+            self.with_roots(|heap| heap.define_own_property(object, key, descriptor))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// IntegerIndexedElementSet and the compatible portion of
@@ -80,10 +151,19 @@ impl Vm {
             return Ok(false);
         };
         let (buffer, _, length, kind) = self.heap.typed_array_info(object)?;
-        if self.heap.buffer_is_detached(buffer)? || index >= length {
+        if self
+            .heap
+            .buffer_is_detached(buffer)
+            .expect("the validated TypedArray owns a live backing buffer")
+            || index >= length
+        {
             return Ok(false);
         }
-        if self.heap.buffer_is_immutable(buffer)? {
+        if self
+            .heap
+            .buffer_is_immutable(buffer)
+            .expect("the validated TypedArray owns a live backing buffer")
+        {
             // Immutable-buffer elements behave as permanently frozen data
             // properties: only a descriptor compatible with the current
             // { value, writable: false, enumerable: true, configurable: false }
@@ -91,7 +171,10 @@ impl Vm {
             // rather than converted, so redefining an element never writes.
             let current = PropertyDescriptor::data(
                 self.heap
-                    .typed_array_index_value(object, index)?
+                    .typed_array_index_value(object, index)
+                    .expect(
+                        "the immutable view and its checked index cannot change without user code",
+                    )
                     .expect("a valid integer index has a value"),
                 false,
                 true,
@@ -117,7 +200,11 @@ impl Vm {
         // IntegerIndexedElementSet converts first. A conversion may detach the
         // backing buffer; in that case the already-valid DefineOwnProperty
         // operation still succeeds without writing a byte.
-        if self.heap.buffer_is_detached(buffer)? {
+        if self
+            .heap
+            .buffer_is_detached(buffer)
+            .expect("the rooted TypedArray retains its backing buffer across conversion")
+        {
             return Ok(true);
         }
         self.with_roots(|heap| heap.typed_array_set_index(object, index, &value))
@@ -128,75 +215,102 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<bool, RuntimeError> {
-        self.trigger_deferred_namespace(object, Some(key))?;
-        // Lazy global intrinsics still have their specified own-property
-        // descriptors when observed through [[Delete]]. Without this, deleting
-        // an as-yet-unread `globalThis.undefined` incorrectly looked like a
-        // successful deletion of an absent property.
-        self.materialize_global_object_property(object, key)?;
-        if self.heap.proxy(object)?.is_some() {
-            return self.proxy_delete(object, key);
-        }
-        self.heap.delete(object, key).map_err(Into::into)
+        let proxy = self.heap.proxy(object)?.is_some();
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            self.trigger_deferred_namespace(object, Some(key))?;
+            // Lazy global intrinsics still have their specified own-property
+            // descriptors when observed through [[Delete]]. Without this, deleting
+            // an as-yet-unread `globalThis.undefined` incorrectly looked like a
+            // successful deletion of an absent property.
+            self.materialize_global_object_property(object, key)?;
+            // Likewise a lazily installed Iterator helper exists to be deleted.
+            self.materialize_iterator_helper_property(object, key)?;
+            if proxy {
+                return self.proxy_delete(object, key);
+            }
+            if self.test262_foreign_reference(object).is_some() {
+                return self.test262_foreign_delete(object, key);
+            }
+            if self.test262_reverse_reference(object).is_some() {
+                return self.test262_reverse_delete(object, key);
+            }
+            self.materialize_object_prototype_methods(object, Some(key))?;
+            let deleted = self
+                .heap
+                .delete(object, key)
+                .expect("the validated receiver remains rooted during materialization");
+            if deleted {
+                if let Some(cell) = self.global_property_cell(object, key) {
+                    // Property deletion and DeleteBinding invalidate the same
+                    // object-environment binding. Captured eval references must
+                    // resolve outward after either public operation.
+                    let name = key
+                        .clone()
+                        .into_string()
+                        .expect("a property-backed global binding has a string key")
+                        .to_utf8()
+                        .expect("global_property_cell validated this binding name");
+                    let binding = self
+                        .global_bindings
+                        .remove(&name)
+                        .expect("global_property_cell found this published binding");
+                    self.heap
+                        .delete(cell, "value")
+                        .expect("removing the rooted global binding's value cannot allocate");
+                    self.release_root(binding._root);
+                }
+            }
+            Ok(deleted)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn object_own_property_keys(
         &mut self,
         object: ObjectId,
     ) -> Result<Vec<PropertyName>, RuntimeError> {
-        self.trigger_deferred_namespace(object, None)?;
-        // A Test262 child-realm facade has no mirrored ordinary properties.
-        // Its [[OwnPropertyKeys]] must be performed in the target Realm so
-        // reflection sees the complete intrinsic surface and its key order.
-        if self.heap.proxy(object)?.is_none() && self.test262_foreign_reference(object).is_some() {
-            return self.test262_foreign_own_property_keys(object);
-        }
-        // Global built-ins are initialized on demand to keep ordinary realms
-        // compact. [[OwnPropertyKeys]] is nevertheless a reflective view of
-        // the realm record, so it must expose the standard global properties
-        // even when no direct identifier/property access has initialized
-        // them yet. Keep this to the P0 realm surface rather than creating
-        // later-phase collection and asynchronous library globals here.
-        if self.globals.get("globalThis") == Some(&object) {
-            for name in [
-                "undefined",
-                "NaN",
-                "Infinity",
-                "eval",
-                "parseInt",
-                "parseFloat",
-                "isNaN",
-                "isFinite",
-                "decodeURI",
-                "decodeURIComponent",
-                "encodeURI",
-                "encodeURIComponent",
-                "Object",
-                "Function",
-                "Array",
-                "String",
-                "Boolean",
-                "Number",
-                "Date",
-                "RegExp",
-                "Error",
-                "EvalError",
-                "RangeError",
-                "ReferenceError",
-                "SyntaxError",
-                "TypeError",
-                "URIError",
-                "Math",
-                "JSON",
-                "Iterator",
-            ] {
-                self.materialize_lexical_global(object, name)?;
+        let proxy = self.heap.proxy(object)?.is_some();
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            self.trigger_deferred_namespace(object, None)?;
+            // A Test262 child-realm facade has no mirrored ordinary properties.
+            // Its [[OwnPropertyKeys]] must be performed in the target Realm so
+            // reflection sees the complete intrinsic surface and its key order.
+            if !proxy && self.test262_foreign_reference(object).is_some() {
+                return self.test262_foreign_own_property_keys(object);
             }
-        }
-        if self.heap.proxy(object)?.is_some() {
-            return self.proxy_own_keys(object);
-        }
-        self.heap.own_property_keys(object).map_err(Into::into)
+            if !proxy && self.test262_reverse_reference(object).is_some() {
+                return self.test262_reverse_own_property_keys(object);
+            }
+            self.materialize_object_prototype_methods(object, None)?;
+            // Global built-ins are initialized on demand to keep ordinary realms
+            // compact. [[OwnPropertyKeys]] is nevertheless a reflective view of
+            // the realm record, so it must expose every standard global property
+            // even when no direct identifier/property access has initialized
+            // them yet: the same set `Object.preventExtensions(globalThis)`
+            // creates before it closes the object.
+            if self.globals.get("globalThis") == Some(&object) {
+                for name in ["undefined", "NaN", "Infinity"]
+                    .iter()
+                    .chain(super::super::execution::LAZY_STANDARD_GLOBALS)
+                {
+                    self.materialize_lexical_global(object, name)?;
+                }
+            }
+            if proxy {
+                return self.proxy_own_keys(object);
+            }
+            Ok(self
+                .heap
+                .own_property_keys(object)
+                .expect("the validated receiver remains rooted during materialization"))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn object_is_extensible(
@@ -206,7 +320,13 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_is_extensible(object);
         }
-        self.heap.is_extensible(object).map_err(Into::into)
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_is_extensible(object);
+        }
+        Ok(self
+            .heap
+            .is_extensible(object)
+            .expect("the preceding proxy lookup validated this live ordinary object"))
     }
 
     pub(in super::super) fn object_get_prototype(
@@ -219,7 +339,13 @@ impl Vm {
         if self.test262_foreign_reference(object).is_some() {
             return self.test262_foreign_get_prototype(object);
         }
-        self.heap.prototype(object).map_err(Into::into)
+        if self.test262_reverse_reference(object).is_some() {
+            return self.test262_reverse_get_prototype(object);
+        }
+        Ok(self
+            .heap
+            .prototype(object)
+            .expect("the preceding proxy lookup validated this live ordinary object"))
     }
 
     pub(in super::super) fn object_set_prototype(
@@ -230,12 +356,50 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_set_prototype(object, prototype);
         }
+        // A foreign/reverse facade's *local* heap record has no bearing on
+        // the real membrane target's own [[Prototype]] (see
+        // `test262_transport_value`'s doc comment on why it is
+        // intentionally empty): `self.heap.set_prototype` below would only
+        // ever mutate the facade's own, otherwise-unobserved local slot.
+        // Forward this to the real object's own [[SetPrototypeOf]] instead.
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_set_prototype(object, prototype);
+        }
+        if self.test262_reverse_reference(object).is_some() {
+            return self.test262_reverse_set_prototype(object, prototype);
+        }
+        // OrdinarySetPrototypeOf's cycle check walks [[GetPrototypeOf]]
+        // through every ordinary object, including the facades of other
+        // Realms, which the heap-level check below cannot see through.
+        if !self.test262_foreign_values.is_empty() {
+            let mut current = prototype;
+            while let Some(candidate) = current {
+                if candidate == object {
+                    return Ok(false);
+                }
+                if self.heap.proxy(candidate)?.is_some() {
+                    break;
+                }
+                self.charge_step()?;
+                current = if self.test262_foreign_reference(candidate).is_some() {
+                    self.test262_foreign_get_prototype(candidate)?
+                } else {
+                    self.heap
+                        .prototype(candidate)
+                        .expect("the preceding proxy lookup validated this ordinary candidate")
+                };
+            }
+        }
         // %Object.prototype% is the Immutable Prototype Exotic Object.  Its
         // current null prototype is accepted as a no-op, but no distinct
         // value may replace it even though the record is otherwise
         // extensible.
         if object == self.object_prototype {
-            return Ok(prototype == self.heap.prototype(object)?);
+            return Ok(prototype
+                == self
+                    .heap
+                    .prototype(object)
+                    .expect("Object.prototype is a permanent VM root"));
         }
         match self.heap.set_prototype(object, prototype) {
             Ok(()) => Ok(true),
@@ -251,13 +415,54 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_prevent_extensions(object);
         }
-        if self.heap.is_typed_array(object)?
-            && !self.heap.typed_array_prevent_extensions_allowed(object)?
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_prevent_extensions(object);
+        }
+        if self
+            .heap
+            .is_typed_array(object)
+            .expect("the proxy lookup validated this live ordinary object")
+            && !self
+                .heap
+                .typed_array_prevent_extensions_allowed(object)
+                .expect("the rooted TypedArray retains its backing buffer during this pure query")
         {
             return Ok(false);
         }
-        self.heap.prevent_extensions(object)?;
+        if self.globals.get("globalThis") == Some(&object) {
+            // The standard globals are created on first use. A non-extensible
+            // global object cannot gain them later, and they belong to it from
+            // the start, so create them before the object is closed.
+            for name in ["undefined", "NaN", "Infinity"]
+                .iter()
+                .chain(super::super::execution::LAZY_STANDARD_GLOBALS)
+            {
+                self.materialize_lexical_global(object, name)?;
+            }
+        }
+        self.heap.prevent_extensions(object).expect(
+            "the validated ordinary object is rooted and changing extensibility does not allocate",
+        );
         Ok(true)
+    }
+
+    /// Calls an accessor or Proxy trap while an object internal method runs.
+    /// Keep its exception in the callback's Realm before a membrane returns,
+    /// while preserving ordinary local host API error representations.
+    fn call_object_callback(
+        &mut self,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let result = self.call_native(callee, receiver, args, false);
+        if !crate::vm::realm_reentrancy::has_foreign_caller(self.object_prototype.heap) {
+            return result;
+        }
+        result.map_err(|error| match self.error_value(error) {
+            Ok(value) => RuntimeError::Thrown(value),
+            Err(error) => error,
+        })
     }
 
     /// OrdinarySet with an explicit receiver.  It is deliberately expressed
@@ -279,24 +484,44 @@ impl Vm {
         if self.test262_foreign_reference(target).is_some() {
             return self.test262_foreign_set_with_receiver(target, receiver, key, value);
         }
+        // Symmetric case: a reverse facade is likewise an empty local
+        // object standing in for a real object owned by a Test262 *parent*
+        // realm. Its [[Set]] must run back in that parent.
+        if self.test262_reverse_reference(target).is_some() {
+            return self.test262_reverse_set_with_receiver(target, receiver, key, value);
+        }
         // Module Namespace Exotic Objects have a distinct [[Set]] internal
         // method: it returns false for every property key, including a
         // writable-looking live export whose assigned value is unchanged.
         // Falling through OrdinarySet incorrectly accepts that same-value
         // DefineOwnProperty operation.
-        if self.heap.is_module_namespace(target)? {
+        if self
+            .heap
+            .is_module_namespace(target)
+            .expect("the preceding proxy read validated the rooted target")
+        {
             return Ok(false);
         }
-        if let Some(numeric) = self.heap.typed_array_numeric_key(target, key)? {
+        if let Some(numeric) = self
+            .heap
+            .typed_array_numeric_key(target, key)
+            .expect("the preceding heap lookup retains this live view and its buffer")
+        {
             // An immutable backing buffer fails every canonical-numeric
             // assignment outright: no conversion, no receiver distinction.
-            if self.heap.typed_array_is_immutable(target)? {
+            if self
+                .heap
+                .typed_array_is_immutable(target)
+                .expect("the preceding heap lookup retains this live view and its buffer")
+            {
                 return Ok(false);
             }
             let valid = match numeric {
-                TypedArrayNumericKey::Index(index) => {
-                    self.heap.typed_array_index_value(target, index)?.is_some()
-                }
+                TypedArrayNumericKey::Index(index) => self
+                    .heap
+                    .typed_array_index_value(target, index)
+                    .expect("the preceding heap lookup retains this live view and its buffer")
+                    .is_some(),
                 TypedArrayNumericKey::Invalid => false,
             };
             if receiver == &Value::Object(target) {
@@ -306,15 +531,24 @@ impl Vm {
                 // observes a throwing value conversion. A different receiver
                 // has the separate OrdinarySet path below and must *not*
                 // convert an invalid key's value.
-                let (_, _, _, kind) = self.heap.typed_array_info(target)?;
+                let (_, _, _, kind) = self
+                    .heap
+                    .typed_array_info(target)
+                    .expect("the preceding heap lookup retains this live view and its buffer");
                 let value = self.typed_array_element_value(kind, value)?;
                 if let TypedArrayNumericKey::Index(index) = numeric {
                     // IsValidIntegerIndex follows ToNumber. In particular,
                     // converting the right-hand side can grow a resizable
                     // backing buffer and turn a previously out-of-bounds
                     // index into a valid element.
-                    if self.heap.typed_array_index_value(target, index)?.is_some() {
-                        self.with_roots(|heap| heap.typed_array_set_index(target, index, &value))?;
+                    if self
+                        .heap
+                        .typed_array_index_value(target, index)
+                        .expect("the preceding heap lookup retains this live view and its buffer")
+                        .is_some()
+                    {
+                        self.heap.typed_array_set_index(target, index, &value)
+                            .expect("the rooted mutable view writes a normalized primitive or skips an invalid index");
                     }
                 }
                 return Ok(true);
@@ -328,17 +562,39 @@ impl Vm {
         }
         let mut current = Some(target);
         while let Some(object) = current {
+            // A live Proxy can be revoked. Reaching it in the prototype
+            // chain must preserve that language error instead of panicking.
             if self.heap.proxy(object)?.is_some() {
                 return self.proxy_set(object, receiver, key, value);
             }
+            // The prototype-chain walk below stops early for a *local*
+            // proxy (above), but never previously stopped for an ancestor
+            // that is itself a reverse-membrane facade of a genuine parent
+            // Proxy -- that ancestor is a plain, empty local object, so the
+            // walk would otherwise silently skip past its real [[Set]]
+            // (including a parent Proxy trap) and keep walking as if it had
+            // no own properties at all. `OrdinarySet` always fully
+            // delegates once it reaches *any* exotic [[Set]], so mirror the
+            // proxy check immediately above with the reverse-facade one.
+            if self.test262_reverse_reference(object).is_some() {
+                return self.test262_reverse_set_with_receiver(object, receiver, key, value);
+            }
             if object != target {
-                if let Some(numeric) = self.heap.typed_array_numeric_key(object, key)? {
-                    if self.heap.typed_array_is_immutable(object)? {
+                if let Some(numeric) = self
+                    .heap
+                    .typed_array_numeric_key(object, key)
+                    .expect("the preceding heap lookup retains this live view and its buffer")
+                {
+                    if self
+                        .heap
+                        .typed_array_is_immutable(object)
+                        .expect("the preceding heap lookup retains this live view and its buffer")
+                    {
                         return Ok(false);
                     }
                     let valid = matches!(numeric, TypedArrayNumericKey::Index(index) if self
                         .heap
-                        .typed_array_index_value(object, index)?
+                        .typed_array_index_value(object, index).expect("the rooted integer-indexed view retains its backing buffer")
                         .is_some());
                     if receiver == &Value::Object(object) {
                         // OrdinarySet reached an Integer-Indexed exotic in
@@ -347,16 +603,17 @@ impl Vm {
                         // SameValue branch therefore still performs ToNumber
                         // for any canonical numeric key before validity is
                         // tested.
-                        let (_, _, _, kind) = self.heap.typed_array_info(object)?;
+                        let (_, _, _, kind) = self.heap.typed_array_info(object).expect(
+                            "the preceding heap lookup retains this live view and its buffer",
+                        );
                         let value = self.typed_array_element_value(kind, value)?;
                         if let TypedArrayNumericKey::Index(index) = numeric {
                             // The prototype exotic's index is likewise
                             // checked after value conversion, because a
                             // resizable buffer may have grown in that step.
-                            if self.heap.typed_array_index_value(object, index)?.is_some() {
-                                self.with_roots(|heap| {
-                                    heap.typed_array_set_index(object, index, &value)
-                                })?;
+                            if self.heap.typed_array_index_value(object, index).expect("the preceding heap lookup retains this live view and its buffer").is_some() {
+                                self.heap.typed_array_set_index(object, index, &value)
+                                    .expect("the rooted mutable view writes a normalized primitive or skips an invalid index");
                             }
                         }
                         return Ok(true);
@@ -372,12 +629,14 @@ impl Vm {
                     if setter == Value::Undefined {
                         return Ok(false);
                     }
-                    if !self.is_callable(&setter)? {
+                    if !self.is_callable(&setter).expect(
+                        "the retained own descriptor contains a live setter value in this realm",
+                    ) {
                         return Err(RuntimeError::TypeError(
                             "property setter is not callable".into(),
                         ));
                     }
-                    self.call_native(setter, receiver.clone(), vec![value.clone()], false)?;
+                    self.call_object_callback(setter, receiver.clone(), vec![value.clone()])?;
                     return Ok(true);
                 }
                 if descriptor.writable == Some(false) {
@@ -400,7 +659,12 @@ impl Vm {
                 return Ok(false);
             }
         }
-        let stored = if key == "length" && self.heap.is_array(*receiver)? {
+        let stored = if key == "length"
+            && self
+                .heap
+                .is_array(*receiver)
+                .expect("GetOwnProperty validated and retained this receiver")
+        {
             self.array_length_value(value)?
         } else {
             value.clone()
@@ -413,10 +677,43 @@ impl Vm {
         } else {
             PropertyDescriptor::data(stored, true, true, true)
         };
+        // A receiver's GetOwnProperty trap can revoke itself before this
+        // DefineOwnProperty step, despite having returned successfully.
         if self.heap.proxy(*receiver)?.is_some() {
             return self.proxy_define_own_property(*receiver, key.clone(), descriptor);
         }
-        self.object_define_own_property(*receiver, key.clone(), descriptor)
+        let succeeded = self.object_define_own_property(*receiver, key.clone(), descriptor)?;
+        if succeeded {
+            // Reflect.set and membrane [[Set]] use this Boolean boundary
+            // directly. Keep a property-backed global binding in step with
+            // the successful data-property write, as ordinary assignment does.
+            if let Some(cell) = self.global_property_cell(*receiver, key) {
+                self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
+            }
+        }
+        Ok(succeeded)
+    }
+
+    /// Set(O, P, V, true). Keep the Boolean [[Set]] result until this VM can
+    /// create a refusal error; another object's Realm does not choose Throw.
+    pub(in super::super) fn object_set_or_throw(
+        &mut self,
+        object: ObjectId,
+        key: &PropertyName,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
+        let receiver = Value::Object(object);
+        let base = self.stack.len();
+        self.stack.extend([receiver.clone(), value.clone()]);
+        let result = self.ordinary_set_with_receiver(object, &receiver, key, value);
+        self.stack.truncate(base);
+        if result? {
+            Ok(())
+        } else {
+            Err(RuntimeError::TypeError(
+                "property cannot be assigned".into(),
+            ))
+        }
     }
 
     pub(in super::super) fn get_from_prototype(
@@ -431,11 +728,35 @@ impl Vm {
             if self.heap.proxy(object)?.is_some() {
                 return self.proxy_get(object, receiver, key);
             }
-            if let Some(numeric) = self.heap.typed_array_numeric_key(object, key)? {
+            // A foreign/reverse facade is intentionally an empty local
+            // object (see `test262_transport_value`'s own doc comment), so
+            // without this check the loop below would silently treat it as
+            // having no own properties at all and walk straight past it --
+            // correct only when the *walk itself* continues into the real
+            // membrane target (`object_get_prototype`, below, already does
+            // that), but wrong the moment a property is genuinely an own
+            // property of that real target: this happens whenever `start`
+            // itself is a facade, notably `super_get`'s `base` (a foreign
+            // or reverse [[HomeObject]] prototype) reached without ever
+            // going through `get_object_property`'s own top-level check.
+            if self.test262_foreign_reference(object).is_some() {
+                return self.test262_foreign_get(object, receiver, key);
+            }
+            if self.test262_reverse_reference(object).is_some() {
+                return self.test262_reverse_get(object, receiver, key);
+            }
+            if let Some(numeric) = self
+                .heap
+                .typed_array_numeric_key(object, key)
+                .expect("the preceding proxy query validated this live prototype")
+            {
                 return match numeric {
                     TypedArrayNumericKey::Index(index) => Ok(self
                         .heap
-                        .typed_array_index_value(object, index)?
+                        .typed_array_index_value(object, index)
+                        .expect(
+                            "the validated integer-indexed prototype retains its backing buffer",
+                        )
                         .unwrap_or(Value::Undefined)),
                     TypedArrayNumericKey::Invalid => Ok(Value::Undefined),
                 };
@@ -446,12 +767,15 @@ impl Vm {
                     return if matches!(getter, Value::Undefined) {
                         Ok(Value::Undefined)
                     } else {
-                        self.call_native(getter, receiver.clone(), Vec::new(), false)
+                        self.call_object_callback(getter, receiver.clone(), Vec::new())
                     };
                 }
                 return Ok(desc.value.unwrap_or(Value::Undefined));
             }
-            current = self.object_get_prototype(object)?;
+            current = self
+                .heap
+                .prototype(object)
+                .expect("Proxy and membrane cases returned above; this prototype read is pure");
         }
         Ok(Value::Undefined)
     }
@@ -461,6 +785,34 @@ impl Vm {
         default: ObjectId,
     ) -> Result<ObjectId, RuntimeError> {
         self.constructor_prototype_for(default, None)
+    }
+
+    /// This realm's `%Intrinsic.prototype%` for the constructor named
+    /// `intrinsic`: a global constructor's name, `Intl.X`, or one of the
+    /// function-kind constructors that have no global binding.
+    pub(in super::super) fn intrinsic_prototype(
+        &mut self,
+        intrinsic: &str,
+    ) -> Result<Value, RuntimeError> {
+        let constructor = match intrinsic {
+            "AsyncFunction" => return Ok(Value::Object(self.async_function_prototype()?)),
+            "GeneratorFunction" => {
+                return Ok(Value::Object(self.generator_function_prototype()?));
+            }
+            "AsyncGeneratorFunction" => {
+                return Ok(Value::Object(self.async_generator_function_prototype()?));
+            }
+            name if name.starts_with("Intl.") => {
+                self.intl_global()?;
+                Value::Object(self.globals[&format!("%{name}%")])
+            }
+            name if name.starts_with("Temporal.") => {
+                self.temporal_global()?;
+                Value::Object(self.globals[&format!("%{name}%")])
+            }
+            name => self.global(name)?,
+        };
+        self.get_property(&constructor, &"prototype".into())
     }
 
     /// `GetPrototypeFromConstructor` with the fallback intrinsic named by the
@@ -488,147 +840,53 @@ impl Vm {
             if let Some(intrinsic) = intrinsic_name {
                 return self.test262_foreign_default_prototype(realm, intrinsic);
             }
-            let boolean = self.global("Boolean")?;
-            let boolean_prototype = self
-                .get_property(&boolean, &"prototype".into())?
-                .object_id()
-                .expect("Boolean.prototype is an object");
-            let number = self.global("Number")?;
-            let number_prototype = self
-                .get_property(&number, &"prototype".into())?
-                .object_id()
-                .expect("Number.prototype is an object");
-            let intl_collator_prototype = self
-                .globals
-                .get("%Intl.Collator%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let intl_date_time_format_prototype = self
-                .globals
-                .get("%Intl.DateTimeFormat%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let intl_number_format_prototype = self
-                .globals
-                .get("%Intl.NumberFormat%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let intl_locale_prototype = self
-                .globals
-                .get("%Intl.Locale%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let intl_display_names_prototype = self
-                .globals
-                .get("%Intl.DisplayNames%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let intl_duration_format_prototype = self
-                .globals
-                .get("%Intl.DurationFormat%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let intl_list_format_prototype = self
-                .globals
-                .get("%Intl.ListFormat%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let intl_plural_rules_prototype = self
-                .globals
-                .get("%Intl.PluralRules%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let intl_relative_time_format_prototype = self
-                .globals
-                .get("%Intl.RelativeTimeFormat%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let intl_segmenter_prototype = self
-                .globals
-                .get("%Intl.Segmenter%")
-                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
-                .and_then(|value| value.object_id());
-            let mut typed_array_intrinsic = None;
-            for kind in [
-                TypedArrayKind::Int8,
-                TypedArrayKind::Uint8,
-                TypedArrayKind::Uint8Clamped,
-                TypedArrayKind::Int16,
-                TypedArrayKind::Uint16,
-                TypedArrayKind::Int32,
-                TypedArrayKind::Uint32,
-                TypedArrayKind::Float16,
-                TypedArrayKind::Float32,
-                TypedArrayKind::Float64,
-                TypedArrayKind::BigInt64,
-                TypedArrayKind::BigUint64,
-            ] {
-                if default == self.buffer_prototype(kind.name())? {
-                    typed_array_intrinsic = Some(kind.name());
-                    break;
-                }
-            }
-            let intrinsic = if default == self.object_prototype {
-                Some("Object")
-            } else if default == self.function_prototype()? {
-                Some("Function")
-            } else if default == self.array_prototype {
-                Some("Array")
-            } else if default == boolean_prototype {
-                Some("Boolean")
-            } else if default == number_prototype {
-                Some("Number")
-            } else if intl_collator_prototype == Some(default) {
-                Some("Intl.Collator")
-            } else if intl_date_time_format_prototype == Some(default) {
-                Some("Intl.DateTimeFormat")
-            } else if intl_number_format_prototype == Some(default) {
-                Some("Intl.NumberFormat")
-            } else if intl_locale_prototype == Some(default) {
-                Some("Intl.Locale")
-            } else if intl_display_names_prototype == Some(default) {
-                Some("Intl.DisplayNames")
-            } else if intl_duration_format_prototype == Some(default) {
-                Some("Intl.DurationFormat")
-            } else if intl_list_format_prototype == Some(default) {
-                Some("Intl.ListFormat")
-            } else if intl_plural_rules_prototype == Some(default) {
-                Some("Intl.PluralRules")
-            } else if intl_relative_time_format_prototype == Some(default) {
-                Some("Intl.RelativeTimeFormat")
-            } else if intl_segmenter_prototype == Some(default) {
-                Some("Intl.Segmenter")
-            } else if typed_array_intrinsic.is_some() {
-                typed_array_intrinsic
-            } else if default == self.buffer_prototype("ArrayBuffer")? {
-                Some("ArrayBuffer")
-            } else if default == self.buffer_prototype("SharedArrayBuffer")? {
-                Some("SharedArrayBuffer")
-            } else if default == self.buffer_prototype("DataView")? {
-                Some("DataView")
-            } else if default == self.collection_prototype(true)? {
-                Some("Map")
-            } else if default == self.collection_prototype(false)? {
-                Some("Set")
-            } else if default == self.weak_collection_prototype(true)? {
-                Some("WeakMap")
-            } else if default == self.weak_collection_prototype(false)? {
-                Some("WeakSet")
-            } else if default == self.weak_ref_prototype()? {
-                Some("WeakRef")
-            } else if default == self.finalization_registry_prototype()? {
-                Some("FinalizationRegistry")
-            } else if default == self.disposable_stack_prototype(false)? {
-                Some("DisposableStack")
-            } else if default == self.disposable_stack_prototype(true)? {
-                Some("AsyncDisposableStack")
-            } else if self.date_prototype == Some(default) {
-                Some("Date")
-            } else if default == self.base_iterator_prototype()? {
-                Some("Iterator")
-            } else {
-                None
-            };
+            // Identify the already-selected intrinsic from this realm's
+            // caches. Prototype fallback must not build unrelated constructors:
+            // a foreign Object newTarget does not require twelve TypedArrays,
+            // both collection families, or any weak/disposal prototypes.
+            let intrinsic = [
+                (Some(self.object_prototype), "Object"),
+                (self.function_intrinsic_prototype, "Function"),
+                (Some(self.array_prototype), "Array"),
+                (self.string_intrinsics.map(|(_, prototype)| prototype), "String"),
+                (self.map_prototype, "Map"),
+                (self.set_prototype, "Set"),
+                (self.weak_map_prototype, "WeakMap"),
+                (self.weak_set_prototype, "WeakSet"),
+                (self.weak_ref_prototype, "WeakRef"),
+                (self.finalization_registry_prototype, "FinalizationRegistry"),
+                (self.disposable_stack_prototype, "DisposableStack"),
+                (self.async_disposable_stack_prototype, "AsyncDisposableStack"),
+                (self.date_prototype, "Date"),
+                (self.iterator_base, "Iterator"),
+                (self.promise_prototype, "Promise"),
+                (self.shadow_realm_prototype, "ShadowRealm"),
+                (self.generator_function_prototype, "GeneratorFunction"),
+                (self.async_function_prototype, "AsyncFunction"),
+                (self.async_generator_function_prototype, "AsyncGeneratorFunction"),
+            ].into_iter().find_map(|(prototype, name)| (prototype == Some(default)).then_some(name))
+            .or_else(|| {
+                [
+                    "Boolean", "Number", "ArrayBuffer", "SharedArrayBuffer", "DataView",
+                    "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
+                    "Int32Array", "Uint32Array", "Float16Array", "Float32Array", "Float64Array",
+                    "BigInt64Array", "BigUint64Array", "RegExp",
+                    "%Intl.Collator%", "%Intl.DateTimeFormat%", "%Intl.NumberFormat%",
+                    "%Intl.Locale%", "%Intl.DisplayNames%", "%Intl.DurationFormat%",
+                    "%Intl.ListFormat%", "%Intl.PluralRules%", "%Intl.RelativeTimeFormat%",
+                    "%Intl.Segmenter%",
+                    "%Temporal.Instant%", "%Temporal.Duration%", "%Temporal.PlainDate%",
+                    "%Temporal.PlainTime%", "%Temporal.PlainDateTime%", "%Temporal.PlainYearMonth%",
+                    "%Temporal.PlainMonthDay%", "%Temporal.ZonedDateTime%",
+                ].into_iter().find_map(|name| {
+                    let constructor = self.globals.get(name)?;
+                    let prototype = self.heap.get_own(*constructor, "prototype")
+                        .expect("a cached intrinsic constructor is rooted and owns an ordinary prototype property")
+                        .and_then(|value| value.object_id());
+                    (prototype == Some(default)).then(|| name.strip_prefix('%')
+                        .and_then(|name| name.strip_suffix('%')).unwrap_or(name))
+                })
+            });
             if let Some(intrinsic) = intrinsic {
                 return self.test262_foreign_default_prototype(realm, intrinsic);
             }
@@ -660,7 +918,16 @@ impl Vm {
             if let Some((realm, _, _, _)) = self.test262_foreign_reference(object) {
                 return Ok(Some(realm));
             }
-            if self.heap.closure(object)?.is_some() || self.heap.native_function(object)?.is_some()
+            if self
+                .heap
+                .closure(object)
+                .expect("the preceding bound-function lookup validated this live object")
+                .is_some()
+                || self
+                    .heap
+                    .native_function(object)
+                    .expect("the preceding bound-function lookup validated this live object")
+                    .is_some()
             {
                 return Ok(None);
             }
@@ -668,68 +935,6 @@ impl Vm {
                 "constructor must be callable".into(),
             ));
         }
-    }
-
-    pub(in super::super) fn is_constructor(&self, value: &Value) -> Result<bool, RuntimeError> {
-        let Value::Object(id) = value else {
-            return Ok(false);
-        };
-        if let Some((_, _, _, constructible)) = self.test262_foreign_reference(*id) {
-            return Ok(constructible);
-        }
-        if let Some((_, constructible)) = self.heap.proxy_capabilities(*id)? {
-            return Ok(constructible);
-        }
-        if let Some(bound) = self.heap.bound_function(*id)? {
-            return Ok(bound.constructible);
-        }
-        if let Some((code, _, _, _, _)) = self.heap.closure(*id)? {
-            return Ok(code.constructible);
-        }
-        Ok(matches!(
-            self.heap.native_function(*id)?,
-            Some(
-                NativeFunction::Function
-                    | NativeFunction::String
-                    | NativeFunction::Array
-                    | NativeFunction::Date
-                    | NativeFunction::TemporalConstructor(_)
-                    | NativeFunction::ArrayBuffer
-                    | NativeFunction::SharedArrayBuffer
-                    | NativeFunction::DataView
-                    | NativeFunction::TypedArray(_)
-                    // `%TypedArray%` has [[Construct]] so concrete and host
-                    // subclasses may extend it, even though a direct
-                    // construction attempt deliberately throws.
-                    | NativeFunction::TypedArrayIntrinsic
-                    | NativeFunction::Proxy
-                    | NativeFunction::Map
-                    | NativeFunction::Set
-                    | NativeFunction::WeakMap
-                    | NativeFunction::WeakSet
-                    | NativeFunction::WeakRef
-                    | NativeFunction::FinalizationRegistry
-                    | NativeFunction::DisposableStack { .. }
-                    | NativeFunction::ShadowRealm
-                    | NativeFunction::Promise
-                    | NativeFunction::AsyncFunction
-                    | NativeFunction::Object
-                    | NativeFunction::Iterator
-                    | NativeFunction::RegExp
-                    | NativeFunction::Collator
-                    | NativeFunction::IntlService(_)
-                    | NativeFunction::Locale
-                    | NativeFunction::Error(_)
-                    | NativeFunction::PrimitiveConstructor(_)
-                    // BigInt has [[Construct]] (`class Foo extends BigInt`
-                    // is legal, and Reflect.construct(BigInt, ...) doesn't
-                    // fail the IsConstructor check) even though invoking it
-                    // always throws once NewTarget is observed not to be
-                    // undefined -- "is a constructor" and "constructing it
-                    // never actually succeeds" are independent facts.
-                    | NativeFunction::BigInt
-            )
-        ))
     }
 
     pub(in super::super) fn proxy_constructor(
@@ -748,8 +953,9 @@ impl Vm {
         let handler = native::argument(args, 1)
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Proxy handler must be an object".into()))?;
-        let callable = self.is_callable(&Value::Object(target))?;
-        let constructible = self.is_constructor(&Value::Object(target))?;
+        let capabilities = self.value_capabilities(target)?;
+        let callable = capabilities.callable;
+        let constructible = capabilities.constructible;
         // A Proxy's ordinary prototype slot is never consulted by its
         // internal methods; [[GetPrototypeOf]] delegates to the target.
         // Using Object.prototype also allows ProxyCreate to wrap an already
@@ -770,8 +976,9 @@ impl Vm {
         let handler = native::argument(args, 1)
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Proxy handler must be an object".into()))?;
-        let callable = self.is_callable(&Value::Object(target))?;
-        let constructible = self.is_constructor(&Value::Object(target))?;
+        let capabilities = self.value_capabilities(target)?;
+        let callable = capabilities.callable;
+        let constructible = capabilities.constructible;
         let proxy_prototype = Some(self.object_prototype);
         let proxy = self.with_roots(|heap| {
             heap.alloc_proxy(target, handler, proxy_prototype, callable, constructible)
@@ -836,39 +1043,50 @@ impl Vm {
         if trap == Value::Undefined {
             return self.get_object_property(target, receiver, key);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy get trap must be callable".into(),
             ));
         }
-        let result = self.call_native(
+        let result = self.call_object_callback(
             trap,
             Value::Object(handler),
             vec![Value::Object(target), key.value(), receiver.clone()],
-            false,
         )?;
-        if let Some(descriptor) = self.object_get_own_property(target, key)? {
-            if descriptor.configurable == Some(false) {
-                if descriptor.writable == Some(false)
-                    && descriptor
-                        .value
-                        .as_ref()
-                        .is_some_and(|value| !same_value(value, &result))
-                {
-                    return Err(RuntimeError::TypeError(
-                        "Proxy get trap violated a non-writable property invariant".into(),
-                    ));
-                }
-                if descriptor.accessor()
-                    && descriptor.get == Some(Value::Undefined)
-                    && result != Value::Undefined
-                {
-                    return Err(RuntimeError::TypeError(
-                        "Proxy get trap violated an accessor invariant".into(),
-                    ));
+        // The trap's result is held nowhere else, and checking the invariants
+        // below can run a Proxy target's own traps.
+        let base = self.stack.len();
+        self.stack.push(result.clone());
+        let checked = (|| {
+            if let Some(descriptor) = self.object_get_own_property(target, key)? {
+                if descriptor.configurable == Some(false) {
+                    if descriptor.writable == Some(false)
+                        && descriptor
+                            .value
+                            .as_ref()
+                            .is_some_and(|value| !same_value(value, &result))
+                    {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy get trap violated a non-writable property invariant".into(),
+                        ));
+                    }
+                    if descriptor.accessor()
+                        && descriptor.get == Some(Value::Undefined)
+                        && result != Value::Undefined
+                    {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy get trap violated an accessor invariant".into(),
+                        ));
+                    }
                 }
             }
-        }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        checked?;
         Ok(result)
     }
 
@@ -886,18 +1104,22 @@ impl Vm {
         if trap == Value::Undefined {
             return self.has_property(target, key);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy has trap must be callable".into(),
             ));
         }
-        let result = self.call_native(
+        let result = self.call_object_callback(
             trap,
             Value::Object(handler),
             vec![Value::Object(target), key.value()],
-            false,
         )?;
-        let result = self.to_boolean(&result)?;
+        let result = self
+            .to_boolean(&result)
+            .expect("ToBoolean cannot fail for the live result of a trap");
         if !result {
             if let Some(descriptor) = self.object_get_own_property(target, key)? {
                 if descriptor.configurable == Some(false) || !self.object_is_extensible(target)? {
@@ -927,12 +1149,15 @@ impl Vm {
         if trap == Value::Undefined {
             return self.ordinary_set_with_receiver(target, receiver, key, value);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy set trap must be callable".into(),
             ));
         }
-        let trap_result = self.call_native(
+        let trap_result = self.call_object_callback(
             trap,
             Value::Object(handler),
             vec![
@@ -941,9 +1166,11 @@ impl Vm {
                 value.clone(),
                 receiver.clone(),
             ],
-            false,
         )?;
-        if !self.to_boolean(&trap_result)? {
+        if !self
+            .to_boolean(&trap_result)
+            .expect("ToBoolean cannot fail for the live result of a trap")
+        {
             return Ok(false);
         }
         if let Some(descriptor) = self.object_get_own_property(target, key)? {
@@ -969,24 +1196,32 @@ impl Vm {
         key: &PropertyName,
     ) -> Result<bool, RuntimeError> {
         let Some((target, handler)) = self.heap.proxy(proxy)? else {
-            return Ok(self.heap.delete(proxy, key)?);
+            return Ok(self
+                .heap
+                .delete(proxy, key)
+                .expect("the pure proxy lookup validated the ordinary deletion target"));
         };
         let trap = self.proxy_trap(handler, "deleteProperty")?;
         if trap == Value::Undefined {
             return self.object_delete(target, key);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy deleteProperty trap must be callable".into(),
             ));
         }
-        let trap_result = self.call_native(
+        let trap_result = self.call_object_callback(
             trap,
             Value::Object(handler),
             vec![Value::Object(target), key.value()],
-            false,
         )?;
-        if !self.to_boolean(&trap_result)? {
+        if !self
+            .to_boolean(&trap_result)
+            .expect("ToBoolean cannot fail for the live result of a trap")
+        {
             return Ok(false);
         }
         if let Some(descriptor) = self.object_get_own_property(target, key)? {
@@ -1010,17 +1245,16 @@ impl Vm {
         if trap == Value::Undefined {
             return self.object_own_property_keys(target);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy ownKeys trap must be callable".into(),
             ));
         }
-        let result = self.call_native(
-            trap,
-            Value::Object(handler),
-            vec![Value::Object(target)],
-            false,
-        )?;
+        let result =
+            self.call_object_callback(trap, Value::Object(handler), vec![Value::Object(target)])?;
         let object = self.coerce_object(&result)?;
         self.stack.push(Value::Object(object));
         let length = self.get_property(&Value::Object(object), &"length".into())?;
@@ -1114,63 +1348,77 @@ impl Vm {
         if trap == Value::Undefined {
             return self.object_get_own_property(target, key);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy getOwnPropertyDescriptor trap must be callable".into(),
             ));
         }
-        let result = self.call_native(
+        let result = self.call_object_callback(
             trap,
             Value::Object(handler),
             vec![Value::Object(target), key.value()],
-            false,
         )?;
-        let target_descriptor = self.object_get_own_property(target, key)?;
-        let extensible = self.object_is_extensible(target)?;
-        if result == Value::Undefined {
-            if target_descriptor
-                .as_ref()
-                .is_some_and(|descriptor| descriptor.configurable == Some(false))
-                || (!extensible && target_descriptor.is_some())
+        // The trap's result descriptor object is held nowhere else, and the
+        // target's own descriptor and extensibility are read through traps of
+        // their own when the target is a Proxy.
+        let base = self.stack.len();
+        self.stack.push(result.clone());
+        let outcome = (|| {
+            let target_descriptor = self.object_get_own_property(target, key)?;
+            let extensible = self.object_is_extensible(target)?;
+            if result == Value::Undefined {
+                if target_descriptor
+                    .as_ref()
+                    .is_some_and(|descriptor| descriptor.configurable == Some(false))
+                    || (!extensible && target_descriptor.is_some())
+                {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy getOwnPropertyDescriptor trap hid a required target property".into(),
+                    ));
+                }
+                return Ok(None);
+            }
+            let descriptor = complete_property_descriptor(self.read_descriptor(&result)?);
+            if !compatible_property_descriptor(extensible, target_descriptor.as_ref(), &descriptor)
             {
                 return Err(RuntimeError::TypeError(
-                    "Proxy getOwnPropertyDescriptor trap hid a required target property".into(),
+                    "Proxy getOwnPropertyDescriptor trap returned an incompatible descriptor"
+                        .into(),
                 ));
             }
-            return Ok(None);
-        }
-        let descriptor = complete_property_descriptor(self.read_descriptor(&result)?);
-        if !compatible_property_descriptor(extensible, target_descriptor.as_ref(), &descriptor) {
-            return Err(RuntimeError::TypeError(
-                "Proxy getOwnPropertyDescriptor trap returned an incompatible descriptor".into(),
-            ));
-        }
-        if descriptor.configurable == Some(false)
-            && target_descriptor
-                .as_ref()
-                .is_none_or(|current| current.configurable != Some(false))
-        {
-            return Err(RuntimeError::TypeError(
-                "Proxy getOwnPropertyDescriptor trap reported a new non-configurable property"
-                    .into(),
-            ));
-        }
-        // Proxy.[[GetOwnProperty]] has one stricter invariant than ordinary
-        // ValidateAndApplyPropertyDescriptor: a trap may not report a
-        // non-configurable target's writable data property as non-writable.
-        // The general compatibility predicate correctly permits the ordinary
-        // transition, so enforce this Proxy-specific observation separately.
-        if descriptor.configurable == Some(false)
-            && descriptor.writable == Some(false)
-            && target_descriptor.as_ref().is_some_and(|current| {
-                current.configurable == Some(false) && current.writable == Some(true)
-            })
-        {
-            return Err(RuntimeError::TypeError(
-                "Proxy getOwnPropertyDescriptor trap made a target property non-writable".into(),
-            ));
-        }
-        Ok(Some(descriptor))
+            if descriptor.configurable == Some(false)
+                && target_descriptor
+                    .as_ref()
+                    .is_none_or(|current| current.configurable != Some(false))
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy getOwnPropertyDescriptor trap reported a new non-configurable property"
+                        .into(),
+                ));
+            }
+            // Proxy.[[GetOwnProperty]] has one stricter invariant than ordinary
+            // ValidateAndApplyPropertyDescriptor: a trap may not report a
+            // non-configurable target's writable data property as non-writable.
+            // The general compatibility predicate correctly permits the ordinary
+            // transition, so enforce this Proxy-specific observation separately.
+            if descriptor.configurable == Some(false)
+                && descriptor.writable == Some(false)
+                && target_descriptor.as_ref().is_some_and(|current| {
+                    current.configurable == Some(false) && current.writable == Some(true)
+                })
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy getOwnPropertyDescriptor trap made a target property non-writable"
+                        .into(),
+                ));
+            }
+            Ok(Some(descriptor))
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 
     pub(in super::super) fn proxy_define_own_property(
@@ -1186,26 +1434,36 @@ impl Vm {
         if trap == Value::Undefined {
             return self.object_define_own_property(target, key, descriptor);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy defineProperty trap must be callable".into(),
             ));
         }
-        let descriptor_value = self.descriptor_object(&descriptor)?;
+        // The trap may be a function created by the handler's own `get`, held
+        // nowhere else: keep it alive while the descriptor record is built.
+        let base = self.stack.len();
+        self.stack.push(trap.clone());
+        let descriptor_value = self.descriptor_object(&descriptor);
+        self.stack.truncate(base);
+        let descriptor_value = descriptor_value?;
         // The descriptor record is observable by the trap. Root it across
         // the call because a trap can allocate (or invoke assertions that
         // allocate) before it reads the third argument.
-        let base = self.stack.len();
         self.stack.push(descriptor_value.clone());
-        let trap_result = self.call_native(
+        let trap_result = self.call_object_callback(
             trap,
             Value::Object(handler),
             vec![Value::Object(target), key.value(), descriptor_value],
-            false,
         );
         self.stack.truncate(base);
         let trap_result = trap_result?;
-        if !self.to_boolean(&trap_result)? {
+        if !self
+            .to_boolean(&trap_result)
+            .expect("ToBoolean cannot fail for the live result of a trap")
+        {
             return Ok(false);
         }
         let target_descriptor = self.object_get_own_property(target, &key)?;
@@ -1251,18 +1509,19 @@ impl Vm {
         if trap == Value::Undefined {
             return self.object_is_extensible(target);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy isExtensible trap must be callable".into(),
             ));
         }
-        let trap_result = self.call_native(
-            trap,
-            Value::Object(handler),
-            vec![Value::Object(target)],
-            false,
-        )?;
-        let result = self.to_boolean(&trap_result)?;
+        let trap_result =
+            self.call_object_callback(trap, Value::Object(handler), vec![Value::Object(target)])?;
+        let result = self
+            .to_boolean(&trap_result)
+            .expect("ToBoolean cannot fail for the live result of a trap");
         if result != self.object_is_extensible(target)? {
             return Err(RuntimeError::TypeError(
                 "Proxy isExtensible trap disagreed with its target".into(),
@@ -1282,17 +1541,16 @@ impl Vm {
         if trap == Value::Undefined {
             return self.object_get_prototype(target);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy getPrototypeOf trap must be callable".into(),
             ));
         }
-        let result = self.call_native(
-            trap,
-            Value::Object(handler),
-            vec![Value::Object(target)],
-            false,
-        )?;
+        let result =
+            self.call_object_callback(trap, Value::Object(handler), vec![Value::Object(target)])?;
         let prototype = match result {
             Value::Null => None,
             Value::Object(object) => Some(object),
@@ -1302,11 +1560,22 @@ impl Vm {
                 ))
             }
         };
-        if !self.object_is_extensible(target)? && prototype != self.object_get_prototype(target)? {
-            return Err(RuntimeError::TypeError(
-                "Proxy getPrototypeOf trap disagreed with a non-extensible target".into(),
-            ));
-        }
+        // A fresh prototype is held nowhere else, and reading the target's
+        // extensibility and prototype can run a Proxy target's own traps.
+        let base = self.stack.len();
+        self.stack.push(result);
+        let checked = (|| {
+            if !self.object_is_extensible(target)?
+                && prototype != self.object_get_prototype(target)?
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy getPrototypeOf trap disagreed with a non-extensible target".into(),
+                ));
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        checked?;
         Ok(prototype)
     }
 
@@ -1326,21 +1595,26 @@ impl Vm {
         if trap == Value::Undefined {
             return self.object_set_prototype(target, prototype);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy setPrototypeOf trap must be callable".into(),
             ));
         }
-        let trap_result = self.call_native(
+        let trap_result = self.call_object_callback(
             trap,
             Value::Object(handler),
             vec![
                 Value::Object(target),
                 prototype.map_or(Value::Null, Value::Object),
             ],
-            false,
         )?;
-        if !self.to_boolean(&trap_result)? {
+        if !self
+            .to_boolean(&trap_result)
+            .expect("ToBoolean cannot fail for the live result of a trap")
+        {
             return Ok(false);
         }
         if !self.object_is_extensible(target)? && prototype != self.object_get_prototype(target)? {
@@ -1356,25 +1630,29 @@ impl Vm {
         proxy: ObjectId,
     ) -> Result<bool, RuntimeError> {
         let Some((target, handler)) = self.heap.proxy(proxy)? else {
-            self.heap.prevent_extensions(proxy)?;
+            self.heap
+                .prevent_extensions(proxy)
+                .expect("the pure proxy lookup validated the ordinary target");
             return Ok(true);
         };
         let trap = self.proxy_trap(handler, "preventExtensions")?;
         if trap == Value::Undefined {
             return self.object_prevent_extensions(target);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(
                 "Proxy preventExtensions trap must be callable".into(),
             ));
         }
-        let trap_result = self.call_native(
-            trap,
-            Value::Object(handler),
-            vec![Value::Object(target)],
-            false,
-        )?;
-        if !self.to_boolean(&trap_result)? {
+        let trap_result =
+            self.call_object_callback(trap, Value::Object(handler), vec![Value::Object(target)])?;
+        if !self
+            .to_boolean(&trap_result)
+            .expect("ToBoolean cannot fail for the live result of a trap")
+        {
             return Ok(false);
         }
         if self.object_is_extensible(target)? {
@@ -1405,18 +1683,26 @@ impl Vm {
         if trap == Value::Undefined {
             return self.dispatch_call(Value::Object(target), receiver, args, construct);
         }
-        if !self.is_callable(&trap)? {
+        if !self
+            .is_callable(&trap)
+            .expect("GetMethod returned a live value in this realm")
+        {
             return Err(RuntimeError::TypeError(format!(
                 "Proxy {name} trap must be callable"
             )));
         }
-        let arguments = self.array_from(args)?;
+        // As with the other traps, the trap function itself may be unrooted.
+        let base = self.stack.len();
+        self.stack.push(trap.clone());
+        let arguments = self.array_from(args);
+        self.stack.truncate(base);
+        let arguments = arguments?;
         let values = if construct {
             vec![Value::Object(target), arguments, self.new_target.clone()]
         } else {
             vec![Value::Object(target), receiver, arguments]
         };
-        let result = self.call_native(trap, Value::Object(handler), values, false)?;
+        let result = self.call_object_callback(trap, Value::Object(handler), values)?;
         if construct && !matches!(result, Value::Object(_)) {
             return Err(RuntimeError::TypeError(
                 "Proxy construct trap must return an object".into(),

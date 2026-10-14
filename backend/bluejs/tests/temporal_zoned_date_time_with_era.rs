@@ -57,6 +57,36 @@ fn assert_throws_range_error(source: &str) {
     }
 }
 
+#[test]
+fn zoned_with_propagates_each_observable_field_getter_error() {
+    assert_true(
+        r#"
+        const cases = [
+            [new Temporal.ZonedDateTime(0n, "UTC"),
+             ["calendar", "timeZone", "day", "microsecond", "millisecond",
+              "minute", "month", "nanosecond", "offset", "second"]],
+            [new Temporal.ZonedDateTime(0n, "UTC", "gregory"), ["era", "eraYear"]],
+        ];
+        for (const testCase of cases) {
+            const receiver = testCase[0];
+            for (const name of testCase[1]) {
+                const expected = {};
+                const fields = {};
+                Object.defineProperty(fields, name, { get() { throw expected; } });
+                let caught = false;
+                try {
+                    receiver.with(fields);
+                } catch (error) {
+                    caught = error === expected;
+                }
+                if (!caught) throw new Error(name);
+            }
+        }
+        true;
+    "#,
+    );
+}
+
 /// `era` and `eraYear` together resolve the year, excluding the receiver's
 /// own `year` -- `mutually-exclusive-fields-gregory.js`'s first assertion.
 #[test]

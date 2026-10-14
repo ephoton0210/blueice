@@ -7,6 +7,10 @@
 
 use super::super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../../tests/fixtures/temporal_from_string.rs"]
+mod tests;
+
 impl Vm {
     pub(in super::super::super) fn temporal_value_from_args(
         &mut self,
@@ -431,7 +435,8 @@ impl Vm {
         let constructor = self.globals[&format!("%Temporal.{}%", value.kind.name())];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("rooted Temporal constructor retains its immutable prototype")
             .object_id()
             .expect("Temporal constructor prototype is an object");
         let prototype = if use_new_target {

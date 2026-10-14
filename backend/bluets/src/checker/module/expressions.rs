@@ -6,180 +6,35 @@
 
 use super::*;
 
-impl<'a> ModuleChecker<'a> {
-    pub(super) fn infer_expression(
-        &self,
-        tokens: &[Token],
-        scope: &BTreeMap<String, Type>,
-    ) -> Type {
-        let tokens = strip_outer_parentheses(tokens);
-        if let Some(call) =
-            direct_call_parts(tokens).filter(|call| split_call_arguments(call.arguments).is_some())
-        {
-            if let Some(signatures) = self.functions.get(&call.callee.text) {
-                let explicit = call.generic.then(|| {
-                    self.module
-                        .generic_call_type_arguments
-                        .get(&call.callee.start)
-                        .expect("parsed generic call has recorded type arguments")
-                        .as_slice()
-                });
-                return self.infer_function_call(signatures, call.arguments, scope, explicit);
-            }
-            return scope
-                .get(&call.callee.text)
-                .cloned()
-                .unwrap_or(Type::Unknown);
-        }
-        if let Some((_, consequent, alternate)) = conditional_expression_parts(tokens) {
-            return merge_conditional_branch_types(
-                self.infer_expression(consequent, scope),
-                self.infer_expression(alternate, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["??"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_nullish_coalescing_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["||"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_boolean_logical_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["&&"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_boolean_logical_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        for operators in [&["|"][..], &["^"][..], &["&"][..]] {
-            if let Some((left, _, right)) = top_level_binary_parts(tokens, operators, |start| {
-                self.module.generic_call_type_arguments.contains_key(&start)
-            }) {
-                return infer_numeric_binary_expression(
-                    self.infer_expression(left, scope),
-                    self.infer_expression(right, scope),
-                );
-            }
-        }
-        if top_level_binary_parts(
-            tokens,
-            &[
-                "===",
-                "!==",
-                "==",
-                "!=",
-                "<",
-                ">",
-                "<=",
-                ">=",
-                "in",
-                "instanceof",
-            ],
-            |start| self.module.generic_call_type_arguments.contains_key(&start),
-        )
-        .is_some()
-        {
-            return Type::Boolean;
-        }
-        if let Some((left, _, right)) = top_level_shift_parts(tokens, |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_numeric_binary_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["+", "-"], |start| {
-                self.module.generic_call_type_arguments.contains_key(&start)
-            })
-        {
-            return infer_additive_expression(
-                operator,
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["*", "/", "%"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_numeric_binary_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["**"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_numeric_binary_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        let Some(first) = tokens.first() else {
-            return Type::Undefined;
-        };
-        if first.is("typeof") {
-            return Type::String;
-        }
-        if first.is("void") {
-            return Type::Undefined;
-        }
-        if matches!(first.text.as_str(), "!") {
-            return Type::Boolean;
-        }
-        if matches!(first.text.as_str(), "+" | "-" | "~") {
-            return Type::Number;
-        }
-        if first.kind == TokenKind::String || first.kind == TokenKind::Template {
-            return Type::String;
-        }
-        if first.kind == TokenKind::Number {
-            return Type::Number;
-        }
-        match first.text.as_str() {
-            "true" | "false" => Type::Boolean,
-            "null" => Type::Null,
-            "undefined" => Type::Undefined,
-            "[" => infer_array(tokens, scope),
-            "{" => infer_record(tokens, scope),
-            _ if first.kind == TokenKind::Identifier => {
-                if tokens.get(1).is_some_and(|token| token.is("."))
-                    && tokens
-                        .get(2)
-                        .is_some_and(|token| token.kind == TokenKind::Identifier)
-                {
-                    let base = scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
-                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-                    return match property_type(
-                        &base,
-                        &tokens[2].text,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) {
-                        PropertyType::Found(value) => value,
-                        PropertyType::Missing
-                        | PropertyType::Indeterminate
-                        | PropertyType::Exhausted => Type::Unknown,
-                    };
-                }
-                scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
-            }
-            _ => Type::Unknown,
-        }
-    }
+mod indexing;
+mod inference;
+mod method_overloads;
+mod optional_property;
+mod readonly;
 
+use indexing::{canonical_index_key, indexed_value_type, tuple_indexed_candidates};
+use method_overloads::{
+    select_callback_method_overload, supports_callback_method_receiver, MethodOverloadError,
+};
+use optional_property::optional_property_type;
+
+fn method_overload_signatures(overloads: &[Type]) -> Option<Vec<FunctionSignature>> {
+    overloads
+        .iter()
+        .map(|overload| {
+            let Type::Function { parameters, result } = overload else {
+                return None;
+            };
+            Some(FunctionSignature {
+                parameters: parameters.clone(),
+                type_parameters: Vec::new(),
+                return_type: *result.clone(),
+            })
+        })
+        .collect()
+}
+
+impl<'a> ModuleChecker<'a> {
     pub(super) fn infer_function_call(
         &self,
         signatures: &[FunctionSignature],
@@ -214,6 +69,16 @@ impl<'a> ModuleChecker<'a> {
             return;
         };
         let Some(signatures) = self.functions.get(&call.callee.text).cloned() else {
+            if self.require_declared_global_calls && !scope.contains_key(&call.callee.text) {
+                self.type_error(
+                    span,
+                    format!(
+                        "function {} is not declared by this page profile",
+                        call.callee.text
+                    ),
+                    DiagnosticCode::UnknownName,
+                );
+            }
             return;
         };
         let Some(arguments) = split_call_arguments(call.arguments) else {
@@ -347,9 +212,17 @@ impl<'a> ModuleChecker<'a> {
                 let Type::Tuple(values) = self.infer_expression(&argument[1..], scope) else {
                     return Err(());
                 };
-                actuals.extend(values);
+                if values.iter().any(|value| value.optional || value.rest) {
+                    return Err(());
+                }
+                actuals.extend(values.into_iter().map(|value| value.annotation));
             } else {
-                actuals.push(self.infer_expression(argument, scope));
+                actuals.push(match *argument {
+                    [literal] if literal.kind == TokenKind::String => {
+                        Type::Literal(literal.text.clone())
+                    }
+                    _ => self.infer_expression(argument, scope),
+                });
             }
         }
         Ok(actuals)
@@ -382,13 +255,17 @@ impl<'a> ModuleChecker<'a> {
         span: &SourceSpan,
     ) -> bool {
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        let assignable = is_assignable(
-            actual,
-            expected,
-            &self.types,
-            &mut HashSet::new(),
-            &mut budget,
-        );
+        let assignable = if self.strict_catch_unknown && matches!(actual, Type::Unknown) {
+            accepts_strict_unknown(expected, &self.types, &mut HashSet::new(), &mut budget)
+        } else {
+            is_assignable(
+                actual,
+                expected,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            )
+        };
         if budget.exhausted {
             self.type_error(
                 span,
@@ -470,237 +347,34 @@ impl<'a> ModuleChecker<'a> {
         );
         Some(substitutions)
     }
-
-    pub(super) fn check_direct_property_access(
-        &mut self,
-        tokens: &[Token],
-        scope: &BTreeMap<String, Type>,
-        span: &SourceSpan,
-    ) {
-        let [base, dot, property] = tokens else {
-            return;
-        };
-        if base.kind != TokenKind::Identifier
-            || !dot.is(".")
-            || property.kind != TokenKind::Identifier
-        {
-            return;
-        }
-        let value = scope.get(&base.text).cloned().unwrap_or(Type::Unknown);
-        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        match property_type(
-            &value,
-            &property.text,
-            &self.types,
-            &mut HashSet::new(),
-            &mut budget,
-        ) {
-            PropertyType::Found(_) | PropertyType::Indeterminate => {}
-            PropertyType::Missing => self.type_error(
-                span,
-                format!(
-                    "property `{}` does not exist on type `{}`",
-                    property.text,
-                    type_label(&value)
-                ),
-                DiagnosticCode::TypeMismatch,
-            ),
-            PropertyType::Exhausted => self.type_error(
-                span,
-                format!(
-                    "property lookup exceeds the {} generic-expansion limit",
-                    self.max_type_expansions
-                ),
-                DiagnosticCode::ResourceLimit,
-            ),
-        }
-    }
-
-    /// Checks only arithmetic forms whose operand types are already known
-    /// primitive values. Unknown, `any`, union and structural forms remain
-    /// outside this deliberately bounded compatibility rule.
-    pub(super) fn check_arithmetic_operators(
-        &mut self,
-        tokens: &[Token],
-        scope: &BTreeMap<String, Type>,
-        span: &SourceSpan,
-    ) {
-        let tokens = strip_outer_parentheses(tokens);
-        let generic_call = |start| self.module.generic_call_type_arguments.contains_key(&start);
-        if let Some((condition, consequent, alternate)) = conditional_expression_parts(tokens) {
-            self.check_arithmetic_operators(condition, scope, span);
-            self.check_arithmetic_operators(consequent, scope, span);
-            self.check_arithmetic_operators(alternate, scope, span);
-            return;
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["??"], generic_call) {
-            self.check_arithmetic_operators(left, scope, span);
-            self.check_arithmetic_operators(right, scope, span);
-            return;
-        }
-        for operators in [&["||"][..], &["&&"][..]] {
-            if let Some((left, _, right)) = top_level_binary_parts(tokens, operators, generic_call)
-            {
-                self.check_arithmetic_operators(left, scope, span);
-                self.check_arithmetic_operators(right, scope, span);
-                return;
-            }
-        }
-        for operators in [&["|"][..], &["^"][..], &["&"][..]] {
-            if let Some((left, operator, right)) =
-                top_level_binary_parts(tokens, operators, generic_call)
-            {
-                self.check_arithmetic_operators(left, scope, span);
-                self.check_arithmetic_operators(right, scope, span);
-                self.check_known_numeric_operands(
-                    &operator.text,
-                    &self.infer_expression(left, scope),
-                    &self.infer_expression(right, scope),
-                    span,
-                );
-                return;
-            }
-        }
-        if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["===", "!=="], generic_call)
-        {
-            self.check_arithmetic_operators(left, scope, span);
-            self.check_arithmetic_operators(right, scope, span);
-            self.check_known_disjoint_strict_equality(
-                operator,
-                &self.infer_expression(left, scope),
-                &self.infer_expression(right, scope),
-                span,
-            );
-            return;
-        }
-        if let Some((left, _, right)) =
-            top_level_binary_parts(tokens, &["==", "!=", "<", ">", "<=", ">="], generic_call)
-        {
-            self.check_arithmetic_operators(left, scope, span);
-            self.check_arithmetic_operators(right, scope, span);
-            return;
-        }
-        if let Some((left, operator, right)) = top_level_shift_parts(tokens, generic_call) {
-            self.check_arithmetic_operators(left, scope, span);
-            self.check_arithmetic_operators(right, scope, span);
-            self.check_known_numeric_operands(
-                operator.text(),
-                &self.infer_expression(left, scope),
-                &self.infer_expression(right, scope),
-                span,
-            );
-            return;
-        }
-        if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["+", "-"], generic_call)
-        {
-            self.check_arithmetic_operators(left, scope, span);
-            self.check_arithmetic_operators(right, scope, span);
-            self.check_known_arithmetic_operands(
-                operator,
-                &self.infer_expression(left, scope),
-                &self.infer_expression(right, scope),
-                span,
-            );
-            return;
-        }
-        if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["*", "/", "%"], generic_call)
-        {
-            self.check_arithmetic_operators(left, scope, span);
-            self.check_arithmetic_operators(right, scope, span);
-            self.check_known_arithmetic_operands(
-                operator,
-                &self.infer_expression(left, scope),
-                &self.infer_expression(right, scope),
-                span,
-            );
-            return;
-        }
-        if let Some((left, operator, right)) = top_level_binary_parts(tokens, &["**"], generic_call)
-        {
-            self.check_arithmetic_operators(left, scope, span);
-            self.check_arithmetic_operators(right, scope, span);
-            self.check_known_arithmetic_operands(
-                operator,
-                &self.infer_expression(left, scope),
-                &self.infer_expression(right, scope),
-                span,
-            );
-        }
-    }
-
-    pub(super) fn check_known_arithmetic_operands(
-        &mut self,
-        operator: &Token,
-        left: &Type,
-        right: &Type,
-        span: &SourceSpan,
-    ) {
-        if !is_known_primitive_type(left) || !is_known_primitive_type(right) {
-            return;
-        }
-        let accepted = (operator.is("+") && (left == &Type::String || right == &Type::String))
-            || (left == &Type::Number && right == &Type::Number);
-        if !accepted {
-            self.type_error(
-                span,
-                format!(
-                    "operator `{}` cannot be applied to types `{}` and `{}`",
-                    operator.text,
-                    type_label(left),
-                    type_label(right),
-                ),
-                DiagnosticCode::TypeMismatch,
-            );
-        }
-    }
-
-    pub(super) fn check_known_disjoint_strict_equality(
-        &mut self,
-        operator: &Token,
-        left: &Type,
-        right: &Type,
-        span: &SourceSpan,
-    ) {
-        if is_strict_equality_primitive_type(left)
-            && is_strict_equality_primitive_type(right)
-            && left != right
-        {
-            self.type_error(
-                span,
-                format!(
-                    "operator `{}` compares disjoint types `{}` and `{}`",
-                    operator.text,
-                    type_label(left),
-                    type_label(right),
-                ),
-                DiagnosticCode::TypeMismatch,
-            );
-        }
-    }
-
-    pub(super) fn check_known_numeric_operands(
-        &mut self,
-        operator: &str,
-        left: &Type,
-        right: &Type,
-        span: &SourceSpan,
-    ) {
-        if !is_known_primitive_type(left) || !is_known_primitive_type(right) {
-            return;
-        }
-        if left != &Type::Number || right != &Type::Number {
-            self.type_error(
-                span,
-                format!(
-                    "operator `{operator}` cannot be applied to types `{}` and `{}`",
-                    type_label(left),
-                    type_label(right),
-                ),
-                DiagnosticCode::TypeMismatch,
-            );
-        }
-    }
 }
+
+fn erased_assertion_operand(tokens: &[Token]) -> Option<&[Token]> {
+    let mut depth = 0usize;
+    let mut assertion = None;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            "as" | "satisfies"
+                if depth == 0
+                    && index > 0
+                    && index + 1 < tokens.len()
+                    && !tokens[index - 1].is(".") =>
+            {
+                assertion = Some(index);
+            }
+            _ => {}
+        }
+    }
+    assertion.map(|index| &tokens[..index])
+}
+
+/// Exposes only the final member in an expression. A computed key is known
+/// only when its string spelling needs no JavaScript escape decoding; all
+/// other keys remain dynamic rather than guessed.
+mod arithmetic;
+mod calls;
+mod mutation;
+
+use mutation::{contains_readonly_member, member_access_target, unescaped_property_name};

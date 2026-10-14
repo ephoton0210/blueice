@@ -1,0 +1,13 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+function acceptsNumber(value: number): boolean { return value > 0; }
+
+function count(value: number): number {
+    while (acceptsNumber("bad")) {
+        acceptsNumber("also bad");
+        value -= 1;
+    }
+    return value;
+}

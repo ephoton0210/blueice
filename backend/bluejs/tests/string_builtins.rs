@@ -37,6 +37,34 @@ fn constructor_statics_and_native_method_identity() {
 }
 
 #[test]
+fn native_string_methods_reject_symbol_values_during_required_conversions() {
+    for source in [
+        "String.fromCharCode(Symbol())",
+        "String.fromCodePoint(Symbol())",
+        "String.prototype.charAt.call(Symbol())",
+        "'abc'.at(Symbol())",
+        "'abc'.slice(Symbol())",
+        "'abc'.substring(0,Symbol())",
+        "'abc'.indexOf(Symbol())",
+        "'abc'.lastIndexOf('a',Symbol())",
+        "'abc'.includes('a',Symbol())",
+        "'abc'.concat(Symbol())",
+        "'abc'.padStart(Symbol())",
+        "'abc'.padEnd(4,Symbol())",
+        "'abc'.repeat(Symbol())",
+        "'abc'.normalize(Symbol())",
+        "'abc'.substr(Symbol())",
+        "'abc'.substr(0,Symbol())",
+        "'abc'.link(Symbol())",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn indexing_and_slicing_use_code_units() {
     for source in [
         r"'A😀B'.length === 4 && 'A😀B'[1] === '\ud83d' && 'A😀B'[2] === '\ude00'",

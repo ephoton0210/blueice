@@ -63,6 +63,17 @@ pub(crate) fn numeric(value: &Value) -> Result<Numeric, RuntimeError> {
     }
 }
 
+/// `Number::exponentiate ( base, exponent )`. Rust's `powf` follows C `pow`,
+/// which returns 1 for `1 ** NaN` and for `(+-1) ** (+-Infinity)`; ECMAScript
+/// specifies NaN for both.
+pub(crate) fn number_exponentiate(base: f64, exponent: f64) -> f64 {
+    if exponent.is_nan() || (exponent.is_infinite() && base.abs() == 1.0) {
+        f64::NAN
+    } else {
+        base.powf(exponent)
+    }
+}
+
 /// ECMAScript ToUint32 applied after observable numeric coercion. The finite
 /// result is an integer in `[0, 2^32)`, exactly representable as an `f64`.
 pub(crate) fn to_uint32(number: f64) -> u32 {
@@ -186,9 +197,9 @@ pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, R
         // array comparator can return its ordinary Number ordering result.
         Ok(Some(a.cmp(b)))
     } else if let (Value::BigInt(bigint), Value::Number(number)) = (left, right) {
-        compare_bigint_number(bigint, *number)
+        Ok(compare_bigint_number(bigint, *number))
     } else if let (Value::Number(number), Value::BigInt(bigint)) = (left, right) {
-        compare_bigint_number(bigint, *number).map(|ordering| ordering.map(Ordering::reverse))
+        Ok(compare_bigint_number(bigint, *number).map(Ordering::reverse))
     } else if let (Value::BigInt(bigint), Value::String(text)) = (left, right) {
         // A string that isn't a valid StringToBigInt source compares as
         // undefined (neither less than, greater than, nor equal), matching
@@ -221,28 +232,27 @@ pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, R
 /// Number coercion. The truncated finite Number is exactly representable as a
 /// `BigInt`; when it has a fractional remainder, an equal integer lies below a
 /// positive Number and above a negative Number.
-fn compare_bigint_number(bigint: &BigInt, number: f64) -> Result<Option<Ordering>, RuntimeError> {
+fn compare_bigint_number(bigint: &BigInt, number: f64) -> Option<Ordering> {
     if number.is_nan() {
-        return Ok(None);
+        return None;
     }
     if number == f64::INFINITY {
-        return Ok(Some(Ordering::Less));
+        return Some(Ordering::Less);
     }
     if number == f64::NEG_INFINITY {
-        return Ok(Some(Ordering::Greater));
+        return Some(Ordering::Greater);
     }
-    let integer = BigInt::from_f64(number.trunc()).ok_or_else(|| {
-        RuntimeError::RangeError("cannot compare a BigInt with this Number".into())
-    })?;
+    // num-bigint converts every finite f64; the nonfinite cases returned above.
+    let integer = BigInt::from_f64(number.trunc()).expect("finite f64 converts to BigInt");
     let ordering = bigint.cmp(&integer);
     if ordering == Ordering::Equal && number.fract() != 0.0 {
-        return Ok(Some(if number.is_sign_positive() {
+        return Some(if number.is_sign_positive() {
             Ordering::Less
         } else {
             Ordering::Greater
-        }));
+        });
     }
-    Ok(Some(ordering))
+    Some(ordering)
 }
 
 pub(crate) fn whitespace(c: char) -> bool {
@@ -330,7 +340,9 @@ pub(crate) fn string_to_bigint(s: &str) -> Option<BigInt> {
     if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    let value = BigInt::parse_bytes(digits.as_bytes(), 10)?;
+    // The check above accepted only nonempty ASCII decimal digits.
+    let value = BigInt::parse_bytes(digits.as_bytes(), 10)
+        .expect("validated ASCII decimal digits parse as BigInt");
     Some(if negative { -value } else { value })
 }
 

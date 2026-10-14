@@ -4,6 +4,48 @@
 
 use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
+#[test]
+fn locale_case_mapping_enforces_the_output_limit_for_runs_and_surrogates() {
+    use blueice_bluejs::VmConfig;
+
+    for source in [
+        format!("'{}'.toLocaleUpperCase('de')", "ß".repeat(32)),
+        format!("'{}'.toLocaleLowerCase('en')", "İ".repeat(32)),
+        format!("'{}\\ud800'.toLocaleUpperCase('de')", "ß".repeat(16)),
+        format!("'{}\\ud800'.toLocaleUpperCase('de')", "ß".repeat(17)),
+    ] {
+        let code = compile(&parse(&source).unwrap()).unwrap();
+        let mut vm = Vm::new(VmConfig {
+            max_string_bytes: 64,
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert!(
+            matches!(
+                vm.execute(&code),
+                Err(RuntimeError::StringLimit { limit: 64 })
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn segment_iterator_next_rejects_non_iterator_receivers() {
+    for receiver in ["0", "{}"] {
+        let source = format!(
+            "let iterator = new Intl.Segmenter().segment('A')[Symbol.iterator](); iterator.next.call({receiver})"
+        );
+        match evaluate(&source) {
+            Err(RuntimeError::TypeError(message)) => assert!(
+                message.contains("Segmenter iterator next requires"),
+                "{source}: {message}"
+            ),
+            other => panic!("{source}: {other:?}"),
+        }
+    }
+}
+
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
 }
@@ -185,6 +227,87 @@ fn locale_objects_preserve_canonical_locale_state() {
         evaluate("let g=Object.getOwnPropertyDescriptor(Intl.Locale.prototype,'language').get; g.call(1)"),
         Err(RuntimeError::TypeError("receiver is not an Intl.Locale".into()))
     );
+}
+
+#[test]
+fn locale_numeric_first_day_options_follow_weekday_order() {
+    for (day, expected) in [
+        (0, "sun"),
+        (1, "mon"),
+        (2, "tue"),
+        (3, "wed"),
+        (4, "thu"),
+        (5, "fri"),
+        (6, "sat"),
+        (7, "sun"),
+    ] {
+        let source = format!("new Intl.Locale('en', {{firstDayOfWeek: {day}}}).firstDayOfWeek");
+        assert_eq!(
+            evaluate(&source),
+            Ok(Value::String(expected.into())),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn collator_resolved_options_preserve_each_sensitivity() {
+    for sensitivity in ["base", "accent", "case", "variant"] {
+        let source = format!(
+            "new Intl.Collator('en', {{sensitivity: '{sensitivity}'}}).resolvedOptions().sensitivity"
+        );
+        assert_eq!(
+            evaluate(&source),
+            Ok(Value::String(sensitivity.into())),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn locale_option_getters_propagate_abrupt_completion() {
+    for option in [
+        "language",
+        "script",
+        "region",
+        "variants",
+        "calendar",
+        "collation",
+        "hourCycle",
+        "caseFirst",
+        "numeric",
+        "numberingSystem",
+        "firstDayOfWeek",
+    ] {
+        let source = format!(
+            "(() => {{ const options = {{ get {option}() {{ throw new Error('{option}'); }} }}; \
+             try {{ new Intl.Locale('en', options); return false; }} \
+             catch (error) {{ return error.message === '{option}'; }} }})()"
+        );
+        assert_eq!(evaluate(&source), Ok(Value::Bool(true)), "{option}");
+    }
+}
+
+#[test]
+fn intl_constructor_option_getters_propagate_abrupt_completion() {
+    for (constructor, option) in [
+        ("NumberFormat", "style"),
+        ("DateTimeFormat", "timeZone"),
+        ("ListFormat", "type"),
+        ("DurationFormat", "style"),
+        ("Collator", "usage"),
+        ("PluralRules", "type"),
+        ("RelativeTimeFormat", "style"),
+        ("Segmenter", "granularity"),
+        ("DisplayNames", "type"),
+    ] {
+        let source = format!(
+            "(() => {{ const options = {{ get {option}() {{ throw new Error('{option}'); }} }}; \
+             try {{ new Intl.{constructor}('en', options); return false; }} \
+             catch (error) {{ return error.message === '{option}'; }} }})()"
+        );
+        assert_eq!(evaluate(&source), Ok(Value::Bool(true)), "{constructor}");
+    }
 }
 
 #[test]
@@ -1192,6 +1315,69 @@ fn date_time_format_styles_select_their_field_widths() {
     let source = "let d=new Date('1886-05-01T14:12:47Z');let date=new Intl.DateTimeFormat('en-US',{dateStyle:'short',timeZone:'UTC'});let time=new Intl.DateTimeFormat('en-US',{timeStyle:'short',timeZone:'UTC',hourCycle:'h24'});date.format(d)==='5/1/86'&&time.format(d)==='14:12'&&date.formatToParts(d).some(function(part){return part.type==='year'&&part.value==='86'})";
 
     assert_eq!(evaluate(source), Ok(Value::Bool(true)));
+}
+
+/// `formatMatcher: "basic"` with no component options matches the defaulted
+/// numeric date, like the best-fit default (it used to format only the day).
+#[test]
+fn basic_format_matcher_formats_the_defaulted_numeric_date() {
+    for source in [
+        "['de','fr','ja','en-US'].every(l => new Intl.DateTimeFormat(l,{timeZone:'UTC',formatMatcher:'basic'}).format(86400000) === new Intl.DateTimeFormat(l,{timeZone:'UTC'}).format(86400000))",
+        "let f=new Intl.DateTimeFormat('de',{timeZone:'UTC',formatMatcher:'basic'});let r=f.resolvedOptions();r.year==='numeric'&&r.month==='numeric'&&r.day==='numeric'&&f.formatToParts(86400000).filter(p=>p.type!=='literal').map(p=>p.type).join()==='day,month,year'",
+        "new Intl.DateTimeFormat('en-US',{timeZone:'UTC',formatMatcher:'basic',era:'short'}).formatToParts(0).map(p=>p.type).includes('year')",
+        "new Intl.DateTimeFormat('en',{formatMatcher:'basic'}).format(new Temporal.PlainDate(2020,3,4)).includes('2020')",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
+/// Test262's `staging/sm/String/internalUsage.js` shape: `new
+/// Intl.DateTimeFormat("de", {}).format(t)` (`t` one day past the epoch)
+/// must be one of the unpadded `"1.1.1970"`/`"2.1.1970"`/`"3.1.1970"`
+/// (the exact day is local-time-zone-dependent), never zero-padded like
+/// `"02.01.1970"`. CLDR's `de` `yMd` `availableFormats` pattern is `"d.M.y"`
+/// (unpadded); ICU4X's own length-styled default numeric-date pattern is
+/// `"dd.MM.y"` and must not be used for the default (no options) render.
+/// Also covers the legacy `Date` methods, which resolve through the same
+/// default-date path, and non-regression for locales (`fr`, `ru`) whose
+/// real `yMd` pattern is genuinely zero-padded.
+#[test]
+fn default_date_time_format_matches_the_locale_availableformats_ymd_pattern() {
+    let possible_answer = "['1.1.1970','2.1.1970','3.1.1970']";
+    for source in [
+        // The internalUsage.js shape itself: a poisoned
+        // `String.prototype[Symbol.split]` must not change the result (each
+        // `evaluate` call gets its own fresh realm, so these run
+        // independently rather than compounding on each other).
+        &format!(
+            "String.prototype[Symbol.split]=function(s,limit){{return ['']}};\
+             {possible_answer}.includes(new Intl.DateTimeFormat('de',{{}}).format(86400000))"
+        ),
+        &format!(
+            "String.prototype[Symbol.split]=function(s,limit){{return ['x-foo']}};\
+             {possible_answer}.includes(new Intl.DateTimeFormat('de',{{}}).format(86400000))"
+        ),
+        &format!(
+            "String.prototype[Symbol.split]=function(s,limit){{return ['de-u-co']}};\
+             {possible_answer}.includes(new Intl.DateTimeFormat('de',{{}}).format(86400000))"
+        ),
+        &format!(
+            "String.prototype[Symbol.split]=function(s,limit){{return ['en-US']}};\
+             {possible_answer}.includes(new Intl.DateTimeFormat('de',{{}}).format(86400000))"
+        ),
+        // The legacy `Date` methods share `Intl.DateTimeFormat`'s
+        // default-date resolution rather than a separate rendering path.
+        &format!("{possible_answer}.includes(new Date(86400000).toLocaleDateString('de'))"),
+        &format!(
+            "{possible_answer}.some(d => new Date(86400000).toLocaleString('de').includes(d))"
+        ),
+        // `fr`/`ru`'s real `yMd` pattern is genuinely zero-padded
+        // (`"dd/MM/y"`/`"dd.MM.y"`); the fix must not touch them.
+        "new Intl.DateTimeFormat('fr',{timeZone:'UTC'}).format(86400000)==='02/01/1970'",
+        "new Intl.DateTimeFormat('ru',{timeZone:'UTC'}).format(86400000)==='02.01.1970'",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
 }
 
 #[test]

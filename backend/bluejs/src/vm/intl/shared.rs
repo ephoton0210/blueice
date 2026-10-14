@@ -14,14 +14,29 @@ impl Vm {
         ) {
             return Ok((segments, iterator));
         }
-        let string = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(string)?.unwrap();
+        // A segmenter (and so `Intl` and the String intrinsics its installers
+        // need) exists by the time its segments are asked for.
+        let function_prototype = self
+            .function_prototype()
+            .expect("the String intrinsics exist");
+        let iterator_base = self.base_iterator_prototype()?;
         let object_prototype = self.object_prototype;
         let segments = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let segments_root = self.heap.root(segments)?;
-        let iterator_base = self.base_iterator_prototype()?;
-        let iterator = self.with_roots(|heap| heap.alloc_object(Some(iterator_base)))?;
-        let iterator_root = self.heap.root(iterator)?;
+        let iterator = match self.with_roots(|heap| heap.alloc_object(Some(iterator_base))) {
+            Ok(iterator) => iterator,
+            Err(error) => {
+                self.release_root(segments_root);
+                return Err(error);
+            }
+        };
+        let iterator_root = match self.heap.root(iterator) {
+            Ok(root) => root,
+            Err(error) => {
+                self.release_root(segments_root);
+                return Err(error.into());
+            }
+        };
         let result = (|| {
             self.install_native(
                 segments,
@@ -59,8 +74,12 @@ impl Vm {
             Ok((segments, iterator))
         })();
         if result.is_err() {
-            self.heap.unroot(segments_root)?;
-            self.heap.unroot(iterator_root)?;
+            self.heap
+                .unroot(segments_root)
+                .expect("the root was just registered");
+            self.heap
+                .unroot(iterator_root)
+                .expect("the root was just registered");
         }
         result
     }
@@ -76,7 +95,11 @@ impl Vm {
             return Ok(vec![intl::canonicalize(string)?]);
         }
         if let Value::Object(id) = locales {
-            if let Some(locale) = self.heap.intl_locale(*id)? {
+            if let Some(locale) = self
+                .heap
+                .intl_locale(*id)
+                .expect("a locale argument is live")
+            {
                 return Ok(vec![intl::CanonicalLocale::from(locale.as_ref())]);
             }
         }
@@ -92,19 +115,24 @@ impl Vm {
                 continue;
             }
             let value = self.get_property(&Value::Object(object), &key)?;
-            if !matches!(value, Value::Object(_) | Value::String(_)) {
-                return Err(RuntimeError::TypeError(
-                    "locale must be a String or Object".into(),
-                ));
-            }
-            let locale = if let Value::Object(id) = value {
-                if let Some(locale) = self.heap.intl_locale(id)? {
-                    intl::CanonicalLocale::from(locale.as_ref())
-                } else {
-                    intl::canonicalize(&self.coerce_string(&Value::Object(id))?)?
+            let locale = match value {
+                Value::Object(id) => {
+                    if let Some(locale) = self
+                        .heap
+                        .intl_locale(id)
+                        .expect("a locale argument is live")
+                    {
+                        intl::CanonicalLocale::from(locale.as_ref())
+                    } else {
+                        intl::canonicalize(&self.coerce_string(&Value::Object(id))?)?
+                    }
                 }
-            } else {
-                intl::canonicalize(&self.coerce_string(&value)?)?
+                Value::String(string) => intl::canonicalize(&string)?,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "locale must be a String or Object".into(),
+                    ));
+                }
             };
             if !result.contains(&locale) {
                 result.push(locale);
@@ -218,8 +246,8 @@ impl Vm {
                 .as_deref()
             {
                 Some("best fit") => blueice_ecma402::LocaleMatcher::BestFit,
-                Some("lookup") | None => blueice_ecma402::LocaleMatcher::Lookup,
-                Some(_) => unreachable!("string_option validates localeMatcher"),
+                // `lookup`, the only other allowed value, or absent.
+                _ => blueice_ecma402::LocaleMatcher::Lookup,
             },
         )
     }
@@ -247,7 +275,7 @@ impl Vm {
         let numeric = if numeric == Value::Undefined {
             None
         } else {
-            Some(self.to_boolean(&numeric)?)
+            Some(self.to_boolean(&numeric).unwrap_or(false))
         };
         let case_first = self.string_option(&options, "caseFirst", &["upper", "lower", "false"])?;
         let sensitivity = self
@@ -261,29 +289,29 @@ impl Vm {
         let ignore_punctuation = if punctuation == Value::Undefined {
             None
         } else {
-            Some(self.to_boolean(&punctuation)?)
+            Some(self.to_boolean(&punctuation).unwrap_or(false))
         };
         let options = blueice_ecma402::CollatorOptions {
             locale_matcher,
             usage: match usage.as_str() {
-                "sort" => blueice_ecma402::CollatorUsage::Sort,
                 "search" => blueice_ecma402::CollatorUsage::Search,
-                _ => unreachable!("string_option validates usage"),
+                // `sort`, the only other allowed value.
+                _ => blueice_ecma402::CollatorUsage::Sort,
             },
             collation,
             numeric,
             case_first: case_first.map(|value| match value.as_str() {
                 "upper" => blueice_ecma402::CaseFirst::Upper,
                 "lower" => blueice_ecma402::CaseFirst::Lower,
-                "false" => blueice_ecma402::CaseFirst::False,
-                _ => unreachable!("string_option validates caseFirst"),
+                // `false`, the only other allowed value.
+                _ => blueice_ecma402::CaseFirst::False,
             }),
             sensitivity: match sensitivity.as_str() {
                 "base" => blueice_ecma402::Sensitivity::Base,
                 "accent" => blueice_ecma402::Sensitivity::Accent,
                 "case" => blueice_ecma402::Sensitivity::Case,
-                "variant" => blueice_ecma402::Sensitivity::Variant,
-                _ => unreachable!("string_option validates sensitivity"),
+                // `variant`, the only other allowed value.
+                _ => blueice_ecma402::Sensitivity::Variant,
             },
             ignore_punctuation,
         };
@@ -297,11 +325,14 @@ impl Vm {
         args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
-        self.intl_global()?;
+        // A constructor is only reachable through the `Intl` namespace.
+        self.intl_global()
+            .expect("the Intl namespace already exists");
         let constructor = self.globals["%Intl.Collator%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("an Intl constructor is live and has a prototype")
             .object_id()
             .unwrap();
         let prototype = if construct {
@@ -322,55 +353,18 @@ impl Vm {
         args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
-        if service == native::IntlService::Number {
-            return self.create_number_format(receiver, args, construct);
+        match service {
+            native::IntlService::Number => self.create_number_format(receiver, args, construct),
+            native::IntlService::DateTime => {
+                self.create_date_time_format(receiver, args, construct)
+            }
+            native::IntlService::List => self.create_list_format(args, construct),
+            native::IntlService::Plural => self.create_plural_rules(args, construct),
+            native::IntlService::DisplayNames => self.create_display_names(args, construct),
+            native::IntlService::Duration => self.create_duration_format(args, construct),
+            native::IntlService::RelativeTime => self.create_relative_time_format(args, construct),
+            native::IntlService::Segmenter => self.create_segmenter(args, construct),
         }
-        if service == native::IntlService::DateTime {
-            return self.create_date_time_format(receiver, args, construct);
-        }
-        if service == native::IntlService::List {
-            return self.create_list_format(args, construct);
-        }
-        if service == native::IntlService::Plural {
-            return self.create_plural_rules(args, construct);
-        }
-        if service == native::IntlService::DisplayNames {
-            return self.create_display_names(args, construct);
-        }
-        if service == native::IntlService::Duration {
-            return self.create_duration_format(args, construct);
-        }
-        if service == native::IntlService::RelativeTime {
-            return self.create_relative_time_format(args, construct);
-        }
-        if service == native::IntlService::Segmenter {
-            return self.create_segmenter(args, construct);
-        }
-        self.intl_global()?;
-        let name = match service {
-            native::IntlService::Number => "NumberFormat",
-            native::IntlService::DateTime => "DateTimeFormat",
-            native::IntlService::DisplayNames => "DisplayNames",
-            native::IntlService::Duration => "DurationFormat",
-            native::IntlService::List => "ListFormat",
-            native::IntlService::Plural => "PluralRules",
-            native::IntlService::RelativeTime => "RelativeTimeFormat",
-            native::IntlService::Segmenter => "Segmenter",
-        };
-        let namespace = self.globals["Intl"];
-        let constructor = self.heap.get(namespace, name)?.object_id().unwrap();
-        let default = self
-            .heap
-            .get(constructor, "prototype")?
-            .object_id()
-            .expect("Intl service prototype is an object");
-        let prototype = if construct {
-            self.constructor_prototype(default)?
-        } else {
-            default
-        };
-        self.with_roots(|heap| heap.alloc_object(Some(prototype)))
-            .map(Value::Object)
     }
 
     pub(in super::super) fn resolve_display_names(
@@ -385,10 +379,10 @@ impl Vm {
             .string_option(&options, "style", &["narrow", "short", "long"])?
             .as_deref()
         {
-            None | Some("long") => blueice_ecma402::DisplayNamesStyle::Long,
             Some("short") => blueice_ecma402::DisplayNamesStyle::Short,
             Some("narrow") => blueice_ecma402::DisplayNamesStyle::Narrow,
-            Some(_) => unreachable!("string_option validates DisplayNames style"),
+            // `long`, the only other allowed value, or absent.
+            _ => blueice_ecma402::DisplayNamesStyle::Long,
         };
         let display_type = match self
             .string_option(
@@ -410,31 +404,31 @@ impl Vm {
             Some("script") => blueice_ecma402::DisplayNamesType::Script,
             Some("currency") => blueice_ecma402::DisplayNamesType::Currency,
             Some("calendar") => blueice_ecma402::DisplayNamesType::Calendar,
-            Some("dateTimeField") => blueice_ecma402::DisplayNamesType::DateTimeField,
+            // `dateTimeField`, the only other allowed value.
+            Some(_) => blueice_ecma402::DisplayNamesType::DateTimeField,
             None => {
                 return Err(RuntimeError::TypeError(
                     "Intl.DisplayNames requires a type option".into(),
                 ));
             }
-            Some(_) => unreachable!("string_option validates DisplayNames type"),
         };
         let fallback = match self
             .string_option(&options, "fallback", &["code", "none"])?
             .as_deref()
         {
-            None | Some("code") => blueice_ecma402::DisplayNamesFallback::Code,
             Some("none") => blueice_ecma402::DisplayNamesFallback::None,
-            Some(_) => unreachable!("string_option validates DisplayNames fallback"),
+            // `code`, the only other allowed value, or absent.
+            _ => blueice_ecma402::DisplayNamesFallback::Code,
         };
         let language_display = match self
             .string_option(&options, "languageDisplay", &["dialect", "standard"])?
             .as_deref()
         {
-            None | Some("dialect") => blueice_ecma402::DisplayNamesLanguageDisplay::Dialect,
             Some("standard") => blueice_ecma402::DisplayNamesLanguageDisplay::Standard,
-            Some(_) => unreachable!("string_option validates DisplayNames languageDisplay"),
+            // `dialect`, the only other allowed value, or absent.
+            _ => blueice_ecma402::DisplayNamesLanguageDisplay::Dialect,
         };
-        blueice_ecma402::DisplayNames::try_new(
+        Ok(blueice_ecma402::DisplayNames::try_new(
             &locales,
             blueice_ecma402::DisplayNamesOptions {
                 locale_matcher,
@@ -445,7 +439,7 @@ impl Vm {
             },
         )
         .map(Rc::new)
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        .expect("display-name data is always available"))
     }
 
     pub(in super::super) fn create_display_names(
@@ -458,11 +452,14 @@ impl Vm {
                 "Intl.DisplayNames must be called with new".into(),
             ));
         }
-        self.intl_global()?;
+        // A constructor is only reachable through the `Intl` namespace.
+        self.intl_global()
+            .expect("the Intl namespace already exists");
         let constructor = self.globals["%Intl.DisplayNames%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("an Intl constructor is live and has a prototype")
             .object_id()
             .expect("Intl.DisplayNames.prototype is an object");
         let prototype = self.constructor_prototype(default)?;
@@ -494,7 +491,11 @@ impl Vm {
         value: &Value,
     ) -> Result<Rc<intl::DisplayNames>, RuntimeError> {
         if let Value::Object(id) = value {
-            if let Some(data) = self.heap.display_names(*id)? {
+            if let Some(data) = self
+                .heap
+                .display_names(*id)
+                .expect("a receiver object is live")
+            {
                 return Ok(data);
             }
         }
@@ -597,10 +598,10 @@ impl Vm {
             .string_option(options, "style", &["long", "short", "narrow"])?
             .as_deref()
         {
-            None | Some("long") => Ok(blueice_ecma402::RelativeTimeStyle::Long),
             Some("short") => Ok(blueice_ecma402::RelativeTimeStyle::Short),
             Some("narrow") => Ok(blueice_ecma402::RelativeTimeStyle::Narrow),
-            Some(_) => unreachable!("string_option validates RelativeTimeFormat style"),
+            // `long`, the only other allowed value, or absent.
+            _ => Ok(blueice_ecma402::RelativeTimeStyle::Long),
         }
     }
 
@@ -612,9 +613,9 @@ impl Vm {
             .string_option(options, "numeric", &["always", "auto"])?
             .as_deref()
         {
-            None | Some("always") => Ok(blueice_ecma402::RelativeTimeNumeric::Always),
             Some("auto") => Ok(blueice_ecma402::RelativeTimeNumeric::Auto),
-            Some(_) => unreachable!("string_option validates RelativeTimeFormat numeric"),
+            // `always`, the only other allowed value, or absent.
+            _ => Ok(blueice_ecma402::RelativeTimeNumeric::Always),
         }
     }
 
@@ -634,7 +635,7 @@ impl Vm {
         let numbering_system = self.relative_time_numbering_system(&options)?;
         let style = self.relative_time_style(&options)?;
         let numeric = self.relative_time_numeric(&options)?;
-        blueice_ecma402::RelativeTimeFormat::try_new(
+        Ok(blueice_ecma402::RelativeTimeFormat::try_new(
             &locales,
             blueice_ecma402::RelativeTimeFormatOptions {
                 locale_matcher,
@@ -644,7 +645,7 @@ impl Vm {
             },
         )
         .map(Rc::new)
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        .expect("relative-time data is always available"))
     }
 
     pub(in super::super) fn create_relative_time_format(
@@ -657,11 +658,14 @@ impl Vm {
                 "Intl.RelativeTimeFormat must be called with new".into(),
             ));
         }
-        self.intl_global()?;
+        // A constructor is only reachable through the `Intl` namespace.
+        self.intl_global()
+            .expect("the Intl namespace already exists");
         let constructor = self.globals["%Intl.RelativeTimeFormat%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("an Intl constructor is live and has a prototype")
             .object_id()
             .expect("Intl.RelativeTimeFormat.prototype is an object");
         let prototype = self.constructor_prototype(default)?;
@@ -693,7 +697,11 @@ impl Vm {
         value: &Value,
     ) -> Result<Rc<intl::RelativeTimeFormat>, RuntimeError> {
         if let Value::Object(id) = value {
-            if let Some(data) = self.heap.relative_time_format(*id)? {
+            if let Some(data) = self
+                .heap
+                .relative_time_format(*id)
+                .expect("a receiver object is live")
+            {
                 return Ok(data);
             }
         }

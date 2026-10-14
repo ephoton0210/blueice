@@ -144,9 +144,15 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
             json!({"source":"1", "mode":"sloppy", "includes":["assert.js","other.js"]}),
             "unsupported",
         ),
+        // Only `sta.js` and `assert.js` are native. The property helpers have
+        // to be supplied as harness sources, and are `unsupported` without.
         (
             json!({"source":"verifyProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});isConstructor(function(){})", "mode":"sloppy", "includes":["propertyHelper.js","isConstructor.js"]}),
-            "ok",
+            "unsupported",
+        ),
+        (
+            json!({"source":"1", "mode":"sloppy", "includes":["isConstructor.js"]}),
+            "unsupported",
         ),
         (
             json!({"source":"addOffset(2) === 5", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["var offset=3; function addOffset(value){return value+offset}"]}),
@@ -259,6 +265,51 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
         assert_eq!(reply["kind"], *expected, "{request}: {reply}");
     }
     assert_eq!(replies[6]["phase"], "parse");
+}
+
+#[test]
+fn adapter_exercises_temporal_and_module_error_paths_in_the_real_process() {
+    let cases = [
+        ("Temporal.PlainDate.from('\\ud800')", "sloppy", "RangeError"),
+        (
+            "Temporal.PlainDateTime.from('\\ud800')",
+            "sloppy",
+            "RangeError",
+        ),
+        (
+            "Temporal.Now.plainDateISO('Not/A_Zone')",
+            "sloppy",
+            "RangeError",
+        ),
+        (
+            "new Temporal.Instant(0n).toZonedDateTimeISO('Not/A_Zone')",
+            "sloppy",
+            "RangeError",
+        ),
+        (
+            "Temporal.PlainDate.from('2000-01-01').toZonedDateTime('Not/A_Zone')",
+            "sloppy",
+            "RangeError",
+        ),
+        ("import * as 0 from './m.js';", "module", "SyntaxError"),
+        ("export default function (", "module", "SyntaxError"),
+        ("export default ;", "module", "SyntaxError"),
+        ("export var value = 1 extra;", "module", "SyntaxError"),
+        (
+            "@decorator export d\\u0065fault class C {}",
+            "module",
+            "SyntaxError",
+        ),
+    ];
+    let requests: Vec<_> = cases
+        .iter()
+        .map(|(source, mode, _)| json!({"source":source,"mode":mode}))
+        .collect();
+    let replies = adapter(&requests, None);
+    assert_eq!(replies.len(), cases.len());
+    for (reply, (source, mode, kind)) in replies.iter().zip(cases) {
+        assert_eq!(reply["kind"], kind, "{mode}: {source}: {reply}");
+    }
 }
 
 #[test]
@@ -380,20 +431,66 @@ fn adapter_executes_relative_time_format_through_the_json_lines_interface() {
     assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
 }
 
-#[cfg(unix)]
-#[test]
-fn regex_protocol_faults_and_missing_helper_fail_closed() {
-    use std::os::unix::fs::PermissionsExt;
-    let directory = std::env::temp_dir().join(format!("bluejs-regex-fault-{}", std::process::id()));
-    std::fs::create_dir_all(&directory).unwrap();
+#[cfg(any(unix, windows))]
+fn fault_worker(directory: &std::path::Path) -> std::path::PathBuf {
     let script = directory.join("worker.py");
     std::fs::write(&script, include_bytes!("fixtures/regex_fault.py")).unwrap();
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        script
+    }
+    #[cfg(windows)]
+    {
+        let launcher = directory.join("worker.cmd");
+        std::fs::write(&launcher, b"@echo off\r\npython.exe \"%~dp0worker.py\"\r\n").unwrap();
+        launcher
+    }
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn regex_protocol_faults_and_missing_helper_fail_closed() {
+    let directory = std::env::temp_dir().join(format!("bluejs-regex-fault-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let script = fault_worker(&directory);
+    // The fault modes below fail closed even without an interpreter, so only
+    // prove the fixture itself speaks the protocol where Python exists.
+    let interpreter = if cfg!(windows) {
+        "python.exe"
+    } else {
+        "python3"
+    };
+    let python_available = Command::new(interpreter)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if python_available {
+        let ready = Command::new(&script)
+            .env("BLUEJS_FAULT_MODE", "after_ready_exit")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(
+            ready.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ready.stderr)
+        );
+        let payload = b"bluejs-regexp-worker/1";
+        assert_eq!(
+            ready.stdout,
+            [(payload.len() as u32).to_le_bytes().as_slice(), payload].concat()
+        );
+    }
     for mode in [
         "early_exit",
         "bad_ready",
         "after_ready_exit",
+        "closed_before_ready",
         "malformed",
+        "truncated_reply",
         "oversized",
         "invalid_range",
         "compile_reply",
@@ -405,6 +502,14 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
         );
         assert_eq!(replies[0]["kind"], "worker_error", "{mode}: {replies:?}");
     }
+    let long_pattern = adapter(
+        &[json!({
+            "source": "new RegExp('a'.repeat(100000)).test('a')",
+            "mode": "sloppy"
+        })],
+        Some(("close_after_header", &script)),
+    );
+    assert_eq!(long_pattern[0]["kind"], "worker_error", "{long_pattern:?}");
     let missing = directory.join("missing");
     for source in ["/a/", "new RegExp('a')"] {
         let replies = adapter(
@@ -414,6 +519,51 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
         assert_eq!(replies[0]["kind"], "worker_error");
     }
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn regex_helper_reports_closed_output_during_frame_header_and_body() {
+    let (read, write) = std::io::pipe().unwrap();
+    drop(read);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(write))
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(!child.wait().unwrap().success());
+
+    let (mut output, write) = std::io::pipe().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(write))
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut length = [0; 4];
+    output.read_exact(&mut length).unwrap();
+    let mut ready = vec![0; u32::from_le_bytes(length) as usize];
+    output.read_exact(&mut ready).unwrap();
+    assert_eq!(ready, b"bluejs-regexp-worker/1");
+
+    let patterns = vec![(vec![97u16], String::new()); 100_000];
+    let request = serde_json::to_vec(&json!({
+        "operation": "validate",
+        "patterns": patterns,
+    }))
+    .unwrap();
+    input
+        .write_all(&(request.len() as u32).to_le_bytes())
+        .unwrap();
+    input.write_all(&request).unwrap();
+    input.flush().unwrap();
+    output.read_exact(&mut length).unwrap();
+    assert!(u32::from_le_bytes(length) > 100_000);
+    drop(output);
+    drop(input);
+    assert!(!child.wait().unwrap().success());
 }
 
 #[test]
@@ -453,6 +603,60 @@ fn helper_rejects_oversized_frames_and_handles_out_of_range_starts() {
 }
 
 #[test]
+fn helper_process_reuses_cached_requests_and_exits_after_shutdown() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = child.stdout.take().unwrap();
+    let mut read_frame = || {
+        let mut size = [0; 4];
+        output.read_exact(&mut size).unwrap();
+        let mut bytes = vec![0; u32::from_le_bytes(size) as usize];
+        output.read_exact(&mut bytes).unwrap();
+        bytes
+    };
+    assert_eq!(read_frame(), b"bluejs-regexp-worker/1");
+    let mut request = |value: Value| {
+        let bytes = serde_json::to_vec(&value).unwrap();
+        input
+            .write_all(&(bytes.len() as u32).to_le_bytes())
+            .unwrap();
+        input.write_all(&bytes).unwrap();
+        input.flush().unwrap();
+        serde_json::from_slice::<Value>(&read_frame()).unwrap()
+    };
+    assert_eq!(
+        request(json!({"operation":"compile","source":[97],"flags":""})),
+        json!("Compiled")
+    );
+    let first = request(json!({
+        "operation":"find","source":null,"flags":null,"input":[97,98,97],"start":0
+    }));
+    assert_eq!(first["Found"]["captures"][0], json!({"start":0,"end":1}));
+    let reused = request(json!({
+        "operation":"find","source":null,"flags":null,"input":null,"start":2
+    }));
+    assert_eq!(reused["Found"]["captures"][0], json!({"start":2,"end":3}));
+    assert_eq!(
+        request(json!({
+            "operation":"validate","patterns":[[[97],""],[[40],""]]
+        })),
+        json!({"Validated":[true,false]})
+    );
+    let bytes = serde_json::to_vec(&json!({"operation":"shutdown"})).unwrap();
+    input
+        .write_all(&(bytes.len() as u32).to_le_bytes())
+        .unwrap();
+    input.write_all(&bytes).unwrap();
+    drop(input);
+    assert!(child.wait().unwrap().success());
+}
+
+#[test]
 fn compilation_deadline_and_transport_limit_are_enforced() {
     let replies = adapter(
         &[
@@ -465,4 +669,71 @@ fn compilation_deadline_and_transport_limit_are_enforced() {
     assert_eq!(replies[0]["kind"], "timeout", "{replies:?}");
     assert_eq!(replies[1]["kind"], "worker_error", "{replies:?}");
     assert_eq!(replies[2]["kind"], "ok", "{replies:?}");
+}
+
+/// `propertyHelper.js` and `isConstructor.js` reach the adapter as ordinary
+/// harness sources, exactly as the runner supplies them from the corpus.
+#[test]
+fn adapter_runs_the_upstream_property_helpers_as_harness_sources() {
+    let sources = json!([
+        include_str!(
+            "../../../development/browser_core/reference/test262/harness/propertyHelper.js"
+        ),
+        include_str!(
+            "../../../development/browser_core/reference/test262/harness/isConstructor.js"
+        ),
+    ]);
+    let includes = json!(["propertyHelper.js", "isConstructor.js"]);
+    let cases = [
+        (
+            "verifyProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});assert(isConstructor(function(){}))",
+            "sloppy",
+            "ok",
+        ),
+        (
+            "verifyProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});assert(isConstructor(function(){}))",
+            "strict",
+            "ok",
+        ),
+        // The helper deletes a configurable property it has verified unless
+        // `restore` is passed, and a genuinely mismatching descriptor fails.
+        (
+            "var o={x:1};verifyProperty(o,'x',{configurable:true});assert.sameValue(Object.hasOwn(o,'x'),false)",
+            "sloppy",
+            "ok",
+        ),
+        (
+            "var o={x:1};verifyProperty(o,'x',{configurable:true},{restore:true});assert.sameValue(o.x,1)",
+            "strict",
+            "ok",
+        ),
+        ("verifyProperty(Math,'PI',{writable:true})", "sloppy", "Test262Error"),
+        ("verifyProperty(Math,'PI',{writable:true})", "strict", "Test262Error"),
+        ("isConstructor({})", "sloppy", "Test262Error"),
+        // A property reported configurable that `delete` leaves in place is
+        // rejected because the upstream helper really deletes.
+        (
+            "verifyProperty(new Proxy({x:1},{deleteProperty(){return false}}),'x',{configurable:true})",
+            "sloppy",
+            "Test262Error",
+        ),
+    ];
+    let requests: Vec<_> = cases
+        .iter()
+        .map(|(source, mode, _)| {
+            json!({"source":source, "mode":mode, "includes":includes, "harness_sources":sources})
+        })
+        .collect();
+    let replies = adapter(&requests, None);
+    assert_eq!(replies.len(), cases.len());
+    for (reply, (source, mode, expected)) in replies.iter().zip(&cases) {
+        assert_eq!(reply["kind"], *expected, "{mode}: {source}: {reply}");
+    }
+    assert!(
+        replies[4]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("PI descriptor should be writable")),
+        "{}",
+        replies[4]
+    );
 }

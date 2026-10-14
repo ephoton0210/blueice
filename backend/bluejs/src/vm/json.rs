@@ -69,7 +69,9 @@ impl Vm {
                 Ok(value)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.heap
+                    .unroot(root)
+                    .expect("this initializer owns its temporary root");
                 Err(error)
             }
         }
@@ -106,7 +108,11 @@ impl Vm {
             self.stack.push(Value::Object(wrapper));
             self.define_data(wrapper, "", value, true, true, true)?;
             if let Some(source) = parsed.primitive_source() {
-                let value = self.get_property(&Value::Object(wrapper), &"".into())?;
+                let value = self
+                    .heap
+                    .get_own(wrapper, "")
+                    .expect("the fresh rooted wrapper remains live")
+                    .expect("JSON parsing installed its own root slot");
                 sources.insert((wrapper, "".into()), (value, source.clone()));
             }
             self.json_internalize(&Value::Object(wrapper), &"".into(), &reviver, &sources)
@@ -140,25 +146,12 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(Value::Object(raw));
         let result = (|| {
-            self.define_data(raw, "rawJSON", Value::String(text), true, true, true)?;
-            if !self.object_define_own_property(
-                raw,
-                "rawJSON".into(),
-                PropertyDescriptor {
-                    writable: Some(false),
-                    configurable: Some(false),
-                    ..Default::default()
-                },
-            )? {
-                return Err(RuntimeError::TypeError(
-                    "cannot freeze raw JSON text".into(),
-                ));
-            }
-            if !self.object_prevent_extensions(raw)? {
-                return Err(RuntimeError::TypeError(
-                    "cannot freeze raw JSON object".into(),
-                ));
-            }
+            // This fresh, unexposed ordinary object has no user callbacks or
+            // exotic methods. Install its frozen data descriptor directly.
+            self.define_data(raw, "rawJSON", Value::String(text), false, true, false)?;
+            self.heap
+                .prevent_extensions(raw)
+                .expect("the rooted fresh raw JSON object remains live");
             Ok(Value::Object(raw))
         })();
         self.stack.truncate(base);
@@ -191,13 +184,13 @@ impl Vm {
             self.stack.push(holder.clone());
             let value = self.get_property(holder, &PropertyName::from(name))?;
             self.stack.push(value.clone());
-            let source = match holder {
-                Value::Object(object) => sources
-                    .get(&(*object, name.clone()))
-                    .filter(|(parsed, _)| crate::heap::same_value(parsed, &value))
-                    .map(|(_, source)| source.clone()),
-                _ => None,
-            };
+            let object = holder
+                .object_id()
+                .expect("JSON internalization receives its ordinary wrapper or an object child");
+            let source = sources
+                .get(&(object, name.clone()))
+                .filter(|(parsed, _)| crate::heap::same_value(parsed, &value))
+                .map(|(_, source)| source.clone());
             if let Value::Object(object) = value {
                 if self.is_array(&Value::Object(object))? {
                     let length = self.get_property(&Value::Object(object), &"length".into())?;
@@ -209,26 +202,25 @@ impl Vm {
                             self.json_internalize(&Value::Object(object), &key, reviver, sources)?;
                         self.stack.push(replacement.clone());
                         let property = PropertyName::from(&key);
+                        // A `false` from `[[Delete]]` or CreateDataProperty is
+                        // ignored; only an abrupt completion propagates.
                         if replacement == Value::Undefined {
-                            if !self.object_delete(object, &property)? {
-                                return Err(RuntimeError::TypeError(
-                                    "cannot delete JSON revival property".into(),
-                                ));
-                            }
-                        } else if !self.object_define_own_property(
-                            object,
-                            property,
-                            PropertyDescriptor::data(replacement, true, true, true),
-                        )? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot define JSON revival property".into(),
-                            ));
+                            self.object_delete(object, &property)?;
+                        } else {
+                            self.object_define_own_property(
+                                object,
+                                property,
+                                PropertyDescriptor::data(replacement, true, true, true),
+                            )?;
                         }
                         self.stack.pop();
                     }
                 } else {
-                    let keys = self.object_own_property_keys(object)?;
-                    for key in keys {
+                    // EnumerableOwnProperties: the keys are collected (and
+                    // their enumerability read) up front, so a property the
+                    // reviver later deletes is still visited.
+                    let mut enumerable = Vec::new();
+                    for key in self.object_own_property_keys(object)? {
                         self.charge_step()?;
                         let PropertyName::String(key) = key else {
                             continue;
@@ -239,24 +231,24 @@ impl Vm {
                         {
                             continue;
                         }
+                        enumerable.push(key);
+                    }
+                    for key in enumerable {
+                        self.charge_step()?;
                         let replacement =
                             self.json_internalize(&Value::Object(object), &key, reviver, sources)?;
                         self.stack.push(replacement.clone());
                         let property = PropertyName::from(&key);
+                        // A `false` from `[[Delete]]` or CreateDataProperty is
+                        // ignored; only an abrupt completion propagates.
                         if replacement == Value::Undefined {
-                            if !self.object_delete(object, &property)? {
-                                return Err(RuntimeError::TypeError(
-                                    "cannot delete JSON revival property".into(),
-                                ));
-                            }
-                        } else if !self.object_define_own_property(
-                            object,
-                            property,
-                            PropertyDescriptor::data(replacement, true, true, true),
-                        )? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot define JSON revival property".into(),
-                            ));
+                            self.object_delete(object, &property)?;
+                        } else {
+                            self.object_define_own_property(
+                                object,
+                                property,
+                                PropertyDescriptor::data(replacement, true, true, true),
+                            )?;
                         }
                         self.stack.pop();
                     }
@@ -399,6 +391,7 @@ impl Vm {
                 replacer: Some(replacer.clone()),
                 property_list: None,
                 gap: self.json_gap(space)?,
+                stack: Default::default(),
             });
         }
         if !self.is_array(replacer)? {
@@ -428,6 +421,7 @@ impl Vm {
             replacer: None,
             property_list: Some(property_list),
             gap: self.json_gap(space)?,
+            stack: Default::default(),
         })
     }
 
@@ -438,7 +432,12 @@ impl Vm {
         let primitive = if let Value::Object(object) = space {
             if self.heap.boxed_string(*object)?.is_some() {
                 Value::String(self.coerce_string(space)?)
-            } else if matches!(self.heap.boxed_primitive(*object)?, Some(Value::Number(_))) {
+            } else if matches!(
+                self.heap
+                    .boxed_primitive(*object)
+                    .expect("the preceding boxed-string lookup validated this receiver"),
+                Some(Value::Number(_))
+            ) {
                 Value::Number(self.coerce_number(space)?)
             } else {
                 Value::Undefined
@@ -466,35 +465,30 @@ impl Vm {
 
     fn json_property_list_key(&mut self, item: &Value) -> Result<Option<JsString>, RuntimeError> {
         match item {
-            Value::String(_) | Value::Number(_) => Ok(Some(self.coerce_string(item)?)),
-            Value::Object(object) if self.heap.boxed_string(*object)?.is_some() => {
+            Value::String(_) | Value::Number(_) => Ok(Some(
+                primitive::string(item)
+                    .expect("primitive String and Number property-list keys cannot throw"),
+            )),
+            Value::Object(object)
+                if self
+                    .heap
+                    .boxed_string(*object)
+                    .expect("Get returned a value retained on the property-list stack")
+                    .is_some() =>
+            {
                 Ok(Some(self.coerce_string(item)?))
             }
             Value::Object(object)
                 if matches!(
-                    self.heap.boxed_primitive(*object)?,
-                    Some(Value::String(_) | Value::Number(_))
+                    self.heap
+                        .boxed_primitive(*object)
+                        .expect("the preceding boxed-string lookup validated this receiver"),
+                    Some(Value::Number(_))
                 ) =>
             {
                 Ok(Some(self.coerce_string(item)?))
             }
             _ => Ok(None),
-        }
-    }
-
-    /// ECMAScript `IsArray`, including the transparent Proxy recursion.
-    pub(super) fn is_array(&self, value: &Value) -> Result<bool, RuntimeError> {
-        let Value::Object(mut object) = value else {
-            return Ok(false);
-        };
-        loop {
-            if self.heap.is_array(object)? {
-                return Ok(true);
-            }
-            let Some((target, _)) = self.heap.proxy(object)? else {
-                return Ok(false);
-            };
-            object = target;
         }
     }
 
@@ -515,7 +509,10 @@ impl Vm {
             self.stack.push(value.clone());
             if matches!(value, Value::Object(_) | Value::BigInt(_)) {
                 let to_json = self.get_property(&value, &"toJSON".into())?;
-                if self.is_callable(&to_json)? {
+                if self
+                    .is_callable(&to_json)
+                    .expect("Get returned a live local value or an imported facade")
+                {
                     value = self.call_native(
                         to_json,
                         value.clone(),
@@ -551,7 +548,8 @@ impl Vm {
             Value::Null => Ok(Some("null".into())),
             Value::Bool(value) => Ok(Some(if *value { "true" } else { "false" }.into())),
             Value::Number(value) => Ok(Some(if value.is_finite() {
-                primitive::string(&Value::Number(*value))?
+                primitive::string(&Value::Number(*value))
+                    .expect("primitive Number formatting cannot fail")
             } else {
                 "null".into()
             })),
@@ -560,47 +558,70 @@ impl Vm {
             )),
             Value::String(value) => Ok(Some(json_quote(value).into())),
             Value::Object(object) => {
-                if self.heap.is_raw_json(*object)? {
-                    let text = self.get_property(value, &"rawJSON".into())?;
-                    let Value::String(text) = text else {
-                        unreachable!("a branded raw JSON object retains its frozen text");
-                    };
-                    return Ok(Some(text));
+                if self
+                    .heap
+                    .is_raw_json(*object)
+                    .expect("JSON Str retains values returned by validated Get and calls")
+                {
+                    let text = self
+                        .heap
+                        .get_own(*object, "rawJSON")
+                        .expect("the validated raw JSON object remains live")
+                        .expect("a branded raw JSON object retains its frozen text");
+                    return Ok(Some(
+                        text.as_string()
+                            .expect("raw JSON publication installs a frozen String")
+                            .clone(),
+                    ));
                 }
-                if self.heap.boxed_string(*object)?.is_some() {
+                if self
+                    .heap
+                    .boxed_string(*object)
+                    .expect("raw JSON classification validated this retained object")
+                    .is_some()
+                {
                     let string = Value::String(self.coerce_string(value)?);
                     return self.json_serialize(&string, state, indent);
                 }
                 if let Some(primitive) = self
                     .heap
-                    .boxed_primitive(*object)?
-                    .or(self.test262_foreign_boxed_primitive(*object)?)
+                    .boxed_primitive(*object)
+                    .expect("raw JSON classification validated this retained object")
+                    .or(self.test262_foreign_boxed_primitive(*object).expect(
+                        "successful Get validated the facade whose membrane retains its realm and target",
+                    ))
                 {
                     return match primitive {
                         Value::Number(_) => {
                             let number = Value::Number(self.coerce_number(value)?);
                             self.json_serialize(&number, state, indent)
                         }
-                        Value::String(_) => {
-                            let string = Value::String(self.coerce_string(value)?);
-                            self.json_serialize(&string, state, indent)
-                        }
+                        // String wrappers use their distinct BoxedString kind
+                        // and were handled above; other scalar wrappers need
+                        // no observable numeric coercion here.
                         primitive => self.json_serialize(&primitive, state, indent),
                     };
                 }
-                if self.is_callable(value)? {
+                if self
+                    .is_callable(value)
+                    .expect("raw JSON classification validated this retained receiver")
+                {
                     return Ok(None);
                 }
-                if self.joining.contains(object) {
+                if state.stack.borrow().contains(object) {
                     return Err(RuntimeError::TypeError("cyclic JSON value".into()));
                 }
-                self.joining.push(*object);
-                let result = if self.is_array(value)? {
+                let is_array = self.is_array(value)?;
+                state.stack.borrow_mut().push(*object);
+                // Keep the holder reachable for the collector as well.
+                self.stack.push(value.clone());
+                let result = if is_array {
                     self.json_array(*object, state, indent)
                 } else {
                     self.json_object(*object, state, indent)
                 };
-                self.joining.pop();
+                self.stack.pop();
+                state.stack.borrow_mut().pop();
                 result.map(Some)
             }
         }
@@ -667,24 +688,27 @@ impl Vm {
             let keys = if let Some(property_list) = &state.property_list {
                 property_list.clone()
             } else {
-                self.object_own_property_keys(object)?
-                    .into_iter()
-                    .filter_map(|key| match key {
-                        PropertyName::String(key) => Some(key),
-                        PropertyName::Symbol(_) => None,
-                    })
-                    .collect()
+                // EnumerableOwnProperties: keys and their enumerability are
+                // read before any property is serialized, so a getter or a
+                // replacer that deletes a later property does not remove it
+                // from the output (it is serialized as `undefined`).
+                let mut enumerable = Vec::new();
+                for key in self.object_own_property_keys(object)? {
+                    let PropertyName::String(key) = key else {
+                        continue;
+                    };
+                    self.charge_step()?;
+                    if self
+                        .object_get_own_property(object, &PropertyName::from(&key))?
+                        .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+                    {
+                        enumerable.push(key);
+                    }
+                }
+                enumerable
             };
             for key in keys {
                 self.charge_step()?;
-                let property = PropertyName::from(&key);
-                if state.property_list.is_none()
-                    && self
-                        .object_get_own_property(object, &property)?
-                        .is_none_or(|descriptor| descriptor.enumerable != Some(true))
-                {
-                    continue;
-                }
                 let Some(value) =
                     self.json_str(&Value::Object(object), &key, state, &next_indent)?
                 else {
@@ -749,6 +773,46 @@ impl JsonNode {
 /// records duplicate object names in source order: ordinary property creation
 /// retains the first key position while the final occurrence supplies both the
 /// final value and source text.
+/// Decodes an already-validated JSON string token's body (the bytes between
+/// its quotes) into UTF-16 code units. A `\uXXXX` escape is taken as its raw
+/// code unit with no surrogate-pairing requirement, matching JSON's own
+/// grammar and the WTF-16 strings JS itself allows -- unlike `serde_json`'s
+/// UTF-8-`String`-based decoder, this can represent a lone surrogate.
+fn decode_json_string_body(body: &str) -> Vec<u16> {
+    let bytes = body.as_bytes();
+    let mut units = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            match bytes[i + 1] {
+                b'"' => units.push(u16::from(b'"')),
+                b'\\' => units.push(u16::from(b'\\')),
+                b'/' => units.push(u16::from(b'/')),
+                b'b' => units.push(0x08),
+                b'f' => units.push(0x0c),
+                b'n' => units.push(u16::from(b'\n')),
+                b'r' => units.push(u16::from(b'\r')),
+                b't' => units.push(u16::from(b'\t')),
+                // Every other escape validated by string() is \uXXXX.
+                _ => {
+                    let code = u16::from_str_radix(&body[i + 2..i + 6], 16)
+                        .expect("the scan above validated four hex digits");
+                    units.push(code);
+                    i += 6;
+                    continue;
+                }
+            }
+            i += 2;
+        } else {
+            let character = body[i..].chars().next().expect("i is a character boundary");
+            let mut buf = [0u16; 2];
+            units.extend_from_slice(character.encode_utf16(&mut buf));
+            i += character.len_utf8();
+        }
+    }
+    units
+}
+
 struct JsonSourceParser<'a> {
     input: &'a str,
     index: usize,
@@ -788,7 +852,8 @@ impl<'a> JsonSourceParser<'a> {
     }
 
     fn array(&mut self) -> Result<JsonNode, ()> {
-        self.expect(b'[')?;
+        // value() selected this parser only after observing the opening byte.
+        self.index += 1;
         self.skip_whitespace();
         if self.take(b']') {
             return Ok(JsonNode::Array(Vec::new()));
@@ -806,7 +871,8 @@ impl<'a> JsonSourceParser<'a> {
     }
 
     fn object(&mut self) -> Result<JsonNode, ()> {
-        self.expect(b'{')?;
+        // value() selected this parser only after observing the opening byte.
+        self.index += 1;
         self.skip_whitespace();
         if self.take(b'}') {
             return Ok(JsonNode::Object(Vec::new()));
@@ -888,10 +954,9 @@ impl<'a> JsonSourceParser<'a> {
         loop {
             match self.peek() {
                 Some(b'"') => {
+                    let body = &self.input[start + 1..self.index];
                     self.index += 1;
-                    let decoded = serde_json::from_str::<String>(&self.input[start..self.index])
-                        .map_err(|_| ())?;
-                    return Ok(decoded.into());
+                    return Ok(JsString::from_code_units(decode_json_string_body(body)));
                 }
                 Some(b'\\') => {
                     self.index += 1;
@@ -916,7 +981,10 @@ impl<'a> JsonSourceParser<'a> {
                 }
                 Some(byte) if byte < 0x20 => return Err(()),
                 Some(_) => {
-                    let character = self.input[self.index..].chars().next().ok_or(())?;
+                    let character = self.input[self.index..]
+                        .chars()
+                        .next()
+                        .expect("peek observed a UTF-8 character");
                     self.index += character.len_utf8();
                 }
                 None => return Err(()),
@@ -953,6 +1021,10 @@ struct JsonStringifyState {
     replacer: Option<Value>,
     property_list: Option<Vec<JsString>>,
     gap: JsString,
+    /// The spec's per-call `stack` of holder objects being serialized: a value
+    /// found on it is a cycle. It is owned by one JSON.stringify call, so a
+    /// nested call from a replacer or `toJSON` starts with an empty stack.
+    stack: std::cell::RefCell<Vec<ObjectId>>,
 }
 
 fn json_quote(value: &JsString) -> String {

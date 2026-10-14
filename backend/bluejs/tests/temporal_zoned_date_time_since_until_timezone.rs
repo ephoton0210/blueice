@@ -55,6 +55,30 @@ fn since_and_until_ignore_zone_mismatch_for_a_sub_day_largest_unit() {
 }
 
 #[test]
+fn since_and_until_propagate_each_option_getter_error() {
+    assert_true(
+        r#"
+        const date = new Temporal.ZonedDateTime(0n, "UTC");
+        for (const name of ["largestUnit", "roundingIncrement", "roundingMode", "smallestUnit"]) {
+            for (const method of ["since", "until"]) {
+                const expected = {};
+                const options = {};
+                Object.defineProperty(options, name, { get() { throw expected; } });
+                let caught = false;
+                try {
+                    date[method](date, options);
+                } catch (error) {
+                    caught = error === expected;
+                }
+                if (!caught) throw new Error(method + ":" + name);
+            }
+        }
+        true;
+    "#,
+    );
+}
+
+#[test]
 fn since_and_until_reject_genuinely_different_zones() {
     let program = compile(
         &parse(

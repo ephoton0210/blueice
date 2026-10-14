@@ -5,17 +5,24 @@
 use super::*;
 
 impl Parser {
-    fn validate_binding_identifier(&self, name: &str, escaped: bool) -> Result<(), ParseError> {
+    pub(super) fn validate_binding_identifier(
+        &self,
+        name: &str,
+        escaped: bool,
+    ) -> Result<(), ParseError> {
         // These are ReservedWords which the tokenizer preserves as
-        // IdentifierName tokens because they remain valid property names. A
+        // IdentifierName tokens because they remain valid property names,
+        // together with every keyword spelled with a Unicode escape (which
+        // the tokenizer also returns as an IdentifierName). A
         // BindingIdentifier may not use them, escaped or otherwise.
         if matches!(
             name,
             "class" | "debugger" | "enum" | "export" | "extends" | "import" | "super" | "with"
-        ) {
+        ) || Keyword::from_str(name).is_some_and(|keyword| keyword != Keyword::Let)
+        {
             return Err(self.syntax_error("a reserved word cannot be used as a binding identifier"));
         }
-        if name == "await" && (self.async_depth != 0 || self.module_await) {
+        if name == "await" && (self.async_depth != 0 || self.module_await || self.module) {
             let detail = if escaped {
                 "the await keyword cannot contain an escape"
             } else {
@@ -94,7 +101,8 @@ impl Parser {
     }
 
     pub(super) fn parse_array_pattern(&mut self) -> Result<Pattern, ParseError> {
-        self.expect_punct(Punct::LBracket)?;
+        // parse_binding_pattern dispatches here only after seeing '['.
+        self.advance();
         let mut elements = Vec::new();
         while !self.check_punct(Punct::RBracket) {
             if self.check_punct(Punct::Comma) {
@@ -130,12 +138,14 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBracket)?;
+        // The loop exits only when the next token is ']'.
+        self.advance();
         Ok(Pattern::Array(elements))
     }
 
     pub(super) fn parse_object_pattern(&mut self) -> Result<Pattern, ParseError> {
-        self.expect_punct(Punct::LBrace)?;
+        // parse_binding_pattern dispatches here only after seeing '{'.
+        self.advance();
         let mut props = Vec::new();
         while !self.check_punct(Punct::RBrace) {
             if self.eat_punct(Punct::Ellipsis) {
@@ -167,14 +177,10 @@ impl Parser {
                         default,
                     });
                 } else {
-                    let Some((_, escaped)) = binding_identifier else {
+                    let Some((name, escaped)) = binding_identifier else {
                         return Err(self.syntax_error(
                             "expected a binding identifier in destructuring pattern",
                         ));
-                    };
-                    let name = match &key {
-                        PropertyKey::Identifier(n) => n.clone(),
-                        _ => return Err(self.error("expected ':' in destructuring pattern")),
                     };
                     self.validate_binding_identifier(&name, escaped)?;
                     let default = if self.eat_punct(Punct::Assign) {
@@ -193,7 +199,8 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBrace)?;
+        // The loop exits only when the next token is '}'.
+        self.advance();
         Ok(Pattern::Object(props))
     }
 
@@ -213,6 +220,7 @@ impl Parser {
                 Ok(PropertyKey::String(s))
             }
             Token::Number(n) => {
+                self.reject_legacy_octal_escape()?;
                 self.advance();
                 Ok(PropertyKey::Number(n))
             }
@@ -226,7 +234,7 @@ impl Parser {
             }
             Token::Punct(Punct::LBracket) => {
                 self.advance();
-                let expr = self.parse_assignment()?;
+                let expr = self.with_in_allowed(Self::parse_assignment)?;
                 self.expect_punct(Punct::RBracket)?;
                 Ok(PropertyKey::Computed(Box::new(expr)))
             }

@@ -21,17 +21,75 @@
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+#[path = "core_binary/compiler_debugger.rs"]
+mod compiler_debugger;
+#[path = "core_binary/compiler_output.rs"]
+mod compiler_output;
+#[path = "core_binary/core_session.rs"]
+mod core_session;
+#[path = "core_binary/multi_tab.rs"]
+mod multi_tab;
+#[path = "core_binary/page_execution.rs"]
+mod page_execution;
+#[path = "core_binary/root_control.rs"]
+mod root_control;
+
+fn spawn_private_bluejs_host(label: &str) -> (PathBuf, String, thread::JoinHandle<()>) {
+    // The default macOS temporary directory can exceed the Unix-domain socket
+    // pathname limit once this test's descriptive filename is appended.
+    let path =
+        PathBuf::from("/tmp").join(format!("blueice-oop-{label}-{}.sock", std::process::id()));
+    let token = "0123456789abcdef0123456789abcdef".to_string();
+    let listener = blueice_launcher::bluejs_host::bind_bluejs_host_socket(&path)
+        .expect("test child host must bind its private socket");
+    let child_token = token.clone();
+    let child = thread::spawn(move || {
+        let mut host = blueice_launcher::bluejs_host::BlueJsChildHost::default();
+        blueice_launcher::bluejs_host::serve_bluejs_host_listener(listener, child_token, &mut host)
+            .expect("test child host must serve its private protocol");
+    });
+    (path, token, child)
+}
+
+fn shutdown_private_bluejs_host(path: &std::path::Path, token: &str) {
+    let mut stream =
+        UnixStream::connect(path).expect("must connect to test child host for shutdown");
+    blueice_ipc::page_host::write_page_host_request(
+        &mut stream,
+        &blueice_ipc::page_host::PageHostRequest::Hello {
+            protocol_version: blueice_ipc::page_host::PAGE_HOST_PROTOCOL_VERSION,
+            session_token: token.to_string(),
+        },
+    )
+    .expect("must send child-host shutdown handshake");
+    assert!(matches!(
+        blueice_ipc::page_host::read_page_host_reply(&mut stream)
+            .expect("child host must acknowledge shutdown handshake"),
+        blueice_ipc::page_host::PageHostReply::HelloAck { .. }
+    ));
+    blueice_ipc::page_host::write_page_host_request(
+        &mut stream,
+        &blueice_ipc::page_host::PageHostRequest::Shutdown,
+    )
+    .expect("must request child-host shutdown");
+    assert_eq!(
+        blueice_ipc::page_host::read_page_host_reply(&mut stream)
+            .expect("child host must acknowledge shutdown"),
+        blueice_ipc::page_host::PageHostReply::ShutdownAck
+    );
+}
 
 fn unique_socket_path(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-{label}-{}.sock",
-        std::process::id()
-    ))
+    // macOS may supply a long TMPDIR; keep the basename short enough for
+    // sockaddr_un while preserving the test label and process uniqueness.
+    std::env::temp_dir().join(format!("bicb-{label}-{}.sock", std::process::id()))
 }
 
 /// A gated `Navigate`/`OpenTab{url}` sent to the real subprocess needs
@@ -68,460 +126,176 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
     false
 }
 
-/// Connects to a socket the subprocess is still setting up. A Unix socket's
-/// file appears at `bind` and only accepts connections after `listen`, so
-/// `wait_for` seeing the path is not proof of readiness: on a loaded machine a
-/// connect in between is refused. Retry that (and only that) briefly.
-fn connect(path: &std::path::Path) -> std::io::Result<UnixStream> {
-    let deadline = Instant::now() + Duration::from_secs(5);
+fn connect_with_retry(path: &std::path::Path, timeout: Duration) -> std::io::Result<UnixStream> {
+    let deadline = Instant::now() + timeout;
     loop {
         match UnixStream::connect(path) {
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
-                ) && Instant::now() < deadline =>
-            {
-                thread::sleep(Duration::from_millis(10));
-            }
-            result => return result,
+            Ok(stream) => return Ok(stream),
+            Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Err(error) => return Err(error),
         }
     }
 }
 
-#[test]
-fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
-    let output = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .output()
-        .expect("failed to run blueice-core");
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--socket"));
-}
-
-#[test]
-fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_session() {
-    let socket_path = unique_socket_path("script-core");
-    let script_socket_path = unique_socket_path("script-host");
-    let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-script-frames-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&script_socket_path);
-    let _ = std::fs::remove_dir_all(&frame_dir);
-
-    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args([
-            "--socket",
-            socket_path.to_str().unwrap(),
-            "--script-socket",
-            script_socket_path.to_str().unwrap(),
-            "--frame-dir",
-            frame_dir.to_str().unwrap(),
-        ])
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("failed to spawn blueice-core");
-
-    assert!(
-        wait_for(&socket_path, Duration::from_secs(5)),
-        "blueice-core never created its frontend socket"
-    );
-    assert!(
-        wait_for(&script_socket_path, Duration::from_secs(5)),
-        "blueice-core never created its script socket"
-    );
-    let mut frontend =
-        connect(&socket_path).expect("failed to connect to the real core frontend socket");
-    blueice_ipc::client_handshake(&mut frontend)
-        .expect("the real subprocess must complete the frontend handshake");
-
-    let mut invalid =
-        connect(&script_socket_path).expect("failed to connect an unhandshaken script client");
-    blueice_ipc::script::write_script_request(
-        &mut invalid,
-        &blueice_ipc::script::ScriptRequest::CreateTextNode {
-            tab_id: 1,
-            data: "must not run".to_string(),
-        },
-    )
-    .unwrap();
-    assert!(matches!(
-        blueice_ipc::script::read_script_reply(&mut invalid).unwrap(),
-        blueice_ipc::script::ScriptReply::Error { .. }
-    ));
-    drop(invalid);
-
-    let mut script = connect(&script_socket_path).expect("failed to connect the real script host");
-    blueice_ipc::script::write_script_request(
-        &mut script,
-        &blueice_ipc::script::ScriptRequest::Hello,
-    )
-    .unwrap();
-    assert_eq!(
-        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
-        blueice_ipc::script::ScriptReply::HelloAck
-    );
-    blueice_ipc::script::write_script_request(
-        &mut script,
-        &blueice_ipc::script::ScriptRequest::CreateTextNode {
-            tab_id: 1,
-            data: "from script socket".to_string(),
-        },
-    )
-    .unwrap();
-    let node = match blueice_ipc::script::read_script_reply(&mut script).unwrap() {
-        blueice_ipc::script::ScriptReply::NodeCreated { node } => node,
-        reply => panic!("expected a created script node, got {reply:?}"),
-    };
-    blueice_ipc::script::write_script_request(
-        &mut script,
-        &blueice_ipc::script::ScriptRequest::GetTextContent { tab_id: 1, node },
-    )
-    .unwrap();
-    assert_eq!(
-        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
-        blueice_ipc::script::ScriptReply::Text {
-            value: "from script socket".to_string(),
-        }
-    );
-
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
-        .unwrap();
-    let status = child
-        .wait()
-        .expect("failed to wait for blueice-core to exit");
-    assert!(
-        status.success(),
-        "blueice-core must exit cleanly after Shutdown"
-    );
-    assert!(
-        !script_socket_path.exists(),
-        "blueice-core must remove its script socket on exit"
-    );
-    assert!(
-        !frame_dir.exists(),
-        "blueice-core must remove its script frame directory on exit"
-    );
-}
-
-#[test]
-fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
-    let socket_path = unique_socket_path("full-session");
-    let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-frames-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_dir_all(&frame_dir);
-    let gatekeeper_path = clearing_gatekeeper("fs-gk"); // short: Unix socket paths are capped at ~100 bytes total
-
+fn serve_html_once(body: &'static str) -> (std::net::SocketAddr, thread::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
-    thread::spawn(move || {
+    let address = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf);
-        let body = "<p>from a real subprocess</p>";
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request);
         stream
             .write_all(
                 format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 )
                 .as_bytes(),
             )
             .unwrap();
     });
+    (address, server)
+}
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args([
-            "--socket",
-            socket_path.to_str().unwrap(),
-            "--width",
-            "300",
-            "--height",
-            "150",
-            "--frame-dir",
-            frame_dir.to_str().unwrap(),
-            "--gatekeeper-socket",
-            gatekeeper_path.to_str().unwrap(),
-        ])
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("failed to spawn blueice-core");
+fn read_tab_dom(frontend: &mut UnixStream, tab_id: u64, request_id: u64) -> String {
+    blueice_ipc::write_client_message_with_ids(
+        frontend,
+        Some(tab_id),
+        Some(request_id),
+        &blueice_ipc::ClientMessage::GetDom,
+    )
+    .unwrap();
+    loop {
+        let (reply_tab, reply_id, reply) =
+            blueice_ipc::read_server_message_with_ids(frontend).unwrap();
+        if reply_id != Some(request_id) {
+            assert!(matches!(
+                reply,
+                blueice_ipc::ServerMessage::FrameReady { .. }
+            ));
+            continue;
+        }
+        assert_eq!(reply_tab, Some(tab_id));
+        let blueice_ipc::ServerMessage::Dom(dom) = reply else {
+            panic!("expected a DOM dump, got {reply:?}");
+        };
+        return dom;
+    }
+}
 
-    assert!(
-        wait_for(&socket_path, Duration::from_secs(5)),
-        "blueice-core never created its socket"
-    );
-    let mut stream = connect(&socket_path).expect("failed to connect to the real subprocess");
-    blueice_ipc::client_handshake(&mut stream)
-        .expect("the real subprocess must complete the protocol_version handshake");
+fn script_exchange(
+    script: &mut UnixStream,
+    next_call_id: &mut u64,
+    request: blueice_ipc::script::ScriptRequest,
+) -> blueice_ipc::script::ScriptReply {
+    use blueice_ipc::script::{ScriptReply, ScriptRequest};
+    let Some(target) = request.document_target() else {
+        assert!(matches!(request, ScriptRequest::Hello { .. }));
+        blueice_ipc::script::write_script_request(script, &request).unwrap();
+        return blueice_ipc::script::read_script_reply(script).unwrap();
+    };
+    let request_id = *next_call_id;
+    *next_call_id = next_call_id.checked_add(1).unwrap();
+    blueice_ipc::script::write_script_request(
+        script,
+        &ScriptRequest::Call {
+            request_id,
+            request: Box::new(request),
+        },
+    )
+    .unwrap();
+    match blueice_ipc::script::read_script_reply(script).unwrap() {
+        ScriptReply::CallResult {
+            request_id: actual_id,
+            target: actual_target,
+            reply,
+        } if actual_id == request_id && actual_target == target => *reply,
+        reply => panic!("script reply must echo call ID and document target: {reply:?}"),
+    }
+}
 
-    let url = format!("http://{addr}");
+fn navigate_default_tab(frontend: &mut UnixStream, url: String) {
     blueice_ipc::write_client_message(
-        &mut stream,
+        frontend,
         &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
     )
     .unwrap();
-    let navigated = blueice_ipc::read_server_message(&mut stream).unwrap();
-    assert_eq!(navigated, blueice_ipc::ServerMessage::Navigated { url });
-
-    let frame = blueice_ipc::read_server_message(&mut stream).unwrap();
-    let (shm_path, width, height) = match frame {
-        blueice_ipc::ServerMessage::FrameReady {
-            shm_path,
-            width,
-            height,
-            generation: 1,
-        } => (shm_path, width, height),
-        other => panic!("expected the first FrameReady, got {other:?}"),
-    };
-    assert_eq!((width, height), (300, 150));
-    let mapped = blueice_ipc::shm::map_frame(std::path::Path::new(&shm_path))
-        .expect("the real subprocess's frame file must be mappable");
-    assert_eq!(
-        mapped.len() as u32,
-        width * height * 4,
-        "RGBA8 frame bytes must match the requested viewport size"
-    );
-
-    blueice_ipc::write_client_message(
-        &mut stream,
-        &blueice_ipc::ClientMessage::Resize {
-            width: 100,
-            height: 80,
-        },
-    )
-    .unwrap();
-    let resized = blueice_ipc::read_server_message(&mut stream).unwrap();
-    assert!(matches!(
-        resized,
-        blueice_ipc::ServerMessage::FrameReady {
-            width: 100,
-            height: 80,
-            generation: 2,
-            ..
+    loop {
+        let reply = blueice_ipc::read_server_message(frontend)
+            .unwrap_or_else(|error| panic!("navigation to {url} failed: {error}"));
+        match reply {
+            blueice_ipc::ServerMessage::Navigated { url: navigated } => {
+                assert_eq!(navigated, url);
+                break;
+            }
+            blueice_ipc::ServerMessage::FrameReady { .. } => {}
+            other => panic!("unexpected navigation reply: {other:?}"),
         }
-    ));
-
-    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
-    let status = child
-        .wait()
-        .expect("failed to wait for blueice-core to exit");
-    assert!(
-        status.success(),
-        "blueice-core must exit cleanly after Shutdown"
-    );
-
-    assert!(
-        !socket_path.exists(),
-        "blueice-core must remove its own socket file on exit"
-    );
-    assert!(
-        !frame_dir.exists(),
-        "blueice-core must remove its own frame directory on exit"
-    );
-}
-
-#[test]
-fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contamination() {
-    // `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal-first-slice
-    // proof, one layer up from `session.rs`'s own in-process tests: the
-    // real compiled `blueice-core` binary, driven over a real socket,
-    // must keep two tabs' navigation and representation fully
-    // independent.
-    let socket_path = unique_socket_path("multi-tab");
-    let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-frames-multi-tab-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_dir_all(&frame_dir);
-    let gatekeeper_path = clearing_gatekeeper("mt-gk"); // short: Unix socket paths are capped at ~100 bytes total
-
-    let listener_one = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr_one = listener_one.local_addr().unwrap();
-    thread::spawn(move || {
-        let (mut stream, _) = listener_one.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf);
-        let body = "<p>first tab content</p>";
-        stream
-            .write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            )
-            .unwrap();
-    });
-    let listener_two = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr_two = listener_two.local_addr().unwrap();
-    thread::spawn(move || {
-        let (mut stream, _) = listener_two.accept().unwrap();
-        let mut buf = [0u8; 1024];
-        let _ = stream.read(&mut buf);
-        let body = "<p>second tab content</p>";
-        stream
-            .write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            )
-            .unwrap();
-    });
-
-    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args([
-            "--socket",
-            socket_path.to_str().unwrap(),
-            "--width",
-            "300",
-            "--height",
-            "150",
-            "--frame-dir",
-            frame_dir.to_str().unwrap(),
-            "--gatekeeper-socket",
-            gatekeeper_path.to_str().unwrap(),
-        ])
-        .spawn()
-        .expect("failed to spawn blueice-core");
-
-    assert!(
-        wait_for(&socket_path, Duration::from_secs(5)),
-        "blueice-core never created its socket"
-    );
-    let mut stream = connect(&socket_path).expect("failed to connect to the real subprocess");
-    blueice_ipc::client_handshake(&mut stream)
-        .expect("the real subprocess must complete the protocol_version handshake");
-
-    // Navigate the default (first) tab.
-    let url_one = format!("http://{addr_one}");
-    blueice_ipc::write_client_message(
-        &mut stream,
-        &blueice_ipc::ClientMessage::Navigate {
-            url: url_one.clone(),
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { url: url_one }
-    );
+    }
     assert!(matches!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::read_server_message(frontend).unwrap(),
         blueice_ipc::ServerMessage::FrameReady { .. }
     ));
-
-    // Open a second tab navigated straight to a different URL.
-    let url_two = format!("http://{addr_two}");
-    blueice_ipc::write_client_message(
-        &mut stream,
-        &blueice_ipc::ClientMessage::OpenTab {
-            url: Some(url_two.clone()),
-        },
-    )
-    .unwrap();
-    let (tab_two, tab_two_url) = match blueice_ipc::read_server_message(&mut stream).unwrap() {
-        blueice_ipc::ServerMessage::TabOpened { tab_id, url } => (tab_id, url),
-        other => panic!("expected TabOpened, got {other:?}"),
-    };
-    assert_eq!(tab_two_url, Some(url_two));
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut stream).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { .. }
-    ));
-
-    // The default tab's own representation must still show only its
-    // own content -- opening and navigating a second tab must not have
-    // touched it.
-    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetRepresentation)
-        .unwrap();
-    let default_tab_snapshot = match blueice_ipc::read_server_message(&mut stream).unwrap() {
-        blueice_ipc::ServerMessage::Representation(snapshot) => snapshot,
-        other => panic!("expected Representation, got {other:?}"),
-    };
-    assert!(default_tab_snapshot
-        .nodes
-        .iter()
-        .any(|n| n.name.as_deref() == Some("first tab content")));
-    assert!(!default_tab_snapshot
-        .nodes
-        .iter()
-        .any(|n| n.name.as_deref() == Some("second tab content")));
-
-    // The second tab's representation, addressed explicitly, must show
-    // only *its* content.
-    blueice_ipc::write_client_message_with_ids(
-        &mut stream,
-        Some(tab_two),
-        None,
-        &blueice_ipc::ClientMessage::GetRepresentation,
-    )
-    .unwrap();
-    let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut stream).unwrap();
-    assert_eq!(reply_tab, Some(tab_two));
-    let tab_two_snapshot = match reply {
-        blueice_ipc::ServerMessage::Representation(snapshot) => snapshot,
-        other => panic!("expected Representation, got {other:?}"),
-    };
-    assert_eq!(tab_two_snapshot.tab_id, tab_two);
-    assert!(tab_two_snapshot
-        .nodes
-        .iter()
-        .any(|n| n.name.as_deref() == Some("second tab content")));
-    assert!(!tab_two_snapshot
-        .nodes
-        .iter()
-        .any(|n| n.name.as_deref() == Some("first tab content")));
-
-    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
-    let status = child
-        .wait()
-        .expect("failed to wait for blueice-core to exit");
-    assert!(
-        status.success(),
-        "blueice-core must exit cleanly after Shutdown"
-    );
-
-    assert!(!socket_path.exists());
-    assert!(!frame_dir.exists());
 }
 
-#[test]
-fn a_client_disconnecting_without_shutdown_still_lets_the_subprocess_exit_cleanly() {
-    let socket_path = unique_socket_path("disconnect");
-    let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-frames-disconnect-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_dir_all(&frame_dir);
-
-    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args([
-            "--socket",
-            socket_path.to_str().unwrap(),
-            "--frame-dir",
-            frame_dir.to_str().unwrap(),
-        ])
-        .spawn()
-        .expect("failed to spawn blueice-core");
-
-    assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let stream = connect(&socket_path).unwrap();
-    drop(stream); // disconnect without ever sending Shutdown
-
-    let status = child.wait_timeout_or_kill();
+/// Sends one complete native-debugger request/response pair over the real
+/// socket and asserts that the raw public reply has not reflected this
+/// fixture's page-controlled secret, a VM/completion representation, or a
+/// known BlueJS opcode before decoding it. The protocol intentionally permits
+/// an opaque instruction *offset*; that is not bytecode disclosure.
+fn debugger_request(
+    stream: &mut UnixStream,
+    request: &blueice_ipc::debugger::DebuggerRequest,
+    page_secret: &str,
+) -> blueice_ipc::debugger::DebuggerReply {
+    blueice_ipc::debugger::write_debugger_request(stream, request)
+        .expect("must write debugger request to real core socket");
+    let mut length = [0u8; 4];
+    stream
+        .read_exact(&mut length)
+        .expect("real core must write a debugger reply length");
+    let mut payload = vec![0u8; u32::from_le_bytes(length) as usize];
+    stream
+        .read_exact(&mut payload)
+        .expect("real core must write a complete debugger reply payload");
+    let rendered =
+        std::str::from_utf8(&payload).expect("debugger reply framing must contain UTF-8 JSON");
     assert!(
-        status.success(),
-        "blueice-core must exit cleanly when its one client just disconnects"
+        !rendered.contains(page_secret),
+        "debugger reply must not disclose page source or its completion value: {rendered}"
     );
+    assert!(
+        !rendered.contains("Value(")
+            && !rendered.contains("StoreBinding")
+            && !rendered.contains("\"value\"")
+            && !rendered.contains("\"completion\"")
+            && !rendered.contains("\"opcode\""),
+        "debugger reply must not disclose a VM value, completion payload, or bytecode opcode: {rendered}"
+    );
+    serde_json::from_slice(&payload).expect("real core must return a debugger reply JSON shape")
+}
+
+fn wait_for_debugger_state(
+    stream: &mut UnixStream,
+    program: blueice_ipc::debugger::DebuggerProgram,
+    state: blueice_ipc::debugger::DebuggerExecutionState,
+    page_secret: &str,
+) {
+    let expected = blueice_ipc::debugger::DebuggerReply::ExecutionState { program, state };
+    let mut observed = None;
+    for _ in 0..20 {
+        let reply = debugger_request(
+            stream,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            page_secret,
+        );
+        if reply == expected {
+            return;
+        }
+        observed = Some(reply);
+        thread::sleep(Duration::from_millis(50));
+    }
+    panic!("expected debugger state {expected:?}, last observed {observed:?}");
 }
 
 trait WaitTimeoutOrKill {

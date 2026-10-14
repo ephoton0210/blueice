@@ -46,6 +46,31 @@ fn methods_coerce_arguments_in_left_to_right_order() {
 }
 
 #[test]
+fn every_numeric_math_method_propagates_symbol_conversion_errors() {
+    let source = r#"(function() {
+      const bad = Symbol("number");
+      const unary = ["abs", "acos", "acosh", "asin", "asinh", "atan", "atanh", "cbrt",
+                     "ceil", "clz32", "cos", "cosh", "exp", "expm1", "f16round",
+                     "floor", "fround", "log", "log1p", "log2", "log10", "round",
+                     "sign", "sin", "sinh", "sqrt", "tan", "tanh", "trunc"];
+      const variadic = ["hypot", "max", "min"];
+      const binary = ["atan2", "imul", "pow"];
+      function throwsType(name, args) {
+        try { Math[name](...args); return false; }
+        catch (error) { return error instanceof TypeError; }
+      }
+      for (const name of unary.concat(variadic, binary)) {
+        if (!throwsType(name, [bad])) return name + " accepted a Symbol";
+      }
+      for (const name of variadic.concat(binary)) {
+        if (!throwsType(name, [1, bad])) return name + " accepted a second Symbol";
+      }
+      return true;
+    })()"#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn math_initialization_releases_its_root_when_native_installation_exhausts_the_heap() {
     let code = compile(&parse("Math.PI").unwrap()).unwrap();
     let limit = 75_000;
@@ -60,4 +85,37 @@ fn math_initialization_releases_its_root_when_native_installation_exhausts_the_h
     .unwrap();
     assert!(matches!(vm.execute(&code), Err(RuntimeError::Heap(_))));
     assert!(vm.heap().stats().managed_bytes < limit);
+}
+
+#[test]
+fn math_initialization_handles_each_heap_allocation_boundary() {
+    let code = compile(&parse("Math.PI").unwrap()).unwrap();
+    let initial = Vm::default().heap().stats().managed_bytes;
+    let mut probe = Vm::default();
+    assert_eq!(
+        probe.execute(&code),
+        Ok(Value::Number(std::f64::consts::PI))
+    );
+    let baseline = probe.heap().stats().managed_bytes;
+    let mut completed = 0;
+    let mut exhausted = 0;
+
+    for limit in (initial..=baseline + 4_096).step_by(64) {
+        let Ok(mut vm) = Vm::new(VmConfig {
+            heap: HeapConfig {
+                major_threshold_bytes: limit,
+                max_heap_bytes: limit,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        }) else {
+            continue;
+        };
+        match vm.execute(&code) {
+            Ok(Value::Number(value)) if value == std::f64::consts::PI => completed += 1,
+            Err(RuntimeError::Heap(_)) => exhausted += 1,
+            other => panic!("heap limit {limit}: {other:?}"),
+        }
+    }
+    assert!(completed > 0 && exhausted > 0);
 }

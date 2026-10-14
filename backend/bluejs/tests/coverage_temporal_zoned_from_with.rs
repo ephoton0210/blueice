@@ -49,6 +49,15 @@ fn assert_type_errors(sources: &[&str]) {
 const NY: &str = "America/New_York";
 
 #[test]
+fn zoned_date_time_methods_reject_unbranded_receivers() {
+    assert_type_errors(&[
+        "Temporal.ZonedDateTime.prototype.toString.call(null)",
+        "Temporal.ZonedDateTime.prototype.toString.call({})",
+        "Temporal.ZonedDateTime.prototype.toString.call(new Temporal.PlainDate(2020, 1, 1))",
+    ]);
+}
+
+#[test]
 fn from_string_resolves_a_spring_forward_gap_by_disambiguation() {
     let source = r#"
         const z = (options) => Temporal.ZonedDateTime.from("2020-03-08T02:30:00[America/New_York]", options).toString();
@@ -187,6 +196,8 @@ fn from_string_rejects_malformed_input() {
         r#"Temporal.ZonedDateTime.from("")"#,
         r#"Temporal.ZonedDateTime.from("2020-13-01T00:00:00[UTC]")"#,
         r#"Temporal.ZonedDateTime.from("2020-02-30T00:00:00[UTC]")"#,
+        r#"Temporal.ZonedDateTime.from("\uD800")"#,
+        r#"Temporal.ZonedDateTime.from("+275760-09-14[UTC]")"#,
         // Beyond the representable Instant range.
         r#"Temporal.ZonedDateTime.from("+275760-09-13T00:00:00.000000001Z[UTC]")"#,
         r#"Temporal.ZonedDateTime.from("-271821-04-19T23:59:59.999999999Z[UTC]")"#,

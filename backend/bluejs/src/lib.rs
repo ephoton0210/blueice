@@ -61,9 +61,14 @@ mod primitive;
 mod program_abi;
 mod program_debug;
 mod property;
+mod regex_backrefs;
+mod regex_canonicalize;
+mod regex_escapes;
+mod regex_group_names;
 #[doc(hidden)]
 pub mod regex_worker;
 mod regexp;
+mod source_encoding;
 mod string;
 mod token;
 mod value;
@@ -72,12 +77,17 @@ mod vm;
 pub use ast::*;
 pub use bytecode::{Bytecode, Instruction, Opcode, MAY_USE_INLINE_CACHE};
 pub use compiler::{
-    compile, compile_module, compile_module_with_limit, compile_with_limit, CompileError,
+    compile, compile_module, compile_module_with_limit, compile_module_with_limits,
+    compile_with_limit, compile_with_limits, validate_private_early_errors, CompileError,
+    CompileLimits,
 };
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub use page_runtime::{
-    BlueJsPageOrigin, BlueJsPageRealmStats, BlueJsPageRuntime, BlueJsPageRuntimeConfig,
-    BlueJsPageRuntimeError, BLUEJS_PAGE_RUNTIME_ABI_V1,
+    BlueJsHostBindingRegistrar, BlueJsPageDebuggerExecutionState, BlueJsPageDebuggerFrame,
+    BlueJsPageDebuggerLinkedExecutionState, BlueJsPageDebuggerLinkedFrame,
+    BlueJsPageDebuggerNestedExecutionState, BlueJsPageDebuggerValueTarget, BlueJsPageOrigin,
+    BlueJsPageRealmStats, BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError,
+    BLUEJS_PAGE_RUNTIME_ABI_V1,
 };
 pub(crate) use parser::parse_eval;
 pub use parser::{parse, parse_module, ParseError};
@@ -90,4 +100,11 @@ pub use program_debug::{
 pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};
-pub use vm::{RuntimeError, Vm, VmConfig};
+pub use vm::{
+    HostFunction, HostFunctionError, HostObject, HostObjectFactory, HostObjectFamily,
+    HostObjectKey, HostObjectMethod, HostObjectPairMethod, HostValue, RuntimeError, Vm, VmConfig,
+    VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
+    VmDebuggerScopeEntry, VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite,
+    VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
+    VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
+};

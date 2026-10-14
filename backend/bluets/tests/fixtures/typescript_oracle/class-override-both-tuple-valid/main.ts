@@ -1,0 +1,14 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+class Base {
+    read(a: number, ...parts: [string, boolean]): number { return a; }
+    shorten(...parts: [number, string, boolean]): number { return 1; }
+    static parse(a: number, ...parts: [string, boolean]): number { return a; }
+}
+class Child extends Base {
+    read(...parts: [number, string, boolean]): number { return parts[0]; }
+    shorten(...parts: [number, string]): number { return 1; }
+    static parse(a: number, b: string, ...parts: [boolean]): number { return a; }
+}

@@ -19,71 +19,12 @@
 //! `WrappedFunctionCreate`) cross at all; every other object is a
 //! `TypeError`.
 
+use super::realm_reentrancy::{register_active, resolve_active};
 use super::*;
 
-thread_local! {
-    /// A stack of `Vm`s currently mid-call as part of one synchronous
-    /// cross-`ShadowRealm` call chain on this thread, most recently
-    /// registered last.
-    ///
-    /// Safety model: [`register_active`] pushes a raw pointer to `self`
-    /// immediately before `self` calls into another realm, and the returned
-    /// [`ActiveGuard`] pops it the instant that nested call returns -- i.e.
-    /// its validity window is exactly the dynamic extent of the `&mut self`
-    /// call already in progress on the Rust stack when it was pushed. A
-    /// `Vm` value can freely be moved by its owner *between* top-level
-    /// calls (nothing here assumes a `Vm` is pinned in memory); what must
-    /// not happen, and does not, is moving it *while* one of its own
-    /// methods holds `&mut self` -- Rust already guarantees that on our
-    /// behalf for the exact same reason a safe `&mut` borrow would.
-    ///
-    /// A wrapped-function facade that a realm retains and calls again long
-    /// after the synchronous call that produced it has returned (so no
-    /// entry remains for its home realm) simply fails
-    /// [`resolve_active`] and reports a catchable error, rather than
-    /// dereferencing memory whose lifetime has already ended.
-    static ACTIVE: RefCell<Vec<(u64, *mut Vm)>> = const { RefCell::new(Vec::new()) };
-}
-
-struct ActiveGuard {
-    tag: u64,
-}
-
-impl Drop for ActiveGuard {
-    fn drop(&mut self) {
-        ACTIVE.with(|active| {
-            let popped = active.borrow_mut().pop();
-            debug_assert!(
-                popped.is_some_and(|(tag, _)| tag == self.tag),
-                "ShadowRealm active-Vm registrations must nest with the Rust call stack"
-            );
-        });
-    }
-}
-
-/// Registers `vm` as reachable by its own heap tag for the dynamic extent of
-/// the returned guard. Call this immediately before `vm` calls into another
-/// realm, and keep the guard alive across exactly that call.
-fn register_active(vm: &mut Vm) -> ActiveGuard {
-    let tag = vm.object_prototype.heap;
-    ACTIVE.with(|active| active.borrow_mut().push((tag, vm as *mut Vm)));
-    ActiveGuard { tag }
-}
-
-/// Finds the most recently registered `Vm` for `tag`, if one is currently
-/// mid-call on this thread's synchronous cross-realm call chain. See
-/// `ACTIVE`'s own documentation for the safety argument governing every
-/// caller of this function.
-fn resolve_active(tag: u64) -> Option<*mut Vm> {
-    ACTIVE.with(|active| {
-        active
-            .borrow()
-            .iter()
-            .rev()
-            .find(|(t, _)| *t == tag)
-            .map(|(_, ptr)| *ptr)
-    })
-}
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/shadow_realm_boundaries.rs"]
+mod boundary_tests;
 
 impl Vm {
     pub(super) fn shadow_realm_constructor(
@@ -141,10 +82,12 @@ impl Vm {
         if let Some(prototype) = self.shadow_realm_prototype {
             return Ok(prototype);
         }
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let function_prototype = self.function_prototype()?;
-        self.stack.push(Value::Object(prototype));
+        // The intrinsic can outlive a refused constructor initialization.
+        // Its cache therefore needs a permanent root before publication.
+        let root = self.heap.root(prototype)?;
         let result: Result<(), RuntimeError> = (|| {
             self.define_data(
                 prototype,
@@ -170,8 +113,10 @@ impl Vm {
             )?;
             Ok(())
         })();
-        self.stack.pop();
-        result?;
+        if let Err(error) = result {
+            self.release_root(root);
+            return Err(error);
+        }
         self.shadow_realm_prototype = Some(prototype);
         Ok(prototype)
     }
@@ -204,11 +149,9 @@ impl Vm {
         // ordinarily `self`, or (through `Test262`'s own foreign-call
         // membrane) another realm's `Vm` when `evaluate` was reached via a
         // cross-realm facade, with no extra work required here.
-        let source_text = source_text.to_utf8().map_err(|_| {
-            RuntimeError::SyntaxError("script source contains an unpaired surrogate".into())
-        })?;
-        let program =
-            crate::parse(&source_text).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let source_text = crate::source_encoding::encode(&source_text);
+        let program = crate::parser::parse_encoded(&source_text)
+            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let code = crate::compile(&program)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         // `this_id` names a live record (checked above), so this record is
@@ -223,7 +166,7 @@ impl Vm {
         return match record.vm.try_borrow_mut() {
             Ok(mut child) => {
                 let child_guard = register_active(&mut child);
-                let outcome = Self::run_evaluate(self, &mut child, &code);
+                let outcome = Self::run_evaluate(self, &mut child, &code, false);
                 drop(child_guard);
                 match outcome {
                     Ok(value) => self.shadow_wrap_into(&mut child, value),
@@ -243,20 +186,11 @@ impl Vm {
                     .iter()
                     .find(|&(_, &id)| id == this_id)
                     .map(|(&tag, _)| tag);
-                let Some(ptr) = heap_tag.and_then(resolve_active) else {
-                    return Err(RuntimeError::TypeError(
-                        "the ShadowRealm this function belongs to is no longer reachable".into(),
-                    ));
-                };
-                if std::ptr::eq(ptr as *const Vm, self as *const Vm) {
-                    return Err(RuntimeError::TypeError(
-                        "a ShadowRealm boundary cannot resolve to itself".into(),
-                    ));
-                }
+                let ptr = self.resolve_shadow_ancestor(heap_tag)?;
                 // SAFETY: see `ACTIVE`'s documentation and the identical
                 // reasoning in `shadow_call_wrapped`.
                 let record_vm = unsafe { &mut *ptr };
-                let outcome = Self::run_evaluate(self, record_vm, &code);
+                let outcome = Self::run_evaluate(self, record_vm, &code, true);
                 match outcome {
                     Ok(value) => self.shadow_wrap_into(record_vm, value),
                     Err(_) => Err(RuntimeError::TypeError(String::new())),
@@ -275,8 +209,55 @@ impl Vm {
         caller: &mut Vm,
         child: &mut Vm,
         code: &Bytecode,
+        reentrant: bool,
     ) -> Result<Value, RuntimeError> {
-        child.remaining_instructions = child.config.instruction_budget;
+        if !reentrant {
+            child.reset_lexical_global_bindings();
+            let _guard = register_active(caller);
+            let value = child.execute_script(code)?;
+            child.run_promise_jobs()?;
+            // Metadata traps execute after this function returns. Retain the
+            // evaluation's completion root and remaining instruction budget.
+            return Ok(value);
+        }
+        // evaluate may reenter an ancestor realm that is still executing a
+        // wrapped function. Its fresh script context must not erase that
+        // function's bindings, operand stack, or dynamic eval environments.
+        let lexical_bindings = {
+            let names = child
+                .global_bindings
+                .iter()
+                .filter(|(_, binding)| !binding.property)
+                .map(|(name, _)| name.clone())
+                .collect::<Vec<_>>();
+            names
+                .into_iter()
+                .map(|name| {
+                    let binding = child
+                        .global_bindings
+                        .remove(&name)
+                        .expect("the suspended lexical binding is still installed");
+                    (name, binding)
+                })
+                .collect::<HashMap<_, _>>()
+        };
+        let execution = child.suspend_module_execution();
+        let mut roots = child.root_suspended_module_execution(&execution);
+        let call_depth = std::mem::replace(&mut child.call_depth, 0);
+        let parameter_eval_env = child.parameter_eval_env.take();
+        if let Some(env) = parameter_eval_env {
+            roots.push(child.root_new_object(env));
+        }
+        // Script cleanup clears these even when an ancestor call is still
+        // active. Keep weak targets alive for the complete outer job.
+        let call_stack = std::mem::take(&mut child.call_stack);
+        let kept_weak_objects = std::mem::take(&mut child.kept_weak_objects);
+        roots.extend(
+            kept_weak_objects
+                .iter()
+                .map(|id| child.root_new_object(*id)),
+        );
+        let inherited_with_depth = std::mem::replace(&mut child.inherited_with_depth, 0);
         // GetShadowRealmContext ( shadowRealmRecord, strictEval ): "Let
         // lexEnv be NewDeclarativeEnvironment(shadowRealmRecord.[[GlobalEnv]])."
         // Every single `evaluate` call gets a *fresh* declarative
@@ -297,15 +278,29 @@ impl Vm {
         // though `lexEnv` is fresh, so those must keep being real, visible
         // `globalThis` properties across calls exactly as `execute_script`
         // already provides.
-        child.reset_lexical_global_bindings()?;
-        let _guard = register_active(caller);
-        let value = child.execute_script(code)?;
-        // This engine has no realm-independent job queue: a Script's own
-        // promise reactions are drained as part of running it to
-        // completion, the same synchronous unit `evaluate` presents to its
-        // caller.
-        child.run_promise_jobs()?;
-        Ok(value)
+        let outcome = (|| {
+            child.reset_lexical_global_bindings();
+            let _guard = register_active(caller);
+            let value = child.execute_script(code)?;
+            // Promise reactions belong to this evaluation context too.
+            child.run_promise_jobs()?;
+            Ok(value)
+        })();
+        child.reset_lexical_global_bindings();
+        child.global_bindings.extend(lexical_bindings);
+        if let Some(root) = child.result_root.take() {
+            child.release_root(root);
+        }
+        child.restore_module_execution(execution);
+        child.call_depth = call_depth;
+        child.call_stack = call_stack;
+        child.kept_weak_objects = kept_weak_objects;
+        child.parameter_eval_env = parameter_eval_env;
+        child.inherited_with_depth = inherited_with_depth;
+        for root in roots {
+            child.release_root(root);
+        }
+        outcome
     }
 
     /// `ShadowRealm.prototype.importValue` (`ShadowRealmImportValue`),
@@ -337,7 +332,17 @@ impl Vm {
             ));
         };
         let promise_constructor = self.global("Promise")?;
-        let (promise, resolve, reject) = self.new_promise_capability(&promise_constructor)?;
+        let PromiseCapability {
+            promise,
+            resolve,
+            reject,
+        } = self.new_promise_capability(&promise_constructor)?;
+        // The capability's functions are referenced only from these locals
+        // while the child realm runs and the caller heap allocates wrappers
+        // and an error value before they are finally called.
+        let base = self.stack.len();
+        self.stack
+            .extend([promise.clone(), resolve.clone(), reject.clone()]);
         let record = self
             .shadow_realms
             .get(&this_id)
@@ -412,15 +417,14 @@ impl Vm {
                 "this ShadowRealm is already mid-call".into(),
             )),
         };
-        match outcome {
-            Ok(value) => {
-                self.call_native(resolve, Value::Undefined, vec![value], false)?;
-            }
-            Err(_) => {
-                let error = self.error_value(RuntimeError::TypeError(String::new()))?;
-                self.call_native(reject, Value::Undefined, vec![error], false)?;
-            }
-        }
+        let settled = match outcome {
+            Ok(value) => self.call_native(resolve, Value::Undefined, vec![value], false),
+            Err(_) => self
+                .error_value(RuntimeError::TypeError(String::new()))
+                .and_then(|error| self.call_native(reject, Value::Undefined, vec![error], false)),
+        };
+        self.stack.truncate(base);
+        settled?;
         Ok(promise)
     }
 
@@ -487,7 +491,21 @@ impl Vm {
         // already checked out further up this very call stack. Either way
         // it is reachable only through `ACTIVE` (see its own documentation
         // for why that is sound here).
-        let Some(ptr) = resolve_active(home_heap) else {
+        let ptr = self.resolve_shadow_ancestor(Some(home_heap))?;
+        // SAFETY: `ptr` is only present in `ACTIVE` for the dynamic extent
+        // of a suspended ancestor call. The shared resolver rejects `self`
+        // before this reborrow, so the two mutable references do not overlap.
+        let other = unsafe { &mut *ptr };
+        self.shadow_call_across(other, target, this_arg, args)
+    }
+
+    /// Validate the active ancestor before either reentrant boundary reborrows
+    /// its pointer. An absent ancestor and a self-reference are catchable.
+    pub(super) fn resolve_shadow_ancestor(
+        &self,
+        heap_tag: Option<u64>,
+    ) -> Result<*mut Vm, RuntimeError> {
+        let Some(ptr) = heap_tag.and_then(resolve_active) else {
             return Err(RuntimeError::TypeError(
                 "the ShadowRealm this function belongs to is no longer reachable".into(),
             ));
@@ -500,13 +518,7 @@ impl Vm {
                 "a ShadowRealm boundary cannot resolve to itself".into(),
             ));
         }
-        // SAFETY: `ptr` is only present in `ACTIVE` for the dynamic extent
-        // of a `&mut Vm` call currently suspended further up the Rust call
-        // stack (see `ACTIVE`'s documentation); we have just confirmed it
-        // is not `self`, so this reborrow does not alias any reference
-        // `self` itself is holding.
-        let other = unsafe { &mut *ptr };
-        self.shadow_call_across(other, target, this_arg, args)
+        Ok(ptr)
     }
 
     /// `OrdinaryWrappedFunctionCall`: wraps `this`/each argument *into*
@@ -586,37 +598,42 @@ impl Vm {
         // alive; root it there for as long as this facade (leaked for the
         // Vm's lifetime, like every other cross-realm record here and in
         // `test262.rs`) can still reach it.
-        let _target_root = source.heap.root(target)?;
-        let function_prototype = self.function_prototype()?;
-        let wrapper = self.with_roots(|heap| {
-            heap.alloc_native_function(
-                NativeFunction::ShadowRealmWrappedFunction,
-                "",
-                function_prototype,
-            )
-        })?;
-        self.stack.push(Value::Object(wrapper));
-        let result: Result<(), RuntimeError> = (|| {
-            self.copy_name_and_length(source, wrapper, target)?;
-            Ok(())
+        let target_root = source.heap.root(target)?;
+        let outcome = (|| {
+            let function_prototype = self.function_prototype()?;
+            let wrapper = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::ShadowRealmWrappedFunction,
+                    "",
+                    function_prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(wrapper));
+            let copied = self.copy_name_and_length(source, wrapper, target);
+            self.stack.pop();
+            // Metadata getters must not expose their original exception
+            // across the boundary. The root transfers to the wrapper record
+            // only after every descriptor has been copied successfully.
+            copied.map_err(|_| {
+                RuntimeError::TypeError("could not wrap this function across a ShadowRealm".into())
+            })?;
+            self.shadow_wrapped_functions.insert(
+                wrapper,
+                ShadowWrappedFunction {
+                    home_heap: target.heap,
+                    target,
+                    _target_root: target_root,
+                },
+            );
+            Ok(Value::Object(wrapper))
         })();
-        self.stack.pop();
-        // CopyNameAndLength's own abrupt completion (a throwing "length" or
-        // "name" getter) becomes a TypeError, never the original error --
-        // the same opaque-boundary rule `evaluate`'s CreateTypeErrorCopy
-        // applies elsewhere in this proposal.
-        result.map_err(|_| {
-            RuntimeError::TypeError("could not wrap this function across a ShadowRealm".into())
-        })?;
-        self.shadow_wrapped_functions.insert(
-            wrapper,
-            ShadowWrappedFunction {
-                home_heap: target.heap,
-                target,
-                _target_root,
-            },
-        );
-        Ok(Value::Object(wrapper))
+        if outcome.is_err() {
+            source
+                .heap
+                .unroot(target_root)
+                .expect("failed wrapper construction still owns its target root");
+        }
+        outcome
     }
 
     /// `CopyNameAndLength(F = wrapper, Target = target)` with no prefix and

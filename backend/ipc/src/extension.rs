@@ -233,6 +233,28 @@ mod tests {
     }
 
     #[test]
+    fn default_extension_socket_path_prefers_xdg_runtime_dir_when_set() {
+        // SAFETY: no other test in this crate reads or writes
+        // `XDG_RUNTIME_DIR`, and this crate's own binaries never run
+        // in-process during unit tests.
+        let previous = std::env::var_os("XDG_RUNTIME_DIR");
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", "/tmp/blueice-xdg-test-extension");
+        }
+        let path = default_extension_socket_path();
+        match previous {
+            Some(value) => unsafe { std::env::set_var("XDG_RUNTIME_DIR", value) },
+            None => unsafe { std::env::remove_var("XDG_RUNTIME_DIR") },
+        }
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/blueice-xdg-test-extension")
+                .join("blueice")
+                .join("extension-host.sock")
+        );
+    }
+
+    #[test]
     fn reading_malformed_json_is_an_error_not_a_panic() {
         let mut buf = Vec::new();
         let bad_payload = b"not json";

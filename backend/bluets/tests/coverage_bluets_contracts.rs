@@ -11,7 +11,7 @@
 
 use blueice_bluets::{
     compile, CompilerOptions, Contract, ContractError, ContractPlan, ContractValue, Declaration,
-    MapLoader, ModuleSource, Type, ValidationError, ValidationLimits,
+    MapLoader, ModuleSource, TupleTypeElement, Type, ValidationError, ValidationLimits,
 };
 use std::collections::BTreeMap;
 
@@ -79,6 +79,21 @@ fn plan_for(name: &str) -> ContractPlan {
 
 fn plan_of(value: &Type) -> ContractPlan {
     ContractPlan::from_type("test", value, &schema()).unwrap()
+}
+
+#[test]
+fn optional_dot_receiver_contract_validates_data_without_installing_a_callback() {
+    let types = named_types("type Maybe = { value: number } | null;");
+    let plan = ContractPlan::from_type("Maybe", &named("Maybe"), &types).unwrap();
+    assert_eq!(plan.validate(&ContractValue::Null), Ok(()));
+    assert_eq!(
+        plan.validate(&object(vec![("value", number(41.0))])),
+        Ok(())
+    );
+    assert!(plan.validate(&object(vec![])).is_err());
+    assert!(plan
+        .validate(&object(vec![("value", string("wrong"))]))
+        .is_err());
 }
 
 fn string(value: &str) -> ContractValue {
@@ -281,7 +296,10 @@ fn arrays_report_the_path_of_the_first_bad_element() {
 
 #[test]
 fn tuples_require_the_exact_length_and_position_wise_types() {
-    let plan = plan_of(&Type::Tuple(vec![Type::String, Type::Number]));
+    let plan = plan_of(&Type::Tuple(vec![
+        TupleTypeElement::required(Type::String),
+        TupleTypeElement::required(Type::Number),
+    ]));
     assert_eq!(
         plan.validate(&array(vec![string("k"), number(1.0)])),
         Ok(())
@@ -309,6 +327,129 @@ fn tuples_require_the_exact_length_and_position_wise_types() {
     let empty = plan_of(&Type::Tuple(Vec::new()));
     assert_eq!(empty.validate(&array(vec![])), Ok(()));
     assert!(empty.validate(&array(vec![number(1.0)])).is_err());
+}
+
+#[test]
+fn optional_tuple_contract_accepts_only_its_bounded_lengths_and_element_types() {
+    let types = named_types("type Pair = [number, string?];");
+    let plan = ContractPlan::from_type("Pair", &named("Pair"), &types).unwrap();
+    for value in [
+        array(vec![number(1.0)]),
+        array(vec![number(1.0), string("a")]),
+        array(vec![number(1.0), ContractValue::Undefined]),
+    ] {
+        assert_eq!(plan.validate(&value), Ok(()));
+    }
+    for value in [
+        array(vec![]),
+        array(vec![number(1.0), number(2.0)]),
+        array(vec![number(1.0), string("a"), string("extra")]),
+    ] {
+        assert!(plan.validate(&value).is_err(), "{value:?}");
+    }
+}
+
+#[test]
+fn trailing_tuple_rest_contract_checks_every_present_tail_element() {
+    let types = named_types("type Trail = [head: number, ...tail: string[]];");
+    let plan = ContractPlan::from_type("Trail", &named("Trail"), &types).unwrap();
+    for value in [
+        array(vec![number(1.0)]),
+        array(vec![number(1.0), string("a")]),
+        array(vec![number(1.0), string("a"), string("b")]),
+    ] {
+        assert_eq!(plan.validate(&value), Ok(()));
+    }
+    assert!(plan.validate(&array(vec![])).is_err());
+    assert_error(
+        &rejected(&plan, &array(vec![number(1.0), string("a"), number(2.0)])),
+        "$[2]",
+        "string",
+        "number",
+    );
+
+    let optional = named_types("type MaybeTrail = [head?: number, ...tail: string[]];");
+    let plan = ContractPlan::from_type("MaybeTrail", &named("MaybeTrail"), &optional).unwrap();
+    assert_eq!(plan.validate(&array(vec![])), Ok(()));
+    assert_eq!(
+        plan.validate(&array(vec![number(1.0), string("a")])),
+        Ok(())
+    );
+    assert!(plan.validate(&array(vec![string("a")])).is_err());
+}
+
+#[test]
+fn concrete_named_tuple_spread_contract_checks_expanded_positions() {
+    let types = named_types(
+        "type Pair = [number, string]; type WithHead = [boolean, ...Pair]; type WithTail = [...WithHead, null];",
+    );
+    let plan = ContractPlan::from_type("WithTail", &named("WithTail"), &types).unwrap();
+    assert_eq!(
+        plan.validate(&array(vec![
+            ContractValue::Boolean(true),
+            number(1.0),
+            string("one"),
+            ContractValue::Null,
+        ])),
+        Ok(())
+    );
+    assert!(plan
+        .validate(&array(vec![ContractValue::Boolean(true), number(1.0)]))
+        .is_err());
+    assert!(plan
+        .validate(&array(vec![
+            ContractValue::Boolean(true),
+            string("wrong"),
+            string("one"),
+            ContractValue::Null,
+        ]))
+        .is_err());
+
+    let optional = named_types(
+        "type OptionalPrefix = [number?]; type RequireTail = [...OptionalPrefix, string];",
+    );
+    let plan = ContractPlan::from_type("RequireTail", &named("RequireTail"), &optional).unwrap();
+    assert_eq!(
+        plan.validate(&array(vec![ContractValue::Undefined, string("tail")])),
+        Ok(())
+    );
+    assert!(plan
+        .validate(&array(vec![ContractValue::Undefined]))
+        .is_err());
+}
+
+#[test]
+fn middle_tuple_rest_contract_checks_required_suffix_from_the_end() {
+    let types = named_types("type Packet = [head: number, ...body: string[], done: boolean];");
+    let plan = ContractPlan::from_type("Packet", &named("Packet"), &types).unwrap();
+    for value in [
+        array(vec![number(1.0), ContractValue::Boolean(true)]),
+        array(vec![number(1.0), string("a"), ContractValue::Boolean(true)]),
+        array(vec![
+            number(1.0),
+            string("a"),
+            string("b"),
+            ContractValue::Boolean(false),
+        ]),
+    ] {
+        assert_eq!(plan.validate(&value), Ok(()));
+    }
+    assert!(plan.validate(&array(vec![number(1.0)])).is_err());
+    assert_error(
+        &rejected(&plan, &array(vec![number(1.0), string("a"), number(2.0)])),
+        "$[2]",
+        "boolean",
+        "number",
+    );
+    assert_error(
+        &rejected(
+            &plan,
+            &array(vec![number(1.0), number(2.0), ContractValue::Boolean(true)]),
+        ),
+        "$[1]",
+        "string",
+        "number",
+    );
 }
 
 #[test]
@@ -560,7 +701,10 @@ fn unreifiable_types_are_rejected_with_an_explanation() {
     // The rejection surfaces from any nesting position.
     let nested = [
         Type::Array(Box::new(Type::Any)),
-        Type::Tuple(vec![Type::String, Type::Void]),
+        Type::Tuple(vec![
+            TupleTypeElement::required(Type::String),
+            TupleTypeElement::required(Type::Void),
+        ]),
         Type::Union(vec![Type::String, Type::Unknown]),
         Type::Intersection(vec![Type::Never, Type::String]),
         Type::Array(Box::new(named("Missing"))),

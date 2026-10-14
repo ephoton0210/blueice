@@ -89,6 +89,8 @@ pub(crate) enum MapMethod {
     Entries,
     ForEach,
     Get,
+    GetOrInsert,
+    GetOrInsertComputed,
     Has,
     Keys,
     Set,
@@ -104,6 +106,13 @@ pub(crate) enum SetMethod {
     ForEach,
     Has,
     Values,
+    Union,
+    Intersection,
+    Difference,
+    SymmetricDifference,
+    IsSubsetOf,
+    IsSupersetOf,
+    IsDisjointFrom,
 }
 
 /// The lazy iterator helpers share one native dispatcher. Keeping the method
@@ -175,10 +184,30 @@ pub(crate) enum DatePart {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
+    /// A realm-private embedding callback stored in [`crate::Vm`].
+    Host(u32),
+    /// A realm-private callback whose opaque key is materialized as a rooted
+    /// JavaScript object by the VM, never as a page-visible numeric value.
+    HostObjectFactory(u32),
+    /// A callback invoked only after the receiver resolves to this family's
+    /// VM-minted opaque wrapper.
+    HostObjectMethod(u32),
+    /// An exact two-wrapper operation returning its original child wrapper.
+    HostObjectPairMethod(u32),
+    /// VM-owned click-listener registration on one exact host-object family.
+    HostClickListenerAdd(u32),
+    HostClickListenerRemove(u32),
+    /// Can cancel only the currently dispatching VM-owned click event.
+    HostClickPreventDefault,
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.
     AsyncFunction,
+    /// The intrinsic `%GeneratorFunction%` and `%AsyncGeneratorFunction%`
+    /// constructors (no globals): they compile `function*` / `async function*`
+    /// from their arguments.
+    GeneratorFunction,
+    AsyncGeneratorFunction,
     String,
     Array,
     Date,
@@ -377,6 +406,8 @@ pub(crate) enum NativeFunction {
     ProxyRevoker(ObjectId),
     Map,
     MapMethod(MapMethod),
+    /// `Map.groupBy(items, callback)`.
+    MapGroupBy,
     MapSize,
     Set,
     SetMethod(SetMethod),
@@ -404,6 +435,9 @@ pub(crate) enum NativeFunction {
     ArrayFlatMap,
     ArrayOf,
     ArraySpecies,
+    /// The `get [Symbol.species]` accessor of `Map`, `Set` and `Promise`,
+    /// which (like `ArraySpecies`) just returns its receiver.
+    CollectionSpecies,
     ArrayFrom,
     ArrayFromAsync,
     /// A settled Await inside an `Array.fromAsync` run: `state` is the run's
@@ -447,6 +481,10 @@ pub(crate) enum NativeFunction {
     DecodeUri {
         component: bool,
     },
+    /// Annex B.2.1 `escape` (`false`) and `unescape` (`true`).
+    Escape {
+        decode: bool,
+    },
     JsonParse,
     JsonStringify,
     JsonRawJson,
@@ -454,6 +492,11 @@ pub(crate) enum NativeFunction {
     Math(MathMethod),
     Error(&'static str),
     ErrorToString,
+    /// `Error.isError`.
+    ErrorIsError,
+    /// The `get`/`set` halves of the `Error.prototype.stack` accessor.
+    ErrorStackGetter,
+    ErrorStackSetter,
     /// Test262 exposes this otherwise non-global intrinsic through `$262`.
     AbstractModuleSource,
     AbstractModuleSourceToStringTag,
@@ -531,6 +574,10 @@ pub(crate) enum NativeFunction {
     ReflectConstruct,
     FunctionToString,
     ThrowTypeError,
+    /// Getters of the legacy own `caller` / `arguments` accessors that a
+    /// sloppy ordinary function carries.
+    LegacyFunctionCaller,
+    LegacyFunctionArguments,
     Empty,
     ObjectToString,
     ObjectToLocaleString,
@@ -562,12 +609,13 @@ pub(crate) enum NativeFunction {
     AsyncGeneratorReturn,
     AsyncGeneratorThrow,
     Promise,
-    /// One half of a Promise capability. The target identity is carried by
-    /// the otherwise ordinary native function, so the resolving functions
-    /// can be passed to an executor without exposing VM bookkeeping to JS.
+    /// One half of a promise's resolving-function pair (CreateResolvingFunctions).
+    /// `state` is the heap record holding the pair's shared [[AlreadyResolved]]
+    /// flag, so whichever function runs first disables both.
     PromiseResolvingFunction {
         promise: ObjectId,
         fulfill: bool,
+        state: ObjectId,
     },
     /// The executor supplied while `NewPromiseCapability(C)` invokes a
     /// user-provided constructor. The storage object keeps its resolve/reject
@@ -592,35 +640,45 @@ pub(crate) enum NativeFunction {
     PromiseRace,
     PromiseAny,
     PromiseAllSettled,
-    PromiseAllResolve {
-        target: ObjectId,
+    /// `Promise.allKeyed` (`settled: false`) and `Promise.allSettledKeyed`.
+    PromiseAllKeyed {
+        settled: bool,
+    },
+    PromiseTry,
+    /// A resolve/reject element function of `Promise.all`, `allSettled` or
+    /// `any`. `state` is the heap record shared by one combinator call.
+    PromiseElement {
+        state: ObjectId,
         index: u32,
+        kind: PromiseElementKind,
     },
-    PromiseAllReject {
-        target: ObjectId,
+    /// The `thenFinally` (`catch: false`) / `catchFinally` function that
+    /// `Promise.prototype.finally` passes to `then`; `state` holds the
+    /// `onFinally` callback and the species constructor.
+    PromiseFinallyFunction {
+        state: ObjectId,
+        catch: bool,
     },
-    PromiseRaceFulfill {
-        target: ObjectId,
-    },
-    PromiseRaceReject {
-        target: ObjectId,
-    },
-    PromiseAnyFulfill {
-        target: ObjectId,
-    },
-    PromiseAnyReject {
-        target: ObjectId,
-        index: u32,
-    },
-    PromiseAllSettledFulfill {
-        target: ObjectId,
-        index: u32,
-    },
-    PromiseAllSettledReject {
-        target: ObjectId,
-        index: u32,
+    /// The value thunk (`thrower: false`) or thrower function `finally`
+    /// hands to its inner `then`; `state` holds the value or reason.
+    PromiseValueThunk {
+        state: ObjectId,
+        thrower: bool,
     },
     PromiseWithResolvers,
+    /// The `addInitializer` function of a decorator's context object. `state`
+    /// is the heap record holding that decorator application's `finished`
+    /// flag and the list of extra initializers it appends to.
+    DecoratorAddInitializer {
+        state: ObjectId,
+    },
+    /// `access.get`, `access.set` or `access.has` of a decorator's context
+    /// object; `state` holds the private-name owner (or `undefined`) and the
+    /// property key or private name it reaches.
+    DecoratorAccess {
+        op: DecoratorAccessOp,
+        state: ObjectId,
+    },
     Test262Done,
     Symbol,
     SymbolFor,
@@ -669,11 +727,16 @@ pub(crate) enum NativeFunction {
     IteratorToStringTagGetter,
     IteratorToStringTagSetter,
     AsyncIteratorSelf,
+    /// `%AsyncIteratorPrototype% [ @@asyncDispose ] ( )`.
+    AsyncIteratorDispose,
     Pattern(PatternMethod),
     RegExp,
     RegExpEscape,
     RegExpMethod(RegExpMethod),
     RegExpGetter(&'static str),
+    /// Annex B legacy static accessors of `%RegExp%`.
+    RegExpLegacyGetter(LegacyRegExpStatic),
+    RegExpLegacySetter(LegacyRegExpStatic),
     RegExpIteratorNext,
     StringMethod(StringMethod),
     /// The `DisposableStack`/`AsyncDisposableStack` constructors (Explicit
@@ -712,6 +775,29 @@ pub(crate) enum NativeFunction {
     ShadowRealmWrappedFunction,
 }
 
+/// Which member of a decorator context's `access` object a
+/// `NativeFunction::DecoratorAccess` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DecoratorAccessOp {
+    Get,
+    Set,
+    Has,
+}
+
+/// Which of a Promise combinator's element functions a
+/// `NativeFunction::PromiseElement` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PromiseElementKind {
+    /// `Promise.all`'s resolve element: stores the value.
+    AllResolve,
+    /// `Promise.allSettled`'s onFulfilled: stores `{ status: "fulfilled", value }`.
+    AllSettledFulfill,
+    /// `Promise.allSettled`'s onRejected: stores `{ status: "rejected", reason }`.
+    AllSettledReject,
+    /// `Promise.any`'s reject element: stores the reason.
+    AnyReject,
+}
+
 /// Failures particular to the URI encode/decode abstract operations.  The VM
 /// turns malformed input into the realm's `URIError` object, while preserving
 /// its normal resource-limit reporting for an oversized result.
@@ -728,19 +814,16 @@ impl NativeFunction {
     pub(crate) fn references(self) -> Vec<ObjectId> {
         match self {
             Self::ProxyRevoker(proxy) => vec![proxy],
-            Self::PromiseResolvingFunction { promise, .. } => vec![promise],
+            Self::PromiseResolvingFunction { promise, state, .. } => vec![promise, state],
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
             Self::ArrayFromAsyncResume { state, .. } => vec![state],
             Self::AsyncFromSyncFulfill { target, .. } => vec![target],
             Self::AsyncFromSyncReject { target, record } => vec![target, record],
-            Self::PromiseAllResolve { target, .. }
-            | Self::PromiseAllReject { target }
-            | Self::PromiseRaceFulfill { target }
-            | Self::PromiseRaceReject { target }
-            | Self::PromiseAnyFulfill { target }
-            | Self::PromiseAnyReject { target, .. }
-            | Self::PromiseAllSettledFulfill { target, .. }
-            | Self::PromiseAllSettledReject { target, .. } => vec![target],
+            Self::PromiseElement { state, .. }
+            | Self::PromiseFinallyFunction { state, .. }
+            | Self::PromiseValueThunk { state, .. }
+            | Self::DecoratorAddInitializer { state }
+            | Self::DecoratorAccess { state, .. } => vec![state],
             _ => Vec::new(),
         }
     }
@@ -783,6 +866,7 @@ pub(crate) enum MathMethod {
     Tan,
     Tanh,
     Trunc,
+    SumPrecise,
     Clz32,
 }
 
@@ -916,9 +1000,23 @@ pub(crate) enum PatternMethod {
     Search,
 }
 
+/// The legacy static RegExp properties, one per internal slot of `%RegExp%`
+/// (`RegExp.$1`-`$9` are `Paren(1)`-`Paren(9)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LegacyRegExpStatic {
+    Input,
+    LastMatch,
+    LastParen,
+    LeftContext,
+    RightContext,
+    Paren(u8),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RegExpMethod {
     Exec,
+    /// Annex B `RegExp.prototype.compile`.
+    Compile,
     Test,
     ToString,
     Match,
@@ -1104,8 +1202,8 @@ pub(crate) fn integer(value: &Value) -> Result<f64, RuntimeError> {
     Ok(if number.is_nan() { 0.0 } else { number.trunc() })
 }
 
-pub(crate) fn uint32(value: &Value) -> Result<u32, RuntimeError> {
-    Ok(primitive::to_uint32(primitive::number(value)?))
+pub(crate) fn uint32(number: f64) -> u32 {
+    primitive::to_uint32(number)
 }
 
 pub(crate) fn length(value: &Value) -> Result<f64, RuntimeError> {
@@ -1154,14 +1252,8 @@ pub(crate) fn from_codes(
 }
 
 fn uri_append(output: &mut Vec<u16>, units: &[u16], limit: usize) -> Result<(), UriCodingError> {
-    let length = output
-        .len()
-        .checked_add(units.len())
-        .ok_or(UriCodingError::StringLimit { limit })?;
-    if length
-        .checked_mul(std::mem::size_of::<u16>())
-        .is_none_or(|bytes| bytes > limit)
-    {
+    let available_units = limit / std::mem::size_of::<u16>();
+    if output.len().saturating_add(units.len()) > available_units {
         return Err(UriCodingError::StringLimit { limit });
     }
     output.extend_from_slice(units);
@@ -1206,10 +1298,7 @@ fn uri_unescaped(code_point: u32, component: bool) -> bool {
 }
 
 fn uri_reserved(byte: u8) -> bool {
-    matches!(
-        byte,
-        b';' | b'/' | b'?' | b':' | b'@' | b'&' | b'=' | b'+' | b'$' | b',' | b'#'
-    )
+    b";/?:@&=+$,#".contains(&byte)
 }
 
 /// ECMA-262 §19.2.6.6 / §19.2.6.7 Encode.
@@ -1321,6 +1410,78 @@ pub(crate) fn decode_uri(
     Ok(JsString::from_code_units(output))
 }
 
+/// ECMA-262 §B.2.1.1 `escape`: code units outside the unescaped set become
+/// `%XX` (below 256) or `%uXXXX`, always with upper-case hexadecimal digits.
+pub(crate) fn escape(string: &JsString, limit: usize) -> Result<JsString, UriCodingError> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut output = Vec::with_capacity(string.as_code_units().len());
+    for &unit in string.as_code_units() {
+        let unescaped = match u8::try_from(unit) {
+            Ok(byte) => byte.is_ascii_alphanumeric() || b"@*_+-./".contains(&byte),
+            Err(_) => false,
+        };
+        if unescaped {
+            uri_append(&mut output, &[unit], limit)?;
+            continue;
+        }
+        let digits = [
+            u16::from(HEX[usize::from((unit >> 12) & 0xf)]),
+            u16::from(HEX[usize::from((unit >> 8) & 0xf)]),
+            u16::from(HEX[usize::from((unit >> 4) & 0xf)]),
+            u16::from(HEX[usize::from(unit & 0xf)]),
+        ];
+        if unit < 256 {
+            uri_append(&mut output, &[0x25, digits[2], digits[3]], limit)?;
+        } else {
+            uri_append(
+                &mut output,
+                &[0x25, 0x75, digits[0], digits[1], digits[2], digits[3]],
+                limit,
+            )?;
+        }
+    }
+    Ok(JsString::from_code_units(output))
+}
+
+/// ECMA-262 §B.2.1.2 `unescape`: `%uXXXX` and `%XX` sequences decode to one
+/// code unit; a `%` that does not start a complete sequence is kept as is.
+pub(crate) fn unescape(string: &JsString, limit: usize) -> Result<JsString, UriCodingError> {
+    let units = string.as_code_units();
+    let mut output = Vec::with_capacity(units.len());
+    let mut index = 0;
+    while let Some(&unit) = units.get(index) {
+        let decoded = (unit == u16::from(b'%'))
+            .then(|| {
+                let hex = |from: usize, count: usize| -> Option<u16> {
+                    units
+                        .get(from..from + count)?
+                        .iter()
+                        .try_fold(0u16, |value, &digit| {
+                            Some((value << 4) | u16::from(uri_hex(digit)?))
+                        })
+                };
+                if units.get(index + 1) == Some(&u16::from(b'u')) {
+                    if let Some(value) = hex(index + 2, 4) {
+                        return Some((value, 6));
+                    }
+                }
+                hex(index + 1, 2).map(|value| (value, 3))
+            })
+            .flatten();
+        match decoded {
+            Some((value, width)) => {
+                uri_append(&mut output, &[value], limit)?;
+                index += width;
+            }
+            None => {
+                uri_append(&mut output, &[unit], limit)?;
+                index += 1;
+            }
+        }
+    }
+    Ok(JsString::from_code_units(output))
+}
+
 pub(crate) fn substitution(
     string: &JsString,
     matched: &JsString,
@@ -1394,9 +1555,7 @@ pub(crate) fn string_method(
                 if method == CharCodeAt || method == CodePointAt {
                     let point = if method == CodePointAt
                         && (0xd800..=0xdbff).contains(&unit)
-                        && units
-                            .get(index + 1)
-                            .is_some_and(|unit| (0xdc00..=0xdfff).contains(unit))
+                        && matches!(units.get(index + 1), Some(next) if (0xdc00..=0xdfff).contains(next))
                     {
                         (u32::from(unit) - 0xd800) * 0x400 + u32::from(units[index + 1]) - 0xdc00
                             + 0x10000
@@ -1416,15 +1575,20 @@ pub(crate) fn string_method(
             } else {
                 integer(second)?
             };
-            let bound = |index: f64| {
-                let index = if method == Slice && index < 0.0 {
-                    len as f64 + index
-                } else {
-                    index
-                };
-                index.clamp(0.0, len as f64) as usize
+            let start = if method == Slice && start < 0.0 {
+                len as f64 + start
+            } else {
+                start
             };
-            let (start, end) = (bound(start), bound(end));
+            let end = if method == Slice && end < 0.0 {
+                len as f64 + end
+            } else {
+                end
+            };
+            let (start, end) = (
+                start.clamp(0.0, len as f64) as usize,
+                end.clamp(0.0, len as f64) as usize,
+            );
             let (start, end) = if method == Substring {
                 (start.min(end), start.max(end))
             } else {
@@ -1453,20 +1617,31 @@ pub(crate) fn string_method(
                 StartsWith => Value::Bool(units[position..].starts_with(needle)),
                 EndsWith => Value::Bool(units[..position].ends_with(needle)),
                 _ => {
-                    let index = if needle.len() > len {
-                        None
-                    } else if method == LastIndexOf {
-                        (0..=position.min(len - needle.len()))
-                            .rev()
-                            .find(|&index| units[index..].starts_with(needle))
-                    } else {
-                        (position..=len - needle.len())
-                            .find(|&index| units[index..].starts_with(needle))
-                    };
+                    let mut index = None;
+                    if needle.len() <= len {
+                        if method == LastIndexOf {
+                            for candidate in (0..=position.min(len - needle.len())).rev() {
+                                if units[candidate..].starts_with(needle) {
+                                    index = Some(candidate);
+                                    break;
+                                }
+                            }
+                        } else {
+                            for candidate in position..=len - needle.len() {
+                                if units[candidate..].starts_with(needle) {
+                                    index = Some(candidate);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     if method == Includes {
                         Value::Bool(index.is_some())
                     } else {
-                        Value::Number(index.map_or(-1.0, |index| index as f64))
+                        Value::Number(match index {
+                            Some(index) => index as f64,
+                            None => -1.0,
+                        })
                     }
                 }
             }
@@ -1478,7 +1653,14 @@ pub(crate) fn string_method(
             Value::String(string)
         }
         IsWellFormed => {
-            Value::Bool(char::decode_utf16(units.iter().copied()).all(|unit| unit.is_ok()))
+            let mut well_formed = true;
+            for scalar in char::decode_utf16(units.iter().copied()) {
+                if scalar.is_err() {
+                    well_formed = false;
+                    break;
+                }
+            }
+            Value::Bool(well_formed)
         }
         ToWellFormed => {
             let mut result = JsString::default();
@@ -1538,22 +1720,22 @@ pub(crate) fn string_method(
             Value::String(JsString::from_code_units(units.repeat(count as usize)))
         }
         Trim | TrimStart | TrimEnd => {
-            let space =
-                |unit: &u16| char::from_u32(u32::from(*unit)).is_some_and(primitive::whitespace);
-            let start = if method == TrimEnd {
-                0
-            } else {
-                units.iter().take_while(|unit| space(unit)).count()
-            };
-            let end = if method == TrimStart {
-                len
-            } else {
-                len - units[start..]
-                    .iter()
-                    .rev()
-                    .take_while(|unit| space(unit))
-                    .count()
-            };
+            let mut start = 0;
+            if method != TrimEnd {
+                while start < len
+                    && char::from_u32(u32::from(units[start])).is_some_and(primitive::whitespace)
+                {
+                    start += 1;
+                }
+            }
+            let mut end = len;
+            if method != TrimStart {
+                while end > start
+                    && char::from_u32(u32::from(units[end - 1])).is_some_and(primitive::whitespace)
+                {
+                    end -= 1;
+                }
+            }
             Value::String(JsString::from_code_units(units[start..end].to_vec()))
         }
         Normalize | ToLowerCase | ToUpperCase => {
@@ -1566,10 +1748,7 @@ pub(crate) fn string_method(
                     } else {
                         primitive::string(first)?
                     };
-                    if !["NFC", "NFD", "NFKC", "NFKD"]
-                        .iter()
-                        .any(|name| form == *name)
-                    {
+                    if form != "NFC" && form != "NFD" && form != "NFKC" && form != "NFKD" {
                         return Err(RuntimeError::RangeError(
                             "invalid String normalization form".into(),
                         ));
@@ -1671,4 +1850,212 @@ fn transform_run(
         append(result, &part, limit)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::JsSymbol;
+
+    const ROOMY: usize = 1 << 20;
+
+    fn text(value: &str) -> Value {
+        Value::String(value.into())
+    }
+
+    fn symbol() -> Value {
+        Value::Symbol(JsSymbol::well_known("iterator"))
+    }
+
+    fn units(code_units: &[u16]) -> JsString {
+        JsString::from_code_units(code_units.to_vec())
+    }
+
+    #[test]
+    fn numeric_argument_helpers_reject_symbols() {
+        for message in [
+            integer(&symbol()).unwrap_err().to_string(),
+            length(&symbol()).unwrap_err().to_string(),
+        ] {
+            assert!(message.starts_with("TypeError"), "{message}");
+        }
+        assert_eq!(integer(&Value::Number(f64::NAN)), Ok(0.0));
+        assert_eq!(integer(&Value::Number(-2.7)), Ok(-2.0));
+        assert_eq!(uint32(4294967297.0), 1);
+        assert_eq!(length(&Value::Number(-5.0)), Ok(0.0));
+    }
+
+    #[test]
+    fn from_codes_builds_units_and_points_and_rejects_invalid_points() {
+        let numbers = |values: &[f64]| values.iter().map(|v| Value::Number(*v)).collect::<Vec<_>>();
+        assert_eq!(
+            from_codes(
+                &numbers(&[65.0, 66.0, 65601.5, f64::NAN, f64::INFINITY]),
+                false,
+                ROOMY
+            ),
+            Ok(Value::String(units(&[65, 66, 65, 0, 0])))
+        );
+        assert_eq!(
+            from_codes(&numbers(&[65.0, 128512.0]), true, ROOMY),
+            Ok(Value::String(units(&[65, 0xd83d, 0xde00])))
+        );
+        for invalid in [-1.0, 1114112.0, 1.5, f64::NAN] {
+            assert_eq!(
+                from_codes(&numbers(&[invalid]), true, ROOMY),
+                Err(RuntimeError::RangeError("invalid String code point".into())),
+                "{invalid}"
+            );
+        }
+        assert_eq!(
+            from_codes(&numbers(&[65.0, 66.0]), false, 2),
+            Err(RuntimeError::StringLimit { limit: 2 })
+        );
+    }
+
+    #[test]
+    fn growing_a_string_past_the_limit_fails_at_every_step() {
+        use StringMethod::*;
+        let mixed = Value::String(units(&[0x73, 0xe9, 0xd800, 0x7a]));
+        let calls: Vec<(StringMethod, Vec<Value>)> = vec![
+            (
+                Html {
+                    tag: "a",
+                    attribute: "name",
+                },
+                vec![text("x\"y")],
+            ),
+            (
+                Html {
+                    tag: "b",
+                    attribute: "",
+                },
+                vec![],
+            ),
+            (Concat, vec![text("def"), text("ghi")]),
+            (Normalize, vec![text("NFD")]),
+            (ToLowerCase, vec![]),
+            (ToUpperCase, vec![]),
+        ];
+        for limit in 0..=90 {
+            for (method, args) in &calls {
+                let result = string_method(*method, &mixed, args, limit);
+                if let Err(error) = result {
+                    assert_eq!(error, RuntimeError::StringLimit { limit });
+                }
+            }
+        }
+        for limit in 0..=8 {
+            let result = from_codes(&[Value::Number(65.0), Value::Number(66.0)], false, limit);
+            if let Err(error) = result {
+                assert_eq!(error, RuntimeError::StringLimit { limit });
+            }
+        }
+    }
+
+    #[test]
+    fn uri_encoding_escapes_reserved_characters_only_for_components() {
+        let source = JsString::from("a b/\u{e9}\u{1F600}");
+        let encode = |component| encode_uri(&source, component, ROOMY).unwrap();
+        assert_eq!(encode(false), JsString::from("a%20b/%C3%A9%F0%9F%98%80"));
+        assert_eq!(encode(true), JsString::from("a%20b%2F%C3%A9%F0%9F%98%80"));
+    }
+
+    #[test]
+    fn uri_encoding_rejects_unpaired_surrogates() {
+        for malformed in [units(&[0xd800]), units(&[0xd800, 0x61]), units(&[0xdc00])] {
+            assert_eq!(
+                encode_uri(&malformed, false, ROOMY),
+                Err(UriCodingError::Malformed)
+            );
+        }
+    }
+
+    #[test]
+    fn uri_decoding_handles_every_utf8_width_and_reserved_set() {
+        let decode = |input: &str, component| decode_uri(&JsString::from(input), component, ROOMY);
+        assert_eq!(decode("abc", false), Ok(JsString::from("abc")));
+        assert_eq!(decode("%41", false), Ok(JsString::from("A")));
+        assert_eq!(decode("%2F%3b", false), Ok(JsString::from("%2F%3b")));
+        assert_eq!(decode("%2F%3b", true), Ok(JsString::from("/;")));
+        assert_eq!(decode("%C3%A9", false), Ok(JsString::from("\u{e9}")));
+        assert_eq!(decode("%E2%82%AC", false), Ok(JsString::from("\u{20ac}")));
+        assert_eq!(
+            decode("%F0%9F%98%80", false),
+            Ok(JsString::from("\u{1F600}"))
+        );
+    }
+
+    #[test]
+    fn uri_decoding_rejects_malformed_percent_sequences() {
+        for input in [
+            "%",
+            "%4",
+            "%4Z",
+            "%Z1",
+            "%80",
+            "%C0",
+            "%F8",
+            "%C3",
+            "%C3x",
+            "%C3%41",
+            "%E0%80%80",
+            "%F5%80%80%80",
+            "%ED%A0%80",
+        ] {
+            assert_eq!(
+                decode_uri(&JsString::from(input), false, ROOMY),
+                Err(UriCodingError::Malformed),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn uri_coding_reports_the_string_limit_at_every_append() {
+        let encoded = JsString::from("a b\u{e9}%41%C3%A9%2F%zz");
+        let decodable = JsString::from("a%41%C3%A9%2F");
+        for limit in 0..=60 {
+            for result in [
+                encode_uri(&encoded, false, limit),
+                decode_uri(&decodable, false, limit),
+                decode_uri(&decodable, true, limit),
+                escape(&encoded, limit),
+                unescape(&encoded, limit),
+                escape(&JsString::from("\u{4e2d}"), limit),
+            ] {
+                if let Err(error) = result {
+                    assert_eq!(error, UriCodingError::StringLimit { limit });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn escape_and_unescape_round_trip_annex_b_forms() {
+        let source = JsString::from("a b\u{e9}\u{4e2d}@*_+-./");
+        let escaped = escape(&source, ROOMY).unwrap();
+        assert_eq!(escaped, JsString::from("a%20b%E9%u4E2D@*_+-./"));
+        assert_eq!(unescape(&escaped, ROOMY), Ok(source));
+        assert_eq!(
+            unescape(&JsString::from("%u00e9%e9%zz%u12%"), ROOMY),
+            Ok(JsString::from("\u{e9}\u{e9}%zz%u12%"))
+        );
+    }
+
+    #[test]
+    fn replacement_patterns_expand_and_respect_the_limit() {
+        let string = JsString::from("xaby");
+        let matched = JsString::from("ab");
+        let template = JsString::from("$$|$&|$`|$'|$1|$");
+        assert_eq!(
+            substitution(&string, &matched, 1, &template, ROOMY),
+            Ok(JsString::from("$|ab|x|y|$1|$"))
+        );
+        for limit in 0..=40 {
+            if let Err(error) = substitution(&string, &matched, 1, &template, limit) {
+                assert_eq!(error, RuntimeError::StringLimit { limit });
+            }
+        }
+    }
 }

@@ -97,6 +97,38 @@ pub struct DateTimeFormatOptions {
     pub time_style: Option<DateTimeStyle>,
 }
 
+impl DateTimeFormatOptions {
+    /// Whether ECMA-402's `needDefaults` holds: neither a style nor any of
+    /// weekday, year, month, day, dayPeriod, hour, minute, second or
+    /// fractionalSecondDigits was requested. (`era` and `timeZoneName` are
+    /// additive and do not suppress the defaults.)
+    fn requests_no_components(&self) -> bool {
+        self.date_style.is_none()
+            && self.time_style.is_none()
+            && self.weekday.is_none()
+            && self.year.is_none()
+            && self.month.is_none()
+            && self.day.is_none()
+            && self.day_period.is_none()
+            && self.hour.is_none()
+            && self.minute.is_none()
+            && self.second.is_none()
+            && self.fractional_second_digits.is_none()
+    }
+
+    /// The options a formatter matches against locale patterns: when
+    /// `needDefaults` holds, year, month and day default to `"numeric"`.
+    fn with_default_date_components(&self) -> Self {
+        let mut options = self.clone();
+        if options.requests_no_components() {
+            options.year = Some(DateTimeWidth::Numeric);
+            options.month = Some(DateTimeWidth::Numeric);
+            options.day = Some(DateTimeWidth::Numeric);
+        }
+        options
+    }
+}
+
 /// A locale date-time format record considered by basic_format_matcher.
 ///
 /// It models the component fields in ECMA-402's DateTime Format Records,
@@ -301,6 +333,28 @@ fn basic_time_zone_name_score(requested: &str, available: &str) -> i32 {
     }
 }
 
+/// The month/day widths DateTimeFormat's *default* numeric date (no
+/// date/time component requested at all) should render with, read from the
+/// locale's own `yMd` `availableFormats` pattern text rather than assumed
+/// unpadded.
+///
+/// Falls back to `Numeric` (unpadded) -- ICU4X's own default and the
+/// common case -- for the handful of locales this pinned Gregorian table
+/// has no `yMd` entry for.
+fn default_numeric_date_widths(locale: &str) -> (DateTimeWidth, DateTimeWidth) {
+    let widths = locale_data_provider().numeric_date_pattern_widths(locale);
+    (
+        widths
+            .as_ref()
+            .and_then(|record| record.month)
+            .unwrap_or(DateTimeWidth::Numeric),
+        widths
+            .as_ref()
+            .and_then(|record| record.day)
+            .unwrap_or(DateTimeWidth::Numeric),
+    )
+}
+
 fn resolve_basic_semantic_format(
     locale: &str,
     options: &mut DateTimeFormatOptions,
@@ -311,9 +365,13 @@ fn resolve_basic_semantic_format(
     {
         return None;
     }
+    // CreateDateTimeFormat applies ToDateTimeOptions' numeric year, month and
+    // day defaults *before* it runs the matcher. An empty request would
+    // instead score best against the smallest record (a lone `d`).
+    let matching = options.with_default_date_components();
     let formats = locale_data_provider().date_time_format_records(locale);
-    let selected = basic_format_matcher(options, &formats)?;
-    let requested = DateTimeFormatRecord::from_options(options);
+    let selected = basic_format_matcher(&matching, &formats)?;
+    let requested = DateTimeFormatRecord::from_options(&matching);
     let selected = &formats[selected];
 
     // A raw CLDR `availableFormats` record is directly renderable only when
@@ -323,7 +381,13 @@ fn resolve_basic_semantic_format(
     // incomplete raw record would discard that glue and can expose a pattern
     // field (for example a literal `Y`) instead of a localized year.
     if basic_record_covers(selected, &requested) {
-        selected.apply_to(options);
+        // The defaults are the formatter's own numeric date, which its
+        // default rendering already produces. Keep the options as the caller
+        // gave them, so Temporal values still see which components were
+        // explicitly requested.
+        if !options.requests_no_components() {
+            selected.apply_to(options);
+        }
         return None;
     }
 
@@ -1642,14 +1706,26 @@ impl DateTimeFormat {
     /// month/day must not gain a leading localized zero merely because the
     /// caller requested `minute: "2-digit"`. Remove only that provider-added
     /// zero from explicitly numeric date fields.
+    ///
+    /// The *default* numeric date (no date/time component requested at all)
+    /// has no explicit `options.month`/`options.day` width to consult, yet
+    /// is just as much a numeric skeleton as an explicit
+    /// `{year, month, day: "numeric"}` request -- and ICU4X's own
+    /// length-styled default pattern for it does not reliably agree with
+    /// CLDR's `yMd` `availableFormats` pattern (see
+    /// `default_numeric_date_widths`). Trim the same provider-added zero
+    /// there whenever that locale's real `yMd` pattern is unpadded.
     fn trim_numeric_date_part_padding(&self, parts: &mut [DateTimePart]) {
         let zero = locale_data_provider()
             .decimal_digits(&self.numbering_system)
             .map_or('0', |digits| digits[0]);
+        let default_widths = self
+            .uses_default_date_pattern()
+            .then(|| default_numeric_date_widths(self.locale.as_str()));
         for part in parts {
             let numeric_width = match part.kind.as_str() {
-                "month" => self.options.month,
-                "day" => self.options.day,
+                "month" => self.options.month.or(default_widths.map(|widths| widths.0)),
+                "day" => self.options.day.or(default_widths.map(|widths| widths.1)),
                 _ => continue,
             };
             if numeric_width != Some(DateTimeWidth::Numeric) {
@@ -1958,17 +2034,7 @@ impl DateTimeFormat {
     }
 
     fn uses_default_date_pattern(&self) -> bool {
-        self.options.date_style.is_none()
-            && self.options.time_style.is_none()
-            && self.options.weekday.is_none()
-            && self.options.year.is_none()
-            && self.options.month.is_none()
-            && self.options.day.is_none()
-            && self.options.day_period.is_none()
-            && self.options.hour.is_none()
-            && self.options.minute.is_none()
-            && self.options.second.is_none()
-            && self.options.fractional_second_digits.is_none()
+        self.options.requests_no_components()
     }
 
     fn length(&self) -> Length {

@@ -16,7 +16,9 @@
 //! instants and explicit locales/time zones are used, except the `Temporal.Now`
 //! checks, which only assert properties that hold for any wall-clock reading.
 
-use blueice_bluejs::{compile, parse, Value, Vm};
+use blueice_bluejs::{
+    compile, parse, Heap, HeapConfig, HeapError, RuntimeError, Value, Vm, VmConfig,
+};
 
 const PRELUDE: &str = r#"
 const fails = [];
@@ -82,6 +84,111 @@ fn run(body: &str) {
             panic!("failing cases:\n{}", report.join("\n"));
         }
         other => panic!("unexpected result: {other:?}"),
+    }
+}
+
+#[test]
+fn malformed_iso_fields_are_rejected_without_panicking() {
+    run(r#"
+      for (const text of [
+        "2020-01-01T12:3", "2020-01-01T12:34:6",
+        "2020-01-01T12:34:61", "2020-01-01T12:34:59.",
+        "2020-01-01T12:34:59.1234567890"
+      ]) range(() => DT.from(text));
+      for (const text of [
+        "2020-01-01T1:34Z", "2020-01-01T12:3Z",
+        "2020-01-01T12:34:6Z", "2020-01-01T123Z",
+        "2020-01-01T12.3Z", "2020-01-01T12:34.3Z",
+        "2020-01-01T12:34:61Z", "2020-01-01T123456.1234567890Z",
+        "2020-01-01T12:34:56:78Z", "2020-01-01T1xZ",
+        "2020-01-01Tx234Z", "2020-01-01T12x4Z",
+        "2020-01-01Tx23456Z", "2020-01-01T12x456Z",
+        "2020-01-01T1234x6Z",
+        "2020-01-01T€aZ", "2020-01-01T12:34+1:00",
+        "2020-01-01T12:34+12:3", "2020-01-01T12:34+123"
+      ]) range(() => Temporal.Instant.from(text));
+      for (const text of [
+        "+12x456-01-01T12:34Z", "20x0-01-01T12:34Z",
+        "2020-0x-01T12:34Z", "2020-01-0xT12:34Z",
+        "2020-01x01T12:34Z",
+        "2020010xT12:34Z"
+      ]) range(() => Temporal.Instant.from(text));
+    "#);
+}
+
+#[test]
+fn instant_option_readers_preserve_errors_and_accept_auto_largest_unit() {
+    run(r#"
+      const first = Temporal.Instant.from("1970-01-01T00:00Z");
+      const second = Temporal.Instant.from("1970-01-01T00:00:01Z");
+      same(() => first.until(second, { largestUnit: "auto" }).seconds, 1);
+      range(() => first.toString({ roundingMode: "\uD800" }));
+      range(() => first.toString({ smallestUnit: "\uD800" }));
+      type(() => first.toString({ get roundingMode() { throw new TypeError("mode getter"); } }));
+      type(() => first.toString({ get smallestUnit() { throw new TypeError("unit getter"); } }));
+      type(() => first.toString({ smallestUnit: Symbol("unit") }));
+      type(() => first.round({ smallestUnit: "second", get roundingIncrement() { throw new TypeError("increment getter"); } }));
+      type(() => first.round({ smallestUnit: "second", roundingIncrement: Symbol("increment") }));
+    "#);
+}
+
+#[test]
+fn temporal_numeric_and_property_bag_coercions_preserve_abrupt_completions() {
+    run(r#"
+      const badNumber = { valueOf() { throw new TypeError("number conversion"); } };
+      const badString = { toString() { throw new TypeError("string conversion"); } };
+      type(() => new Temporal.Instant(badNumber));
+      same(() => thrown(() => new Temporal.Instant("\uD800")), "SyntaxError");
+      same(() => new Temporal.Instant("").epochNanoseconds, 0n);
+      type(() => D.from({ day: 1, monthCode: badString, year: 2024 }));
+      type(() => D.from({ day: 1, get monthCode() { throw new TypeError("monthCode getter"); }, year: 2024 }));
+      range(() => Temporal.PlainMonthDay.from({ calendar: "gregory", day: 2, era: "\uD800", eraYear: 2024, month: 5 }));
+      type(() => Z.from({ day: 1, month: 1, year: 2024, timeZone: "UTC", get offset() { throw new TypeError("offset getter"); } }));
+      type(() => Z.from({ day: 1, month: 1, year: 2024, timeZone: "UTC", offset: badString }));
+      range(() => Z.from({ day: 1, month: 1, year: 2024, timeZone: "UTC", offset: "\uD800" }));
+      type(() => new Temporal.Duration(badNumber));
+    "#);
+}
+
+#[test]
+fn instant_options_propagate_heap_limits_before_and_after_object_allocation() {
+    let prepare =
+        compile(&parse("globalThis.i = new Temporal.Instant(0n); i.toString; i.round;").unwrap())
+            .unwrap();
+    let mut ample = Vm::default();
+    ample.execute(&prepare).unwrap();
+    let base_bytes = ample.heap().stats().managed_bytes;
+
+    let mut sizing_heap = Heap::new(HeapConfig::default()).unwrap();
+    sizing_heap.alloc_object(None).unwrap();
+    let object_bytes = sizing_heap.stats().managed_bytes;
+
+    for (source, extra) in [
+        ("i.toString()", 0),
+        ("i.round('second')", 0),
+        ("i.round('second')", object_bytes),
+    ] {
+        let limit = base_bytes + extra;
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity: 256,
+                major_threshold_bytes: 1024,
+                max_heap_bytes: limit,
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert!(vm.execute(&prepare).is_ok(), "preparing at {limit} bytes");
+        assert_eq!(vm.heap().stats().managed_bytes, base_bytes);
+        let action = compile(&parse(source).unwrap()).unwrap();
+        assert!(
+            matches!(
+                vm.execute(&action),
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit: observed }))
+                    if observed == limit
+            ),
+            "{source} at {limit} bytes"
+        );
     }
 }
 
@@ -472,6 +579,21 @@ fn plain_date_and_date_time_to_zoned_date_time() {
       // an out-of-range local time in the zone is a RangeError
       range(() => DT.from("+275760-09-13T00:00:00").toZonedDateTime("UTC") && DT.from("+275760-09-13T00:00:00").toZonedDateTime("-05:00"));
       range(() => DT.from("-271821-04-19T00:00:00.000000001").toZonedDateTime("+05:00"));
+    "#);
+}
+
+#[test]
+fn time_zone_conversion_preserves_invalid_utf16_and_property_errors() {
+    run(r#"
+      const date = Temporal.PlainDate.from("2020-01-01");
+      range(() => Temporal.Now.plainDateISO('\uD800'));
+      range(() => Temporal.Now.plainDateTimeISO('\uD800'));
+      range(() => date.toZonedDateTime('\uD800'));
+      range(() => new Temporal.Instant(0n).toZonedDateTimeISO('\uD800'));
+      same(() => { try { date.toZonedDateTime({ get timeZone() { throw new RangeError('zone'); } }); } catch (error) { return error.message; } }, 'zone');
+      same(() => { try { date.toZonedDateTime({ timeZone: 'UTC', get plainTime() { throw new RangeError('plainTime'); } }); } catch (error) { return error.message; } }, 'plainTime');
+      const dateTime = Temporal.PlainDateTime.from('2020-01-01T12:00');
+      same(() => { try { dateTime.toZonedDateTime('UTC', { get disambiguation() { throw new RangeError('disambiguation'); } }); } catch (error) { return error.message; } }, 'disambiguation');
     "#);
 }
 

@@ -47,3 +47,20 @@ pub(crate) fn format_calendar_annotation(calendar: &str, show: ShowCalendar) -> 
         ShowCalendar::Auto | ShowCalendar::Always => format!("[u-ca={calendar}]"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_show_calendar, ShowCalendar};
+
+    #[test]
+    fn calendar_option_accepts_only_the_defined_modes() {
+        assert_eq!(parse_show_calendar("auto"), Some(ShowCalendar::Auto));
+        assert_eq!(parse_show_calendar("always"), Some(ShowCalendar::Always));
+        assert_eq!(parse_show_calendar("never"), Some(ShowCalendar::Never));
+        assert_eq!(
+            parse_show_calendar("critical"),
+            Some(ShowCalendar::Critical)
+        );
+        assert_eq!(parse_show_calendar("unknown"), None);
+    }
+}

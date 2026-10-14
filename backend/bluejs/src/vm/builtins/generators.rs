@@ -4,6 +4,10 @@
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/generator_delegation_boundaries.rs"]
+mod boundary_tests;
+
 /// How a synchronous `yield*` delegate answered `next`, `throw` or `return`.
 enum SyncDelegateStep {
     /// The delegate is not finished: its own result object is yielded as is.
@@ -12,11 +16,174 @@ enum SyncDelegateStep {
     Done(Value),
 }
 
+enum AwaitedGeneratorOperand {
+    Return,
+    ReturnWithoutDelegateMethod,
+}
+
+enum DelegatedAbrupt {
+    Return,
+    Throw,
+}
+
+enum AsyncGeneratorRequestKind {
+    Next,
+    Return,
+    Throw,
+}
+
+#[derive(Debug, PartialEq)]
+enum CompletedAsyncGeneratorRequest {
+    Next,
+    Return(Value),
+    Throw(Value),
+}
+
+impl CompletedAsyncGeneratorRequest {
+    fn classify(completion: AsyncGeneratorCompletion) -> Result<Self, RuntimeError> {
+        match completion {
+            AsyncGeneratorCompletion::Next(_) => Ok(Self::Next),
+            AsyncGeneratorCompletion::Return(value) => Ok(Self::Return(value)),
+            AsyncGeneratorCompletion::Throw(value) => Ok(Self::Throw(value)),
+            AsyncGeneratorCompletion::ReturnAwaited(_)
+            | AsyncGeneratorCompletion::ResumeReturn(_)
+            | AsyncGeneratorCompletion::ResumeThrow(_) => Err(RuntimeError::Unsupported(
+                "a completed async generator cannot retain a resumed request",
+            )),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum AsyncGeneratorRunCompletion {
+    Next(Value),
+    ReturnAwaited(Value),
+    ResumeReturn(Value),
+    ResumeThrow(Value),
+    Throw(Value),
+}
+
+#[derive(Debug, PartialEq)]
+enum AsyncGeneratorRequestTurn {
+    AwaitReturn(Value),
+    Run(AsyncGeneratorRunCompletion),
+}
+
+impl AsyncGeneratorRequestTurn {
+    fn classify(completion: AsyncGeneratorCompletion) -> Self {
+        match completion {
+            AsyncGeneratorCompletion::Return(value) => Self::AwaitReturn(value),
+            AsyncGeneratorCompletion::Next(value) => {
+                Self::Run(AsyncGeneratorRunCompletion::Next(value))
+            }
+            AsyncGeneratorCompletion::ReturnAwaited(value) => {
+                Self::Run(AsyncGeneratorRunCompletion::ReturnAwaited(value))
+            }
+            AsyncGeneratorCompletion::ResumeReturn(value) => {
+                Self::Run(AsyncGeneratorRunCompletion::ResumeReturn(value))
+            }
+            AsyncGeneratorCompletion::ResumeThrow(value) => {
+                Self::Run(AsyncGeneratorRunCompletion::ResumeThrow(value))
+            }
+            AsyncGeneratorCompletion::Throw(value) => {
+                Self::Run(AsyncGeneratorRunCompletion::Throw(value))
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum GeneratorAbruptAction {
+    Resume(Option<usize>),
+    Return(Value),
+}
+
+impl GeneratorAbruptAction {
+    fn classify(action: Result<CompletionAction, RuntimeError>) -> Result<Self, RuntimeError> {
+        match action {
+            Ok(CompletionAction::Continue) => Ok(Self::Resume(None)),
+            Ok(CompletionAction::Jump(target)) => Ok(Self::Resume(Some(target))),
+            Ok(CompletionAction::Return(value)) => Ok(Self::Return(value)),
+            Ok(CompletionAction::TailRecur(_) | CompletionAction::TailCall(_)) => {
+                Err(RuntimeError::TypeError(
+                    "generator cannot tail recur across an abrupt resume".into(),
+                ))
+            }
+            Ok(CompletionAction::Throw(error)) | Err(error) => Err(error),
+        }
+    }
+}
+
+/// Generator instantiation has one suspension boundary, before its body.
+fn generator_entry_exit(exit: InterpreterExit) -> (usize, Vec<Value>, Vec<HandlerFrame>) {
+    match exit {
+        InterpreterExit::Suspend {
+            pc,
+            iterators,
+            handlers,
+        } => (pc, iterators, handlers),
+        InterpreterExit::Return(_) | InterpreterExit::Yield { .. } => {
+            unreachable!("generator entry contains only instantiation bytecode")
+        }
+        InterpreterExit::Await { .. } => {
+            unreachable!("generator entry cannot contain top-level await")
+        }
+    }
+}
+
+/// A resumed generator can return, yield or await, but cannot pause at entry.
+enum GeneratorRunExit {
+    Return(Value),
+    Yield {
+        value: Value,
+        pc: usize,
+        iterators: Vec<Value>,
+        handlers: Vec<HandlerFrame>,
+    },
+    Await {
+        promise: ObjectId,
+        pc: usize,
+        handlers: Vec<HandlerFrame>,
+    },
+}
+
+impl GeneratorRunExit {
+    fn from_interpreter(exit: InterpreterExit) -> Self {
+        match exit {
+            InterpreterExit::Return(value) => Self::Return(value),
+            InterpreterExit::Yield {
+                value,
+                pc,
+                iterators,
+                handlers,
+            } => Self::Yield {
+                value,
+                pc,
+                iterators,
+                handlers,
+            },
+            InterpreterExit::Await {
+                promise,
+                pc,
+                handlers,
+            } => Self::Await {
+                promise,
+                pc,
+                handlers,
+            },
+            InterpreterExit::Suspend { .. } => {
+                unreachable!("ordinary generator execution has no suspend boundary")
+            }
+        }
+    }
+}
+
 impl Vm {
     /// Generator function invocation performs parameter initialization now,
     /// then suspends immediately before body evaluation. This makes a direct
     /// eval in a default parameter observable (including its early errors)
     /// at `generatorFunction()` rather than at the first `.next()`.
+    #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn initialize_generator(
         &mut self,
         code: Rc<Bytecode>,
@@ -25,6 +192,7 @@ impl Vm {
         receiver: Value,
         args: Vec<Value>,
         home: Option<ObjectId>,
+        closure_with_objects: Vec<Value>,
     ) -> Result<GeneratorState, RuntimeError> {
         self.stack.push(receiver.clone());
         let base = self.stack.len();
@@ -33,7 +201,12 @@ impl Vm {
             .extend(self.cells.values().copied().map(Value::Object));
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
+        self.stack.push(self.callee.clone());
         self.stack.extend(self.arguments.iter().cloned());
+        // The caller's `with` objects stay rooted while the generator's own
+        // (the ones its function closed over) are in scope.
+        self.stack.extend(self.with_objects.iter().cloned());
+        self.stack.extend(closure_with_objects.iter().cloned());
         let frame_base = self.stack.len();
 
         let mut frame_bindings = vec![None; code.bindings.len()];
@@ -56,6 +229,12 @@ impl Vm {
         let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, home);
+        // A generator is never constructed, so its own `new.target` is
+        // `undefined`; whether a direct eval in it may mention `new.target`
+        // is a property of its code, not of whoever called `next()`.
+        let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
+        let new_target_allowed =
+            std::mem::replace(&mut self.new_target_allowed, code.new_target_allowed);
         let variable_scope = std::mem::replace(&mut self.variable_scope, code.variable_scope);
         let variable_scope_lexicals = std::mem::replace(
             &mut self.variable_scope_lexicals,
@@ -69,19 +248,42 @@ impl Vm {
                 })
                 .collect(),
         );
+        let with_objects = std::mem::replace(&mut self.with_objects, closure_with_objects);
+        let inherited_with_depth =
+            std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
+        let parameter_eval_env = self.parameter_eval_env.take();
+        let mut entry_error = None;
+        if code.parameter_eval_scope {
+            match self.new_parameter_eval_env() {
+                Ok(env) => {
+                    self.with_objects.push(Value::Object(env));
+                    self.inherited_with_depth = self.with_objects.len();
+                    self.parameter_eval_env = Some(env);
+                }
+                Err(error) => entry_error = Some(error),
+            }
+        }
 
         let mut iterators = Vec::new();
-        let outcome = self.interpret(
-            &code,
-            &mut iterators,
-            0,
-            None,
-            Some(code.generator_entry as usize),
-            None,
-        );
-        let state = match outcome {
-            Ok(InterpreterExit::Suspend { pc }) => {
+        let outcome = if let Some(error) = entry_error {
+            Err(error)
+        } else {
+            self.interpret(
+                &code,
+                &mut iterators,
+                0,
+                None,
+                Some(InterpreterSuspensionPoint::Offset(
+                    code.generator_entry as usize,
+                )),
+                None,
+            )
+        };
+        let state = match outcome.map(generator_entry_exit) {
+            Ok((pc, iterators, handlers)) => {
                 debug_assert_eq!(pc, code.generator_entry as usize);
+                debug_assert!(iterators.is_empty());
+                debug_assert!(handlers.is_empty());
                 let stack = self.stack.split_off(frame_base);
                 Ok(GeneratorState::Suspended {
                     code,
@@ -106,17 +308,15 @@ impl Vm {
                         .collect(),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
+                    with_objects: std::mem::take(&mut self.with_objects),
                 })
-            }
-            Ok(InterpreterExit::Return(_)) | Ok(InterpreterExit::Yield { .. }) => {
-                unreachable!("generator entry contains only instantiation bytecode")
-            }
-            Ok(InterpreterExit::Await { .. }) => {
-                unreachable!("generator entry cannot contain top-level await")
             }
             Err(error) => Err(error),
         };
 
+        self.with_objects = with_objects;
+        self.inherited_with_depth = inherited_with_depth;
+        self.parameter_eval_env = parameter_eval_env;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
@@ -133,6 +333,8 @@ impl Vm {
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
         self.home_object = home_object;
+        self.new_target = new_target;
+        self.new_target_allowed = new_target_allowed;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
         self.stack.truncate(base - 1);
@@ -178,6 +380,11 @@ impl Vm {
                 "Generator next requires a generator".into(),
             ));
         };
+        if self.active_generator_delegations.contains(generator) {
+            return Err(RuntimeError::TypeError(
+                "Generator is already running".into(),
+            ));
+        }
         let state = self.heap.take_generator_state(*generator)?;
         let (
             code,
@@ -200,17 +407,22 @@ impl Vm {
             frame_variable_scope,
             frame_variable_scope_lexicals,
             frame_dynamic_bindings,
+            frame_with_objects,
         ) = match state {
             GeneratorState::Running => {
                 self.heap
-                    .set_generator_state(*generator, GeneratorState::Running)?;
+                    .set_generator_state(*generator, GeneratorState::Running)
+                    .expect(
+                        "restoring Running after a verified take does not increase frame bytes",
+                    );
                 return Err(RuntimeError::TypeError(
                     "Generator is already running".into(),
                 ));
             }
             GeneratorState::Done => {
                 self.heap
-                    .set_generator_state(*generator, GeneratorState::Done)?;
+                    .set_generator_state(*generator, GeneratorState::Done)
+                    .expect("restoring Done after a verified take does not increase frame bytes");
                 if let Some(Completion::Throw(error)) = abrupt {
                     return Err(error);
                 }
@@ -226,6 +438,7 @@ impl Vm {
                 receiver,
                 args,
                 home,
+                with_objects,
             } => {
                 let mut bindings = vec![None; code.bindings.len()];
                 let variable_scope = code.variable_scope;
@@ -263,6 +476,7 @@ impl Vm {
                     variable_scope,
                     variable_scope_lexicals,
                     HashMap::new(),
+                    with_objects,
                 )
             }
             GeneratorState::Suspended {
@@ -285,6 +499,7 @@ impl Vm {
                 dynamic_bindings,
                 home,
                 callee,
+                with_objects,
             } => {
                 let variable_scope = code.variable_scope;
                 let variable_scope_lexicals = code
@@ -329,11 +544,13 @@ impl Vm {
                             )
                         })
                         .collect(),
+                    with_objects,
                 )
             }
         };
         self.heap
-            .set_generator_state(*generator, GeneratorState::Running)?;
+            .set_generator_state(*generator, GeneratorState::Running)
+            .expect("Running replaces a verified generator frame without increasing its bytes");
 
         let base = self.stack.len();
         let remaining_instructions = self.remaining_instructions;
@@ -342,10 +559,26 @@ impl Vm {
             .extend(self.cells.values().copied().map(Value::Object));
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
+        self.stack.push(self.callee.clone());
         self.stack.extend(self.arguments.iter().cloned());
+        // The resumer's `with` objects stay rooted while the generator's own
+        // are in scope. Both sets sit below the frame's base: everything above
+        // it is the generator's operand stack, which is saved again at the
+        // next yield and must hold only the frame's own operands.
+        self.stack.extend(self.with_objects.iter().cloned());
+        self.stack.extend(frame_with_objects.iter().cloned());
         let frame_base = self.stack.len();
         self.stack.extend(frame_stack.iter().cloned());
 
+        let with_objects = std::mem::replace(&mut self.with_objects, frame_with_objects);
+        // The objects the function itself closed over (and its parameter
+        // environment) are inherited; a `with` statement the body is inside
+        // of is not.
+        let inherited_with_depth = std::mem::replace(
+            &mut self.inherited_with_depth,
+            (code.with_depth as usize + usize::from(code.parameter_eval_scope))
+                .min(self.with_objects.len()),
+        );
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, frame_cells);
@@ -353,6 +586,9 @@ impl Vm {
         let dynamic_eval_bindings =
             std::mem::replace(&mut self.dynamic_eval_bindings, frame_dynamic_bindings);
         let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
+        // The caller's script-level slot -> global-property map names slots of
+        // *its* frame; a resumed generator body has its own slot numbering.
+        let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let this = std::mem::replace(&mut self.this, frame_this);
         let arguments = std::mem::replace(&mut self.arguments, frame_args);
         let completion = std::mem::replace(&mut self.completion, frame_completion);
@@ -368,6 +604,9 @@ impl Vm {
         );
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, frame_home);
+        let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
+        let new_target_allowed =
+            std::mem::replace(&mut self.new_target_allowed, code.new_target_allowed);
         let callee = std::mem::replace(&mut self.callee, frame_callee);
         // A generator body resumes wherever its request happened to come
         // from -- typically a Promise job with no ambient script/module
@@ -410,28 +649,17 @@ impl Vm {
             for handler in &mut handlers {
                 handler.stack_depth -= frame_base;
             }
-            match action {
-                Ok(CompletionAction::Continue) => self.interpret(
+            match GeneratorAbruptAction::classify(action) {
+                Ok(GeneratorAbruptAction::Resume(target)) => self.interpret(
                     &code,
                     &mut iterators,
-                    pc,
+                    target.unwrap_or(pc),
                     None,
                     None,
                     Some((handlers, frame_base)),
                 ),
-                Ok(CompletionAction::Jump(target)) => self.interpret(
-                    &code,
-                    &mut iterators,
-                    target,
-                    None,
-                    None,
-                    Some((handlers, frame_base)),
-                ),
-                Ok(CompletionAction::Return(value)) => Ok(InterpreterExit::Return(value)),
-                Ok(CompletionAction::TailRecur(_)) => Err(RuntimeError::TypeError(
-                    "generator cannot tail recur across an abrupt resume".into(),
-                )),
-                Ok(CompletionAction::Throw(error)) | Err(error) => Err(error),
+                Ok(GeneratorAbruptAction::Return(value)) => Ok(InterpreterExit::Return(value)),
+                Err(error) => Err(error),
             }
         } else {
             self.interpret(
@@ -448,8 +676,8 @@ impl Vm {
         // result object, which is returned without wrapping it again.
         let mut yielded_delegate_result = false;
 
-        let (next_state, result) = match outcome {
-            Ok(InterpreterExit::Return(value)) => {
+        let (next_state, result) = match outcome.map(GeneratorRunExit::from_interpreter) {
+            Ok(GeneratorRunExit::Return(value)) => {
                 // An injected generator return skips the compiler's normal
                 // IteratorFinish/IteratorClose instructions. Keep the
                 // completion and every active record rooted while close
@@ -462,23 +690,17 @@ impl Vm {
                 self.stack.truncate(frame_base);
                 (GeneratorState::Done, close.map(|()| (value, true)))
             }
-            Ok(InterpreterExit::Yield {
+            Ok(GeneratorRunExit::Yield {
                 value,
                 pc,
                 iterators,
                 handlers,
             }) => {
                 let stack = self.stack.split_off(frame_base);
-                let async_delegate = code
-                    .async_yield_delegates
-                    .iter()
-                    .find(|(resume, _)| *resume as usize == pc)
-                    .and_then(|(_, exit_pc)| {
-                        stack.last().cloned().map(|record| AsyncGeneratorDelegate {
-                            record,
-                            exit_pc: *exit_pc as usize,
-                        })
-                    });
+                // Every compiled async yield first awaits its operand or
+                // delegate's next result. resume_async_continuation captures
+                // asynchronous delegation after that await; this direct exit
+                // only captures synchronous delegation.
                 let delegate = code
                     .yield_delegates
                     .iter()
@@ -515,7 +737,7 @@ impl Vm {
                         })
                         .collect(),
                     completion_saves: std::mem::take(&mut self.completion_saves),
-                    async_delegate,
+                    async_delegate: None,
                     delegate,
                     dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
                         .into_iter()
@@ -523,6 +745,7 @@ impl Vm {
                         .collect(),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
+                    with_objects: std::mem::take(&mut self.with_objects),
                 };
                 (state, Ok((value, false)))
             }
@@ -541,10 +764,7 @@ impl Vm {
                 self.stack.truncate(frame_base);
                 (GeneratorState::Done, Err(error))
             }
-            Ok(InterpreterExit::Suspend { .. }) => {
-                unreachable!("ordinary generator execution has no suspend boundary")
-            }
-            Ok(InterpreterExit::Await {
+            Ok(GeneratorRunExit::Await {
                 promise,
                 pc,
                 handlers,
@@ -581,13 +801,28 @@ impl Vm {
                 }
             }
         };
-        self.heap.set_generator_state(*generator, next_state)?;
+        // Storing the suspended frame grows the generator's managed bytes and
+        // can trigger a major collection. Everything this call still holds
+        // outside the heap (the caller's frame copied onto the stack above,
+        // and the value about to be yielded or thrown) must be visible to it.
+        match &result {
+            Ok((value, _)) | Err(RuntimeError::Thrown(value)) => self.stack.push(value.clone()),
+            Err(_) => {}
+        }
+        let stored = self.with_roots(|heap| heap.set_generator_state(*generator, next_state));
+        // A failed store must still hand the caller's frame back: leaving the
+        // swapped-out execution state in place would unbalance the interpreter
+        // (for example an empty `dynamic_eval_outer_bindings` stack) on the
+        // very next call return.
+        self.with_objects = with_objects;
+        self.inherited_with_depth = inherited_with_depth;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
         self.dynamic_eval_bindings = dynamic_eval_bindings;
         self.dynamic_eval_outer_bindings = dynamic_eval_outer_bindings;
         self.eval_dynamic_slots = eval_dynamic_slots;
+        self.script_global_slots = script_global_slots;
         self.this = this;
         self.arguments = arguments;
         self.completion = completion;
@@ -598,12 +833,15 @@ impl Vm {
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
         self.home_object = home_object;
+        self.new_target = new_target;
+        self.new_target_allowed = new_target_allowed;
         self.callee = callee;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
         self.remaining_instructions = remaining_instructions;
         self.active_module_name = active_module_name;
         self.stack.truncate(base);
+        stored?;
         if let Some((state, promise)) = suspended_async {
             self.suspend_async_await(state, promise)?;
             return Ok(Value::Undefined);
@@ -655,7 +893,10 @@ impl Vm {
         self.stack.push(result.clone());
         let step = (|| {
             let done = self.get_property(&result, &"done".into())?;
-            if self.to_boolean(&done)? {
+            if self
+                .to_boolean(&done)
+                .expect("the delegate getter returned a live value in this realm")
+            {
                 self.get_property(&result, &"value".into())
                     .map(SyncDelegateStep::Done)
             } else {
@@ -675,33 +916,42 @@ impl Vm {
         generator: ObjectId,
         value: Value,
     ) -> Result<(), RuntimeError> {
-        let mut state = self.heap.take_generator_state(generator)?;
-        let Some((record, exit)) = Self::sync_yield_star_delegate(&state) else {
-            self.heap.set_generator_state(generator, state)?;
-            return Err(RuntimeError::Unsupported(
-                "lost synchronous yield* delegation state",
-            ));
+        let mut state = self
+            .heap
+            .take_generator_state(generator)
+            .expect("the delegate caller retains its validated generator");
+        let finished = match &mut state {
+            GeneratorState::Suspended {
+                pc,
+                stack,
+                delegate,
+                iterators,
+                ..
+            } => delegate.take().map(|delegate| {
+                *pc = delegate.exit_pc;
+                iterators.retain(|active| active != &delegate.record);
+                *stack
+                    .last_mut()
+                    .expect("yield* delegation keeps its iterator record") = value;
+                delegate.record
+            }),
+            _ => None,
         };
-        let GeneratorState::Suspended {
-            pc,
-            stack,
-            delegate,
-            iterators,
-            ..
-        } = &mut state
-        else {
-            unreachable!("yield* delegation is always suspended")
-        };
-        *pc = exit;
-        *delegate = None;
-        iterators.retain(|active| active != &record);
-        *stack
-            .last_mut()
-            .expect("yield* delegation keeps its iterator record") = value;
-        self.heap.set_generator_state(generator, state)?;
-        if let Value::Object(record) = record {
-            self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
-        }
+        // A stale delegate answer must leave the original state resumable.
+        let base = self.stack.len();
+        self.stack.extend(finished.iter().cloned());
+        let stored = self.with_roots(|heap| heap.set_generator_state(generator, state));
+        self.stack.truncate(base);
+        stored.expect("finishing delegation removes iterator and delegate edges from the retained frame; its replacement value adds at most one edge");
+        let record = finished.ok_or(RuntimeError::Unsupported(
+            "lost synchronous yield* delegation state",
+        ))?;
+        let record = record
+            .object_id()
+            .expect("yield* retains an object iterator record");
+        self.heap
+            .set(record, "done", Value::Bool(true))
+            .expect("the private delegate record replaces its existing Boolean without growing");
         Ok(())
     }
 
@@ -718,16 +968,33 @@ impl Vm {
         let generator = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("Generator return requires a generator".into())
         })?;
+        if self.active_generator_delegations.contains(&generator) {
+            return Err(RuntimeError::TypeError(
+                "Generator is already running".into(),
+            ));
+        }
         let state = self.heap.take_generator_state(generator)?;
         let Some((record, _)) = Self::sync_yield_star_delegate(&state) else {
-            self.heap.set_generator_state(generator, state)?;
+            self.heap
+                .set_generator_state(generator, state)
+                .expect("restoring the unchanged, verified generator frame cannot allocate");
             return Ok(None);
         };
-        self.heap.set_generator_state(generator, state)?;
+        self.heap
+            .set_generator_state(generator, state)
+            .expect("restoring the unchanged, verified generator frame cannot allocate");
         let base = self.stack.len();
         self.stack.push(value.clone());
+        self.active_generator_delegations.insert(generator);
         let step = (|| {
-            let iterator = self.get_property(&record, &"iterator".into())?;
+            let iterator = self
+                .heap
+                .get_own(
+                    record.object_id().expect("a delegate record is an object"),
+                    "iterator",
+                )
+                .expect("the suspended frame retains its initialized private delegate record")
+                .expect("the private delegate record owns its iterator field");
             self.stack.push(iterator.clone());
             let method = self.get_method(&iterator, &"return".into())?;
             if method == Value::Undefined {
@@ -736,20 +1003,27 @@ impl Vm {
             let result = self.call_native(method, iterator, vec![value.clone()], false)?;
             self.sync_delegate_step(result).map(Some)
         })();
+        self.active_generator_delegations.remove(&generator);
         self.stack.truncate(base);
         Ok(match step {
             Ok(None) => {
                 // The return completion leaves the generator directly, so
                 // the frame must not close the delegate a second time.
-                if let Value::Object(record) = record {
-                    self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
-                }
+                let record = record
+                    .object_id()
+                    .expect("yield* retains an object iterator record");
+                self.heap.set(record, "done", Value::Bool(true)).expect(
+                    "the private delegate record replaces its existing Boolean without growing",
+                );
                 None
             }
             Ok(Some(SyncDelegateStep::Yield(result))) => Some(Ok(result)),
             Ok(Some(SyncDelegateStep::Done(inner))) => {
                 self.stack.push(inner.clone());
-                self.finish_sync_delegation(generator, inner.clone())?;
+                self.finish_sync_delegation(generator, inner.clone())
+                    .expect(
+                        "the executing delegate callback cannot resume or replace its saved frame",
+                    );
                 let result =
                     self.generator_resume(receiver, None, None, Some(Completion::Return(inner)));
                 self.stack.pop();
@@ -771,12 +1045,15 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         self.root_thrown(&error);
-        let result = (|| {
-            if let Value::Object(record) = record {
-                self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)))?;
-            }
+        let result = {
+            let record = record
+                .object_id()
+                .expect("yield* retains an object iterator record");
+            self.heap.set(record, "done", Value::Bool(true)).expect(
+                "the private delegate record replaces its existing Boolean without growing",
+            );
             self.generator_resume(receiver, None, None, Some(Completion::Throw(error)))
-        })();
+        };
         self.stack.truncate(base);
         result
     }
@@ -789,9 +1066,16 @@ impl Vm {
         let generator = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("Generator throw requires a generator".into())
         })?;
+        if self.active_generator_delegations.contains(&generator) {
+            return Err(RuntimeError::TypeError(
+                "Generator is already running".into(),
+            ));
+        }
         let state = self.heap.take_generator_state(generator)?;
         let Some((record, _)) = Self::sync_yield_star_delegate(&state) else {
-            self.heap.set_generator_state(generator, state)?;
+            self.heap
+                .set_generator_state(generator, state)
+                .expect("restoring the unchanged, verified generator frame cannot allocate");
             return self.generator_resume(
                 receiver,
                 None,
@@ -799,11 +1083,21 @@ impl Vm {
                 Some(Completion::Throw(RuntimeError::Thrown(value))),
             );
         };
-        self.heap.set_generator_state(generator, state)?;
+        self.heap
+            .set_generator_state(generator, state)
+            .expect("restoring the unchanged, verified generator frame cannot allocate");
         let base = self.stack.len();
         self.stack.push(value.clone());
+        self.active_generator_delegations.insert(generator);
         let step = (|| {
-            let iterator = self.get_property(&record, &"iterator".into())?;
+            let iterator = self
+                .heap
+                .get_own(
+                    record.object_id().expect("a delegate record is an object"),
+                    "iterator",
+                )
+                .expect("the suspended frame retains its initialized private delegate record")
+                .expect("the private delegate record owns its iterator field");
             self.stack.push(iterator.clone());
             let method = self.get_method(&iterator, &"throw".into())?;
             if method == Value::Undefined {
@@ -817,12 +1111,15 @@ impl Vm {
             let result = self.call_native(method, iterator, vec![value.clone()], false)?;
             self.sync_delegate_step(result)
         })();
+        self.active_generator_delegations.remove(&generator);
         self.stack.truncate(base);
         match step {
             Ok(SyncDelegateStep::Yield(result)) => Ok(result),
             Ok(SyncDelegateStep::Done(inner)) => {
                 self.stack.push(inner.clone());
-                self.finish_sync_delegation(generator, inner)?;
+                self.finish_sync_delegation(generator, inner).expect(
+                    "the executing delegate callback cannot resume or replace its saved frame",
+                );
                 let result = self.generator_next(receiver, None, None);
                 self.stack.pop();
                 result
@@ -848,53 +1145,186 @@ impl Vm {
     /// Starts forwarding an abrupt outer request into a suspended async
     /// `yield*` delegate. `None` means this is an ordinary generator yield
     /// and the caller must retain its standard return/throw behaviour.
-    pub(in super::super) fn async_generator_delegate_request(
+    fn async_generator_delegate_request(
         &mut self,
         generator: ObjectId,
         target: ObjectId,
-        kind: AsyncGeneratorDelegateKind,
+        abrupt: DelegatedAbrupt,
         value: Value,
     ) -> Result<Option<Value>, RuntimeError> {
-        let state = self.heap.take_generator_state(generator)?;
+        let state = self
+            .heap
+            .take_generator_state(generator)
+            .expect("the queued request retains its validated async generator");
         let Some((record, _)) = Self::yield_star_delegate(&state) else {
-            self.heap.set_generator_state(generator, state)?;
+            self.heap
+                .set_generator_state(generator, state)
+                .expect("restoring the unchanged, verified generator frame cannot allocate");
             return Ok(None);
         };
-        self.heap.set_generator_state(generator, state)?;
-        let Value::Object(record) = record else {
-            unreachable!("yield* keeps an iterator record on its stack")
+        self.heap
+            .set_generator_state(generator, state)
+            .expect("restoring the unchanged, verified generator frame cannot allocate");
+        let record = record
+            .object_id()
+            .expect("yield* retains an object iterator record");
+        let iterator = self
+            .heap
+            .get_own(record, "iterator")
+            .expect("the suspended frame retains its initialized private delegate record")
+            .expect("the private delegate record owns its iterator field");
+        let (kind, name) = match abrupt {
+            DelegatedAbrupt::Return => (AsyncGeneratorDelegateKind::Return, "return"),
+            DelegatedAbrupt::Throw => (AsyncGeneratorDelegateKind::Throw, "throw"),
         };
-        let iterator = self.get_property(&Value::Object(record), &"iterator".into())?;
-        let name = match kind {
-            AsyncGeneratorDelegateKind::Return => "return",
-            AsyncGeneratorDelegateKind::Throw => "throw",
+        let method = match self.get_method(&iterator, &name.into()) {
+            Ok(method) => method,
+            Err(error) => {
+                // A throwing `return`/`throw` getter is an abrupt completion
+                // of the `yield*` like any other failed delegate call.
+                let error = self.error_value(error)?;
+                self.finish_async_generator_delegate(generator, target, kind, error, false)?;
+                return Ok(Some(Value::Undefined));
+            }
         };
-        let method = self.get_method(&iterator, &name.into())?;
         if method == Value::Undefined {
             if matches!(kind, AsyncGeneratorDelegateKind::Throw) {
-                self.close_async_generator(generator)?;
-                return Err(RuntimeError::TypeError(
-                    "yield* iterator does not provide a throw method".into(),
-                ));
+                // AsyncIteratorClose runs before the protocol TypeError. A
+                // failed close replaces that error, and both completions
+                // must enter the generator's enclosing catch/finally.
+                let close = self
+                    .get_method(&iterator, &"return".into())
+                    .and_then(|method| {
+                        if method == Value::Undefined {
+                            Ok(None)
+                        } else {
+                            self.call_native(method, iterator, Vec::new(), false)
+                                .map(Some)
+                        }
+                    });
+                if matches!(
+                    self.heap
+                        .get_own(record, "asyncFromSync")
+                        .expect("the suspended frame retains its private delegate record"),
+                    Some(Value::Bool(true))
+                ) {
+                    // AsyncFromSyncIterator.throw uses IteratorClose, without
+                    // assimilating the return value. The outer yield* awaits
+                    // the wrapper's rejected Promise before entering handlers.
+                    let error = match close {
+                        Err(error) => self.error_value(error)?,
+                        Ok(Some(result)) if !matches!(result, Value::Object(_)) => self
+                            .error_object(
+                                "TypeError",
+                                "yield* delegate method must return an object".into(),
+                            )?,
+                        Ok(_) => self.error_object(
+                            "TypeError",
+                            "yield* iterator does not provide a throw method".into(),
+                        )?,
+                    };
+                    self.promise_jobs
+                        .push_back(PromiseJob::AsyncGeneratorDelegate {
+                            generator,
+                            target,
+                            kind: AsyncGeneratorDelegateKind::CloseMissingThrow,
+                            value: error,
+                            fulfilled: false,
+                        });
+                    return Ok(Some(Value::Undefined));
+                }
+                match close {
+                    Ok(Some(result)) => {
+                        if let Err(error) = self.start_async_generator_await(
+                            generator,
+                            target,
+                            AsyncGeneratorDelegateKind::CloseMissingThrow,
+                            result,
+                        ) {
+                            let error = self.error_value(error)?;
+                            self.throw_at_async_delegate_exit(generator, target, error)?;
+                        }
+                    }
+                    Ok(None) => self.finish_async_generator_delegate(
+                        generator,
+                        target,
+                        AsyncGeneratorDelegateKind::CloseMissingThrow,
+                        Value::Object(record),
+                        true,
+                    )?,
+                    Err(error) => {
+                        let error = self.error_value(error)?;
+                        self.throw_at_async_delegate_exit(generator, target, error)?;
+                    }
+                }
+                return Ok(Some(Value::Undefined));
             }
             // GetMethod already observed the delegate's `return` property.
-            // The abrupt completion still crosses the outer generator's
-            // finally records.  `generator_resume` owns both that cleanup
-            // and the completed-start special case.
-            return self
-                .generator_resume(
-                    &Value::Object(generator),
-                    None,
-                    Some(target),
-                    Some(Completion::Return(value)),
-                )
-                .map(Some);
+            // The yield* step for a delegate without `return` awaits the
+            // operand once more and then returns it: the completion still
+            // crosses the outer generator's finally records. The delegate
+            // itself is not closed: unwinding the generator would otherwise
+            // ask it for `return` a second time.
+            self.heap.set(record, "done", Value::Bool(true)).expect(
+                "the private delegate record replaces its existing Boolean without growing",
+            );
+            return match self.start_async_generator_await(
+                generator,
+                target,
+                AsyncGeneratorDelegateKind::AwaitReturnNoMethod,
+                value,
+            ) {
+                Ok(()) => Ok(Some(Value::Undefined)),
+                // PromiseResolve threw: the throw is raised at the `yield*`
+                // at once, with no turn in between.
+                Err(error) => {
+                    let reason = self.error_value(error)?;
+                    self.generator_resume(
+                        &Value::Object(generator),
+                        None,
+                        Some(target),
+                        Some(Completion::Throw(RuntimeError::Thrown(reason))),
+                    )
+                    .map(Some)
+                }
+            };
         }
-        let result = self.call_native(method, iterator, vec![value], false)?;
-        let promise = self
-            .promise_resolve(result)?
-            .object_id()
-            .expect("Promise.resolve returns a Promise");
+        // A delegate method that throws (or whose result cannot be turned
+        // into a promise) is an abrupt completion of the `yield*`: like a
+        // rejected result it is thrown at the `yield*` site.
+        let async_from_sync = matches!(
+            self.heap
+                .get_own(record, "asyncFromSync")
+                .expect("the suspended frame retains its private delegate record"),
+            Some(Value::Bool(true))
+        );
+        let called = self
+            .call_native(method, iterator, vec![value], false)
+            .and_then(|result| {
+                if async_from_sync {
+                    // Over a synchronous iterator the delegate is the
+                    // AsyncFromSyncIterator: `return` and `throw` results go
+                    // through its continuation (`throw` closes an unfinished
+                    // iterator whose value rejects, `return` never does).
+                    self.async_from_sync_continue(
+                        record,
+                        result,
+                        matches!(kind, AsyncGeneratorDelegateKind::Throw),
+                    )
+                } else {
+                    self.promise_resolve(result)
+                }
+            });
+        let promise = match called {
+            Ok(promise) => promise
+                .object_id()
+                .expect("Promise.resolve returns a Promise"),
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.finish_async_generator_delegate(generator, target, kind, error, false)?;
+                return Ok(Some(Value::Undefined));
+            }
+        };
         match self
             .promises
             .get(&promise)
@@ -912,11 +1342,27 @@ impl Vm {
                     target,
                     kind,
                 }),
+            // Await always crosses a job boundary, including for an answer
+            // that is not a promise or is already settled.
             PromiseAwaitStatus::Fulfilled(value) => {
-                self.finish_async_generator_delegate(generator, target, kind, value, true)?
+                self.promise_jobs
+                    .push_back(PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                        value,
+                        fulfilled: true,
+                    });
             }
             PromiseAwaitStatus::Rejected(value) => {
-                self.finish_async_generator_delegate(generator, target, kind, value, false)?
+                self.promise_jobs
+                    .push_back(PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                        value,
+                        fulfilled: false,
+                    });
             }
         }
         Ok(Some(Value::Undefined))
@@ -932,7 +1378,11 @@ impl Vm {
             .async_generator_control(generator)?
             .ok_or_else(|| RuntimeError::TypeError("Async generator receiver required".into()))?;
         control.status = status;
-        self.heap.set_async_generator_control(generator, control)?;
+        // Only the status changed. The verified generator retains the same
+        // queue and byte count; this write cannot allocate or collect.
+        self.heap
+            .set_async_generator_control(generator, control)
+            .expect("updating a verified async generator's status cannot allocate");
         Ok(())
     }
 
@@ -968,12 +1418,20 @@ impl Vm {
                 "async generator queue identifiers are not FIFO",
             ));
         }
-        control.status = if self.heap.generator_state_is_done(generator)? {
+        control.status = if self
+            .heap
+            .generator_state_is_done(generator)
+            .expect("reading the verified queue did not release its generator")
+        {
             AsyncGeneratorStatus::Completed
         } else {
             AsyncGeneratorStatus::SuspendedYield
         };
-        self.heap.set_async_generator_control(generator, control)?;
+        // Removing the head only decreases managed queue bytes. No user code
+        // ran since the brand check, and ensure_room(0) cannot collect.
+        self.heap
+            .set_async_generator_control(generator, control)
+            .expect("removing a verified async generator's queue head cannot allocate");
         self.settle_promise(target, status)
     }
 
@@ -1005,30 +1463,99 @@ impl Vm {
                 .cloned()
                 .expect("checked async generator queue is non-empty");
             if control.status == AsyncGeneratorStatus::Completed {
-                let completion = match request.completion {
-                    AsyncGeneratorCompletion::Next(_) => {
+                let completion = match CompletedAsyncGeneratorRequest::classify(request.completion)?
+                {
+                    CompletedAsyncGeneratorRequest::Next => {
                         PromiseStatus::Fulfilled(self.iterator_result(Value::Undefined, true)?)
                     }
-                    AsyncGeneratorCompletion::Return(value) => {
-                        PromiseStatus::Fulfilled(self.iterator_result(value, true)?)
+                    CompletedAsyncGeneratorRequest::Return(value) => {
+                        // AsyncGeneratorAwaitReturn: even a completed
+                        // generator awaits the value it is asked to return
+                        // (a rejection or a broken `constructor` rejects
+                        // this request), so it settles on a later turn.
+                        let result = self.iterator_result(value, true)?;
+                        return self.await_async_generator_yield(generator, request.target, result);
                     }
-                    AsyncGeneratorCompletion::Throw(value) => PromiseStatus::Rejected(value),
+                    CompletedAsyncGeneratorRequest::Throw(value) => PromiseStatus::Rejected(value),
                 };
-                self.complete_async_generator_request(generator, request.target, completion)?;
+                self.complete_async_generator_request(generator, request.target, completion)
+                    .expect(
+                        "the scheduler completes the retained FIFO head and its tracked promise",
+                    );
                 continue;
             }
 
-            self.set_async_generator_status(generator, AsyncGeneratorStatus::Executing)?;
+            // A return or throw request to a generator that has not started
+            // completes it first (the request then behaves as one to a
+            // finished generator: a return awaits its operand, a throw
+            // rejects).
+            if matches!(
+                request.completion,
+                AsyncGeneratorCompletion::Return(_) | AsyncGeneratorCompletion::Throw(_)
+            ) && self
+                .async_generator_is_suspended_start(generator)
+                .expect("the scheduler just validated its retained generator control")
+            {
+                self.heap
+                    .set_generator_state(generator, GeneratorState::Done)
+                    .expect("completing the verified suspended-start frame cannot grow its bytes");
+                self.set_async_generator_status(generator, AsyncGeneratorStatus::Completed)
+                    .expect("completing the verified scheduler frame only changes its status");
+                continue;
+            }
+            // AsyncGeneratorUnwrapYieldResumption: a return request to a
+            // generator suspended at a `yield` awaits its operand first. A
+            // rejection then arrives as a throw at the `yield`, and an
+            // operand whose PromiseResolve throws does so at once.
+            let completion = match AsyncGeneratorRequestTurn::classify(request.completion) {
+                AsyncGeneratorRequestTurn::AwaitReturn(value) => {
+                    // PromiseResolve can run a constructor getter which queues
+                    // another request. Keep that request behind the current
+                    // head until its await has been installed or refused.
+                    self.set_async_generator_status(generator, AsyncGeneratorStatus::Executing)
+                        .expect("the scheduler retains its validated queue head");
+                    match self.start_async_generator_await(
+                        generator,
+                        request.target,
+                        AsyncGeneratorDelegateKind::AwaitReturn,
+                        value,
+                    ) {
+                        Ok(()) => {
+                            return self.set_async_generator_status(
+                                generator,
+                                AsyncGeneratorStatus::Awaiting,
+                            );
+                        }
+                        Err(error) => {
+                            self.set_async_generator_status(
+                                generator,
+                                AsyncGeneratorStatus::SuspendedYield,
+                            )
+                            .expect("restoring the retained scheduler status cannot allocate");
+                            let reason = self.error_value(error)?;
+                            self.replace_async_generator_request(
+                                generator,
+                                AsyncGeneratorCompletion::Throw(reason),
+                            )?;
+                            continue;
+                        }
+                    }
+                }
+                AsyncGeneratorRequestTurn::Run(completion) => completion,
+            };
+
+            self.set_async_generator_status(generator, AsyncGeneratorStatus::Executing)
+                .expect("the verified queue head retains its generator; a status change cannot allocate");
             let receiver = Value::Object(generator);
-            let result = match request.completion {
-                AsyncGeneratorCompletion::Next(value) => {
+            let result = match completion {
+                AsyncGeneratorRunCompletion::Next(value) => {
                     self.generator_next(&receiver, Some(value), Some(request.target))
                 }
-                AsyncGeneratorCompletion::Return(value) => {
+                AsyncGeneratorRunCompletion::ReturnAwaited(value) => {
                     match self.async_generator_delegate_request(
                         generator,
                         request.target,
-                        AsyncGeneratorDelegateKind::Return,
+                        DelegatedAbrupt::Return,
                         value.clone(),
                     ) {
                         Ok(Some(result)) => Ok(result),
@@ -1041,11 +1568,23 @@ impl Vm {
                         Err(error) => Err(error),
                     }
                 }
-                AsyncGeneratorCompletion::Throw(value) => {
+                AsyncGeneratorRunCompletion::ResumeReturn(value) => self.generator_resume(
+                    &receiver,
+                    None,
+                    Some(request.target),
+                    Some(Completion::Return(value)),
+                ),
+                AsyncGeneratorRunCompletion::ResumeThrow(value) => self.generator_resume(
+                    &receiver,
+                    None,
+                    Some(request.target),
+                    Some(Completion::Throw(RuntimeError::Thrown(value))),
+                ),
+                AsyncGeneratorRunCompletion::Throw(value) => {
                     match self.async_generator_delegate_request(
                         generator,
                         request.target,
-                        AsyncGeneratorDelegateKind::Throw,
+                        DelegatedAbrupt::Throw,
                         value.clone(),
                     ) {
                         Ok(Some(result)) => Ok(result),
@@ -1077,7 +1616,7 @@ impl Vm {
                 }
                 Ok(Value::Undefined) => return Ok(()),
                 Ok(result) => {
-                    return self.await_async_generator_yield(generator, request.target, result);
+                    return self.finish_async_generator_run(generator, request.target, result);
                 }
                 Err(error) => {
                     let value = self.error_value(error)?;
@@ -1085,10 +1624,145 @@ impl Vm {
                         generator,
                         request.target,
                         PromiseStatus::Rejected(value),
-                    )?;
+                    )
+                    .expect(
+                        "the scheduler completes the retained FIFO head and its tracked promise",
+                    );
                 }
             }
         }
+    }
+
+    /// Whether `generator` has not run yet (suspended-start).
+    fn async_generator_is_suspended_start(
+        &mut self,
+        generator: ObjectId,
+    ) -> Result<bool, RuntimeError> {
+        let state = self.heap.take_generator_state(generator)?;
+        let start = matches!(state, GeneratorState::Start { .. });
+        // Taking the state retains its accounted bytes. Restoring exactly
+        // that state therefore adds no bytes and cannot collect.
+        self.heap
+            .set_generator_state(generator, state)
+            .expect("restoring an unchanged generator state cannot allocate");
+        Ok(start)
+    }
+
+    /// Replaces the completion of the request at the head of the queue (the
+    /// request keeps its promise and its place) and makes the generator
+    /// resumable again.
+    fn replace_async_generator_request(
+        &mut self,
+        generator: ObjectId,
+        completion: AsyncGeneratorCompletion,
+    ) -> Result<(), RuntimeError> {
+        let mut control = self
+            .heap
+            .async_generator_control(generator)?
+            .ok_or_else(|| RuntimeError::TypeError("Async generator receiver required".into()))?;
+        control
+            .requests
+            .front_mut()
+            .ok_or(RuntimeError::Unsupported("missing async generator request"))?
+            .completion = completion;
+        control.status = AsyncGeneratorStatus::SuspendedYield;
+        self.with_roots(|heap| heap.set_async_generator_control(generator, control))?;
+        Ok(())
+    }
+
+    /// Await(value) on behalf of the request at the head of the queue:
+    /// PromiseResolve, then a continuation that always runs in a later job
+    /// (the promise is never inspected synchronously). `Err` means
+    /// PromiseResolve itself threw, before anything was scheduled.
+    fn start_async_generator_await(
+        &mut self,
+        generator: ObjectId,
+        target: ObjectId,
+        kind: AsyncGeneratorDelegateKind,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let base = self.stack.len();
+        self.stack.extend([
+            Value::Object(generator),
+            Value::Object(target),
+            value.clone(),
+        ]);
+        let outcome = (|| {
+            let promise = self.promise_resolve(value)?;
+            self.stack.push(promise.clone());
+            let promise = promise
+                .object_id()
+                .expect("Promise.resolve always returns a Promise");
+            match self
+                .promises
+                .get(&promise)
+                .expect("Promise.resolve registers its Promise")
+                .status
+                .clone_for_await()
+            {
+                PromiseAwaitStatus::Pending => self
+                    .promises
+                    .get_mut(&promise)
+                    .expect("checked pending Promise exists")
+                    .reactions
+                    .push(PromiseReaction::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                    }),
+                PromiseAwaitStatus::Fulfilled(value) => {
+                    self.promise_jobs
+                        .push_back(PromiseJob::AsyncGeneratorDelegate {
+                            generator,
+                            target,
+                            kind,
+                            value,
+                            fulfilled: true,
+                        });
+                }
+                PromiseAwaitStatus::Rejected(value) => {
+                    self.promise_jobs
+                        .push_back(PromiseJob::AsyncGeneratorDelegate {
+                            generator,
+                            target,
+                            kind,
+                            value,
+                            fulfilled: false,
+                        });
+                }
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        outcome
+    }
+
+    /// The continuation of [`Vm::start_async_generator_await`]: the awaited
+    /// operand is now known, so the request that was waiting for it becomes
+    /// the completion it stands for, and the scheduler carries on.
+    fn resume_after_async_generator_await(
+        &mut self,
+        generator: ObjectId,
+        kind: AwaitedGeneratorOperand,
+        value: Value,
+        fulfilled: bool,
+    ) -> Result<(), RuntimeError> {
+        let completion = match (kind, fulfilled) {
+            (AwaitedGeneratorOperand::Return, true) => {
+                AsyncGeneratorCompletion::ReturnAwaited(value)
+            }
+            // A rejected operand is a throw completion at the `yield`, which
+            // a `yield*` forwards to its delegate like any other throw.
+            (AwaitedGeneratorOperand::Return, false) => AsyncGeneratorCompletion::Throw(value),
+            (AwaitedGeneratorOperand::ReturnWithoutDelegateMethod, true) => {
+                AsyncGeneratorCompletion::ResumeReturn(value)
+            }
+            (AwaitedGeneratorOperand::ReturnWithoutDelegateMethod, false) => {
+                AsyncGeneratorCompletion::ResumeThrow(value)
+            }
+        };
+        self.replace_async_generator_request(generator, completion)?;
+        self.resume_async_generator_next(generator)
     }
 
     /// Async generator methods append one request and return its capability.
@@ -1097,11 +1771,32 @@ impl Vm {
         &mut self,
         receiver: &Value,
         value: Value,
-        kind: NativeFunction,
+        function: NativeFunction,
     ) -> Result<Value, RuntimeError> {
-        let generator = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("AsyncGenerator request requires an async generator".into())
-        })?;
+        let kind = match function {
+            NativeFunction::AsyncGeneratorNext => AsyncGeneratorRequestKind::Next,
+            NativeFunction::AsyncGeneratorReturn => AsyncGeneratorRequestKind::Return,
+            NativeFunction::AsyncGeneratorThrow => AsyncGeneratorRequestKind::Throw,
+            _ => return Err(RuntimeError::Unsupported("not an async generator request")),
+        };
+        // AsyncGeneratorValidate failing is not a throw: the method returns a
+        // promise rejected with the TypeError.
+        let generator = match receiver.object_id() {
+            // Anything but a live async generator (including any other kind of
+            // heap object) fails the brand check.
+            Some(generator)
+                if matches!(self.heap.async_generator_control(generator), Ok(Some(_))) =>
+            {
+                generator
+            }
+            _ => {
+                let error = self.error_object(
+                    "TypeError",
+                    "AsyncGenerator request requires an async generator".into(),
+                )?;
+                return self.promise_reject(error);
+            }
+        };
         let base = self.stack.len();
         self.stack.extend([receiver.clone(), value.clone()]);
         let result = (|| {
@@ -1109,12 +1804,9 @@ impl Vm {
             self.stack.push(Value::Object(target));
             let mut control = self
                 .heap
-                .async_generator_control(generator)?
-                .ok_or_else(|| {
-                    RuntimeError::TypeError(
-                        "AsyncGenerator request requires an async generator".into(),
-                    )
-                })?;
+                .async_generator_control(generator)
+                .expect("the validated generator remains rooted while its promise is allocated")
+                .expect("promise allocation cannot change the async generator brand");
             let id = control.next_request_id;
             control.next_request_id =
                 control
@@ -1124,22 +1816,38 @@ impl Vm {
                         "async generator request identifiers exhausted".into(),
                     ))?;
             let completion = match kind {
-                NativeFunction::AsyncGeneratorNext => AsyncGeneratorCompletion::Next(value),
-                NativeFunction::AsyncGeneratorReturn => AsyncGeneratorCompletion::Return(value),
-                NativeFunction::AsyncGeneratorThrow => AsyncGeneratorCompletion::Throw(value),
-                _ => unreachable!("only async generator request kinds reach this helper"),
+                AsyncGeneratorRequestKind::Next => AsyncGeneratorCompletion::Next(value),
+                AsyncGeneratorRequestKind::Return => AsyncGeneratorCompletion::Return(value),
+                AsyncGeneratorRequestKind::Throw => AsyncGeneratorCompletion::Throw(value),
             };
             control.requests.push_back(AsyncGeneratorRequest {
                 id,
                 completion,
                 target,
             });
-            self.heap.set_async_generator_control(generator, control)?;
+            // Queue growth may collect. Protect the caller's operands and
+            // the VM-owned promises, not only the queue's own heap edges.
+            self.with_roots(|heap| heap.set_async_generator_control(generator, control))?;
             self.resume_async_generator_next(generator)?;
             Ok(Value::Object(target))
         })();
         self.stack.truncate(base);
         result
+    }
+
+    /// Completes the request whose generator run just produced `result` (a
+    /// yielded value or the return value) and moves on to the next one. The
+    /// body has already awaited whatever the specification awaits there
+    /// (`yield` and `return` operands), so the result is delivered as is.
+    pub(in super::super) fn finish_async_generator_run(
+        &mut self,
+        generator: ObjectId,
+        target: ObjectId,
+        result: Value,
+    ) -> Result<(), RuntimeError> {
+        self.complete_async_generator_request(generator, target, PromiseStatus::Fulfilled(result))
+            .expect("the scheduler completes the retained FIFO head and its tracked promise");
+        self.resume_async_generator_next(generator)
     }
 
     /// Implements the Await in AsyncGeneratorYield. The generator is already
@@ -1161,10 +1869,26 @@ impl Vm {
             Value::Object(result),
         ]);
         let outcome = (|| {
-            self.set_async_generator_status(generator, AsyncGeneratorStatus::Awaiting)?;
-            let value = self.get_property(&Value::Object(result), &"value".into())?;
+            self.set_async_generator_status(generator, AsyncGeneratorStatus::Awaiting)
+                .expect("the pending yield roots its validated async generator; changing status cannot allocate");
+            // This result comes from iterator_result, not from a delegate or
+            // user callback. Its initialized own data field cannot invoke JS.
+            let value = self
+                .heap
+                .get_own(result, "value")
+                .expect("the queued yield roots its private IteratorResult")
+                .expect("iterator_result initializes its own value field");
             self.stack.push(value.clone());
-            let awaited = self.promise_resolve(value)?;
+            // A value whose PromiseResolve throws (a hostile `constructor`
+            // getter) is awaited as an already rejected promise.
+            let awaited = match self.promise_resolve(value) {
+                Ok(promise) => promise,
+                Err(error) => {
+                    let error = self.error_value(error)?;
+                    self.promise_reject(error)?
+                }
+            };
+            self.stack.push(awaited.clone());
             let awaited = awaited
                 .object_id()
                 .expect("Promise.resolve always returns a Promise");
@@ -1223,12 +1947,14 @@ impl Vm {
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
         if !fulfilled {
-            self.close_async_generator(generator)?;
+            self.close_async_generator(generator)
+                .expect("AsyncGeneratorYield reactions here originate from a completed FIFO request; its retained Done frame cannot allocate or close user iterators");
             self.complete_async_generator_request(
                 generator,
                 target,
                 PromiseStatus::Rejected(value),
-            )?;
+            )
+            .expect("the scheduler completes the retained FIFO head and its tracked promise");
             return self.resume_async_generator_next(generator);
         }
         self.set_property(&Value::Object(result), &"value".into(), &value)?;
@@ -1236,7 +1962,8 @@ impl Vm {
             generator,
             target,
             PromiseStatus::Fulfilled(Value::Object(result)),
-        )?;
+        )
+        .expect("the scheduler completes the retained FIFO head and its tracked promise");
         self.resume_async_generator_next(generator)
     }
 
@@ -1248,116 +1975,173 @@ impl Vm {
         result: Value,
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
+        let returning = match kind {
+            AsyncGeneratorDelegateKind::AwaitReturn => {
+                return self.resume_after_async_generator_await(
+                    generator,
+                    AwaitedGeneratorOperand::Return,
+                    result,
+                    fulfilled,
+                )
+            }
+            AsyncGeneratorDelegateKind::AwaitReturnNoMethod => {
+                return self.resume_after_async_generator_await(
+                    generator,
+                    AwaitedGeneratorOperand::ReturnWithoutDelegateMethod,
+                    result,
+                    fulfilled,
+                )
+            }
+            AsyncGeneratorDelegateKind::Return => true,
+            AsyncGeneratorDelegateKind::Throw | AsyncGeneratorDelegateKind::CloseMissingThrow => {
+                false
+            }
+        };
+        // A rejected delegate call, or a result that is not an object, is an
+        // abrupt completion of the `yield*` expression: it is thrown at the
+        // `yield*` site (the delegate is finished and not closed again).
         if !fulfilled {
-            self.close_async_generator(generator)?;
-            self.complete_async_generator_request(
-                generator,
-                target,
-                PromiseStatus::Rejected(result),
-            )?;
-            return self.resume_async_generator_next(generator);
+            return self.throw_at_async_delegate_exit(generator, target, result);
         }
         if !matches!(result, Value::Object(_)) {
-            self.close_async_generator(generator)?;
             let error = self.error_object(
                 "TypeError",
                 "yield* delegate method must return an object".into(),
             )?;
+            return self.throw_at_async_delegate_exit(generator, target, error);
+        }
+        if matches!(kind, AsyncGeneratorDelegateKind::CloseMissingThrow) {
+            let error = self.error_object(
+                "TypeError",
+                "yield* iterator does not provide a throw method".into(),
+            )?;
+            return self.throw_at_async_delegate_exit(generator, target, error);
+        }
+        // IteratorComplete and IteratorValue run inside the generator, so an
+        // exception from a getter is thrown at the `yield*` site (where the
+        // generator's own try/catch can see it), not out of this reaction.
+        let read = self.get_property(&result, &"done".into()).and_then(|done| {
+            Ok((
+                self.to_boolean(&done)
+                    .expect("the delegate getter returned a live value in this realm"),
+                self.get_property(&result, &"value".into())?,
+            ))
+        });
+        let (done, value) = match read {
+            Ok(pair) => pair,
+            Err(error) => {
+                let error = self.error_value(error)?;
+                return self.throw_at_async_delegate_exit(generator, target, error);
+            }
+        };
+        if !done {
+            // The delegate's answer is forwarded without an Await.
+            let iterator_result = self.iterator_result(value, false)?;
             self.complete_async_generator_request(
                 generator,
                 target,
-                PromiseStatus::Rejected(error),
-            )?;
+                PromiseStatus::Fulfilled(iterator_result),
+            )
+            .expect("the scheduler completes the retained FIFO head and its tracked promise");
             return self.resume_async_generator_next(generator);
         }
-        let done = self.get_property(&result, &"done".into())?;
-        let value = self.get_property(&result, &"value".into())?;
-        if !self.to_boolean(&done)? {
-            let iterator_result = self.iterator_result(value, false)?;
-            return self.await_async_generator_yield(generator, target, iterator_result);
-        }
-        match kind {
-            AsyncGeneratorDelegateKind::Return => {
-                // A completed delegate supplies the final value of the
-                // delegated expression, but the original outer return still
-                // propagates through any enclosing finally blocks.
-                let mut state = self.heap.take_generator_state(generator)?;
-                let Some((_, exit)) = Self::yield_star_delegate(&state) else {
-                    return Err(RuntimeError::Unsupported(
-                        "lost async yield* delegation state",
-                    ));
-                };
-                let GeneratorState::Suspended {
-                    pc,
-                    stack,
-                    async_delegate,
-                    ..
-                } = &mut state
-                else {
-                    unreachable!("yield* delegation is always suspended")
-                };
-                *pc = exit;
-                *async_delegate = None;
-                *stack
-                    .last_mut()
-                    .expect("yield* delegation keeps its iterator record") = value.clone();
-                self.heap.set_generator_state(generator, state)?;
-                let result = self.generator_resume(
-                    &Value::Object(generator),
-                    None,
-                    Some(target),
-                    Some(Completion::Return(value)),
-                );
-                match result {
-                    Ok(Value::Undefined) => Ok(()),
-                    Ok(result) => self.await_async_generator_yield(generator, target, result),
-                    Err(error) => {
-                        let error = self.error_value(error)?;
-                        self.complete_async_generator_request(
-                            generator,
-                            target,
-                            PromiseStatus::Rejected(error),
-                        )?;
-                        self.resume_async_generator_next(generator)
-                    }
-                }
+        self.finish_async_delegation(generator, value.clone())
+            .expect("this FIFO reaction owns the outstanding async delegation; its completion only shrinks the frame");
+        let result = if returning {
+            // Preserve the original return through any enclosing finally.
+            self.generator_resume(
+                &Value::Object(generator),
+                None,
+                Some(target),
+                Some(Completion::Return(value)),
+            )
+        } else {
+            self.generator_next(&Value::Object(generator), None, Some(target))
+        };
+        match result {
+            Ok(Value::Undefined) => Ok(()),
+            Ok(result) => self.finish_async_generator_run(generator, target, result),
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.complete_async_generator_request(
+                    generator,
+                    target,
+                    PromiseStatus::Rejected(error),
+                )
+                .expect("the scheduler completes the retained FIFO head and its tracked promise");
+                self.resume_async_generator_next(generator)
             }
-            AsyncGeneratorDelegateKind::Throw => {
-                let mut state = self.heap.take_generator_state(generator)?;
-                let Some((_, exit)) = Self::yield_star_delegate(&state) else {
-                    return Err(RuntimeError::Unsupported(
-                        "lost async yield* delegation state",
-                    ));
-                };
-                let GeneratorState::Suspended {
-                    pc,
-                    stack,
-                    async_delegate,
-                    ..
-                } = &mut state
-                else {
-                    unreachable!("yield* delegation is always suspended")
-                };
-                *pc = exit;
-                *async_delegate = None;
-                *stack
-                    .last_mut()
-                    .expect("yield* delegation keeps its iterator record") = value;
-                self.heap.set_generator_state(generator, state)?;
-                let result = self.generator_next(&Value::Object(generator), None, Some(target));
-                match result {
-                    Ok(Value::Undefined) => Ok(()),
-                    Ok(result) => self.await_async_generator_yield(generator, target, result),
-                    Err(error) => {
-                        let error = self.error_value(error)?;
-                        self.complete_async_generator_request(
-                            generator,
-                            target,
-                            PromiseStatus::Rejected(error),
-                        )?;
-                        self.resume_async_generator_next(generator)
-                    }
-                }
+        }
+    }
+
+    /// Removes a completed delegate and commits its value at the compiler's
+    /// exit boundary. Missing delegation leaves the saved frame intact.
+    fn finish_async_delegation(
+        &mut self,
+        generator: ObjectId,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let mut state = self.heap.take_generator_state(generator)?;
+        let finished = match &mut state {
+            GeneratorState::Suspended {
+                pc,
+                stack,
+                iterators,
+                async_delegate,
+                ..
+            } => async_delegate
+                .take()
+                .map(|delegate| {
+                    *pc = delegate.exit_pc;
+                    iterators.retain(|active| active != &delegate.record);
+                    *stack
+                        .last_mut()
+                        .expect("yield* delegation keeps its iterator record") = value;
+                })
+                .is_some(),
+            _ => false,
+        };
+        self.with_roots(|heap| heap.set_generator_state(generator, state))
+            .expect("finishing async delegation only shrinks the retained frame and replaces one stack value");
+        if finished {
+            Ok(())
+        } else {
+            Err(RuntimeError::Unsupported(
+                "lost async yield* delegation state",
+            ))
+        }
+    }
+
+    /// Resumes an async generator suspended in a `yield*` loop with a throw
+    /// completion positioned just past the loop: the delegate is finished (it
+    /// is no longer an open iterator to close) and the exception propagates
+    /// through the generator's enclosing handlers.
+    fn throw_at_async_delegate_exit(
+        &mut self,
+        generator: ObjectId,
+        target: ObjectId,
+        error: Value,
+    ) -> Result<(), RuntimeError> {
+        self.finish_async_delegation(generator, Value::Undefined)
+            .expect("the scheduler throws at the exit of its outstanding async delegation");
+        let result = self.generator_resume(
+            &Value::Object(generator),
+            None,
+            Some(target),
+            Some(Completion::Throw(RuntimeError::Thrown(error))),
+        );
+        match result {
+            Ok(Value::Undefined) => Ok(()),
+            Ok(result) => self.finish_async_generator_run(generator, target, result),
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.complete_async_generator_request(
+                    generator,
+                    target,
+                    PromiseStatus::Rejected(error),
+                )
+                .expect("the scheduler completes the retained FIFO head and its tracked promise");
+                self.resume_async_generator_next(generator)
             }
         }
     }
@@ -1367,21 +2151,15 @@ impl Vm {
         generator: ObjectId,
     ) -> Result<(), RuntimeError> {
         let state = self.heap.take_generator_state(generator)?;
-        let iterators = match state {
+        let mut iterators = match state {
             GeneratorState::Suspended { iterators, .. } => iterators,
             GeneratorState::Start { .. } | GeneratorState::Running | GeneratorState::Done => {
                 Vec::new()
             }
         };
         self.heap
-            .set_generator_state(generator, GeneratorState::Done)?;
-        let base = self.stack.len();
-        self.stack.extend(iterators.iter().cloned());
-        let result = iterators
-            .iter()
-            .rev()
-            .try_for_each(|record| self.iterator_close(record));
-        self.stack.truncate(base);
-        result
+            .set_generator_state(generator, GeneratorState::Done)
+            .expect("closing a verified generator only decreases its accounted state bytes");
+        self.close_iterators_for_return(&mut iterators, 0)
     }
 }

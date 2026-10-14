@@ -65,9 +65,11 @@ fn object_pattern_shorthand_applies_binding_identifier_early_errors() {
 
 #[test]
 fn recursive_call_depth_stays_a_catchable_resource_limit() {
-    // Each interpreted call currently occupies a substantial host frame. Run
-    // this exact-limit regression on the same 8 MiB stack a normal process
-    // receives, rather than Rust's smaller default test-worker stack.
+    // Call depth is bounded by the native stack actually left (see
+    // `tests/call_stack_budget.rs` for the byte-budget contract), so a
+    // shallow chain succeeds and one no stack could hold is a RangeError. Run
+    // it on the same 8 MiB stack a normal process receives, rather than
+    // Rust's smaller default test-worker stack.
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
         .spawn(|| {
@@ -76,7 +78,7 @@ fn recursive_call_depth_stays_a_catchable_resource_limit() {
                 Value::Bool(true)
             );
             let code = compile(
-                &parse("function depth(n){return n===0?0:1+depth(n-1);}depth(32)").unwrap(),
+                &parse("function depth(n){return n===0?0:1+depth(n-1);}depth(1000000)").unwrap(),
             )
             .unwrap();
             assert!(matches!(
@@ -623,6 +625,28 @@ fn proxy_has_trap_controls_with_environment_lookup() {
 }
 
 #[test]
+fn revoked_proxy_in_throws_a_catchable_type_error() {
+    for directive in ["", "'use strict';"] {
+        for body in [
+            "let p=Proxy.revocable({},{});p.revoke();let caught=false;try{'attr' in p.proxy}catch(e){caught=e instanceof TypeError}caught",
+            // ToPropertyKey runs before HasProperty, and may itself revoke
+            // the receiver. Its side effect must survive the TypeError.
+            "let p=Proxy.revocable({},{});let calls=0;let key={[Symbol.toPrimitive](){calls++;p.revoke();return 'attr'}};let caught=false;try{key in p.proxy}catch(e){caught=e instanceof TypeError}caught&&calls===1",
+        ] {
+            assert_eq!(evaluate(&format!("{directive}{body}")), Value::Bool(true));
+        }
+    }
+}
+
+#[test]
+fn revoked_proxy_with_lookup_throws_a_catchable_type_error() {
+    assert_eq!(
+        evaluate("let p=Proxy.revocable({},{});p.revoke();let caught=false;try{with(p.proxy){attr}}catch(e){caught=e instanceof TypeError}caught"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn abstract_equality_and_in_follow_coercion_and_prototype_rules() {
     for source in [
         "null==undefined && undefined==null && null!=0",
@@ -780,6 +804,71 @@ fn uri_globals_encode_decode_utf8_and_throw_uri_error_for_malformed_escapes() {
     })
     .unwrap();
     assert_eq!(vm.execute(&churn), Ok(Value::Number(4096.0)));
+}
+
+#[test]
+fn uri_globals_reject_broken_surrogates_and_utf8_sequences() {
+    for source in [
+        r"encodeURI('\ud800A')",
+        r"encodeURI('\udc00')",
+        "decodeURIComponent('%C3A9')",
+        "decodeURIComponent('%E0%41%A0')",
+        "decodeURIComponent('%E0%80%80')",
+        "decodeURIComponent('%F0%9F%98%A')",
+    ] {
+        let probe = format!(
+            "(function(){{try{{{source};return false}}catch(error){{return error instanceof URIError}}}})()"
+        );
+        assert_eq!(evaluate(&probe), Value::Bool(true), "{source}");
+    }
+    assert_eq!(
+        evaluate("decodeURIComponent('%C2%A0') === '\\u00a0'"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate("decodeURI('A%23B') === 'A%23B'"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn uri_and_string_builders_enforce_the_runtime_utf16_limit() {
+    for (source, limit) in [
+        ("encodeURI('A')", 1),
+        ("encodeURI('é')", 4),
+        ("decodeURI('A')", 1),
+        ("decodeURI('%23')", 1),
+        ("decodeURIComponent('%41')", 1),
+        ("decodeURIComponent('%C3%A9')", 1),
+        ("escape('A')", 1),
+        ("escape('Ā')", 4),
+        ("unescape('%41')", 1),
+        ("unescape('A')", 1),
+        ("String.fromCharCode(65)", 1),
+        ("String.fromCodePoint(65)", 1),
+        ("'abc'.concat('d')", 6),
+        ("'abcd'.replace('abcd','$&$&')", 8),
+        ("''.link('')", 4),
+        ("''.link('x')", 18),
+        ("''.link('x')", 20),
+        ("''.link('')", 20),
+        ("'x'.link('')", 22),
+        ("''.link('')", 22),
+        (r"'\u0130\ud800'.toLowerCase()", 2),
+        (r"'\u0130\ud800'.toLowerCase()", 4),
+    ] {
+        let code = compile(&parse(source).unwrap()).unwrap();
+        let mut vm = Vm::new(VmConfig {
+            max_string_bytes: limit,
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert_eq!(
+            vm.execute(&code),
+            Err(RuntimeError::StringLimit { limit }),
+            "{source}"
+        );
+    }
 }
 
 #[test]

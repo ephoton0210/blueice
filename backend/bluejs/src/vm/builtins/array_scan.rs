@@ -51,45 +51,49 @@ impl Vm {
             work: 0,
         };
         if length >= SPARSE_LENGTH_THRESHOLD {
-            self.rebuild_index_scan(&mut scan, object)?;
+            if !self.heap.contains(object) {
+                return Err(RuntimeError::Heap(HeapError::InvalidObject(object)));
+            }
+            self.rebuild_index_scan(&mut scan, object);
         }
         Ok(scan)
     }
 
-    fn rebuild_index_scan(
-        &mut self,
-        scan: &mut IndexScan,
-        object: ObjectId,
-    ) -> Result<(), RuntimeError> {
+    /// Every object on the chain is one the walk itself just reached from a
+    /// live receiver, so the heap reads below cannot fail.
+    fn rebuild_index_scan(&self, scan: &mut IndexScan, object: ObjectId) {
         scan.epoch = self.heap.structure_epoch();
         scan.stored = None;
         let mut stored = Vec::new();
         let mut current = Some(object);
         while let Some(id) = current {
-            let Some(keys) = self.heap.own_integer_keys(id)? else {
-                return Ok(());
+            let Some(keys) = self
+                .heap
+                .own_integer_keys(id)
+                .expect("a prototype chain is made of live heap objects")
+            else {
+                return;
             };
             scan.work += keys.len() as u64 + 1;
             stored.extend(keys.into_iter().take_while(|key| *key < scan.length));
-            current = self.heap.prototype(id)?;
+            // `own_integer_keys` just validated this object, and no heap
+            // mutation occurs between that lookup and this one.
+            current = self
+                .heap
+                .prototype(id)
+                .expect("the object validated by own_integer_keys is still live");
         }
         if scan.work <= scan.length / 4 {
             stored.sort_unstable();
             stored.dedup();
             scan.stored = Some(stored);
         }
-        Ok(())
     }
 
-    fn refresh_index_scan(
-        &mut self,
-        scan: &mut IndexScan,
-        object: ObjectId,
-    ) -> Result<(), RuntimeError> {
+    fn refresh_index_scan(&self, scan: &mut IndexScan, object: ObjectId) {
         if scan.stored.is_some() && scan.epoch != self.heap.structure_epoch() {
-            self.rebuild_index_scan(scan, object)?;
+            self.rebuild_index_scan(scan, object);
         }
-        Ok(())
     }
 
     /// The smallest index in `[from, length)` a walk must probe, or `None` once
@@ -97,34 +101,36 @@ impl Vm {
     /// `from`, or `None` with `from < length`, means the indices in between
     /// read as `undefined`.
     pub(super) fn scan_next(
-        &mut self,
+        &self,
         scan: &mut IndexScan,
         object: ObjectId,
         from: u64,
     ) -> Result<Option<u64>, RuntimeError> {
-        self.refresh_index_scan(scan, object)?;
-        Ok(match &scan.stored {
+        if !self.heap.contains(object) {
+            return Err(RuntimeError::Heap(HeapError::InvalidObject(object)));
+        }
+        Ok(self.next_index(scan, object, from))
+    }
+
+    fn next_index(&self, scan: &mut IndexScan, object: ObjectId, from: u64) -> Option<u64> {
+        self.refresh_index_scan(scan, object);
+        match &scan.stored {
             Some(stored) => stored
                 .get(stored.partition_point(|index| *index < from))
                 .copied(),
             None => (from < scan.length).then_some(from),
-        })
+        }
     }
 
     /// The largest index below `end` a walk must probe.
-    fn scan_previous(
-        &mut self,
-        scan: &mut IndexScan,
-        object: ObjectId,
-        end: u64,
-    ) -> Result<Option<u64>, RuntimeError> {
-        self.refresh_index_scan(scan, object)?;
-        Ok(match &scan.stored {
+    fn scan_previous(&self, scan: &mut IndexScan, object: ObjectId, end: u64) -> Option<u64> {
+        self.refresh_index_scan(scan, object);
+        match &scan.stored {
             Some(stored) => stored[..stored.partition_point(|index| *index < end)]
                 .last()
                 .copied(),
             None => end.checked_sub(1),
-        })
+        }
     }
 
     /// The next index at or after `from` where a walk finds a property, as
@@ -135,8 +141,11 @@ impl Vm {
         object: ObjectId,
         from: u64,
     ) -> Result<Option<(u64, Value)>, RuntimeError> {
+        if !self.heap.contains(object) {
+            return Err(RuntimeError::Heap(HeapError::InvalidObject(object)));
+        }
         let mut from = from;
-        while let Some(index) = self.scan_next(scan, object, from)? {
+        while let Some(index) = self.next_index(scan, object, from) {
             if let Some(value) = self.array_probe(object, index)? {
                 return Ok(Some((index, value)));
             }
@@ -153,8 +162,11 @@ impl Vm {
         object: ObjectId,
         end: u64,
     ) -> Result<Option<(u64, Value)>, RuntimeError> {
+        if !self.heap.contains(object) {
+            return Err(RuntimeError::Heap(HeapError::InvalidObject(object)));
+        }
         let mut end = end;
-        while let Some(index) = self.scan_previous(scan, object, end)? {
+        while let Some(index) = self.scan_previous(scan, object, end) {
             if let Some(value) = self.array_probe(object, index)? {
                 return Ok(Some((index, value)));
             }

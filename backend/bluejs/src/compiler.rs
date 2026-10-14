@@ -13,7 +13,7 @@ use crate::bytecode::{
     ModuleRequest as CompiledModuleRequest,
 };
 use crate::*;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// Parser-private binding used to represent an anonymous `export default`
 /// declaration.  It can never be spelled by ECMAScript source, which lets
@@ -21,13 +21,27 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// function/class name required by SetFunctionName.
 const MODULE_DEFAULT_BINDING: &str = "\0bluejs_module_default";
 const PRIVATE_OWNER_BINDING_PREFIX: &str = "\0bluejs_private_owner_";
+/// Per-class-evaluation bindings for state a class element carries from
+/// ClassDefinitionEvaluation to a later step: a computed field key (evaluated
+/// once, in element order) and a static field or static block's function
+/// (run only after every element has been defined).
+const CLASS_ELEMENT_BINDING_PREFIX: &str = "\0bluejs_class_element_";
+/// A derived class constructor's `this` binding. Unlike an ordinary function's
+/// receiver it starts uninitialized and is bound by `super()`, possibly from a
+/// nested arrow function or direct eval, so it is a real lexical binding that
+/// those closures capture. Ordinary functions (including methods and nested
+/// classes) never inherit it: only arrow functions and eval code see it.
+pub(crate) const DERIVED_THIS_BINDING: &str = "\0bluejs_derived_this";
+/// The derived constructor function object itself (`F` in the specification's
+/// `super()` steps), visible to the same nested closures as the `this` binding.
+pub(crate) const DERIVED_CONSTRUCTOR_BINDING: &str = "\0bluejs_derived_constructor";
 use std::fmt;
 
 mod expressions;
 mod functions;
 mod private_validation;
 mod statements;
-pub(crate) use private_validation::validate_private_early_errors;
+pub use private_validation::validate_private_early_errors;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompileError {
@@ -45,11 +59,38 @@ impl fmt::Display for CompileError {
             }
             Self::DuplicateBinding(name) => write!(f, "duplicate or conflicting binding: {name}"),
             Self::InvalidSyntax(message) => f.write_str(message),
-            Self::ProgramTooLarge => f.write_str("BlueJS program exceeds the bytecode size limit"),
+            Self::ProgramTooLarge => {
+                f.write_str("BlueJS program exceeds the bytecode size limit or a metadata limit")
+            }
         }
     }
 }
 impl std::error::Error for CompileError {}
+
+/// Resource limits applied independently to each compiled code unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompileLimits {
+    /// Maximum bytes emitted in one code unit; nested functions use the
+    /// remaining budget at their definition site.
+    pub max_bytecode_bytes: u32,
+    /// Maximum entries in each binding, constant, and scope table. Values
+    /// above `u32::MAX + 1` are capped at that representable maximum.
+    pub max_metadata_entries: u64,
+    /// Maximum array elements or call arguments in one expression. Values
+    /// above `u32::MAX / 2` are capped because tail calls pack the argument
+    /// count and a direct-eval bit into one 32-bit operand.
+    pub max_list_items: u32,
+}
+
+impl Default for CompileLimits {
+    fn default() -> Self {
+        Self {
+            max_bytecode_bytes: u32::MAX,
+            max_metadata_entries: u64::from(u32::MAX) + 1,
+            max_list_items: u32::MAX / 2,
+        }
+    }
+}
 
 /// Compiles the supported executable subset. The parser deliberately
 /// accepts more than the VM can run; unsupported syntax is rejected even
@@ -72,7 +113,21 @@ pub fn compile_with_limit(
     program: &Program,
     max_bytecode_bytes: u32,
 ) -> Result<Bytecode, CompileError> {
-    compile_with_limit_and_mode(program, max_bytecode_bytes, false, &[], &[], &[])
+    compile_with_limits(
+        program,
+        CompileLimits {
+            max_bytecode_bytes,
+            ..CompileLimits::default()
+        },
+    )
+}
+
+/// Compile a script with explicit bytecode and metadata-table limits.
+pub fn compile_with_limits(
+    program: &Program,
+    limits: CompileLimits,
+) -> Result<Bytecode, CompileError> {
+    compile_with_limit_and_mode(program, limits, false, &[], &[], &[])
 }
 
 /// Like [`compile_module`], with the Test262 adapter's bytecode resource
@@ -82,11 +137,25 @@ pub fn compile_module_with_limit(
     module: &Module,
     max_bytecode_bytes: u32,
 ) -> Result<Bytecode, CompileError> {
+    compile_module_with_limits(
+        module,
+        CompileLimits {
+            max_bytecode_bytes,
+            ..CompileLimits::default()
+        },
+    )
+}
+
+/// Compile a module with explicit bytecode and metadata-table limits.
+pub fn compile_module_with_limits(
+    module: &Module,
+    limits: CompileLimits,
+) -> Result<Bytecode, CompileError> {
     compile_with_limit_and_mode(
         &Program {
             body: module.body.clone(),
         },
-        max_bytecode_bytes,
+        limits,
         true,
         &module.imports,
         &module.exports,
@@ -96,7 +165,7 @@ pub fn compile_module_with_limit(
 
 fn compile_with_limit_and_mode(
     program: &Program,
-    max_bytecode_bytes: u32,
+    limits: CompileLimits,
     module: bool,
     module_imports: &[ImportEntry],
     module_exports: &[ExportEntry],
@@ -110,11 +179,16 @@ fn compile_with_limit_and_mode(
         scopes: Vec::new(),
         loops: Vec::new(),
         catch_var_slots: Vec::new(),
-        max_bytecode_bytes,
+        max_bytecode_bytes: limits.max_bytecode_bytes,
+        max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
+        max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
         local_scope: 0,
         with_depth: 0,
         with_scope_depths: Vec::new(),
+        annex_b_parameter_names: BTreeSet::new(),
+        tail_call_blockers: 0,
+        tail_call_pending: false,
     };
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;
@@ -132,8 +206,8 @@ fn compile_with_limit_and_mode(
             _ => None,
         })
         .collect();
-    let mut lexical = lexical_names(&program.body)?;
-    let mut vars = top_level_var_names(&program.body)?;
+    let mut lexical = lexical_names(&program.body);
+    let mut vars = top_level_var_names(&program.body);
     if module {
         for import in module_imports {
             if let Some(local_name) = &import.local_name {
@@ -158,32 +232,37 @@ fn compile_with_limit_and_mode(
         }));
     }
     if !compiler.bytecode.strict {
-        vars.extend(
-            annex_b_function_names(&program.body, &lexical)
-                .into_iter()
-                .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name)),
-        );
+        vars.extend(annex_b_function_names(&program.body, &lexical));
     }
     compiler.enter_scope(lexical, &vars, true)?;
     let mut root_statement_offsets = vec![None; program.body.len()];
+    let mut root_statement_ranges = vec![None; program.body.len()];
+    let mut root_function_child_indices = vec![None; program.body.len()];
     if module {
-        compiler.top_level_function_declarations(&program.body, &mut root_statement_offsets)?;
-        compiler.bytecode.module_evaluate_entry = Some(compiler.offset()?);
+        compiler.top_level_function_declarations(
+            &program.body,
+            &mut root_statement_offsets,
+            &mut root_statement_ranges,
+            &mut root_function_child_indices,
+        )?;
+        compiler.bytecode.module_evaluate_entry = Some(compiler.offset());
         // Unlike a Script, a Module's top level *is* one of the
         // UsingDeclaration-permitted contexts: a `using`/`await using`
         // there disposes when the module's own evaluation completes.
         if has_using_declaration(&program.body) {
             let is_async = has_await_using_declaration(&program.body);
-            compiler.wrap_with_disposal(is_async, |this| {
+            compiler.wrap_with_disposal(is_async, &mut |this| {
                 this.top_level_statements_after_function_declarations(
                     &program.body,
                     &mut root_statement_offsets,
+                    &mut root_statement_ranges,
                 )
             })?;
         } else {
             compiler.top_level_statements_after_function_declarations(
                 &program.body,
                 &mut root_statement_offsets,
+                &mut root_statement_ranges,
             )?;
         }
     } else {
@@ -197,13 +276,52 @@ fn compile_with_limit_and_mode(
                 "a using declaration is not allowed directly at the top level of a Script",
             ));
         }
-        compiler.top_level_function_declarations(&program.body, &mut root_statement_offsets)?;
+        compiler.top_level_function_declarations(
+            &program.body,
+            &mut root_statement_offsets,
+            &mut root_statement_ranges,
+            &mut root_function_child_indices,
+        )?;
         compiler.top_level_statements_after_function_declarations(
             &program.body,
             &mut root_statement_offsets,
+            &mut root_statement_ranges,
         )?;
     }
+    compiler.bytecode.root_declaration_binding_slots = program
+        .body
+        .iter()
+        .map(|statement| {
+            let name = match statement {
+                Stmt::VarDecl(_, declarations) => match declarations.as_slice() {
+                    [declaration] => match &declaration.pattern {
+                        Pattern::Identifier(name) => Some(name.as_str()),
+                        _ => None,
+                    },
+                    _ => None,
+                },
+                Stmt::FunctionDecl(function) => function.name.as_deref(),
+                _ => None,
+            }?;
+            let slot = *compiler
+                .names
+                .first()
+                .expect("successful top-level compilation retains its root scope")
+                .get(name)
+                .expect("a direct variable or named function declaration has a root binding");
+            (compiler
+                .bytecode
+                .bindings
+                .get(slot as usize)
+                .expect("declared binding slots index the compiler's binding table")
+                .name
+                == name)
+                .then_some(slot)
+        })
+        .collect();
     compiler.bytecode.root_statement_offsets = root_statement_offsets;
+    compiler.bytecode.root_statement_ranges = root_statement_ranges;
+    compiler.bytecode.root_function_child_indices = root_function_child_indices;
     compiler.emit(Opcode::Halt, 0)?;
     if module {
         compiler.bytecode.module_imports = module_imports
@@ -349,6 +467,29 @@ fn compile_with_limit_and_mode(
     Ok(compiler.bytecode)
 }
 
+/// The `with` object environments active where a direct eval runs.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct EvalWithScopes {
+    /// How many are active in total.
+    pub(crate) depth: usize,
+    /// The first `inherited` of them were in scope when the running function
+    /// was created, so its own bindings are nested inside them.
+    pub(crate) inherited: usize,
+}
+
+/// What a direct eval inherits from the function that calls it, other than
+/// its visible bindings.
+#[derive(Default)]
+pub(crate) struct EvalContext {
+    pub(crate) strict: bool,
+    /// Whether `new.target` is valid in the calling function.
+    pub(crate) new_target_allowed: bool,
+    /// The caller is a class field initializer (or an arrow function inside
+    /// one).
+    pub(crate) class_field_initializer: bool,
+    pub(crate) with_scopes: EvalWithScopes,
+}
+
 /// Compiles direct-eval source with cells for the caller's visible bindings.
 /// The runtime supplies `visible` from its active lexical environments and
 /// installs the matching cells before running the resulting bytecode.
@@ -357,10 +498,16 @@ pub(crate) fn compile_eval(
     visible: &[(String, Binding, u32)],
     variable_environment_names: &[String],
     lexical_conflicts: &[String],
-    strict: bool,
-    new_target_allowed: bool,
-    with_depth: usize,
+    context: EvalContext,
+    limits: CompileLimits,
 ) -> Result<Bytecode, CompileError> {
+    let EvalContext {
+        strict,
+        new_target_allowed,
+        class_field_initializer,
+        with_scopes,
+    } = context;
+    let with_depth = with_scopes.depth;
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
@@ -369,17 +516,27 @@ pub(crate) fn compile_eval(
         scopes: Vec::new(),
         loops: Vec::new(),
         catch_var_slots: Vec::new(),
-        max_bytecode_bytes: u32::MAX,
+        max_bytecode_bytes: limits.max_bytecode_bytes,
+        max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
+        max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
         local_scope: 1,
         with_depth,
         // Captured bindings form the outer lexical environment of direct
-        // eval. Any inherited `with` environments occur after it, while the
-        // eval's own declaration scope is entered below.
-        with_scope_depths: vec![1; with_depth],
+        // eval. The `with` environments the calling function entered occur
+        // after it, while the eval's own declaration scope is entered below.
+        // The first `inherited` objects were in scope when the calling
+        // function was created: its own bindings are nested inside them.
+        with_scope_depths: (0..with_depth)
+            .map(|index| usize::from(index >= with_scopes.inherited))
+            .collect(),
+        annex_b_parameter_names: BTreeSet::new(),
+        tail_call_blockers: 0,
+        tail_call_pending: false,
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
+    compiler.bytecode.class_field_initializer = class_field_initializer;
     if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
         return Err(CompileError::InvalidSyntax(
             "strict code cannot assign to eval or arguments",
@@ -394,8 +551,7 @@ pub(crate) fn compile_eval(
         })
         .collect();
     for (name, binding, caller_slot) in visible {
-        let slot = u32::try_from(compiler.bytecode.bindings.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let slot = compiler.metadata_index(compiler.bytecode.bindings.len())?;
         compiler.names[0].insert(name.clone(), slot);
         if let Some((scope, private_name)) = private_owner_binding_name(name) {
             // Direct eval inherits lexical private names just as it inherits
@@ -416,14 +572,10 @@ pub(crate) fn compile_eval(
         compiler.bytecode.bindings.push(binding.clone());
         compiler.bytecode.captures.push(*caller_slot);
     }
-    let lexical = lexical_names(&program.body)?;
-    let mut vars = top_level_var_names(&program.body)?;
+    let lexical = lexical_names(&program.body);
+    let mut vars = top_level_var_names(&program.body);
     if !compiler.bytecode.strict {
-        vars.extend(
-            annex_b_function_names(&program.body, &lexical)
-                .into_iter()
-                .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name)),
-        );
+        vars.extend(annex_b_function_names(&program.body, &lexical));
     }
     // EvalDeclarationInstantiation walks from its fresh lexical environment
     // toward the caller's VariableEnvironment. A sloppy eval `var` cannot
@@ -461,6 +613,9 @@ pub(crate) fn compile_eval(
                     .copied()
             })
             .collect();
+        for &slot in &compiler.bytecode.dynamic_eval_slots {
+            compiler.bytecode.bindings[slot as usize].eval_var = true;
+        }
     }
     if has_using_declaration(&program.body) {
         return Err(CompileError::InvalidSyntax(
@@ -496,6 +651,8 @@ struct Compiler {
     // in its block. Those declaration writes target the catch binding.
     catch_var_slots: Vec<HashMap<String, u32>>,
     max_bytecode_bytes: u32,
+    max_metadata_entries: u64,
+    max_list_items: u32,
     function: bool,
     local_scope: usize,
     with_depth: usize,
@@ -503,6 +660,18 @@ struct Compiler {
     /// environment was inserted. A binding declared after the innermost
     /// entry wins before that object environment during name resolution.
     with_scope_depths: Vec<usize>,
+    /// The enclosing function's formal parameter names (`parameterNames`).
+    /// Annex B.3.2.1 gives a block function no legacy var binding, and no
+    /// copy into one, for these names.
+    annex_b_parameter_names: BTreeSet<String>,
+    /// How many enclosing statements make a `return f()` here not a tail call
+    /// (§15.10.2): a `try` block, the block of a `catch` that has a `finally`,
+    /// and a block whose `using` declarations dispose after the return value
+    /// is computed. Their handler must observe the call's outcome.
+    tail_call_blockers: u32,
+    /// Set by a `return` in tail position just before it compiles the call
+    /// expression; the call consumes it to emit `TailCall` instead of `Call`.
+    tail_call_pending: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -513,9 +682,20 @@ struct FunctionCompileOptions {
     derived_constructor: bool,
     default_derived_constructor: bool,
     class_method: bool,
+    class_field_initializer: bool,
 }
 
 impl FunctionCompileOptions {
+    /// An object-literal MethodDefinition: like a class method its name is
+    /// only a property name, not a binding, but it is not implicitly strict.
+    fn object_method() -> Self {
+        Self {
+            constructible: false,
+            force_strict: false,
+            ..Self::class_method()
+        }
+    }
+
     fn class_method() -> Self {
         Self {
             constructible: false,
@@ -524,28 +704,53 @@ impl FunctionCompileOptions {
             derived_constructor: false,
             default_derived_constructor: false,
             class_method: true,
+            class_field_initializer: false,
+        }
+    }
+
+    /// A function that defines class fields on its receiver: a method whose
+    /// direct evals may not see an `arguments` binding.
+    fn class_field_initializer() -> Self {
+        Self {
+            class_field_initializer: true,
+            ..Self::class_method()
         }
     }
 }
 
 impl Compiler {
-    fn offset(&self) -> Result<u32, CompileError> {
-        u32::try_from(self.bytecode.code.len()).map_err(|_| CompileError::ProgramTooLarge)
+    fn list_count(&self, len: usize) -> Result<u32, CompileError> {
+        if (len as u128) > u128::from(self.max_list_items) {
+            return Err(CompileError::ProgramTooLarge);
+        }
+        // The constructor caps max_list_items below u32::MAX.
+        Ok(len as u32)
+    }
+
+    fn metadata_index(&self, len: usize) -> Result<u32, CompileError> {
+        if (len as u64) >= self.max_metadata_entries {
+            return Err(CompileError::ProgramTooLarge);
+        }
+        // The constructor caps max_metadata_entries at u32::MAX + 1.
+        Ok(len as u32)
+    }
+
+    fn offset(&self) -> u32 {
+        // Only `emit` grows the code, and it checks the u32-sized byte limit
+        // before writing an instruction. Thus every stored offset fits u32.
+        self.bytecode.code.len() as u32
     }
 
     fn emit(&mut self, opcode: Opcode, operand: u32) -> Result<usize, CompileError> {
-        let offset = self.offset()? as usize;
-        if offset
-            .checked_add(opcode.width())
-            .is_none_or(|end| end > self.max_bytecode_bytes as usize)
-        {
+        let offset = self.offset();
+        if u64::from(offset) + opcode.width() as u64 > u64::from(self.max_bytecode_bytes) {
             return Err(CompileError::ProgramTooLarge);
         }
         self.bytecode.code.push(opcode as u8);
         if opcode.width() == 5 {
             self.bytecode.code.extend_from_slice(&operand.to_le_bytes());
         }
-        Ok(offset)
+        Ok(offset as usize)
     }
 
     fn patch(&mut self, jump: usize, target: u32) {
@@ -553,8 +758,7 @@ impl Compiler {
     }
 
     fn constant(&mut self, value: Value) -> Result<(), CompileError> {
-        let index = u32::try_from(self.bytecode.constants.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let index = self.metadata_index(self.bytecode.constants.len())?;
         self.bytecode.constants.push(value);
         self.emit(Opcode::Constant, index)?;
         Ok(())
@@ -579,6 +783,7 @@ impl Compiler {
                     name.as_str(),
                     "implements"
                         | "interface"
+                        | "let"
                         | "package"
                         | "private"
                         | "protected"
@@ -594,8 +799,7 @@ impl Compiler {
             if names.contains_key(&name) || (kind != DeclKind::Var && vars.contains(&name)) {
                 return Err(CompileError::DuplicateBinding(name));
             }
-            let slot = u32::try_from(self.bytecode.bindings.len())
-                .map_err(|_| CompileError::ProgramTooLarge)?;
+            let slot = self.metadata_index(self.bytecode.bindings.len())?;
             self.bytecode.bindings.push(Binding {
                 name: name.clone(),
                 mutable: !matches!(
@@ -608,12 +812,12 @@ impl Compiler {
                 ),
                 lexical: kind != DeclKind::Var,
                 catch_parameter: false,
+                eval_var: false,
             });
             names.insert(name, slot);
             slots.push(slot);
         }
-        let scope =
-            u32::try_from(self.bytecode.scopes.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+        let scope = self.metadata_index(self.bytecode.scopes.len())?;
         self.bytecode.scopes.push(slots);
         self.names.push(names);
         self.scopes.push(scope);
@@ -660,9 +864,11 @@ impl Compiler {
             .ok_or(CompileError::InvalidSyntax(
                 "private name is not declared in an enclosing class",
             ))?;
-        self.resolve(binding).ok_or(CompileError::InvalidSyntax(
-            "private name binding is not available in this function",
-        ))
+        // Every private scope is installed together with its owner binding;
+        // child compilers and direct eval copy both into their outer scope.
+        Ok(self
+            .resolve(binding)
+            .expect("private scope has its owner binding"))
     }
 
     /// Annex B creates a var binding in the enclosing variable environment
@@ -674,27 +880,31 @@ impl Compiler {
             return None;
         }
         let name = &self.bytecode.bindings[slot as usize].name;
-        for scope in self.names[..self.names.len() - 1].iter().rev() {
-            let Some(&candidate) = scope.get(name) else {
-                continue;
-            };
-            let binding = &self.bytecode.bindings[candidate as usize];
-            if !binding.lexical {
-                return Some(candidate);
-            }
-            // Annex B.3.5 permits the function's var binding to pass through
-            // a simple catch parameter. Other lexical bindings prevent the
-            // legacy outer var from being introduced.
-            if self
-                .catch_var_slots
-                .iter()
-                .any(|slots| slots.get(name) == Some(&candidate))
-            {
-                continue;
-            }
+        if self.annex_b_parameter_names.contains(name) {
             return None;
         }
-        None
+        self.names[..self.names.len() - 1]
+            .iter()
+            .rev()
+            .filter_map(|scope| scope.get(name).copied())
+            .find_map(|candidate| {
+                let binding = &self.bytecode.bindings[candidate as usize];
+                if !binding.lexical {
+                    return Some(Some(candidate));
+                }
+                // Annex B.3.5 permits the function's var binding to pass
+                // through a simple catch parameter. A different lexical
+                // binding stops the search, even if an outer var exists.
+                if self
+                    .catch_var_slots
+                    .iter()
+                    .any(|slots| slots.get(name) == Some(&candidate))
+                {
+                    return None;
+                }
+                Some(None)
+            })
+            .flatten()
     }
 }
 
@@ -716,7 +926,8 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
         | Stmt::FunctionDecl(_)
         | Stmt::ModuleDefaultFunction { .. }
         | Stmt::ClassDecl(_)
-        | Stmt::ClassPrivateBrand(_) => false,
+        | Stmt::ClassPrivateBrand(_)
+        | Stmt::ClassExtraInitializers(_) => false,
         Stmt::Expr(expr) | Stmt::Throw(expr) => strict_assignment_in_expression(expr),
         Stmt::Block(statements) => strict_assignment_to_restricted_name(statements),
         Stmt::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
@@ -771,9 +982,9 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
                         || strict_assignment_to_restricted_name(&case.consequent)
                 })
         }
-        Stmt::Labelled { item, .. } | Stmt::ClassField(item) => {
-            strict_assignment_in_statement(item)
-        }
+        Stmt::Labelled { item, .. }
+        | Stmt::ClassField(item)
+        | Stmt::ClassDecoratedField { field: item, .. } => strict_assignment_in_statement(item),
         Stmt::Return(value) => value.as_ref().is_some_and(strict_assignment_in_expression),
         Stmt::Try {
             block,
@@ -824,7 +1035,10 @@ fn strict_assignment_in_for_head(head: &ForHead) -> bool {
 
 fn strict_assignment_in_pattern(pattern: &Pattern) -> bool {
     match pattern {
-        Pattern::Identifier(_) => false,
+        // §13.1.1: in strict code a BindingIdentifier cannot be `eval` or
+        // `arguments`, whichever declaration (`var`, `let`, `const`, a
+        // for-head declaration, a catch parameter) introduces it.
+        Pattern::Identifier(name) => restricted_name(name),
         Pattern::Array(elements) => elements.iter().flatten().any(|element| {
             strict_assignment_in_pattern(&element.pattern)
                 || element
@@ -1085,7 +1299,11 @@ fn private_owner_binding_name(binding: &str) -> Option<(u32, String)> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PrivateDeclarationKind {
     FieldOrMethod,
-    Accessor { getter: bool },
+    Accessor {
+        getter: bool,
+    },
+    /// A getter and setter for one name: nothing else may share it.
+    AccessorPair,
 }
 
 /// Collect own private names and establish the class-element duplicate early
@@ -1095,51 +1313,144 @@ enum PrivateDeclarationKind {
 fn class_private_declarations(class: &Class) -> Result<Vec<(String, bool)>, CompileError> {
     let mut declarations = Vec::new();
     let mut seen: HashMap<String, (bool, PrivateDeclarationKind)> = HashMap::new();
-    for element in &class.elements {
-        let (key, is_static, kind) = match element {
+    for (index, element) in class.elements.iter().enumerate() {
+        // Every private name a single element declares, with its kind. An
+        // auto-accessor declares its hidden storage field, plus a private
+        // getter and setter when its own name is private.
+        let mut declared = Vec::new();
+        match element {
             ClassElement::Method { key, is_static, .. } => {
-                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
+                declared.push((
+                    private_class_name(key).map(str::to_owned),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
+                ));
             }
             ClassElement::Accessor {
                 key,
                 getter,
                 is_static,
                 ..
-            } => (
-                key,
+            } => declared.push((
+                private_class_name(key).map(str::to_owned),
                 *is_static,
                 PrivateDeclarationKind::Accessor { getter: *getter },
-            ),
-            ClassElement::Field { key, is_static, .. } => {
-                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
-            }
-            ClassElement::StaticBlock(_) => continue,
-        };
-        let Some(name) = private_class_name(key) else {
-            continue;
-        };
-        let name = name.to_owned();
-        match seen.get(&name).copied() {
-            None => {
-                seen.insert(name.clone(), (is_static, kind));
-                declarations.push((name, is_static));
-            }
-            Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
-                if previous_static == is_static
-                    && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
-                {}
-            Some(_) => {
-                return Err(CompileError::InvalidSyntax(
-                    "duplicate private name in class body",
+            )),
+            ClassElement::Field {
+                key,
+                is_static,
+                accessor: true,
+                ..
+            } => {
+                declared.push((
+                    Some(auto_accessor_storage_name(index)),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
                 ));
+                for getter in [true, false] {
+                    declared.push((
+                        private_class_name(key).map(str::to_owned),
+                        *is_static,
+                        PrivateDeclarationKind::Accessor { getter },
+                    ));
+                }
+            }
+            ClassElement::Field { key, is_static, .. } => declared.push((
+                private_class_name(key).map(str::to_owned),
+                *is_static,
+                PrivateDeclarationKind::FieldOrMethod,
+            )),
+            ClassElement::StaticBlock(_) => continue,
+        }
+        for (name, is_static, kind) in declared {
+            let Some(name) = name else {
+                continue;
+            };
+            match seen.get(&name).copied() {
+                None => {
+                    seen.insert(name.clone(), (is_static, kind));
+                    declarations.push((name, is_static));
+                }
+                Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
+                    if previous_static == is_static
+                        && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
+                {
+                    seen.insert(name, (is_static, PrivateDeclarationKind::AccessorPair));
+                }
+                Some(_) => {
+                    return Err(CompileError::InvalidSyntax(
+                        "duplicate private name in class body",
+                    ));
+                }
             }
         }
     }
     Ok(declarations)
 }
 
+/// The hidden private name (spelled without `#`) of the field that stores an
+/// auto-accessor's value. U+0000 cannot appear in a source identifier, so it
+/// never collides with a declared name.
+fn auto_accessor_storage_name(index: usize) -> String {
+    format!("\0accessor_{index}")
+}
+
+/// The getter and setter of an auto-accessor: `get() { return this.#s }` and
+/// `set(value) { this.#s = value }` over its hidden storage field.
+fn auto_accessor_functions(index: usize, name: Option<&str>) -> (Function, Function) {
+    let storage = Expr::Member {
+        object: Box::new(Expr::This),
+        property: Box::new(Expr::Identifier(format!(
+            "#{}",
+            auto_accessor_storage_name(index)
+        ))),
+        computed: false,
+    };
+    let getter = Function {
+        name: name.map(|name| format!("get {name}")),
+        params: Vec::new(),
+        body: vec![Stmt::Return(Some(storage.clone()))],
+        ..Function::default()
+    };
+    let setter = Function {
+        name: name.map(|name| format!("set {name}")),
+        params: vec![Param {
+            pattern: Pattern::Identifier("value".into()),
+            default: None,
+            rest: false,
+        }],
+        body: vec![Stmt::Expr(Expr::Assign {
+            op: AssignOp::Assign,
+            target: Box::new(storage),
+            value: Box::new(Expr::Identifier("value".into())),
+        })],
+        ..Function::default()
+    };
+    (getter, setter)
+}
+
+/// The reference inside a parenthesized destructuring target: `(a)` and `(o.p)`
+/// assign like `a` and `o.p`. The parser keeps the parentheses on a target that
+/// has a default because they switch off anonymous-function naming, which
+/// [`Compiler::assignment_pattern_default`] observes on the unstripped pattern.
+fn strip_target_parentheses(target: &Expr) -> &Expr {
+    match target {
+        Expr::Parenthesized(inner) => strip_target_parentheses(inner),
+        target => target,
+    }
+}
+
+fn is_super_member(expr: &Expr) -> bool {
+    matches!(expr, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
+}
+
 fn private_member_name(expr: &Expr) -> Option<&str> {
+    private_member_parts(expr).map(|(_, name)| name)
+}
+
+fn private_member_parts(expr: &Expr) -> Option<(&Expr, &str)> {
     let Expr::Member {
+        object,
         property,
         computed: false,
         ..
@@ -1150,7 +1461,7 @@ fn private_member_name(expr: &Expr) -> Option<&str> {
     let Expr::Identifier(name) = property.as_ref() else {
         return None;
     };
-    name.strip_prefix('#')
+    name.strip_prefix('#').map(|name| (object.as_ref(), name))
 }
 
 fn undefined_expression() -> Expr {
@@ -1160,12 +1471,45 @@ fn undefined_expression() -> Expr {
     }
 }
 
-fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
+/// IsAnonymousFunctionDefinition: a function, arrow function or class
+/// expression without its own name, possibly parenthesized.
+fn is_anonymous_function_definition(expression: &Expr) -> bool {
+    match expression {
+        Expr::Parenthesized(inner) => is_anonymous_function_definition(inner),
+        Expr::Function(function) => function.name.is_none(),
+        Expr::Class(class) => class.name.is_none(),
+        Expr::Arrow { .. } => true,
+        _ => false,
+    }
+}
+
+/// The name a literal (non-computed) property key gives an anonymous
+/// function, when it is representable as UTF-8 text.
+fn literal_property_key_name(key: &PropertyKey) -> Option<String> {
+    match key {
+        PropertyKey::Identifier(name) => Some(name.clone()),
+        PropertyKey::String(name) => name.to_utf8().ok(),
+        PropertyKey::Number(number) => crate::primitive::string(&Value::Number(*number))
+            .ok()
+            .and_then(|text| text.to_utf8().ok()),
+        PropertyKey::Computed(_) => None,
+    }
+}
+
+/// Lowers one class field to `this[key] = initializer`, the shape
+/// `Compiler::class_field` turns into DefineField (or PrivateFieldAdd).
+/// For a computed key, `computed_binding` names its required hidden binding;
+/// the key was converted once when the class was defined.
+fn class_field_definition(
+    key: &PropertyKey,
+    computed_binding: &str,
+    initializer: Option<&Expr>,
+) -> Stmt {
     let (property, computed) = match key {
         PropertyKey::Identifier(name) => (Expr::Identifier(name.clone()), false),
         PropertyKey::String(name) => (Expr::String(name.clone()), true),
         PropertyKey::Number(number) => (Expr::Number(*number), true),
-        PropertyKey::Computed(expression) => ((*expression.clone()), true),
+        PropertyKey::Computed(_) => (Expr::Identifier(computed_binding.to_owned()), true),
     };
     Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
         op: AssignOp::Assign,
@@ -1178,32 +1522,8 @@ fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
     })))
 }
 
-/// The VM establishes `this` while executing `super()`. For explicit derived
-/// constructors, fields therefore follow the first direct constructor call.
-/// A direct top-level call gets the exact specified placement. When the call
-/// is nested in a closure or control-flow expression, preserve the constructor
-/// body and defer the field list to its normal completion. This keeps `this`
-/// uninitialized until the nested `super()` actually executes, rather than
-/// rejecting otherwise valid derived class syntax during compilation.
-fn derived_constructor_body(
-    mut body: Vec<Stmt>,
-    fields: Vec<Stmt>,
-) -> Result<Vec<Stmt>, CompileError> {
-    if fields.is_empty() {
-        return Ok(body);
-    }
-    if let Some(index) = body.iter().position(|statement| {
-        matches!(statement, Stmt::Expr(Expr::Call { callee, .. }) if matches!(&**callee, Expr::Super))
-    }) {
-        body.splice(index + 1..index + 1, fields);
-    } else {
-        body.extend(fields);
-    }
-    Ok(body)
-}
-
-fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
-    Ok(match op {
+fn binary_opcode(op: BinaryOp) -> Opcode {
+    match op {
         BinaryOp::Add => Opcode::Add,
         BinaryOp::Sub => Opcode::Subtract,
         BinaryOp::Mul => Opcode::Multiply,
@@ -1226,12 +1546,11 @@ fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
         BinaryOp::GtEq => Opcode::GreaterEqual,
         BinaryOp::Instanceof => Opcode::Instanceof,
         BinaryOp::In => Opcode::In,
-    })
+    }
 }
 
 fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
     match op {
-        AssignOp::Assign => None,
         AssignOp::AddAssign => Some(Opcode::Add),
         AssignOp::SubAssign => Some(Opcode::Subtract),
         AssignOp::MulAssign => Some(Opcode::Multiply),
@@ -1244,15 +1563,17 @@ fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
         AssignOp::BitAndAssign => Some(Opcode::BitAnd),
         AssignOp::BitXorAssign => Some(Opcode::BitXor),
         AssignOp::BitOrAssign => Some(Opcode::BitOr),
-        AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign => None,
+        _ => None,
     }
 }
 
-fn is_logical_assignment(op: AssignOp) -> bool {
-    matches!(
-        op,
-        AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign
-    )
+fn logical_assignment_op(op: AssignOp) -> Option<LogicalOp> {
+    match op {
+        AssignOp::LogicalAndAssign => Some(LogicalOp::And),
+        AssignOp::LogicalOrAssign => Some(LogicalOp::Or),
+        AssignOp::NullishAssign => Some(LogicalOp::Nullish),
+        _ => None,
+    }
 }
 
 fn pattern_names(pattern: &Pattern) -> Vec<String> {
@@ -1274,25 +1595,22 @@ fn pattern_names(pattern: &Pattern) -> Vec<String> {
     }
 }
 
-fn declarations_names(
-    kind: DeclKind,
-    declarations: &[VarDeclarator],
-) -> Result<Vec<(String, DeclKind)>, CompileError> {
+fn declarations_names(kind: DeclKind, declarations: &[VarDeclarator]) -> Vec<(String, DeclKind)> {
     let mut names = Vec::new();
     for declaration in declarations {
         for name in pattern_names(&declaration.pattern) {
             names.push((name, kind));
         }
     }
-    Ok(names)
+    names
 }
 
-fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+fn lexical_names(statements: &[Stmt]) -> Vec<(String, DeclKind)> {
     let mut names = Vec::new();
     for statement in statements {
         if let Stmt::VarDecl(kind, declarations) = statement {
             if *kind != DeclKind::Var {
-                names.extend(declarations_names(*kind, declarations)?);
+                names.extend(declarations_names(*kind, declarations));
             }
         }
         if let Stmt::ClassDecl(class) = statement {
@@ -1302,7 +1620,7 @@ fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, Compile
             ));
         }
     }
-    Ok(names)
+    names
 }
 
 /// Whether `statements` directly (not through a nested block/function)
@@ -1332,39 +1650,48 @@ pub(super) fn has_await_using_declaration(statements: &[Stmt]) -> bool {
         .any(|statement| matches!(statement, Stmt::VarDecl(DeclKind::AwaitUsing, _)))
 }
 
-fn block_lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
-    let mut names = lexical_names(statements)?;
+/// The lexical names of a Block. Annex B.3.2.4 lets sloppy code repeat a name
+/// that only ordinary FunctionDeclarations bind (the later declaration
+/// supplies the value); every other repeat stays a duplicate for the caller's
+/// scope to reject.
+fn block_lexical_names(statements: &[Stmt], strict: bool) -> Vec<(String, DeclKind)> {
+    let mut names = lexical_names(statements);
+    let mut repeatable = BTreeSet::new();
     for statement in statements {
         if let Stmt::FunctionDecl(function) = statement {
-            names.push((
-                function
-                    .name
-                    .clone()
-                    .expect("function declaration has a name"),
-                DeclKind::Let,
-            ));
+            let name = function
+                .name
+                .clone()
+                .expect("function declaration has a name");
+            if !strict && is_annex_b_function(function) && !repeatable.insert(name.clone()) {
+                continue;
+            }
+            names.push((name, DeclKind::Let));
         }
     }
-    Ok(names)
+    names
 }
 
-fn switch_lexical_names(cases: &[SwitchCase]) -> Result<Vec<(String, DeclKind)>, CompileError> {
-    Ok(switch_case_lexical_declarations(cases)?
+/// The lexical names of a CaseBlock. `validate_switch_case_declarations` has
+/// already rejected every duplicate except Annex B.3.2.5's sloppy repeats of
+/// ordinary function declarations, which share one binding.
+fn switch_lexical_names(cases: &[SwitchCase], strict: bool) -> Vec<(String, DeclKind)> {
+    let mut seen = BTreeSet::new();
+    switch_case_lexical_declarations(cases)
         .into_iter()
+        .filter(|(name, _, _)| strict || seen.insert(name.clone()))
         .map(|(name, kind, _)| (name, kind))
-        .collect())
+        .collect()
 }
 
-fn switch_case_lexical_declarations(
-    cases: &[SwitchCase],
-) -> Result<Vec<(String, DeclKind, bool)>, CompileError> {
+fn switch_case_lexical_declarations(cases: &[SwitchCase]) -> Vec<(String, DeclKind, bool)> {
     let mut lexical = Vec::new();
     for case in cases {
         for statement in &case.consequent {
             match statement {
                 Stmt::VarDecl(kind, declarations) if *kind != DeclKind::Var => {
                     lexical.extend(
-                        declarations_names(*kind, declarations)?
+                        declarations_names(*kind, declarations)
                             .into_iter()
                             .map(|(name, kind)| (name, kind, false)),
                     );
@@ -1383,7 +1710,7 @@ fn switch_case_lexical_declarations(
             }
         }
     }
-    Ok(lexical)
+    lexical
 }
 
 /// CaseBlock has its own static declaration rules. Function declarations are
@@ -1393,7 +1720,7 @@ fn validate_switch_case_declarations(
     cases: &[SwitchCase],
     strict: bool,
 ) -> Result<(), CompileError> {
-    let lexical = switch_case_lexical_declarations(cases)?;
+    let lexical = switch_case_lexical_declarations(cases);
 
     for (index, (name, _, annex_b_function)) in lexical.iter().enumerate() {
         for (other, _, other_annex_b_function) in &lexical[..index] {
@@ -1405,7 +1732,7 @@ fn validate_switch_case_declarations(
         }
     }
 
-    let vars = switch_var_names(cases)?;
+    let vars = switch_var_names(cases);
     if lexical.iter().any(|(name, _, _)| vars.contains(name)) {
         return Err(CompileError::InvalidSyntax(
             "a switch lexical declaration conflicts with a var declaration",
@@ -1461,16 +1788,16 @@ fn catch_lexical_names(statements: &[Stmt]) -> Vec<String> {
     names
 }
 
-fn top_level_var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
-    let mut names = var_names(statements)?;
+fn top_level_var_names(statements: &[Stmt]) -> BTreeSet<String> {
+    let mut names = var_names(statements);
     names.extend(statements.iter().filter_map(|statement| match statement {
         Stmt::FunctionDecl(function) => function.name.clone(),
         _ => None,
     }));
-    Ok(names)
+    names
 }
 
-fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
+fn var_names(statements: &[Stmt]) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     let mut pending: Vec<_> = statements.iter().collect();
     while let Some(statement) = pending.pop() {
@@ -1494,16 +1821,7 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
             Stmt::While { body, .. } | Stmt::DoWhile { body, .. } | Stmt::With { body, .. } => {
                 pending.push(body)
             }
-            // Annex B.3.2 (labelled function declarations): the function's
-            // name is a var binding of the enclosing function or script.
-            Stmt::Labelled { item, .. } => {
-                if let Stmt::FunctionDecl(function) = &**item {
-                    if !function.generator && !function.is_async {
-                        names.extend(function.name.iter().cloned());
-                    }
-                }
-                pending.push(item)
-            }
+            Stmt::Labelled { item, .. } => pending.push(item),
             Stmt::For { init, body, .. } => {
                 if let Some(ForInit::VarDecl(DeclKind::Var, declarations)) = init {
                     for declaration in declarations {
@@ -1539,10 +1857,10 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
             _ => {}
         }
     }
-    Ok(names)
+    names
 }
 
-fn switch_var_names(cases: &[SwitchCase]) -> Result<BTreeSet<String>, CompileError> {
+fn switch_var_names(cases: &[SwitchCase]) -> BTreeSet<String> {
     var_names(
         &cases
             .iter()
@@ -1593,14 +1911,7 @@ fn collect_annex_b_function_names(
     for statement in statements {
         match statement {
             Stmt::Block(body) => {
-                for statement in body {
-                    if let Stmt::FunctionDecl(function) = statement {
-                        insert_annex_b_function_name(function, blocked, names);
-                    }
-                }
-                let mut nested_blocked = blocked.clone();
-                extend_block_lexical_names(&mut nested_blocked, body);
-                collect_annex_b_function_names(body, &nested_blocked, names);
+                collect_annex_b_block_function_names(body, blocked, names);
             }
             Stmt::Switch { cases, .. } => {
                 for case in cases {
@@ -1685,7 +1996,7 @@ fn collect_annex_b_function_names(
                 handler,
                 finalizer,
             } => {
-                collect_annex_b_function_names(block, blocked, names);
+                collect_annex_b_block_function_names(block, blocked, names);
                 if let Some(handler) = handler {
                     let mut nested_blocked = blocked.clone();
                     // Annex B.3.5 makes a simple catch identifier a special
@@ -1696,15 +2007,30 @@ fn collect_annex_b_function_names(
                             nested_blocked.extend(pattern_names(parameter));
                         }
                     }
-                    collect_annex_b_function_names(&handler.body, &nested_blocked, names);
+                    collect_annex_b_block_function_names(&handler.body, &nested_blocked, names);
                 }
                 if let Some(finalizer) = finalizer {
-                    collect_annex_b_function_names(finalizer, blocked, names);
+                    collect_annex_b_block_function_names(finalizer, blocked, names);
                 }
             }
             _ => {}
         }
     }
+}
+
+fn collect_annex_b_block_function_names(
+    statements: &[Stmt],
+    blocked: &BTreeSet<String>,
+    names: &mut BTreeSet<String>,
+) {
+    for statement in statements {
+        if let Stmt::FunctionDecl(function) = statement {
+            insert_annex_b_function_name(function, blocked, names);
+        }
+    }
+    let mut nested_blocked = blocked.clone();
+    extend_block_lexical_names(&mut nested_blocked, statements);
+    collect_annex_b_function_names(statements, &nested_blocked, names);
 }
 
 /// An OptionalChain includes every unparenthesized member access and call
@@ -1755,5 +2081,24 @@ mod tests {
             )))),
             None
         );
+    }
+
+    #[test]
+    fn private_owner_binding_names_decode_both_kinds_and_reject_bad_input() {
+        assert_eq!(
+            private_owner_binding_name("\0bluejs_private_owner_12_static_name"),
+            Some((12, "name".to_owned()))
+        );
+        assert_eq!(
+            private_owner_binding_name("\0bluejs_private_owner_13_instance_name_with_underscores"),
+            Some((13, "name_with_underscores".to_owned()))
+        );
+        for name in [
+            "ordinary",
+            "\0bluejs_private_owner_12_other_name",
+            "\0bluejs_private_owner_invalid_static_name",
+        ] {
+            assert_eq!(private_owner_binding_name(name), None, "{name:?}");
+        }
     }
 }

@@ -160,3 +160,33 @@ fn the_of_keyword_cannot_be_escaped_and_a_for_of_head_cannot_start_with_async_of
     // An escaped `async` is an ordinary identifier, so the lookahead does not apply.
     assert!(parse("for (\\u0061sync of []) ;").is_ok());
 }
+
+#[test]
+fn in_is_allowed_again_inside_nested_constructs_of_a_for_head() {
+    // ForStatement's init is [~In] only at its own top level; brackets,
+    // parentheses, argument lists, object and function bodies reset it.
+    for source in [
+        "var b={a:1}; for (var x = (\"a\" in b); false;); 1",
+        "var b={a:1}; for (var x = [\"a\" in b]; false;); 1",
+        "var b={a:1}; function f(){} for (var x = f(\"a\" in b); false;); 1",
+        "var b={a:1}; for (var x = {k: \"a\" in b}; false;); 1",
+        "var b={a:1}; for (var x = {[\"a\" in b]: 1}; false;); 1",
+        "var b={a:1}; for (var x = {get [\"a\" in b]() { return 1; }}; false;); 1",
+        "var b={a:1}; for (var x = {m() { return \"a\" in b; }}; false;); 1",
+        "var b={a:1}; for (var x = function() { return \"a\" in b; }; false;); 1",
+        "var b={a:1}; for (var x = () => { return \"a\" in b; }; false;); 1",
+        "var b={a:1}; for (var x = b[\"a\" in b]; false;); 1",
+        "var b={a:1}; for (var x = class { [\"a\" in b]() {} }; false;); 1",
+        "var b={a:1}; for (var x = `${\"a\" in b}`; false;); 1",
+    ] {
+        assert!(!is_rejected(source), "{source}");
+    }
+    assert_eq!(
+        evaluate("var empty = Object.create(null); var obj, value; for (obj = { get ['x' in empty]() { return 'via get'; } }; ; ) { value = obj.false; break; } value"),
+        Value::String("via get".into())
+    );
+    // At the top level of the init `in` still ends the head.
+    assert!(
+        is_rejected("for (var x = 'a' in {}; ; ) ;") || !is_rejected("for (var x = 'a' in {}) ;")
+    );
+}

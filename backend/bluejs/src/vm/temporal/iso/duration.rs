@@ -61,7 +61,7 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
             .peek()
             .is_some_and(|character| character.is_ascii_digit())
         {
-            number.push(characters.next()?);
+            number.push(characters.next().expect("peeked ASCII digit"));
         }
         if number.is_empty() {
             return None;
@@ -74,7 +74,7 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
                 .peek()
                 .is_some_and(|character| character.is_ascii_digit())
             {
-                digits.push(characters.next()?);
+                digits.push(characters.next().expect("peeked ASCII digit"));
             }
             if digits.is_empty() || digits.len() > 9 {
                 return None;
@@ -108,7 +108,9 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
                 _ => return None,
             };
             let scale = 10_i128.pow(digits.len() as u32);
-            let mut remaining = digits.parse::<i128>().ok()? * unit_nanoseconds / scale;
+            let mut remaining = digits.parse::<i128>().expect("at most nine ASCII digits")
+                * unit_nanoseconds
+                / scale;
             for (slot, unit) in [
                 (5_usize, 60_000_000_000_i128),
                 (6, 1_000_000_000),
@@ -139,4 +141,18 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
         sign * values[9],
     )
     .ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_duration_record;
+
+    #[test]
+    fn a_component_requires_a_designator_and_bounded_numeric_fields() {
+        assert!(parse_duration_record("P1").is_none());
+        assert!(parse_duration_record("P9999999999999999999999999999999999999999Y").is_none());
+        assert!(parse_duration_record("P1.5Y").is_none());
+        assert!(parse_duration_record("PT1.123456789S").is_some());
+        assert!(parse_duration_record("PT1.1234567890S").is_none());
+    }
 }

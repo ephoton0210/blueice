@@ -41,7 +41,7 @@ pub(crate) fn calendar_add_date(
     let cal_date = calendar_date_from_civil(calendar, date);
     let start_year = cal_date.year().extended_year();
     let start_month = i64::from(cal_date.month().ordinal);
-    let start_day = i64::from(cal_date.day_of_month().0);
+    let start_day = cal_date.day_of_month().0;
 
     let mut year = i64::from(start_year) + years;
     let mut month = start_month + months;
@@ -67,14 +67,14 @@ pub(crate) fn calendar_add_date(
         }
     }
     let year = i32::try_from(year).ok()?;
-    let month = u8::try_from(month).ok()?;
+    let month = u8::try_from(month).expect("the month was carried into 1..=months_in_year");
 
     let mut fields = DateFields::default();
     fields.extended_year = Some(year);
     fields.ordinal_month = Some(month);
     let mut options = DateFromFieldsOptions::default();
     if reject {
-        fields.day = Some(u8::try_from(start_day).ok()?);
+        fields.day = Some(start_day);
         options.overflow = Some(IcuOverflow::Reject);
     } else {
         // Constrain the day to the landing month ourselves via a
@@ -83,7 +83,7 @@ pub(crate) fn calendar_add_date(
         // out-of-range day, so this is simply always constrain-mode here,
         // with `reject` distinguishing whether an out-of-range day is an
         // error at all.
-        fields.day = Some(u8::try_from(start_day.min(31)).ok()?);
+        fields.day = Some(start_day);
         options.overflow = Some(IcuOverflow::Constrain);
     }
     let landed = Date::try_from_fields(fields, options, AnyCalendar::new(calendar)).ok()?;
@@ -150,13 +150,16 @@ pub(super) fn add_year_month_duration_leap_month(
                 }
                 remaining += ordinal;
                 year -= 1;
-                let months_in_year =
-                    i64::from(months_in_year_for(calendar, i32::try_from(year).ok()?)?);
-                first_day_of_month = calendar_date_from_ordinal(calendar, year, months_in_year, 1)?;
+                // A year outside `i32` is outside every calendar's range too.
+                let year32 = i32::try_from(year).unwrap_or(i32::MIN);
+                let months_in_year = i64::from(months_in_year_for(calendar, year32)?);
+                first_day_of_month = calendar_date_from_ordinal(calendar, year, months_in_year, 1)
+                    .expect("a year with a month count has a last month");
             }
         }
         let final_ordinal = i64::from(first_day_of_month.month().ordinal) + remaining;
-        let final_day = calendar_date_from_ordinal(calendar, year, final_ordinal, 1)?;
+        let final_day = calendar_date_from_ordinal(calendar, year, final_ordinal, 1)
+            .expect("the normalized ordinal exists in the supported calendar year");
         month = final_day.month().to_input();
     }
     Some((year, month))
@@ -214,4 +217,82 @@ fn calendar_add_date_leap_month(
         landed_civil.1,
         i64::from(landed_civil.2) + days + weeks * 7,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Far enough from 2000 that neither the `i32` year nor any calendar's
+    /// supported range (about a million years either way) can hold it.
+    const HUGE: i64 = 1 << 40;
+    const JUNE_2000: CivilDate = (2000, 6, 15);
+
+    #[test]
+    fn fixed_month_calendars_have_no_result_beyond_their_supported_years() {
+        let add = |years, months| {
+            calendar_add_date(
+                AnyCalendarKind::Coptic,
+                JUNE_2000,
+                years,
+                months,
+                0,
+                0,
+                false,
+            )
+        };
+        // A year that does not fit `i32`, going forwards and backwards.
+        assert_eq!(add(HUGE, 0), None);
+        assert_eq!(add(-HUGE, -13), None);
+        // The same when the months carry never has to look at the year.
+        assert_eq!(add(HUGE, -1), None);
+        // A year that fits `i32` but that the calendar cannot represent.
+        assert_eq!(add(1_000_000, 0), None);
+        assert_eq!(add(-2_000_000, -13), None);
+        // And adding nothing lands on the same date.
+        assert_eq!(add(0, 0), Some(JUNE_2000));
+    }
+
+    #[test]
+    fn leap_month_walks_stop_at_the_edge_of_the_supported_years() {
+        let chinese = AnyCalendarKind::Chinese;
+        let overflow = IcuOverflow::Constrain;
+        // Walking forwards out of the last supported year.
+        assert_eq!(
+            add_year_month_duration_leap_month(chinese, 999_998, Month::new(1), 0, 40, overflow),
+            None
+        );
+        // Walking backwards out of the first supported year.
+        assert_eq!(
+            add_year_month_duration_leap_month(chinese, -999_998, Month::new(1), 0, -40, overflow),
+            None
+        );
+        // A starting year that is itself unsupported, or beyond `i32`.
+        assert_eq!(
+            add_year_month_duration_leap_month(chinese, 0, Month::new(1), HUGE, 1, overflow),
+            None
+        );
+        // No months to carry, or few enough to stay within the anchor's year.
+        assert_eq!(
+            add_year_month_duration_leap_month(chinese, 2000, Month::new(2), 1, 0, overflow),
+            Some((2001, Month::new(2)))
+        );
+        assert_eq!(
+            add_year_month_duration_leap_month(chinese, 2000, Month::new(2), 0, 1, overflow),
+            Some((2000, Month::new(3)))
+        );
+        assert_eq!(
+            add_year_month_duration_leap_month(chinese, 2000, Month::new(5), 0, -1, overflow),
+            Some((2000, Month::new(4)))
+        );
+        // Inside the range the month count of each crossed year is honored.
+        assert!(
+            add_year_month_duration_leap_month(chinese, 2000, Month::new(1), 0, 40, overflow)
+                .is_some()
+        );
+        assert!(
+            add_year_month_duration_leap_month(chinese, 2000, Month::new(1), 0, -40, overflow)
+                .is_some()
+        );
+    }
 }

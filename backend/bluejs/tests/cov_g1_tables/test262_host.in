@@ -1,0 +1,494 @@
+// Expected results shared by the integration test of the same name and the
+// in-crate `vm::functions::reference_tables` test.
+const CASES: &[(&str, &str)] = &[
+    (r#"$262.IsHTMLDDA('x')"#, r#"undefined"#),
+    (r#"$262.IsHTMLDDA()"#, r#"null"#),
+    (r#"$262.IsHTMLDDA('')"#, r#"null"#),
+    (
+        r#"$262.detachArrayBuffer({})"#,
+        r#"throws TypeError: BlueJS object lacks the required internal slot:"#,
+    ),
+    (
+        r#"$262.detachArrayBuffer(5)"#,
+        r#"throws TypeError: detachArrayBuffer requires an ArrayBuffer"#,
+    ),
+    (
+        r#"$262.detachArrayBuffer(new ArrayBuffer(4).transferToImmutable())"#,
+        r#"throws TypeError: ArrayBuffer is immutable"#,
+    ),
+    (
+        r#"(function () { var ab = new ArrayBuffer(8); $262.detachArrayBuffer(ab); $262.detachArrayBuffer(ab); return ab.detached })()"#,
+        r#"true"#,
+    ),
+    (
+        r#"setTimeout(5, 0)"#,
+        r#"throws TypeError: setTimeout callback must be callable"#,
+    ),
+    (
+        r#"setTimeout({}, 0)"#,
+        r#"throws TypeError: setTimeout callback must be callable"#,
+    ),
+    (
+        r#"setTimeout(function () {}, { valueOf() { throw new EvalError('v') } })"#,
+        r#"throws EvalError: v"#,
+    ),
+    (r#"setTimeout(function () {}, -1)"#, r#"0"#),
+    (r#"setTimeout(function () {}, Infinity)"#, r#"0"#),
+    (r#"setTimeout(function () {}, 1)"#, r#"0"#),
+    (
+        r#"buildString({ loneCodePoints: [0xd800], ranges: [[0x41, 0x43]] }).length"#,
+        r#"4"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [], ranges: [[1]] })"#,
+        r#"throws TypeError: buildString ranges require a start and end"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [], ranges: [[5, 1]] })"#,
+        r#"throws RangeError: buildString range start exceeds end"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [-1], ranges: [] })"#,
+        r#"throws RangeError: invalid code point for String.fromCodePoint"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [1.5], ranges: [] })"#,
+        r#"throws RangeError: invalid code point for String.fromCodePoint"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [NaN], ranges: [] })"#,
+        r#"throws RangeError: invalid code point for String.fromCodePoint"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [0x110000], ranges: [] })"#,
+        r#"throws RangeError: invalid code point for String.fromCodePoint"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [{ valueOf() { throw new EvalError('v') } }], ranges: [] })"#,
+        r#"throws EvalError: v"#,
+    ),
+    (
+        r#"buildString({ get loneCodePoints() { throw new EvalError('g') }, ranges: [] })"#,
+        r#"throws EvalError: g"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [], get ranges() { throw new EvalError('g') } })"#,
+        r#"throws EvalError: g"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: 5, ranges: [] })"#,
+        r#"throws TypeError: argument list must be an object"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [], ranges: 5 })"#,
+        r#"throws TypeError: argument list must be an object"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [], ranges: [5] })"#,
+        r#"throws TypeError: argument list must be an object"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [], ranges: [[{ valueOf() { throw new EvalError('s') } }, 1]] })"#,
+        r#"throws EvalError: s"#,
+    ),
+    (
+        r#"buildString({ loneCodePoints: [], ranges: [[1, { valueOf() { throw new EvalError('e') } }]] })"#,
+        r#"throws EvalError: e"#,
+    ),
+    (r#"testPropertyEscapes(/a/u, 'a')"#, r#"undefined"#),
+    (
+        r#"testPropertyEscapes(/a/u, 'b')"#,
+        r#"throws Test262Error: testPropertyEscapes failed"#,
+    ),
+    (
+        r#"testPropertyEscapes({ test: 5 }, 'a')"#,
+        r#"throws TypeError: value is not callable"#,
+    ),
+    (
+        r#"testPropertyEscapes({ get test() { throw new EvalError('t') } }, 'a')"#,
+        r#"throws EvalError: t"#,
+    ),
+    (
+        r#"testPropertyEscapes({ test() { throw new EvalError('c') } }, 'a')"#,
+        r#"throws EvalError: c"#,
+    ),
+    (
+        r#"testPropertyEscapes(5, 'a')"#,
+        r#"throws TypeError: value is not callable"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /^a$/, matchStrings: ['a'], nonMatchStrings: ['b'] })"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /^a$/, matchStrings: ['a'] })"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /^(a|b)$/, matchStrings: ['a', 'b'] })"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /^a$/, matchStrings: ['a', 'b'] })"#,
+        r#"throws Test262Error: testPropertyOfStrings failed"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /^a$/, matchStrings: ['b'] })"#,
+        r#"throws Test262Error: testPropertyOfStrings failed"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /^a$/, matchStrings: ['a'], nonMatchStrings: ['a'] })"#,
+        r#"throws Test262Error: testPropertyOfStrings failed"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /^(a|b)$/, matchStrings: ['a'], nonMatchStrings: ['a', 'c'] })"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ get regExp() { throw new EvalError('r') }, matchStrings: [] })"#,
+        r#"throws EvalError: r"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /a/, get matchStrings() { throw new EvalError('m') } })"#,
+        r#"throws EvalError: m"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /a/, matchStrings: [], get nonMatchStrings() { throw new EvalError('n') } })"#,
+        r#"throws EvalError: n"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /a/, matchStrings: 5 })"#,
+        r#"throws TypeError: argument list must be an object"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /a/, matchStrings: [Symbol()] })"#,
+        r#"throws TypeError: String conversion requires a non-Symbol primitive"#,
+    ),
+    (
+        r#"testExtendedCharacterClass({ regExp: /^a$/, matchStrings: ['a'] })"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"__bluejsTest262RegExpClassEscape([/a/], 'a', true)"#,
+        r#"true"#,
+    ),
+    (
+        r#"__bluejsTest262RegExpClassEscape([/a/], 'b', true)"#,
+        r#"throws Test262Error: __bluejsTest262RegExpClassEscape failed"#,
+    ),
+    (
+        r#"__bluejsTest262RegExpClassEscape([/a/], 'a', 1)"#,
+        r#"throws TypeError: RegExp class escape expected result must be a Boolean"#,
+    ),
+    (
+        r#"__bluejsTest262RegExpClassEscape([], 'a', true)"#,
+        r#"throws TypeError: RegExp class escape fixture requires a RegExp"#,
+    ),
+    (
+        r#"__bluejsTest262RegExpClassEscape(5, 'a', true)"#,
+        r#"throws TypeError: argument list must be an object"#,
+    ),
+    (r#"__bluejsTest262RegExpBmpLiteral(0)"#, r#"true"#),
+    (r#"__bluejsTest262RegExpBmpLiteral(1)"#, r#"true"#),
+    (r#"__bluejsTest262RegExpBmpLiteral(2)"#, r#"true"#),
+    (r#"__bluejsTest262RegExpBmpLiteral(3)"#, r#"true"#),
+    (
+        r#"__bluejsTest262RegExpBmpLiteral(4)"#,
+        r#"throws RangeError: unknown RegExp BMP fixture variant"#,
+    ),
+    (
+        r#"__bluejsTest262RegExpBmpLiteral('x')"#,
+        r#"throws TypeError: RegExp BMP fixture variant must be numeric"#,
+    ),
+    (
+        r#"__bluejsTest262RegExpBmpLiteral(1.5)"#,
+        r#"throws TypeError: RegExp BMP fixture variant must be numeric"#,
+    ),
+    (r#"__bluejsTest262RegExpNonWhitespaceBmp()"#, r#"true"#),
+    (
+        r#"__bluejsTest262TypedArrayOverlappingSet(new Uint8Array(4), new Uint8Array(2))"#,
+        r#"true"#,
+    ),
+    (
+        r#"__bluejsTest262TypedArrayOverlappingSet(new Uint8Array(4), [1])"#,
+        r#"throws Test262Error: __bluejsTest262TypedArrayOverlappingSet failed"#,
+    ),
+    (
+        r#"__bluejsTest262TypedArrayOverlappingSet(5, [1])"#,
+        r#"throws TypeError: TypedArray overlap fixture requires a TypedArray target"#,
+    ),
+    (
+        r#"__bluejsTest262TypedArrayOverlappingSet({}, [1])"#,
+        r#"throws TypeError: value is not callable"#,
+    ),
+    (
+        r#"__bluejsTest262DecodeUriExhaustive(decodeURIComponent, 3)"#,
+        r#"true"#,
+    ),
+    (
+        r#"__bluejsTest262DecodeUriExhaustive(decodeURIComponent, 5)"#,
+        r#"throws TypeError: URI exhaustive fixture width must be 3 or 4"#,
+    ),
+    (
+        r#"__bluejsTest262DecodeUriExhaustive(5, 3)"#,
+        r#"throws TypeError: URI exhaustive fixture decoder must be callable"#,
+    ),
+    (
+        r#"__bluejsTest262DecodeUriExhaustive(function () { return 'x' }, 3)"#,
+        r#"throws Test262Error: __bluejsTest262DecodeUriExhaustive failed"#,
+    ),
+    (
+        r#"__bluejsTest262DecodeUriExhaustive(function () { throw new EvalError('d') }, 3)"#,
+        r#"throws EvalError: d"#,
+    ),
+    (
+        r#"__bluejsTest262EncodeUriExhaustive(encodeURIComponent, 0x800, 0x8ff)"#,
+        r#"true"#,
+    ),
+    (
+        r#"__bluejsTest262EncodeUriExhaustive(encodeURIComponent, 0x900, 0x800)"#,
+        r#"throws TypeError: URI exhaustive fixture requires an ordered range and callable encoder"#,
+    ),
+    (
+        r#"__bluejsTest262EncodeUriExhaustive(encodeURIComponent, 'a', 5)"#,
+        r#"throws TypeError: URI exhaustive fixture bounds must be BMP code points"#,
+    ),
+    (
+        r#"__bluejsTest262EncodeUriExhaustive(encodeURIComponent, 0, 0x10000)"#,
+        r#"throws TypeError: URI exhaustive fixture bounds must be BMP code points"#,
+    ),
+    (
+        r#"__bluejsTest262EncodeUriExhaustive(encodeURIComponent, 0, -1)"#,
+        r#"throws TypeError: URI exhaustive fixture bounds must be BMP code points"#,
+    ),
+    (
+        r#"__bluejsTest262EncodeUriExhaustive(5, 0x800, 0x801)"#,
+        r#"throws TypeError: URI exhaustive fixture requires an ordered range and callable encoder"#,
+    ),
+    (
+        r#"__bluejsTest262EncodeUriExhaustive(function () { return 'x' }, 0x800, 0x801)"#,
+        r#"throws Test262Error: __bluejsTest262EncodeUriExhaustive failed"#,
+    ),
+    (
+        r#"__bluejsTest262EncodeUriExhaustive(function () { throw new EvalError('e') }, 0x800, 0x801)"#,
+        r#"throws EvalError: e"#,
+    ),
+    (
+        r#"assert.deepEqual([{ a: [1, 2] }], [{ a: [1, 2] }])"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"assert.deepEqual([1], [2])"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"assert.deepEqual([1], {})"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"assert.deepEqual({}, [1])"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"assert.deepEqual([1], [1, 2])"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"assert.deepEqual({ a: 1 }, { b: 1 })"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"assert.deepEqual({ a: 1 }, { a: 1, b: 2 })"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (r#"assert.deepEqual(NaN, NaN)"#, r#"undefined"#),
+    (
+        r#"assert.deepEqual(1, 2)"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"assert.deepEqual({ a: 1 }, { a: 2 })"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"(function () { var a = {}; a.self = a; var b = {}; b.self = b; return assert.deepEqual(a, b) })()"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"(function () { var p = Proxy.revocable([], {}); p.revoke(); return assert.deepEqual(p.proxy, []) })()"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"(function () { var p = Proxy.revocable({}, {}); p.revoke(); return assert.deepEqual(p.proxy, {}) })()"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"(function () { var p = Proxy.revocable({}, {}); p.revoke(); return assert.deepEqual({}, p.proxy) })()"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"(function () { var p = Proxy.revocable([], {}); p.revoke(); return assert.deepEqual([], p.proxy) })()"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"assert.deepEqual([1, [2, [3]]], [1, [2, [3]]])"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"assert.deepEqual(new Proxy([1], {}), [1])"#,
+        r#"throws Test262Error: deepEqual failed"#,
+    ),
+    (
+        r#"assert.deepEqual({ get a() { return 1 } }, { get a() { return 1 } })"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], {}, { '1': '1', '1.500': '1.5', '1.625': '1.625', '1.750': '1.75', '1.875': '1.875', '2.000': '2' })"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], {}, { '1': '2', '1.500': '1.5', '1.625': '1.625', '1.750': '1.75', '1.875': '1.875', '2.000': '2' })"#,
+        r#"throws Test262Error: __bluejsTest262NumberFormatPrecisionMatrix output failed"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['bogus'], {}, {})"#,
+        r#"throws Test262Error: __bluejsTest262NumberFormatPrecisionMatrix digit map failed"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['\uD800'], {}, {})"#,
+        r#"throws Test262Error: __bluejsTest262NumberFormatPrecisionMatrix numbering system failed"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['\uD800'], ['latn'], {}, {})"#,
+        r#"throws Test262Error: __bluejsTest262NumberFormatPrecisionMatrix locale failed"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['zz'], ['latn'], {}, {})"#,
+        r#"throws Test262Error: __bluejsTest262NumberFormatPrecisionMatrix output failed"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], { minimumFractionDigits: 100 }, {})"#,
+        r#"throws Test262Error: __bluejsTest262NumberFormatPrecisionMatrix output failed"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], {}, { get '1'() { throw new EvalError('t') } })"#,
+        r#"throws EvalError: t"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], {}, { '1': '\uD800' })"#,
+        r#"throws Test262Error: __bluejsTest262NumberFormatPrecisionMatrix expected value failed"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix({ get length() { throw new EvalError('l') } }, ['latn'], {}, {})"#,
+        r#"throws EvalError: l"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], { get length() { throw new EvalError('l') } }, {}, {})"#,
+        r#"throws EvalError: l"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix({ length: 1, get 0() { throw new EvalError('l0') } }, ['latn'], {}, {})"#,
+        r#"throws EvalError: l0"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], { length: 1, get 0() { throw new EvalError('n0') } }, {}, {})"#,
+        r#"throws EvalError: n0"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], { style: 'currency' }, {})"#,
+        r#"throws TypeError: currency is required when style is currency"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['arab', 'thai', 'hanidec'], {}, { '1': '1', '1.500': '1.5', '1.625': '1.625', '1.750': '1.75', '1.875': '1.875', '2.000': '2' })"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['xx-XX'], ['thai'], {}, { '1': '1', '1.500': '1.5', '1.625': '1.625', '1.750': '1.75', '1.875': '1.875', '2.000': '2' })"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], {}, { '1': '-1', '1.500': '-1.5', '1.625': '-1.625', '1.750': '-1.75', '1.875': '-1.875', '2.000': '-2' })"#,
+        r#"throws Test262Error: __bluejsTest262NumberFormatPrecisionMatrix output failed"#,
+    ),
+    (
+        r#"$262.evalScript('1 +')"#,
+        r#"throws SyntaxError: expected an expression (found Eof)"#,
+    ),
+    (
+        r#"$262.evalScript(5)"#,
+        r#"throws TypeError: $262.evalScript requires a source string"#,
+    ),
+    (r#"$262.evalScript('let a = 1; a')"#, r#"1"#),
+    (r#"$262.evalScript('\'\\uD800\'').length"#, r#"1"#),
+    (r#"$262.gc()"#, r#"undefined"#),
+    (r#"print('x')"#, r#"undefined"#),
+    (r#"$262.createRealm().global.eval('1')"#, r#"1"#),
+    (
+        r#"new Date($262.createRealm().global.eval('new Date(7)')).getTime()"#,
+        r#"7"#,
+    ),
+    (
+        r#"new Date($262.createRealm().global.eval('({ toString() { return "2020" } })')).getTime()"#,
+        r#"1577836800000"#,
+    ),
+    (
+        r#"$262.detachArrayBuffer($262.createRealm().global.eval('new ArrayBuffer(8)'))"#,
+        r#"undefined"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], { maximumFractionDigits: 0 }, {})"#,
+        r#"throws Test262Error: __bluejsTest262NumberFormatPrecisionMatrix pattern failed"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], {}, { '1': { toString() { throw new EvalError('x') } } })"#,
+        r#"throws EvalError: x"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix({ length: { valueOf() { throw new EvalError('lv') } } }, ['latn'], {}, {})"#,
+        r#"throws EvalError: lv"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], { length: { valueOf() { throw new EvalError('nv') } } }, {}, {})"#,
+        r#"throws EvalError: nv"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix([{ toString() { throw new EvalError('ls') } }], ['latn'], {}, {})"#,
+        r#"throws EvalError: ls"#,
+    ),
+    (
+        r#"__bluejsTest262NumberFormatPrecisionMatrix(['en'], [{ toString() { throw new EvalError('ns') } }], {}, {})"#,
+        r#"throws EvalError: ns"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: { get test() { throw new EvalError('t') } }, matchStrings: ['a'] })"#,
+        r#"throws EvalError: t"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: /a/, matchStrings: ['a'], nonMatchStrings: [Symbol()] })"#,
+        r#"throws TypeError: String conversion requires a non-Symbol primitive"#,
+    ),
+    (
+        r#"testPropertyOfStrings({ regExp: { test(s) { if (s.length === 1) throw new EvalError('one'); return true } }, matchStrings: ['ab'], nonMatchStrings: ['b', 'c'] })"#,
+        r#"throws EvalError: one"#,
+    ),
+    (
+        r#"__bluejsTest262TypedArrayOverlappingSet({ set() {} }, [1])"#,
+        r#"throws TypeError: BlueJS object lacks the required internal slot:"#,
+    ),
+    (
+        r#"__bluejsTest262TypedArrayOverlappingSet(Object.defineProperty(new Uint8Array(2), 'set', { get() { throw new EvalError('set') } }), [1])"#,
+        r#"throws EvalError: set"#,
+    ),
+    (
+        r#"__bluejsTest262TypedArrayOverlappingSet(Object.defineProperty(new Uint8Array(2), 'set', { value() { $262.detachArrayBuffer(this.buffer) } }), [1])"#,
+        r#"true"#,
+    ),
+    (
+        r#"$262.evalScript('"use strict"; delete x')"#,
+        r#"throws SyntaxError: cannot delete a binding in strict mode"#,
+    ),
+    (
+        r#"testPropertyEscapes({ test() { return { valueOf() { throw new EvalError('bool') } } } }, 'a')"#,
+        r#"undefined"#,
+    ),
+];

@@ -7,6 +7,10 @@
 
 use super::super::*;
 
+#[cfg(test)]
+#[path = "../../../../tests/fixtures/temporal_date_construction.rs"]
+mod tests;
+
 impl Vm {
     // ---- Stage 2: Temporal.PlainDate / Temporal.PlainDateTime -----------
 
@@ -57,34 +61,19 @@ impl Vm {
         }
     }
 
-    /// Brand check shared by every `Temporal.PlainDate`/`PlainDateTime`
-    /// prototype method (both kinds share one adapter layer, dispatched at
-    /// runtime on the receiver's own `TemporalKind`, the same pattern
-    /// `temporal_with_calendar`/`temporal_plain_to_zoned_date_time` already
-    /// use).
+    /// Read the Temporal date slots after native dispatch has checked the
+    /// receiver's brand, before any method arguments are examined.
     pub(in super::super::super) fn temporal_date_receiver(
         &mut self,
         receiver: &Value,
-    ) -> Result<TemporalValue, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainDate/PlainDateTime method requires a matching receiver".into(),
-            )
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainDate/PlainDateTime method requires a matching receiver".into(),
-            )
-        })?;
-        if !matches!(
-            value.kind,
-            TemporalKind::PlainDate | TemporalKind::PlainDateTime
-        ) {
-            return Err(RuntimeError::TypeError(
-                "Temporal.PlainDate/PlainDateTime method requires a matching receiver".into(),
-            ));
-        }
-        Ok(value)
+    ) -> TemporalValue {
+        let object = receiver
+            .object_id()
+            .expect("native dispatch validated the Temporal date receiver");
+        self.heap
+            .temporal_value(object)
+            .expect("native dispatch retained a live Temporal date")
+            .expect("native dispatch validated the Temporal date brand")
     }
 
     /// The representable-range check `CreateTemporalDate`,
@@ -186,13 +175,12 @@ impl Vm {
                 OverflowInput::Options(options),
             );
         }
-        if !matches!(value, Value::String(_)) {
+        let Value::String(source) = value else {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainDate-like value must be an object or a string".into(),
             ));
-        }
-        let source = self
-            .coerce_string(value)?
+        };
+        let source = source
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal.PlainDate string".into()))?;
         // The string is parsed strictly before `options` is read: an invalid
@@ -264,12 +252,12 @@ impl Vm {
                 OverflowInput::Options(options),
             );
         }
-        if !matches!(value, Value::String(_)) {
+        let Value::String(source) = value else {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainDateTime-like value must be an object or a string".into(),
             ));
-        }
-        let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
+        };
+        let source = source.to_utf8().map_err(|_| {
             RuntimeError::RangeError("invalid Temporal.PlainDateTime string".into())
         })?;
         // Parse first, read `options` second -- see `temporal_to_plain_date`.

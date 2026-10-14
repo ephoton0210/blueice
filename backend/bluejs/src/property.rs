@@ -72,6 +72,7 @@ pub(crate) const WELL_KNOWN: &[&str] = &[
     "asyncIterator",
     "dispose",
     "asyncDispose",
+    "metadata",
 ];
 
 /// An ECMAScript property key; Symbols never alias string names.
@@ -82,6 +83,13 @@ pub enum PropertyName {
 }
 
 impl PropertyName {
+    pub(crate) fn into_string(self) -> Option<JsString> {
+        match self {
+            Self::String(value) => Some(value),
+            Self::Symbol(_) => None,
+        }
+    }
+
     pub(crate) fn byte_len(&self) -> usize {
         match self {
             Self::String(s) => s.byte_len(),

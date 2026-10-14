@@ -5,9 +5,7 @@
 //! `Temporal.ZonedDateTime.prototype.{add, subtract, round}`.
 
 use super::super::*;
-use super::resolution::{
-    temporal_resolution_error, temporal_set_local_fields, temporal_zoned_date_time_zone,
-};
+use super::resolution::{temporal_set_local_fields, temporal_zoned_date_time_zone};
 
 impl Vm {
     /// `Temporal.ZonedDateTime.prototype.add`/`subtract`: `AddZonedDateTime`
@@ -22,7 +20,9 @@ impl Vm {
         options: &Value,
         negate: bool,
     ) -> Result<Value, RuntimeError> {
-        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let mut existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let mut duration = self.temporal_duration_from_value(duration_value)?;
         if negate {
             duration.years = -duration.years;
@@ -96,7 +96,9 @@ impl Vm {
         receiver: &Value,
         round_to: &Value,
     ) -> Result<Value, RuntimeError> {
-        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let mut existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         if *round_to == Value::Undefined {
             return Err(RuntimeError::TypeError(
                 "Temporal.ZonedDateTime.round requires a smallestUnit or options argument".into(),
@@ -104,24 +106,20 @@ impl Vm {
         }
         let base = self.stack.len();
         let result = (|| {
-            let options = if let Value::String(unit) = round_to {
-                let options = self.with_roots(|heap| heap.alloc_object(None))?;
-                self.stack.push(Value::Object(options));
-                self.define_data(
-                    options,
-                    "smallestUnit",
-                    Value::String(unit.clone()),
-                    true,
-                    true,
-                    true,
-                )?;
-                Value::Object(options)
+            let (increment, mode, smallest_unit) = if let Value::String(unit) = round_to {
+                // The shorthand's fresh options object is not observable.
+                let unit = unit
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid smallestUnit option".into()))?;
+                (None, None, Some(unit))
             } else {
-                self.temporal_options(round_to)?
+                let options = self.temporal_options(round_to)?;
+                (
+                    self.temporal_raw_number_option(&options, "roundingIncrement")?,
+                    self.temporal_raw_string_option(&options, "roundingMode")?,
+                    self.temporal_raw_string_option(&options, "smallestUnit")?,
+                )
             };
-            let increment = self.temporal_raw_number_option(&options, "roundingIncrement")?;
-            let mode = self.temporal_raw_string_option(&options, "roundingMode")?;
-            let smallest_unit = self.temporal_raw_string_option(&options, "smallestUnit")?;
             let increment = Self::temporal_validated_rounding_increment(increment)?;
             let mode = Self::temporal_validated_rounding_mode(
                 mode.as_deref(),
@@ -199,6 +197,9 @@ impl Vm {
                 let ns_of_day = rounded.rem_euclid(86_400_000_000_000);
                 let calendar_kind = calendar::calendar_kind(&existing.calendar)
                     .expect("Temporal values retain a validated calendar identifier");
+                // A stored time is within one day, so rounding carries only
+                // zero or one day. The resulting civil date still fits i32;
+                // the representable Instant range is checked below.
                 let date = plain_date::calendar_add_date(
                     calendar_kind,
                     (existing.year, existing.month, existing.day),
@@ -208,13 +209,13 @@ impl Vm {
                     day_carry as i64,
                     false,
                 )
-                .ok_or_else(|| {
-                    RuntimeError::RangeError("Temporal.ZonedDateTime.round is out of range".into())
-                })?;
+                .expect("subday rounding carries at most one day from a valid date");
                 let time = duration_math::time_fields_from_nanoseconds(ns_of_day);
+                // Compatible disambiguation resolves every valid local
+                // date/time in a validated zone, including skipped times.
                 existing.epoch_nanoseconds = zone
                     .epoch_nanoseconds_for(date, time, time_zone::Disambiguation::Compatible)
-                    .map_err(temporal_resolution_error)?;
+                    .expect("compatible resolution of a valid zoned date succeeds");
             }
             if !epoch::is_in_instant_range(&existing.epoch_nanoseconds) {
                 return Err(RuntimeError::RangeError(

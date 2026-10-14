@@ -7,34 +7,14 @@ use super::*;
 impl Vm {
     pub fn install_test262_done(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
-        let prototype = self.function_prototype()?;
+        let prototype = self
+            .function_prototype()
+            .expect("materializing globalThis initialized Function intrinsics");
         self.install_native(global, prototype, "$DONE", 1, NativeFunction::Test262Done)
     }
 
     pub fn take_test262_done(&mut self) -> Option<Result<(), Value>> {
         self.test262_done.take()
-    }
-
-    pub(in super::super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
-        Ok(if let Value::Object(id) = value {
-            if let Some((_, _, callable, _)) = self.test262_foreign_reference(*id) {
-                callable
-            } else if self.test262_imported_callables.contains(id) {
-                // `$262.createRealm()` transports an object owned by the
-                // caller as an opaque local stand-in.  Its owner retains the
-                // forwarding record, while this realm retains the callable
-                // bit so `ShadowRealm` can create its own wrapper around it.
-                true
-            } else if let Some((callable, _)) = self.heap.proxy_capabilities(*id)? {
-                callable
-            } else {
-                self.heap.native_function(*id)?.is_some()
-                    || self.heap.closure(*id)?.is_some()
-                    || self.heap.bound_function(*id)?.is_some()
-            }
-        } else {
-            false
-        })
     }
 
     pub(in super::super) fn coerce_primitive(
@@ -69,7 +49,10 @@ impl Vm {
         };
         for name in names {
             let method = self.get_property(value, &name.into())?;
-            if self.is_callable(&method)? {
+            if self
+                .is_callable(&method)
+                .expect("Get returned a live local value or an imported facade")
+            {
                 let result = self.call_native(method, value.clone(), Vec::new(), false)?;
                 if !matches!(result, Value::Object(_)) {
                     return Ok(result);
@@ -159,9 +142,9 @@ impl Vm {
         radix: &Value,
     ) -> Result<Value, RuntimeError> {
         let string = self.coerce_string(value)?;
-        let Ok(string) = string.to_utf8() else {
-            return Ok(Value::Number(f64::NAN));
-        };
+        // A lone surrogate is not a digit, a sign or whitespace: it simply
+        // ends the numeric prefix, exactly as U+FFFD does.
+        let string = String::from_utf16_lossy(string.as_code_units());
         let mut input = string.trim_start_matches(primitive::whitespace);
         let negative = input.starts_with('-');
         if matches!(input.as_bytes().first(), Some(b'+' | b'-')) {
@@ -211,9 +194,9 @@ impl Vm {
     /// therefore stop after their leading decimal zero.
     pub(in super::super) fn parse_float(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let string = self.coerce_string(value)?;
-        let Ok(input) = string.to_utf8() else {
-            return Ok(Value::Number(f64::NAN));
-        };
+        // A lone surrogate is not part of any numeric literal: it simply ends
+        // the prefix, exactly as U+FFFD does.
+        let input = String::from_utf16_lossy(string.as_code_units());
         let input = input.trim_start_matches(primitive::whitespace);
         let sign_end = usize::from(matches!(input.as_bytes().first(), Some(b'+' | b'-')));
         let negative = input.starts_with('-');
@@ -296,6 +279,25 @@ impl Vm {
         }
     }
 
+    /// Annex B.2.1 `escape` / `unescape`.
+    pub(in super::super) fn escape_string(
+        &mut self,
+        value: &Value,
+        decode: bool,
+    ) -> Result<Value, RuntimeError> {
+        let string = self.coerce_string(value)?;
+        let limit = self.config.max_string_bytes;
+        let result = if decode {
+            native::unescape(&string, limit)
+        } else {
+            native::escape(&string, limit)
+        };
+        match result {
+            Ok(result) => Ok(Value::String(result)),
+            Err(error) => self.uri_coding_error(error),
+        }
+    }
+
     pub(in super::super) fn array_length_value(
         &mut self,
         value: &Value,
@@ -303,7 +305,7 @@ impl Vm {
         // ArraySetLength performs ToUint32 followed by a separate ToNumber.
         // These must remain separate observable conversions: an object can
         // supply a stateful `valueOf` implementation.
-        let length = native::uint32(&Value::Number(self.coerce_number(value)?))?;
+        let length = native::uint32(self.coerce_number(value)?);
         let number = self.coerce_number(value)?;
         if f64::from(length) != number {
             return Err(RuntimeError::RangeError("invalid array length".into()));
@@ -318,7 +320,9 @@ impl Vm {
         let value = self.coerce_primitive(value, "string")?;
         Ok(match value {
             Value::Symbol(symbol) => symbol.into(),
-            value => primitive::string(&value)?.into(),
+            value => primitive::string(&value)
+                .expect("ToPrimitive produced a non-Symbol primitive property key")
+                .into(),
         })
     }
 
@@ -344,25 +348,28 @@ impl Vm {
         if matches!(method, Value::Undefined | Value::Null) {
             return Ok(Value::Undefined);
         }
-        if !self.is_callable(&method)? {
+        if !self
+            .is_callable(&method)
+            .expect("Get returned a live local value or an imported facade")
+        {
             return Err(RuntimeError::TypeError("property is not callable".into()));
         }
         Ok(method)
     }
 
     pub(in super::super) fn is_regexp(&mut self, value: &Value) -> Result<bool, RuntimeError> {
-        if !matches!(value, Value::Object(_)) {
+        let Value::Object(id) = value else {
             return Ok(false);
-        }
+        };
         let matcher = self.get_property(value, &JsSymbol::well_known("match").into())?;
         if !matches!(matcher, Value::Undefined) {
             return self.to_boolean(&matcher);
         }
-        Ok(if let Value::Object(id) = value {
-            self.heap.regexp(*id)?.is_some()
-        } else {
-            false
-        })
+        Ok(self
+            .heap
+            .regexp(*id)
+            .expect("Get of @@match validated this retained receiver")
+            .is_some())
     }
 
     pub(in super::super) fn dispatch_string_method(
@@ -468,7 +475,18 @@ impl Vm {
         &mut self,
         values: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        self.array_from_with_prototype(values, self.array_prototype)
+        let prototype = self.array_create_prototype()?;
+        self.array_from_with_prototype(values, prototype)
+    }
+
+    /// The `%Array.prototype%` `ArrayCreate` uses: the current Realm's, which
+    /// for a built-in function of another Test262 realm running here on its
+    /// behalf is that realm's (as a facade).
+    pub(in super::super) fn array_create_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        match self.acting_realm {
+            Some(realm) => self.test262_foreign_default_prototype(realm, "Array"),
+            None => Ok(self.array_prototype),
+        }
     }
 
     /// Create an Array exotic with a caller-selected prototype. Array's
@@ -500,13 +518,16 @@ impl Vm {
         done: bool,
     ) -> Result<Value, RuntimeError> {
         let prototype = self.object_prototype;
+        let base = self.stack.len();
         self.stack.push(value.clone());
-        let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        self.stack.push(Value::Object(result));
-        self.with_roots(|heap| heap.set(result, "value", value))?;
-        self.with_roots(|heap| heap.set(result, "done", Value::Bool(done)))?;
-        self.stack.pop();
-        self.stack.pop();
-        Ok(Value::Object(result))
+        let outcome = (|| {
+            let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            self.stack.push(Value::Object(result));
+            self.with_roots(|heap| heap.set(result, "value", value))?;
+            self.with_roots(|heap| heap.set(result, "done", Value::Bool(done)))?;
+            Ok(Value::Object(result))
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 }

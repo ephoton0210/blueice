@@ -4,23 +4,120 @@
 
 use super::*;
 
-impl Compiler {
-    pub(super) fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
-        if optional_chain_root(expr) {
-            let mut exits = Vec::new();
-            self.optional_chain_expression(expr, &mut exits)?;
-            let end = self.offset()?;
-            for exit in exits {
-                self.patch(exit, end);
-            }
-            Ok(())
-        } else {
-            self.expression_plain(expr)
+fn array_element_expr(element: &ArrayElement) -> &Expr {
+    match element {
+        ArrayElement::Normal(value) | ArrayElement::Spread(value) => value,
+    }
+}
+
+fn argument_expr(argument: &Argument) -> &Expr {
+    match argument {
+        Argument::Normal(value) | Argument::Spread(value) => value,
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PreparedMemberKind {
+    Ordinary,
+    Super,
+    Private(u32),
+}
+
+#[derive(Clone, Copy)]
+struct OptionalMemberParts<'a> {
+    object: &'a Expr,
+    property: &'a Expr,
+    computed: bool,
+    optional: bool,
+}
+
+fn optional_member_parts(expr: &Expr) -> Option<OptionalMemberParts<'_>> {
+    match expr {
+        Expr::Member {
+            object,
+            property,
+            computed,
         }
+        | Expr::OptionalMember {
+            object,
+            property,
+            computed,
+        } => Some(OptionalMemberParts {
+            object,
+            property,
+            computed: *computed,
+            optional: matches!(expr, Expr::OptionalMember { .. }),
+        }),
+        _ => None,
+    }
+}
+
+impl Compiler {
+    fn tagged_template_expression(
+        &mut self,
+        tag: &Expr,
+        raw: &[JsString],
+        cooked: &[Option<JsString>],
+        expressions: &[Expr],
+    ) -> Result<(), CompileError> {
+        let argument_count = self.list_count(expressions.len().saturating_add(1))?;
+        let tail = std::mem::take(&mut self.tail_call_pending);
+        if matches!(tag, Expr::Member { .. }) {
+            if let Some((object, name)) = private_member_parts(tag) {
+                let owner = self.private_member_reference(object, name)?;
+                self.emit(Opcode::PrivateGetMethod, owner)?;
+            } else if is_super_member(tag) {
+                self.member_reference(tag)?;
+                self.emit_this()?;
+                self.emit(Opcode::SuperGetMethod, 0)?;
+            } else {
+                self.member_reference(tag)?;
+                self.emit(Opcode::GetMethod, 0)?;
+            }
+        } else {
+            self.expression(tag)?;
+            self.constant(Value::Undefined)?;
+        }
+        let site = self.bytecode.templates.len() as u32;
+        self.bytecode.templates.push(crate::bytecode::TemplateSite {
+            id: crate::bytecode::TemplateSiteId::new(),
+            raw: raw.to_vec(),
+            cooked: cooked.to_vec(),
+        });
+        self.emit(Opcode::TemplateObject, site)?;
+        for expression in expressions {
+            self.expression(expression)?;
+        }
+        if tail {
+            self.emit(Opcode::TailCall, argument_count << 1)?;
+        } else {
+            self.emit(Opcode::Call, argument_count)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
+        self.expression_plain(expr)
+    }
+
+    fn compile_optional_chain(&mut self, expr: &Expr) -> Result<(), CompileError> {
+        let mut exits = Vec::new();
+        self.optional_chain_expression(expr, &mut exits)?;
+        let end = self.offset();
+        for exit in exits {
+            self.patch(exit, end);
+        }
+        Ok(())
     }
 
     pub(super) fn expression_plain(&mut self, expr: &Expr) -> Result<(), CompileError> {
         match expr {
+            Expr::OptionalMember { .. } | Expr::OptionalCall { .. } => {
+                self.compile_optional_chain(expr)?;
+            }
+            Expr::Member { .. } | Expr::Call { .. } if optional_chain_root(expr) => {
+                self.compile_optional_chain(expr)?;
+            }
             Expr::RegExp { pattern, flags } => {
                 self.constant(Value::String(pattern.clone()))?;
                 self.constant(Value::String(flags.clone()))?;
@@ -32,38 +129,7 @@ impl Compiler {
                 cooked,
                 expressions,
             } => {
-                if matches!(&**tag, Expr::Member { .. }) {
-                    if private_member_name(tag).is_some() {
-                        let owner = self.private_member_reference(tag)?;
-                        self.emit(Opcode::PrivateGetMethod, owner)?;
-                    } else {
-                        self.member_reference(tag)?;
-                        self.emit(Opcode::GetMethod, 0)?;
-                    }
-                } else {
-                    self.expression(tag)?;
-                    self.constant(Value::Undefined)?;
-                }
-                static NEXT_SITE: std::sync::atomic::AtomicU64 =
-                    std::sync::atomic::AtomicU64::new(1);
-                let id = NEXT_SITE
-                    .fetch_update(
-                        std::sync::atomic::Ordering::Relaxed,
-                        std::sync::atomic::Ordering::Relaxed,
-                        |n| n.checked_add(1),
-                    )
-                    .map_err(|_| CompileError::ProgramTooLarge)?;
-                let site = self.bytecode.templates.len() as u32;
-                self.bytecode.templates.push(crate::bytecode::TemplateSite {
-                    id,
-                    raw: raw.clone(),
-                    cooked: cooked.clone(),
-                });
-                self.emit(Opcode::TemplateObject, site)?;
-                for expression in expressions {
-                    self.expression(expression)?;
-                }
-                self.emit(Opcode::Call, expressions.len() as u32 + 1)?;
+                return self.tagged_template_expression(tag, raw, cooked, expressions);
             }
             Expr::Number(n) => self.constant(Value::Number(*n))?,
             Expr::BigInt(n) => self.constant(Value::BigInt(n.clone()))?,
@@ -79,8 +145,7 @@ impl Compiler {
                 if let Some(slot) = self.resolve_inside_innermost_with(name) {
                     self.emit(Opcode::GetBinding, slot)?;
                 } else if self.with_depth != 0 {
-                    let index = u32::try_from(self.bytecode.constants.len())
-                        .map_err(|_| CompileError::ProgramTooLarge)?;
+                    let index = self.metadata_index(self.bytecode.constants.len())?;
                     self.bytecode
                         .constants
                         .push(Value::String(name.clone().into()));
@@ -149,21 +214,22 @@ impl Compiler {
                         | "encodeURIComponent"
                         | "decodeURI"
                         | "decodeURIComponent"
+                        | "escape"
+                        | "unescape"
                         | "JSON"
                         | "RangeError"
                         | "SyntaxError"
                         | "ReferenceError"
                         | "EvalError"
                         | "URIError" => {
-                            let index = self.bytecode.constants.len() as u32;
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.as_str().into()));
                             self.emit(Opcode::Global, index)?;
                         }
                         _ => {
-                            let index = u32::try_from(self.bytecode.constants.len())
-                                .map_err(|_| CompileError::ProgramTooLarge)?;
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.clone().into()));
@@ -188,11 +254,53 @@ impl Compiler {
                     UnaryOp::Delete | UnaryOp::Void => Opcode::DeleteProperty,
                 };
                 if *op == UnaryOp::Delete {
-                    if matches!(&**arg, Expr::Member { .. }) {
+                    if let Some(member) =
+                        optional_member_parts(arg).filter(|_| optional_chain_root(arg))
+                    {
+                        // `delete a?.b` and `delete a?.b.c` delete the chain's
+                        // final Reference. A `?.` that short-circuits skips
+                        // the rest of the chain, including its deletion, and
+                        // the operation evaluates to true.
                         if private_member_name(arg).is_some() {
                             return Err(CompileError::InvalidSyntax(
                                 "cannot delete a private element",
                             ));
+                        }
+                        let mut exits = Vec::new();
+                        self.optional_chain_member_reference(member, &mut exits)?;
+                        self.emit(opcode, 0)?;
+                        let deleted = self.emit(Opcode::Jump, 0)?;
+                        let short_circuited = self.offset();
+                        for exit in exits {
+                            self.patch(exit, short_circuited);
+                        }
+                        self.emit(Opcode::Pop, 0)?;
+                        self.constant(Value::Bool(true))?;
+                        self.patch(deleted, self.offset());
+                    } else if let Expr::Member {
+                        property, computed, ..
+                    } = &**arg
+                    {
+                        if private_member_name(arg).is_some() {
+                            return Err(CompileError::InvalidSyntax(
+                                "cannot delete a private element",
+                            ));
+                        }
+                        if is_super_member(arg) {
+                            // `delete super.x` evaluates its Reference (so
+                            // `this` must be bound and a computed key runs)
+                            // and then always throws.
+                            if let Some(slot) = self.resolve(DERIVED_THIS_BINDING) {
+                                self.emit(Opcode::ThisBinding, slot)?;
+                                self.emit(Opcode::Pop, 0)?;
+                            }
+                            if *computed {
+                                self.expression(property)?;
+                                self.emit(Opcode::Pop, 0)?;
+                            }
+                            self.emit(Opcode::DeleteSuperProperty, 0)?;
+                            self.constant(Value::Bool(true))?;
+                            return Ok(());
                         }
                         self.member_reference(arg)?;
                         self.emit(opcode, 0)?;
@@ -202,19 +310,36 @@ impl Compiler {
                                 "cannot delete a binding in strict mode",
                             ));
                         }
+                        // Inside `with` the with objects are consulted first.
+                        // A hit deletes the property; otherwise the fallback
+                        // below handles the enclosing binding.
+                        let with_end = if self.with_depth != 0
+                            && self.resolve_inside_innermost_with(name).is_none()
+                        {
+                            let index = self.name_constant(name)?;
+                            self.emit(Opcode::DeleteWithBinding, index)?;
+                            self.emit(Opcode::Dup, 0)?;
+                            let found = self.emit(Opcode::JumpIfNotNullish, 0)?;
+                            self.emit(Opcode::Pop, 0)?;
+                            Some(found)
+                        } else {
+                            None
+                        };
                         if let Some(slot) = self.resolve(name) {
-                            if self.bytecode.dynamic_eval_slots.contains(&slot) {
+                            if self.bytecode.bindings[slot as usize].eval_var {
                                 self.emit(Opcode::DeleteDynamicBinding, slot)?;
                             } else {
                                 self.constant(Value::Bool(false))?;
                             }
                         } else {
-                            let index = u32::try_from(self.bytecode.constants.len())
-                                .map_err(|_| CompileError::ProgramTooLarge)?;
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.clone().into()));
                             self.emit(Opcode::DeleteUnboundName, index)?;
+                        }
+                        if let Some(found) = with_end {
+                            self.patch(found, self.offset());
                         }
                     } else {
                         self.expression(arg)?;
@@ -223,41 +348,116 @@ impl Compiler {
                     }
                     return Ok(());
                 }
-                if *op == UnaryOp::Typeof
-                    && self.with_depth != 0
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve_inside_innermost_with(name).is_none())
-                {
-                    // Inside `with`, the identifier resolves against the with
-                    // objects first; an unresolvable name is `undefined`.
-                    let Expr::Identifier(name) = &**arg else {
-                        unreachable!()
-                    };
-                    let index = u32::try_from(self.bytecode.constants.len())
-                        .map_err(|_| CompileError::ProgramTooLarge)?;
-                    self.bytecode
-                        .constants
-                        .push(Value::String(name.as_str().into()));
-                    self.emit(Opcode::WithGetOrUndefined, index)?;
-                    self.emit(opcode, 0)?;
-                } else if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "Map" | "Set" | "WeakMap" | "WeakSet" | "WeakRef" | "FinalizationRegistry" | "DisposableStack" | "AsyncDisposableStack" | "SuppressedError" | "ShadowRealm" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float16Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON"))
-                {
-                    let Expr::Identifier(name) = &**arg else {
-                        unreachable!()
-                    };
-                    let index = u32::try_from(self.bytecode.constants.len())
-                        .map_err(|_| CompileError::ProgramTooLarge)?;
-                    self.bytecode
-                        .constants
-                        .push(Value::String(name.as_str().into()));
-                    self.emit(Opcode::TypeofName, index)?;
+                if *op == UnaryOp::Typeof {
+                    match arg.as_ref() {
+                        // Inside `with`, an unresolvable name has type
+                        // "undefined" after consulting the object environment.
+                        Expr::Identifier(name)
+                            if self.with_depth != 0
+                                && self.resolve_inside_innermost_with(name).is_none() =>
+                        {
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
+                            self.bytecode
+                                .constants
+                                .push(Value::String(name.as_str().into()));
+                            self.emit(Opcode::WithGetOrUndefined, index)?;
+                            self.emit(opcode, 0)?;
+                        }
+                        Expr::Identifier(name)
+                            if self.resolve(name).is_none()
+                                && !matches!(
+                                    name.as_str(),
+                                    "undefined"
+                                        | "NaN"
+                                        | "Infinity"
+                                        | "String"
+                                        | "Symbol"
+                                        | "RegExp"
+                                        | "Object"
+                                        | "Reflect"
+                                        | "Math"
+                                        | "Number"
+                                        | "Boolean"
+                                        | "Array"
+                                        | "Date"
+                                        | "Function"
+                                        | "Proxy"
+                                        | "Map"
+                                        | "Set"
+                                        | "WeakMap"
+                                        | "WeakSet"
+                                        | "WeakRef"
+                                        | "FinalizationRegistry"
+                                        | "DisposableStack"
+                                        | "AsyncDisposableStack"
+                                        | "SuppressedError"
+                                        | "ShadowRealm"
+                                        | "globalThis"
+                                        | "ArrayBuffer"
+                                        | "SharedArrayBuffer"
+                                        | "DataView"
+                                        | "Int8Array"
+                                        | "Uint8Array"
+                                        | "Uint8ClampedArray"
+                                        | "Int16Array"
+                                        | "Uint16Array"
+                                        | "Int32Array"
+                                        | "Uint32Array"
+                                        | "Float16Array"
+                                        | "Float32Array"
+                                        | "Float64Array"
+                                        | "BigInt64Array"
+                                        | "BigUint64Array"
+                                        | "Atomics"
+                                        | "Intl"
+                                        | "Error"
+                                        | "TypeError"
+                                        | "RangeError"
+                                        | "SyntaxError"
+                                        | "ReferenceError"
+                                        | "EvalError"
+                                        | "URIError"
+                                        | "isNaN"
+                                        | "isFinite"
+                                        | "parseInt"
+                                        | "parseFloat"
+                                        | "encodeURI"
+                                        | "encodeURIComponent"
+                                        | "decodeURI"
+                                        | "decodeURIComponent"
+                                        | "escape"
+                                        | "unescape"
+                                        | "JSON"
+                                ) =>
+                        {
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
+                            self.bytecode
+                                .constants
+                                .push(Value::String(name.as_str().into()));
+                            self.emit(Opcode::TypeofName, index)?;
+                        }
+                        // A sloppy direct eval's own `var` is deletable at
+                        // runtime even though it resolves to a static slot.
+                        Expr::Identifier(name)
+                            if self.resolve(name).is_some_and(|slot| {
+                                self.bytecode.bindings[slot as usize].eval_var
+                            }) =>
+                        {
+                            let slot = self.resolve(name).expect("just matched Some");
+                            self.emit(Opcode::TypeofBinding, slot)?;
+                        }
+                        _ => {
+                            self.expression(arg)?;
+                            self.emit(opcode, 0)?;
+                        }
+                    }
                 } else {
                     self.expression(arg)?;
                     self.emit(opcode, 0)?;
                 }
             }
             Expr::Binary { op, left, right } => {
-                let opcode = binary_opcode(*op)?;
+                let opcode = binary_opcode(*op);
                 self.expression(left)?;
                 self.expression(right)?;
                 self.emit(opcode, 0)?;
@@ -281,7 +481,7 @@ impl Compiler {
                 )?;
                 self.emit(Opcode::Pop, 0)?;
                 self.expression(right)?;
-                self.patch(jump, self.offset()?);
+                self.patch(jump, self.offset());
             }
             Expr::Sequence(expressions) => {
                 for (index, expression) in expressions.iter().enumerate() {
@@ -300,11 +500,12 @@ impl Compiler {
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
                 self.expression(consequent)?;
                 let end = self.emit(Opcode::Jump, 0)?;
-                self.patch(no, self.offset()?);
+                self.patch(no, self.offset());
                 self.expression(alternate)?;
-                self.patch(end, self.offset()?);
+                self.patch(end, self.offset());
             }
             Expr::Array(elements) => {
+                let length = self.list_count(elements.len())?;
                 if elements
                     .iter()
                     .any(|element| matches!(element, Some(ArrayElement::Spread(_))))
@@ -316,30 +517,25 @@ impl Compiler {
                                 self.constant(Value::Undefined)?;
                                 1
                             }
-                            Some(ArrayElement::Normal(value)) => {
-                                self.expression(value)?;
-                                0
-                            }
-                            Some(ArrayElement::Spread(value)) => {
-                                self.expression(value)?;
-                                2
+                            Some(element) => {
+                                self.expression(array_element_expr(element))?;
+                                match element {
+                                    ArrayElement::Normal(_) => 0,
+                                    ArrayElement::Spread(_) => 2,
+                                }
                             }
                         };
                         self.emit(Opcode::ArrayPush, kind)?;
                     }
                     return Ok(());
                 }
-                let length =
-                    u32::try_from(elements.len()).map_err(|_| CompileError::ProgramTooLarge)?;
                 self.emit(Opcode::NewArray, length)?;
                 for (index, element) in elements.iter().enumerate() {
                     let Some(element) = element else { continue };
-                    let ArrayElement::Normal(value) = element else {
-                        return Err(CompileError::Unsupported("array spread"));
-                    };
+                    // A spread was handled by the ArrayPush path above.
                     self.emit(Opcode::Dup, 0)?;
                     self.constant(Value::String(index.to_string().into()))?;
-                    self.expression(value)?;
+                    self.expression(array_element_expr(element))?;
                     self.emit(Opcode::DefineData, 0)?;
                     self.emit(Opcode::Pop, 0)?;
                 }
@@ -348,58 +544,85 @@ impl Compiler {
                 self.emit(Opcode::NewObject, 0)?;
                 let mut has_proto = false;
                 for property in properties {
-                    if let ObjectProp::Spread(value) = property {
-                        self.expression(value)?;
-                        self.emit(Opcode::CopyDataProperties, 0)?;
-                        continue;
-                    }
-                    if let ObjectProp::Method { key, function }
-                    | ObjectProp::Accessor { key, function, .. } = property
-                    {
-                        self.emit(Opcode::Dup, 0)?;
-                        self.property_key(key)?;
-                        self.function(function, false)?;
-                        std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
-                            .unwrap()
-                            .constructible = false;
-                        if let ObjectProp::Accessor { getter, .. } = property {
-                            self.emit(Opcode::DefineAccessor, u32::from(!getter))?;
-                        } else {
-                            // The operand distinguishes object-literal
-                            // methods (enumerable) from class methods.
-                            self.emit(Opcode::DefineMethod, 1)?;
+                    match property {
+                        ObjectProp::Spread(value) => {
+                            self.expression(value)?;
+                            self.emit(Opcode::CopyDataProperties, 0)?;
                         }
-                        self.emit(Opcode::Pop, 0)?;
-                        continue;
-                    }
-                    let ObjectProp::KeyValue {
-                        key,
-                        value,
-                        shorthand,
-                    } = property
-                    else {
-                        unreachable!("spread is handled above")
-                    };
-                    self.emit(Opcode::Dup, 0)?;
-                    let prototype_key = match key {
-                        PropertyKey::Identifier(name) => name == "__proto__",
-                        PropertyKey::String(name) => name == "__proto__",
-                        _ => false,
-                    };
-                    if !shorthand && prototype_key {
-                        if has_proto {
-                            return Err(CompileError::InvalidSyntax(
-                                "duplicate literal __proto__ setter",
-                            ));
+                        ObjectProp::Method { key, function }
+                        | ObjectProp::Accessor { key, function, .. } => {
+                            self.emit(Opcode::Dup, 0)?;
+                            self.property_key(key)?;
+                            self.function_named_with(
+                                function,
+                                false,
+                                None,
+                                false,
+                                FunctionCompileOptions::object_method(),
+                            )?;
+                            std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
+                                .unwrap()
+                                .constructible = false;
+                            if matches!(key, PropertyKey::Computed(_)) {
+                                // The parser could only name a literal key.
+                                let prefix = match property {
+                                    ObjectProp::Accessor { getter: true, .. } => 1,
+                                    ObjectProp::Accessor { .. } => 2,
+                                    _ => 0,
+                                };
+                                self.emit(Opcode::SetFunctionName, prefix)?;
+                            }
+                            if let ObjectProp::Accessor { getter, .. } = property {
+                                self.emit(Opcode::DefineAccessor, u32::from(!getter))?;
+                            } else {
+                                // The operand distinguishes object-literal
+                                // methods (enumerable) from class methods.
+                                self.emit(Opcode::DefineMethod, 1)?;
+                            }
+                            self.emit(Opcode::Pop, 0)?;
                         }
-                        has_proto = true;
-                        self.expression(value)?;
-                        self.emit(Opcode::SetLiteralPrototype, 0)?;
-                    } else {
-                        self.property_key(key)?;
-                        self.expression(value)?;
-                        self.emit(Opcode::DefineData, 0)?;
-                        self.emit(Opcode::Pop, 0)?;
+                        ObjectProp::KeyValue {
+                            key,
+                            value,
+                            shorthand,
+                        } => {
+                            self.emit(Opcode::Dup, 0)?;
+                            let prototype_key = match key {
+                                PropertyKey::Identifier(name) => name == "__proto__",
+                                PropertyKey::String(name) => name == "__proto__",
+                                _ => false,
+                            };
+                            if !shorthand && prototype_key {
+                                if has_proto {
+                                    return Err(CompileError::InvalidSyntax(
+                                        "duplicate literal __proto__ setter",
+                                    ));
+                                }
+                                has_proto = true;
+                                self.expression(value)?;
+                                self.emit(Opcode::SetLiteralPrototype, 0)?;
+                            } else {
+                                self.property_key(key)?;
+                                match key {
+                                    // PropertyDefinition : PropertyName : AssignmentExpression
+                                    // names an anonymous function definition after
+                                    // its key: statically for a literal key, at run
+                                    // time for a computed one.
+                                    PropertyKey::Computed(_) => {
+                                        self.expression(value)?;
+                                        if is_anonymous_function_definition(value) {
+                                            self.emit(Opcode::SetFunctionName, 0)?;
+                                        }
+                                    }
+                                    literal => {
+                                        let name = literal_property_key_name(literal);
+                                        self.expression_with_name(value, name.as_deref())?;
+                                    }
+                                }
+                                self.emit(Opcode::DefineData, 0)?;
+                                self.emit(Opcode::Pop, 0)?;
+                            }
+                        }
                     }
                 }
             }
@@ -421,27 +644,35 @@ impl Compiler {
                 property,
                 computed,
             } if matches!(&**object, Expr::Super) => {
-                self.super_property_key(property, *computed)?;
+                self.super_reference(property, *computed)?;
+                self.emit_this()?;
                 self.emit(Opcode::SuperGet, 0)?;
             }
-            Expr::Member { .. } if private_member_name(expr).is_some() => {
-                let owner = self.private_member_reference(expr)?;
-                self.emit(Opcode::PrivateGet, owner)?;
-            }
-            Expr::Member { .. } => {
-                self.member_reference(expr)?;
-                self.emit(Opcode::GetProperty, 0)?;
+            Expr::Member { object, .. } => {
+                if let Some(name) = private_member_name(expr) {
+                    let owner = self.private_member_reference(object, name)?;
+                    self.emit(Opcode::PrivateGet, owner)?;
+                } else {
+                    self.member_reference(expr)?;
+                    self.emit(Opcode::GetProperty, 0)?;
+                }
             }
             Expr::Parenthesized(expr) => self.expression(expr)?,
-            Expr::OptionalMember { .. } => {
-                return Err(CompileError::Unsupported("optional chaining"))
-            }
             Expr::Assign { op, target, value } => self.assignment(*op, target, value)?,
             Expr::DestructureAssign { pattern, value } => {
                 self.destructuring_assignment(pattern, value)?
             }
             Expr::Update { op, arg, prefix } => {
                 if let Expr::Identifier(name) = &**arg {
+                    if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::ResolveWithReference, index)?;
+                        self.emit(
+                            Opcode::UpdateWithReference,
+                            u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1),
+                        )?;
+                        return Ok(());
+                    }
                     let binding = self.resolve(name);
                     let name_index = if binding.is_none() {
                         Some(self.name_constant(name)?)
@@ -488,8 +719,21 @@ impl Compiler {
                     computed,
                 } = arg.as_ref()
                 {
-                    if matches!(&**object, Expr::Super) {
-                        self.super_property_key(property, *computed)?;
+                    if let Some(name) = private_member_name(arg) {
+                        let owner = self.private_member_reference(object, name)?;
+                        let opcode = match (*op, *prefix) {
+                            (UpdateOp::Inc, false) => Opcode::PrivatePostIncrement,
+                            (UpdateOp::Inc, true) => Opcode::PrivatePreIncrement,
+                            (UpdateOp::Dec, false) => Opcode::PrivatePostDecrement,
+                            (UpdateOp::Dec, true) => Opcode::PrivatePreDecrement,
+                        };
+                        self.emit(opcode, owner)?;
+                    } else if matches!(&**object, Expr::Super) {
+                        self.super_reference(property, *computed)?;
+                        // GetValue converts the key immediately; the later
+                        // PutValue must not convert it again.
+                        self.emit(Opcode::ToPropertyKey, 0)?;
+                        self.emit_this()?;
                         self.emit(
                             Opcode::SuperUpdate,
                             u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1),
@@ -530,71 +774,82 @@ impl Compiler {
                 }
             }
             Expr::Call { callee, args } | Expr::New { callee, args } => {
+                let argument_count = self.list_count(args.len())?;
                 let construct = matches!(expr, Expr::New { .. });
+                let tail = std::mem::take(&mut self.tail_call_pending) && !construct;
                 if !construct && matches!(&**callee, Expr::Super) {
+                    self.super_call_prologue()?;
                     if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                         self.emit(Opcode::NewArray, 0)?;
                         for arg in args {
-                            let (value, kind) = match arg {
-                                Argument::Normal(value) => (value, 0),
-                                Argument::Spread(value) => (value, 2),
+                            let kind = match arg {
+                                Argument::Normal(_) => 0,
+                                Argument::Spread(_) => 2,
                             };
-                            self.expression(value)?;
+                            self.expression(argument_expr(arg))?;
                             self.emit(Opcode::ArrayPush, kind)?;
                         }
                         self.emit(Opcode::SuperCallSpread, 0)?;
                     } else {
                         for arg in args {
-                            let Argument::Normal(expr) = arg else {
-                                unreachable!("super call spreads take the array path")
-                            };
-                            self.expression(expr)?;
+                            self.expression(argument_expr(arg))?;
                         }
-                        self.emit(
-                            Opcode::SuperCall,
-                            u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
-                        )?;
+                        self.emit(Opcode::SuperCall, argument_count)?;
                     }
+                    self.super_call_epilogue()?;
                     return Ok(());
                 }
-                if !construct
-                    && matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
-                {
-                    let Expr::Member {
-                        property, computed, ..
-                    } = callee.as_ref()
-                    else {
-                        unreachable!()
-                    };
-                    self.super_property_key(property, *computed)?;
-                    self.emit(Opcode::SuperGetMethod, 0)?;
-                } else if !construct
-                    && matches!(&**callee, Expr::Parenthesized(inner) if matches!(inner.as_ref(), Expr::Member { .. } | Expr::OptionalMember { .. }))
-                {
-                    let Expr::Parenthesized(inner) = callee.as_ref() else {
-                        unreachable!()
-                    };
-                    self.parenthesized_optional_member_method(inner)?;
-                } else if !construct && matches!(&**callee, Expr::Member { .. }) {
-                    if private_member_name(callee).is_some() {
-                        let owner = self.private_member_reference(callee)?;
-                        self.emit(Opcode::PrivateGetMethod, owner)?;
-                    } else {
-                        self.member_reference(callee)?;
-                        self.emit(Opcode::GetMethod, 0)?;
+                match (construct, callee.as_ref()) {
+                    (
+                        false,
+                        Expr::Member {
+                            object,
+                            property,
+                            computed,
+                        },
+                    ) if matches!(object.as_ref(), Expr::Super) => {
+                        self.super_reference(property, *computed)?;
+                        self.emit_this()?;
+                        self.emit(Opcode::SuperGetMethod, 0)?;
                     }
-                } else {
-                    self.expression(callee)?;
-                    self.constant(Value::Undefined)?;
+                    (false, Expr::Parenthesized(inner))
+                        if matches!(
+                            inner.as_ref(),
+                            Expr::Member { .. } | Expr::OptionalMember { .. }
+                        ) =>
+                    {
+                        self.parenthesized_optional_member_method(inner)?;
+                    }
+                    (false, Expr::Member { object, .. }) => {
+                        if let Some(name) = private_member_name(callee) {
+                            let owner = self.private_member_reference(object, name)?;
+                            self.emit(Opcode::PrivateGetMethod, owner)?;
+                        } else {
+                            self.member_reference(callee)?;
+                            self.emit(Opcode::GetMethod, 0)?;
+                        }
+                    }
+                    (false, Expr::Identifier(name))
+                        if self.with_depth != 0
+                            && self.resolve_inside_innermost_with(name).is_none() =>
+                    {
+                        // A function found on a with object receives it as `this`.
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::WithGetMethod, index)?;
+                    }
+                    _ => {
+                        self.expression(callee)?;
+                        self.constant(Value::Undefined)?;
+                    }
                 }
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                     self.emit(Opcode::NewArray, 0)?;
                     for arg in args {
-                        let (value, kind) = match arg {
-                            Argument::Normal(value) => (value, 0),
-                            Argument::Spread(value) => (value, 2),
+                        let kind = match arg {
+                            Argument::Normal(_) => 0,
+                            Argument::Spread(_) => 2,
                         };
-                        self.expression(value)?;
+                        self.expression(argument_expr(arg))?;
                         self.emit(Opcode::ArrayPush, kind)?;
                     }
                     self.emit(
@@ -610,26 +865,28 @@ impl Compiler {
                     return Ok(());
                 }
                 for arg in args {
-                    let Argument::Normal(expr) = arg else {
-                        unreachable!("spread calls are emitted above")
-                    };
-                    self.expression(expr)?;
+                    self.expression(argument_expr(arg))?;
+                }
+                let eval_candidate = matches!(&**callee, Expr::Identifier(name) if name == "eval");
+                if tail {
+                    self.emit(
+                        Opcode::TailCall,
+                        (argument_count << 1) | u32::from(eval_candidate),
+                    )?;
+                    return Ok(());
                 }
                 self.emit(
                     if construct {
                         Opcode::Construct
-                    } else if matches!(&**callee, Expr::Identifier(name) if name == "eval") {
+                    } else if eval_candidate {
                         Opcode::DirectEval
                     } else {
                         Opcode::Call
                     },
-                    u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
+                    argument_count,
                 )?;
             }
-            Expr::OptionalCall { .. } => unreachable!("optional calls are compiled by expression"),
-            Expr::This => {
-                self.emit(Opcode::This, 0)?;
-            }
+            Expr::This => self.emit_this()?,
             Expr::NewTarget => {
                 if !self.bytecode.new_target_allowed {
                     return Err(CompileError::InvalidSyntax(
@@ -658,13 +915,13 @@ impl Compiler {
                         // forwards to the delegate on the following turn.
                         self.emit(Opcode::GetIterator, 0)?;
                         self.constant(Value::Undefined)?;
-                        let next = self.offset()?;
+                        let next = self.offset();
                         self.emit(Opcode::IteratorNext, 1)?;
                         let done = self.emit(Opcode::IteratorStepValue, 0)?;
                         self.emit(Opcode::Yield, 0)?;
-                        let resume = self.offset()?;
+                        let resume = self.offset();
                         self.emit(Opcode::Jump, next)?;
-                        let exit = self.offset()?;
+                        let exit = self.offset();
                         self.patch(done, exit);
                         self.bytecode.yield_delegates.push((resume, exit));
                         return Ok(());
@@ -675,14 +932,14 @@ impl Compiler {
                     // the delegate on the following loop turn.
                     self.emit(Opcode::GetAsyncIterator, 0)?;
                     self.constant(Value::Undefined)?;
-                    let next = self.offset()?;
+                    let next = self.offset();
                     self.emit(Opcode::AsyncIteratorNext, 1)?;
                     self.emit(Opcode::Await, 0)?;
                     let done = self.emit(Opcode::AsyncIteratorStepValue, 0)?;
                     self.emit(Opcode::Yield, 0)?;
-                    let resume = self.offset()?;
+                    let resume = self.offset();
                     self.emit(Opcode::Jump, next)?;
-                    let exit = self.offset()?;
+                    let exit = self.offset();
                     self.patch(done, exit);
                     self.bytecode.async_yield_delegates.push((resume, exit));
                     return Ok(());
@@ -691,6 +948,14 @@ impl Compiler {
                     self.expression(value)?;
                 } else {
                     self.constant(Value::Undefined)?;
+                }
+                if self.bytecode.async_function {
+                    // Yield(value) in an async generator is
+                    // AsyncGeneratorYield(? Await(value)): the operand is
+                    // awaited here, in the body, so a rejection is thrown at
+                    // the `yield` and the yielded result is delivered without
+                    // a further await.
+                    self.emit(Opcode::Await, 0)?;
                 }
                 self.emit(Opcode::Yield, 0)?;
             }
@@ -723,6 +988,7 @@ impl Compiler {
                 params,
                 body,
                 is_async,
+                source_text,
             } => {
                 let body = match body {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
@@ -735,6 +1001,7 @@ impl Compiler {
                         body,
                         generator: false,
                         is_async: *is_async,
+                        source_text: source_text.clone(),
                     },
                     true,
                 )?;
@@ -754,52 +1021,63 @@ impl Compiler {
         exits: &mut Vec<usize>,
     ) -> Result<(), CompileError> {
         match expr {
-            Expr::Member {
-                object,
-                property,
-                computed,
-            } if matches!(&**object, Expr::Super) => {
-                self.super_property_key(property, *computed)?;
-                self.emit(Opcode::SuperGet, 0)?;
-            }
-            Expr::Member { .. } if private_member_name(expr).is_some() => {
-                let owner = self.private_member_reference(expr)?;
-                self.emit(Opcode::PrivateGet, owner)?;
-            }
-            Expr::Member { .. } | Expr::OptionalMember { .. } => {
-                self.optional_chain_member_reference(expr, exits)?;
-                self.emit(Opcode::GetProperty, 0)?;
-            }
-            Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
-                let optional_call = matches!(expr, Expr::OptionalCall { .. });
-                if matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
-                {
-                    let Expr::Member {
-                        property, computed, ..
-                    } = callee.as_ref()
-                    else {
-                        unreachable!()
-                    };
-                    self.super_property_key(property, *computed)?;
-                    self.emit(Opcode::SuperGetMethod, 0)?;
-                } else if matches!(
-                    callee.as_ref(),
-                    Expr::Member { .. } | Expr::OptionalMember { .. }
-                ) {
-                    self.optional_chain_member_reference(callee, exits)?;
-                    self.emit(Opcode::GetMethod, 0)?;
-                } else if matches!(&**callee, Expr::Parenthesized(inner) if matches!(inner.as_ref(), Expr::Member { .. } | Expr::OptionalMember { .. }))
-                {
-                    let Expr::Parenthesized(inner) = callee.as_ref() else {
-                        unreachable!()
-                    };
-                    self.parenthesized_optional_member_method(inner)?;
-                } else if optional_chain_root(callee) {
-                    self.optional_chain_expression(callee, exits)?;
-                    self.constant(Value::Undefined)?;
+            Expr::Member { object, .. } | Expr::OptionalMember { object, .. }
+                if optional_chain_root(expr) =>
+            {
+                if let Some(name) = private_member_name(expr) {
+                    let owner = self.private_member_chain_reference(object, name, exits)?;
+                    self.emit(Opcode::PrivateGet, owner)?;
                 } else {
-                    self.expression(callee)?;
-                    self.constant(Value::Undefined)?;
+                    match self.optional_chain_member_reference(
+                        optional_member_parts(expr).expect("chain member was checked"),
+                        exits,
+                    )? {
+                        Some(owner) => self.emit(Opcode::PrivateGet, owner)?,
+                        None => self.emit(Opcode::GetProperty, 0)?,
+                    };
+                }
+            }
+            Expr::Call { callee, args } | Expr::OptionalCall { callee, args }
+                if optional_chain_root(expr) =>
+            {
+                let argument_count = self.list_count(args.len())?;
+                let optional_call = matches!(expr, Expr::OptionalCall { .. });
+                match callee.as_ref() {
+                    Expr::Member {
+                        object,
+                        property,
+                        computed,
+                    } if matches!(object.as_ref(), Expr::Super) => {
+                        self.super_reference(property, *computed)?;
+                        self.emit_this()?;
+                        self.emit(Opcode::SuperGetMethod, 0)?;
+                    }
+                    Expr::Member { object, .. } | Expr::OptionalMember { object, .. } => {
+                        if let Some(name) = private_member_name(callee) {
+                            let owner = self.private_member_chain_reference(object, name, exits)?;
+                            self.emit(Opcode::PrivateGetMethod, owner)?;
+                        } else {
+                            match self.optional_chain_member_reference(
+                                optional_member_parts(callee).expect("call member was checked"),
+                                exits,
+                            )? {
+                                Some(owner) => self.emit(Opcode::PrivateGetMethod, owner)?,
+                                None => self.emit(Opcode::GetMethod, 0)?,
+                            };
+                        }
+                    }
+                    Expr::Parenthesized(inner)
+                        if matches!(
+                            inner.as_ref(),
+                            Expr::Member { .. } | Expr::OptionalMember { .. }
+                        ) =>
+                    {
+                        self.parenthesized_optional_member_method(inner)?;
+                    }
+                    _ => {
+                        self.optional_chain_expression(callee, exits)?;
+                        self.constant(Value::Undefined)?;
+                    }
                 }
                 if optional_call {
                     // GetMethod leaves [callee, receiver]. Test the callee
@@ -812,31 +1090,25 @@ impl Compiler {
                     self.emit(Opcode::Pop, 0)?;
                     self.constant(Value::Undefined)?;
                     exits.push(self.emit(Opcode::Jump, 0)?);
-                    self.patch(non_nullish, self.offset()?);
+                    self.patch(non_nullish, self.offset());
                     self.emit(Opcode::Swap, 0)?;
                 }
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                     self.emit(Opcode::NewArray, 0)?;
                     for arg in args {
-                        let (value, kind) = match arg {
-                            Argument::Normal(value) => (value, 0),
-                            Argument::Spread(value) => (value, 2),
+                        let kind = match arg {
+                            Argument::Normal(_) => 0,
+                            Argument::Spread(_) => 2,
                         };
-                        self.expression(value)?;
+                        self.expression(argument_expr(arg))?;
                         self.emit(Opcode::ArrayPush, kind)?;
                     }
                     self.emit(Opcode::CallSpread, 0)?;
                 } else {
                     for arg in args {
-                        let Argument::Normal(value) = arg else {
-                            unreachable!("spread arguments use CallSpread")
-                        };
-                        self.expression(value)?;
+                        self.expression(argument_expr(arg))?;
                     }
-                    self.emit(
-                        Opcode::Call,
-                        u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
-                    )?;
+                    self.emit(Opcode::Call, argument_count)?;
                 }
             }
             _ => self.expression_plain(expr)?,
@@ -844,33 +1116,22 @@ impl Compiler {
         Ok(())
     }
 
-    pub(super) fn optional_chain_member_reference(
+    /// Evaluates the `object, key` operands of a member of an optional chain.
+    /// A private name (`?.#x`) leaves the private name as its `key` instead
+    /// and returns the binding slot of its owner.
+    fn optional_chain_member_reference(
         &mut self,
-        expr: &Expr,
+        member: OptionalMemberParts<'_>,
         exits: &mut Vec<usize>,
-    ) -> Result<(), CompileError> {
-        let (object, property, computed, optional) = match expr {
-            Expr::Member {
-                object,
-                property,
-                computed,
-            } => (object, property, *computed, false),
-            Expr::OptionalMember {
-                object,
-                property,
-                computed,
-            } => (object, property, *computed, true),
-            _ => {
-                return Err(CompileError::InvalidSyntax(
-                    "invalid optional-chain member AST",
-                ))
-            }
-        };
-        if optional_chain_root(object) {
-            self.optional_chain_expression(object, exits)?;
-        } else {
-            self.expression(object)?;
-        }
+    ) -> Result<Option<u32>, CompileError> {
+        let OptionalMemberParts {
+            object,
+            property,
+            computed,
+            optional,
+            ..
+        } = member;
+        self.optional_chain_expression(object, exits)?;
         if optional {
             // Keep the base below the test.  A nullish base becomes the
             // chain's undefined result and jumps beyond every remaining
@@ -880,11 +1141,16 @@ impl Compiler {
             self.emit(Opcode::Pop, 0)?;
             self.constant(Value::Undefined)?;
             exits.push(self.emit(Opcode::Jump, 0)?);
-            self.patch(non_nullish, self.offset()?);
+            self.patch(non_nullish, self.offset());
         }
         if computed {
             self.expression(property)?;
-        } else if let Expr::Identifier(name) = property.as_ref() {
+        } else if let Expr::Identifier(name) = property {
+            if let Some(private) = name.strip_prefix('#') {
+                let owner = self.resolve_private_name(private)?;
+                self.constant(Value::String(private.into()))?;
+                return Ok(Some(owner));
+            }
             self.constant(Value::String(name.clone().into()))?;
         } else {
             return Err(CompileError::InvalidSyntax(
@@ -892,7 +1158,22 @@ impl Compiler {
             ));
         }
         self.emit(Opcode::PreparePropertyReference, 0)?;
-        Ok(())
+        Ok(None)
+    }
+
+    /// Like `private_member_reference`, for a previously validated private
+    /// member whose object may itself be part of an optional chain: a nullish
+    /// `o` in `o?.c.#f` short-circuits before reaching the private access.
+    pub(super) fn private_member_chain_reference(
+        &mut self,
+        object: &Expr,
+        name: &str,
+        exits: &mut Vec<usize>,
+    ) -> Result<u32, CompileError> {
+        let owner = self.resolve_private_name(name)?;
+        self.optional_chain_expression(object, exits)?;
+        self.constant(Value::String(name.into()))?;
+        Ok(owner)
     }
 
     /// A parenthesized OptionalMember ends its own chain but still retains a
@@ -903,21 +1184,29 @@ impl Compiler {
         &mut self,
         expr: &Expr,
     ) -> Result<(), CompileError> {
-        if matches!(expr, Expr::Member { .. }) {
+        let member = optional_member_parts(expr).expect("caller checked parenthesized member");
+        if is_super_member(expr) {
+            self.member_reference(expr)?;
+            self.emit_this()?;
+            self.emit(Opcode::SuperGetMethod, 0)?;
+            return Ok(());
+        }
+        if let Some((object, name)) = private_member_parts(expr) {
+            let owner = self.private_member_reference(object, name)?;
+            self.emit(Opcode::PrivateGetMethod, owner)?;
+            return Ok(());
+        }
+        if !member.optional {
             self.member_reference(expr)?;
             self.emit(Opcode::GetMethod, 0)?;
             return Ok(());
         }
-        let Expr::OptionalMember {
+        let OptionalMemberParts {
             object,
             property,
             computed,
-        } = expr
-        else {
-            return Err(CompileError::InvalidSyntax(
-                "invalid parenthesized optional member AST",
-            ));
-        };
+            ..
+        } = member;
         self.expression(object)?;
         self.emit(Opcode::Dup, 0)?;
         let non_nullish = self.emit(Opcode::JumpIfNotNullish, 0)?;
@@ -925,10 +1214,17 @@ impl Compiler {
         self.constant(Value::Undefined)?;
         self.constant(Value::Undefined)?;
         let end = self.emit(Opcode::Jump, 0)?;
-        self.patch(non_nullish, self.offset()?);
-        if *computed {
+        self.patch(non_nullish, self.offset());
+        if computed {
             self.expression(property)?;
-        } else if let Expr::Identifier(name) = property.as_ref() {
+        } else if let Expr::Identifier(name) = property {
+            if let Some(private) = name.strip_prefix('#') {
+                let owner = self.resolve_private_name(private)?;
+                self.constant(Value::String(private.into()))?;
+                self.emit(Opcode::PrivateGetMethod, owner)?;
+                self.patch(end, self.offset());
+                return Ok(());
+            }
             self.constant(Value::String(name.clone().into()))?;
         } else {
             return Err(CompileError::InvalidSyntax(
@@ -937,7 +1233,7 @@ impl Compiler {
         }
         self.emit(Opcode::PreparePropertyReference, 0)?;
         self.emit(Opcode::GetMethod, 0)?;
-        self.patch(end, self.offset()?);
+        self.patch(end, self.offset());
         Ok(())
     }
 
@@ -996,29 +1292,42 @@ impl Compiler {
         }
         // A lexical head name may not also be a `var` declared in the body
         // (BoundNames of ForDeclaration vs. VarDeclaredNames of Statement).
-        self.enter_scope(declarations, &var_names(std::slice::from_ref(body))?, false)?;
+        self.enter_scope(declarations, &var_names(std::slice::from_ref(body)), false)?;
         let iterator = self.resolve("*iterator*").unwrap();
         if let Some(initializer) = annex_b_initializer {
-            self.expression(initializer)?;
+            // `for (var x = init in ...)` names an anonymous function or class
+            // initializer after `x`, as `var x = init` does.
+            let inferred_name = match pattern {
+                Some(Pattern::Identifier(name)) => name.as_str(),
+                _ => {
+                    return Err(CompileError::InvalidSyntax(
+                        "Annex B for-in initializer requires an identifier",
+                    ))
+                }
+            };
+            self.expression_with_name(initializer, Some(inferred_name))?;
             self.bind_pattern(
                 pattern.expect("Annex B initializer has a declaration pattern"),
                 DeclKind::Var,
             )?;
         }
         self.expression(right)?;
+        // A for-in loop's iterator is the engine's own record of the walk over
+        // the prototype chain, not a call into the ECMAScript iterator protocol.
         if for_in {
             self.emit(Opcode::ForInKeys, 0)?;
+        } else {
+            self.emit(
+                if is_await {
+                    Opcode::GetAsyncIterator
+                } else {
+                    Opcode::GetIterator
+                },
+                0,
+            )?;
         }
-        self.emit(
-            if is_await {
-                Opcode::GetAsyncIterator
-            } else {
-                Opcode::GetIterator
-            },
-            0,
-        )?;
         self.emit(Opcode::InitializeBinding, iterator)?;
-        let start = self.offset()?;
+        let start = self.offset();
         self.emit(Opcode::GetBinding, iterator)?;
         let exit = if is_await {
             self.emit(Opcode::AsyncIteratorNext, 0)?;
@@ -1046,14 +1355,13 @@ impl Compiler {
             )?;
         }
         let using_hint = match left {
-            ForHead::Decl(DeclKind::Using, _) => Some(false),
-            ForHead::Decl(DeclKind::AwaitUsing, _) => Some(true),
+            ForHead::Decl(DeclKind::Using, pattern) => Some((false, DeclKind::Using, pattern)),
+            ForHead::Decl(DeclKind::AwaitUsing, pattern) => {
+                Some((true, DeclKind::AwaitUsing, pattern))
+            }
             _ => None,
         };
-        if let Some(is_async) = using_hint {
-            let ForHead::Decl(kind, pattern) = left else {
-                unreachable!("using_hint is only set for ForHead::Decl")
-            };
+        if let Some((is_async, kind, pattern)) = using_hint {
             // `for (using x of iterable)`'s ForBinding disposes `x`'s bound
             // value at the end of *this* iteration (confirmed against
             // `initializer-Symbol.dispose-called-at-end-of-each-iteration-of-forofstatement.js`),
@@ -1061,9 +1369,9 @@ impl Compiler {
             // comment), so the disposal wrapper is per-iteration here: it
             // wraps just this iteration's binding and body, inside the
             // per-iteration scope already entered above.
-            self.wrap_with_disposal(is_async, |this| {
+            self.wrap_with_disposal(is_async, &mut |this| {
                 this.emit(Opcode::Dup, 0)?;
-                this.bind_pattern(pattern, *kind)?;
+                this.bind_pattern(pattern, kind)?;
                 this.emit(Opcode::AddDisposableResource, u32::from(is_async))?;
                 this.statement(body, false)
             })?;
@@ -1088,7 +1396,7 @@ impl Compiler {
             self.leave_scope()?;
         }
         self.emit(Opcode::Jump, start)?;
-        let end = self.offset()?;
+        let end = self.offset();
         self.patch(exit, end);
         let context = self.loops.pop().unwrap();
         for (jump, control) in context.breaks {
@@ -1109,15 +1417,13 @@ impl Compiler {
         target: &Expr,
         value: &Expr,
     ) -> Result<(), CompileError> {
-        let logical_assignment = is_logical_assignment(op);
+        let logical_assignment = logical_assignment_op(op);
         // AssignmentExpression gives an anonymous function definition the
         // syntactic IdentifierReference target's name. Member references and
         // compound assignments deliberately do not participate.
         let inferred_name = match (op, target) {
-            (AssignOp::Assign, Expr::Identifier(name)) if !logical_assignment => {
-                Some(name.as_str())
-            }
-            (_, Expr::Identifier(name)) if logical_assignment => Some(name.as_str()),
+            (AssignOp::Assign, Expr::Identifier(name)) => Some(name.as_str()),
+            (_, Expr::Identifier(name)) if logical_assignment.is_some() => Some(name.as_str()),
             _ => None,
         };
         // A CoverParenthesizedExpression can still evaluate to a reference,
@@ -1145,31 +1451,48 @@ impl Compiler {
         } = target
         {
             if matches!(&**object, Expr::Super) {
-                self.super_property_key(property, *computed)?;
-                if logical_assignment {
-                    self.emit(Opcode::Dup, 0)?;
-                    self.emit(Opcode::SuperGet, 0)?;
-                    self.logical_assignment(op, 1, value, inferred_name, Opcode::SuperSet, 0)?;
-                    return Ok(());
-                }
+                self.super_reference(property, *computed)?;
                 if op != AssignOp::Assign {
-                    self.emit(Opcode::Dup, 0)?;
+                    // A compound or logical assignment reads through the
+                    // Reference first, which converts its key exactly once.
+                    self.emit(Opcode::ToPropertyKey, 0)?;
+                    self.emit(Opcode::Dup2, 0)?;
+                    self.emit_this()?;
                     self.emit(Opcode::SuperGet, 0)?;
+                }
+                if let Some(logical_op) = logical_assignment {
+                    self.logical_assignment(
+                        logical_op,
+                        2,
+                        value,
+                        inferred_name,
+                        Opcode::SuperSet,
+                        0,
+                    )?;
+                    return Ok(());
                 }
                 self.expression_with_name(value, inferred_name)?;
                 if let Some(opcode) = compound_assignment_opcode(op) {
                     self.emit(opcode, 0)?;
                 }
+                self.emit_this()?;
                 self.emit(Opcode::SuperSet, 0)?;
                 return Ok(());
             }
         }
-        if private_member_name(target).is_some() {
-            let owner = self.private_member_reference(target)?;
-            if logical_assignment {
+        if let Some((object, name)) = private_member_parts(target) {
+            let owner = self.private_member_reference(object, name)?;
+            if let Some(logical_op) = logical_assignment {
                 self.emit(Opcode::Dup2, 0)?;
                 self.emit(Opcode::PrivateGet, owner)?;
-                self.logical_assignment(op, 2, value, inferred_name, Opcode::PrivateSet, owner)?;
+                self.logical_assignment(
+                    logical_op,
+                    2,
+                    value,
+                    inferred_name,
+                    Opcode::PrivateSet,
+                    owner,
+                )?;
                 return Ok(());
             }
             if op != AssignOp::Assign {
@@ -1190,10 +1513,10 @@ impl Compiler {
                 // the RHS. A deletion or eval in that RHS must not redirect
                 // PutValue to a later binding lookup.
                 self.emit(Opcode::ResolveWithReference, index)?;
-                if logical_assignment {
+                if let Some(logical_op) = logical_assignment {
                     self.emit(Opcode::LoadWithReference, 0)?;
                     self.logical_assignment(
-                        op,
+                        logical_op,
                         2,
                         value,
                         inferred_name,
@@ -1216,10 +1539,10 @@ impl Compiler {
         if let Expr::Identifier(name) = target {
             if self.resolve(name).is_none() {
                 let index = self.name_constant(name)?;
-                if logical_assignment {
+                if let Some(logical_op) = logical_assignment {
                     self.emit(Opcode::UnboundName, index)?;
                     self.logical_assignment(
-                        op,
+                        logical_op,
                         0,
                         value,
                         inferred_name,
@@ -1231,28 +1554,33 @@ impl Compiler {
                 if op != AssignOp::Assign {
                     self.emit(Opcode::UnboundName, index)?;
                 }
+                // Strict `name = value`: the Reference is resolved before the
+                // right-hand side runs, which may create the binding.
+                let resolve_first = self.bytecode.strict && op == AssignOp::Assign;
+                if resolve_first {
+                    self.emit(Opcode::ResolveUnboundName, index)?;
+                }
                 self.expression_with_name(value, inferred_name)?;
                 if let Some(opcode) = compound_assignment_opcode(op) {
                     self.emit(opcode, 0)?;
                 }
-                self.emit(Opcode::SetUnboundName, index)?;
+                self.emit(
+                    if resolve_first {
+                        Opcode::SetResolvedUnboundName
+                    } else {
+                        Opcode::SetUnboundName
+                    },
+                    index,
+                )?;
                 return Ok(());
             }
         }
         let binding = if let Expr::Identifier(name) = target {
-            if let Some(slot) = self.resolve(name) {
-                Some(slot)
-            } else {
-                let index = u32::try_from(self.bytecode.constants.len())
-                    .map_err(|_| CompileError::ProgramTooLarge)?;
-                self.bytecode
-                    .constants
-                    .push(Value::String("globalThis".into()));
-                self.emit(Opcode::Global, index)?;
-                self.constant(Value::String(name.clone().into()))?;
-                self.emit(Opcode::ToPropertyKey, 0)?;
-                None
-            }
+            // The unbound-name path above returns before reaching this point.
+            Some(
+                self.resolve(name)
+                    .expect("unbound assignment was handled above"),
+            )
         } else {
             if op == AssignOp::Assign {
                 // A simple assignment evaluates the computed property
@@ -1272,11 +1600,11 @@ impl Compiler {
             // reference that was already resolved here.
             self.emit(Opcode::ResolveBindingReference, slot)?;
         }
-        if logical_assignment {
+        if let Some(logical_op) = logical_assignment {
             if binding.is_some() {
                 self.emit(Opcode::LoadBindingReference, 0)?;
                 self.logical_assignment(
-                    op,
+                    logical_op,
                     2,
                     value,
                     inferred_name,
@@ -1286,7 +1614,14 @@ impl Compiler {
             } else {
                 self.emit(Opcode::Dup2, 0)?;
                 self.emit(Opcode::GetProperty, 0)?;
-                self.logical_assignment(op, 2, value, inferred_name, Opcode::SetProperty, 0)?;
+                self.logical_assignment(
+                    logical_op,
+                    2,
+                    value,
+                    inferred_name,
+                    Opcode::SetProperty,
+                    0,
+                )?;
             }
             return Ok(());
         }
@@ -1316,7 +1651,7 @@ impl Compiler {
     /// consumes the retained reference with the supplied store opcode.
     pub(super) fn logical_assignment(
         &mut self,
-        op: AssignOp,
+        op: LogicalOp,
         reference_values: u32,
         value: &Expr,
         inferred_name: Option<&str>,
@@ -1326,22 +1661,24 @@ impl Compiler {
         self.emit(Opcode::Dup, 0)?;
         let bypass = self.emit(
             match op {
-                AssignOp::LogicalAndAssign => Opcode::JumpIfFalse,
-                AssignOp::LogicalOrAssign => Opcode::JumpIfTrue,
-                AssignOp::NullishAssign => Opcode::JumpIfNotNullish,
-                _ => unreachable!("logical assignment helper has a logical operator"),
+                LogicalOp::And => Opcode::JumpIfFalse,
+                LogicalOp::Or => Opcode::JumpIfTrue,
+                LogicalOp::Nullish => Opcode::JumpIfNotNullish,
             },
             0,
         )?;
         self.emit(Opcode::Pop, 0)?;
         self.expression_with_name(value, inferred_name)?;
+        if store == Opcode::SuperSet {
+            self.emit_this()?;
+        }
         self.emit(store, store_operand)?;
         let done = self.emit(Opcode::Jump, 0)?;
-        self.patch(bypass, self.offset()?);
+        self.patch(bypass, self.offset());
         if reference_values != 0 {
             self.emit(Opcode::DiscardReference, reference_values)?;
         }
-        self.patch(done, self.offset()?);
+        self.patch(done, self.offset());
         Ok(())
     }
 
@@ -1362,7 +1699,9 @@ impl Compiler {
         pattern: &AssignmentPattern,
     ) -> Result<(), CompileError> {
         match pattern {
-            AssignmentPattern::Target(target) => self.assign_pattern_target(target)?,
+            AssignmentPattern::Target(target) => {
+                self.assign_pattern_target(strip_target_parentheses(target))?
+            }
             AssignmentPattern::Array(elements) => {
                 self.emit(Opcode::GetIterator, 0)?;
                 for element in elements {
@@ -1373,12 +1712,17 @@ impl Compiler {
                     if element.rest {
                         match &element.pattern {
                             AssignmentPattern::Target(target)
-                                if matches!(&**target, Expr::Member { .. }) =>
+                                if matches!(
+                                    strip_target_parentheses(target),
+                                    Expr::Member { .. }
+                                ) =>
                             {
+                                let target = strip_target_parentheses(target);
                                 self.emit(Opcode::Dup, 0)?;
                                 self.member_reference_uncoerced(target)?;
+                                let prepared = self.prepared_member_kind(target);
                                 self.emit(Opcode::IteratorRestReference, 0)?;
-                                self.assign_prepared_pattern_target(target)?;
+                                self.assign_prepared_pattern_target(prepared)?;
                                 // IteratorRestReference keeps the original
                                 // record below the prepared reference while
                                 // collecting. Rest exhaustion marks it done,
@@ -1394,12 +1738,14 @@ impl Compiler {
                     }
                     let prepared_member_target = match &element.pattern {
                         AssignmentPattern::Target(target)
-                            if matches!(&**target, Expr::Member { .. }) =>
+                            if matches!(strip_target_parentheses(target), Expr::Member { .. }) =>
                         {
+                            let target = strip_target_parentheses(target);
                             self.emit(Opcode::Dup, 0)?;
                             self.member_reference_uncoerced(target)?;
+                            let prepared = self.prepared_member_kind(target);
                             self.array_pattern_reference_value()?;
-                            Some(target.as_ref())
+                            Some(prepared)
                         }
                         _ => {
                             self.array_pattern_value()?;
@@ -1407,8 +1753,8 @@ impl Compiler {
                         }
                     };
                     self.assignment_pattern_default(element.default.as_ref(), &element.pattern)?;
-                    if let Some(target) = prepared_member_target {
-                        self.assign_prepared_pattern_target(target)?;
+                    if let Some(prepared) = prepared_member_target {
+                        self.assign_prepared_pattern_target(prepared)?;
                     } else {
                         self.assign_pattern(&element.pattern)?;
                     }
@@ -1428,8 +1774,12 @@ impl Compiler {
                             self.property_key(key)?;
                             let prepared_member_target = match value {
                                 AssignmentPattern::Target(target)
-                                    if matches!(&**target, Expr::Member { .. }) =>
+                                    if matches!(
+                                        strip_target_parentheses(target),
+                                        Expr::Member { .. }
+                                    ) =>
                                 {
+                                    let target = strip_target_parentheses(target);
                                     // Preserve the already-coerced source
                                     // key while evaluating the assignment
                                     // target reference before GetV(source,
@@ -1437,8 +1787,9 @@ impl Compiler {
                                     // Evaluation requires.
                                     self.emit(Opcode::Dup, 0)?;
                                     self.member_reference_uncoerced(target)?;
+                                    let prepared = self.prepared_member_kind(target);
                                     self.emit(Opcode::DestructurePropertyReference, 0)?;
-                                    Some(target.as_ref())
+                                    Some(prepared)
                                 }
                                 _ => {
                                     self.emit(Opcode::DestructureProperty, 0)?;
@@ -1446,8 +1797,8 @@ impl Compiler {
                                 }
                             };
                             self.assignment_pattern_default(default.as_ref(), value)?;
-                            if let Some(target) = prepared_member_target {
-                                self.assign_prepared_pattern_target(target)?;
+                            if let Some(prepared) = prepared_member_target {
+                                self.assign_prepared_pattern_target(prepared)?;
                             } else {
                                 self.assign_pattern(value)?;
                             }
@@ -1470,12 +1821,28 @@ impl Compiler {
     /// the outer assignment pattern keeps its duplicate RHS beneath it.
     pub(super) fn assign_pattern_target(&mut self, target: &Expr) -> Result<(), CompileError> {
         if let Expr::Identifier(name) = target {
-            if let Some(slot) = self.resolve(name) {
+            if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                // For-in/of assignment heads and destructuring leaves perform
+                // PutValue through the active object environments, just as an
+                // ordinary assignment does. The leaf value is already on the
+                // stack, so use the existing value-before-reference consumer.
+                let index = self.name_constant(name)?;
+                self.emit(Opcode::ResolveWithReference, index)?;
+                self.emit(Opcode::StoreResolvedWithReference, 0)?;
+            } else if let Some(slot) = self.resolve(name) {
                 self.emit(Opcode::StoreBinding, slot)?;
             } else {
                 let index = self.name_constant(name)?;
                 self.emit(Opcode::SetUnboundName, index)?;
             }
+        } else if is_super_member(target) {
+            self.member_reference(target)?;
+            self.emit_this()?;
+            self.emit(Opcode::SuperSet, 1)?;
+        } else if let Some(name) = private_member_name(target) {
+            let owner = self.resolve_private_name(name)?;
+            self.member_reference(target)?;
+            self.emit(Opcode::PrivateSetLeaf, owner)?;
         } else {
             self.member_reference(target)?;
             self.emit(Opcode::SetDestructureProperty, 0)?;
@@ -1487,16 +1854,37 @@ impl Compiler {
     /// Completes a member assignment whose object and raw key were evaluated
     /// before IteratorStep. Destructuring requires that ordering, while
     /// ToPropertyKey and PutValue happen only after the element is obtained.
-    pub(super) fn assign_prepared_pattern_target(
-        &mut self,
-        target: &Expr,
-    ) -> Result<(), CompileError> {
-        if !matches!(target, Expr::Member { .. }) {
-            return Err(CompileError::InvalidSyntax(
-                "prepared destructuring target must be a member reference",
-            ));
+    fn prepared_member_kind(&self, target: &Expr) -> PreparedMemberKind {
+        if is_super_member(target) {
+            PreparedMemberKind::Super
+        } else if let Some(name) = private_member_name(target) {
+            // member_reference_uncoerced already resolved this name. A
+            // destructuring assignment cannot change the private scope.
+            PreparedMemberKind::Private(
+                self.resolve_private_name(name)
+                    .expect("prepared private member keeps its owner"),
+            )
+        } else {
+            PreparedMemberKind::Ordinary
         }
-        self.emit(Opcode::SetDestructurePropertyReference, 0)?;
+    }
+
+    fn assign_prepared_pattern_target(
+        &mut self,
+        prepared: PreparedMemberKind,
+    ) -> Result<(), CompileError> {
+        match prepared {
+            PreparedMemberKind::Super => {
+                self.emit_this()?;
+                self.emit(Opcode::SuperSet, 0)?;
+            }
+            PreparedMemberKind::Private(owner) => {
+                self.emit(Opcode::PrivateSet, owner)?;
+            }
+            PreparedMemberKind::Ordinary => {
+                self.emit(Opcode::SetDestructurePropertyReference, 0)?;
+            }
+        }
         self.emit(Opcode::Pop, 0)?;
         Ok(())
     }
@@ -1506,9 +1894,9 @@ impl Compiler {
     pub(super) fn array_pattern_reference_value(&mut self) -> Result<(), CompileError> {
         let exhausted = self.emit(Opcode::IteratorStepReference, 0)?;
         let joined = self.emit(Opcode::Jump, 0)?;
-        self.patch(exhausted, self.offset()?);
+        self.patch(exhausted, self.offset());
         self.constant(Value::Undefined)?;
-        self.patch(joined, self.offset()?);
+        self.patch(joined, self.offset());
         Ok(())
     }
 
@@ -1533,10 +1921,20 @@ impl Compiler {
         else {
             return Err(CompileError::InvalidSyntax("invalid assignment/member AST"));
         };
+        if let Some(name) = private_member_name(target) {
+            // A private Reference is `object, name`; its consumer supplies the
+            // owner.
+            self.private_member_reference(object, name)?;
+            return Ok(());
+        }
         if matches!(&**object, Expr::Super) {
-            return Err(CompileError::InvalidSyntax(
-                "super member requires a dedicated operation",
-            ));
+            // A super Reference has the same `base, key` shape; the consumer
+            // supplies `this` and uses the Super opcodes.
+            self.super_reference(property, *computed)?;
+            if coerce_key {
+                self.emit(Opcode::ToPropertyKey, 0)?;
+            }
+            return Ok(());
         }
         self.expression(object)?;
         if *computed {
@@ -1558,21 +1956,12 @@ impl Compiler {
         Ok(())
     }
 
-    pub(super) fn private_member_reference(&mut self, target: &Expr) -> Result<u32, CompileError> {
-        let Expr::Member {
-            object,
-            property,
-            computed: false,
-        } = target
-        else {
-            return Err(CompileError::InvalidSyntax("invalid private member AST"));
-        };
-        let Expr::Identifier(name) = property.as_ref() else {
-            return Err(CompileError::InvalidSyntax("invalid private member name"));
-        };
-        let Some(name) = name.strip_prefix('#') else {
-            return Err(CompileError::InvalidSyntax("invalid private member name"));
-        };
+    /// Compile an already validated private member's base and key.
+    pub(super) fn private_member_reference(
+        &mut self,
+        object: &Expr,
+        name: &str,
+    ) -> Result<u32, CompileError> {
         let owner = self.resolve_private_name(name)?;
         self.expression(object)?;
         self.constant(Value::String(name.into()))?;
@@ -1580,17 +1969,26 @@ impl Compiler {
     }
 
     pub(super) fn name_constant(&mut self, name: &str) -> Result<u32, CompileError> {
-        let index = u32::try_from(self.bytecode.constants.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let index = self.metadata_index(self.bytecode.constants.len())?;
         self.bytecode.constants.push(Value::String(name.into()));
         Ok(index)
     }
 
-    pub(super) fn super_property_key(
+    /// Evaluates a SuperProperty into the Reference operands `base, key`.
+    /// GetThisBinding comes first (a derived constructor's `this` may not be
+    /// bound yet), then the key expression, and only then GetSuperBase: the
+    /// base is fixed before any ToPropertyKey or assigned value can run user
+    /// code that would move the home object's prototype. The key stays
+    /// unconverted so `super[key] = rhs` converts it after the RHS.
+    pub(super) fn super_reference(
         &mut self,
         property: &Expr,
         computed: bool,
     ) -> Result<(), CompileError> {
+        if let Some(slot) = self.resolve(DERIVED_THIS_BINDING) {
+            self.emit(Opcode::ThisBinding, slot)?;
+            self.emit(Opcode::Pop, 0)?;
+        }
         if computed {
             self.expression(property)?;
         } else if let Expr::Identifier(name) = property {
@@ -1600,9 +1998,45 @@ impl Compiler {
                 "invalid non-computed super member AST",
             ));
         }
-        // SuperGet/SuperSet own ToPropertyKey. Keeping the raw computed key
-        // here makes simple `super[key] = rhs` evaluate the RHS before key
-        // conversion, as PutValue requires.
+        self.emit(Opcode::SuperBase, 0)?;
+        self.emit(Opcode::Swap, 0)?;
+        Ok(())
+    }
+
+    /// Pushes the current `this` value: the receiver, or for a derived
+    /// constructor (and the arrows and eval code inside it) its hidden
+    /// binding, which throws until `super()` has run.
+    pub(super) fn emit_this(&mut self) -> Result<(), CompileError> {
+        match self.resolve(DERIVED_THIS_BINDING) {
+            Some(slot) => self.emit(Opcode::ThisBinding, slot)?,
+            None => self.emit(Opcode::This, 0)?,
+        };
+        Ok(())
+    }
+
+    /// The start of a `super()` call: leaves the active derived constructor
+    /// `F` on the stack (InitializeInstanceElements needs it afterwards) and
+    /// its GetSuperConstructor above it, before the arguments run.
+    pub(super) fn super_call_prologue(&mut self) -> Result<(), CompileError> {
+        let slot = self
+            .resolve(DERIVED_CONSTRUCTOR_BINDING)
+            .ok_or(CompileError::InvalidSyntax(
+                "super() is only valid in a derived constructor",
+            ))?;
+        self.emit(Opcode::GetBinding, slot)?;
+        self.emit(Opcode::Dup, 0)?;
+        self.emit(Opcode::SuperConstructor, 0)?;
+        Ok(())
+    }
+
+    /// The end of a `super()` call, once `SuperCall` has left the constructed
+    /// value above `F`: BindThisValue, then InitializeInstanceElements.
+    pub(super) fn super_call_epilogue(&mut self) -> Result<(), CompileError> {
+        let slot = self
+            .resolve(DERIVED_THIS_BINDING)
+            .expect("derived constructor has a this binding after its super call");
+        self.emit(Opcode::BindThisValue, slot)?;
+        self.emit(Opcode::InitializeInstanceElements, 0)?;
         Ok(())
     }
 
@@ -1617,3 +2051,6 @@ impl Compiler {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

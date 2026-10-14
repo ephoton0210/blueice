@@ -153,18 +153,21 @@ dependencies = [
  "icu_properties",
  "jiff",
  "jiff-tzdb",
+ "libc",
  "num-bigint",
  "num-traits",
  "regress",
  "serde",
  "serde_json",
  "unicode-normalization",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "blueice-bluets"
 version = "0.1.0"
 dependencies = [
+ "ring",
  "serde",
  "serde_json",
 ]
@@ -228,11 +231,15 @@ dependencies = [
  "blueice-html",
  "blueice-i18n",
  "blueice-ipc",
+ "blueice-launcher",
  "blueice-layout",
  "blueice-net",
  "blueice-paint",
  "blueice-raster",
  "blueice-testing",
+ "getrandom 0.3.4",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]
@@ -288,7 +295,12 @@ dependencies = [
 name = "blueice-launcher"
 version = "0.1.0"
 dependencies = [
+ "blueice-ai-gatekeeper",
+ "blueice-bluejs",
+ "blueice-bluets",
+ "blueice-bluets-bluejs",
  "blueice-ipc",
+ "blueice-net",
  "serde",
  "serde_json",
  "sysinfo",
@@ -310,7 +322,9 @@ name = "blueice-mcp-server"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "blueice-bluets",
  "blueice-ecma402",
+ "blueice-engine",
  "blueice-ipc",
  "blueice-launcher",
  "blueice-raster",
@@ -2370,6 +2384,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
  "uuid",
@@ -2937,6 +2952,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.5",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]

@@ -9,11 +9,13 @@ from unittest import mock
 
 import run
 from run import (
+    HOST_CAN_BLOCK,
     ITERATOR_ZIP_BASIC_MATRIX_FIXTURES,
     ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET,
     FINITE_STRESS_FIXTURES,
     FINITE_STRESS_INSTRUCTION_BUDGET,
     FINITE_STRESS_TIMEOUT,
+    LARGE_FIXTURE_RESOURCES,
     ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
     TEMPORAL_CALENDAR_TABLE_FIXTURES,
     TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET,
@@ -21,15 +23,22 @@ from run import (
     TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET,
     TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES,
     TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET,
+    FINITE_FIXTURE_INSTRUCTION_BUDGETS,
+    FIXTURE_STRING_LIMITS,
+    STRING_SUBSTR_NUMBER_MATRIX_FIXTURES,
+    STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET,
     WALL_CLOCK_BUSY_WAIT_FIXTURES,
     WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET,
     Worker,
+    canblock_exclusion,
     case_timeout,
     classify,
     default_jobs,
+    large_fixture_limits,
     execution_source,
+    fixture_string_limit,
     format_progress,
     instruction_budget,
     metadata,
@@ -37,10 +46,58 @@ from run import (
     module_source_requests,
     module_sources,
     selected_files,
+    stale_corpus_reason,
+    STALE_CORPUS_FIXTURES,
 )
 
 
 class RunnerTests(unittest.TestCase):
+    def test_atomic_coverage_deadline_is_scoped_to_the_fixed_dst_matrices(self):
+        for part in range(1, 9):
+            relative = f"staging/sm/Date/dst-offset-caching-{part}-of-8.js"
+            self.assertEqual(case_timeout({}, 2, relative), 70)
+            self.assertEqual(case_timeout({}, 2, relative, atomic_coverage=True), 180)
+            self.assertEqual(instruction_budget({}, 100_000, relative), 200_000_000)
+        for relative in ("built-ins/Date/basic.js", "staging/sm/Date/dst-offset-caching-0-of-8.js",
+                         "staging/sm/Date/dst-offset-caching-9-of-8.js",
+                         "staging/sm/Date/dst-offset-caching-1-of-8-extra.js"):
+            self.assertEqual(case_timeout({}, 2, relative, atomic_coverage=True), 2)
+            self.assertEqual(instruction_budget({}, 100_000, relative), 100_000)
+
+    def test_atomic_coverage_deadlines_preserve_finite_allocation_matrix_limits(self):
+        cases = {
+            "staging/sm/Array/toSpliced-dense.js": (20, 40, 80_000_000),
+            "staging/sm/regress/regress-1507322-deep-weakmap.js": (15, 30, 30_000_000),
+            "staging/sm/TypedArray/sort_large_countingsort.js": (60, 120, 100_000_000),
+        }
+        for relative, (ordinary, atomic, fuel) in cases.items():
+            data = {"includes": [run.SM_TYPED_ARRAY_HARNESS]} if "TypedArray/" in relative else {}
+            self.assertEqual(case_timeout(data, 2, relative), ordinary)
+            self.assertEqual(case_timeout(data, 2, relative, atomic_coverage=True), atomic)
+            self.assertEqual(case_timeout(data, 240, relative, atomic_coverage=True), 240)
+            self.assertEqual(instruction_budget(data, 100_000, relative), fuel)
+            sibling = relative.replace(".js", "-neighbor.js")
+            self.assertEqual(case_timeout({}, 2, sibling, atomic_coverage=True), 2)
+            elsewhere = "language/" + relative.rsplit("/", 1)[1]
+            self.assertEqual(case_timeout({}, 2, elsewhere, atomic_coverage=True), 2)
+
+    def test_heavy_scheduling_retains_every_fixture_and_its_resource_limits(self):
+        corpus = Path("corpus")
+        paths = [corpus / "test" / relative for relative in (
+            "built-ins/Date/basic.js", "staging/sm/Date/dst-offset-caching-2-of-8.js",
+            "staging/sm/expressions/destructuring-array-default-simple.js",
+            "staging/sm/Date/dst-offset-caching-8-of-8.js",
+        )]
+        groups = run.scheduling_groups(paths, corpus, 8)
+        self.assertEqual(groups[0], ("ordinary", [paths[0], paths[2]], 8))
+        self.assertEqual(groups[1], ("heavy", [paths[1], paths[3]], 2))
+        self.assertEqual(sorted(p for _, selected, _ in groups for p in selected), sorted(paths))
+        self.assertEqual(run.scheduling_groups(paths, corpus, 1)[1][2], 1)
+        for path in paths[1::2]:
+            relative = path.relative_to(corpus / "test").as_posix()
+            self.assertEqual(run.case_timeout({}, 2, relative), 70)
+            self.assertEqual(run.instruction_budget({}, 100_000, relative), 200_000_000)
+
     def test_default_jobs_never_oversubscribes_the_host_or_exceeds_the_ceiling(self):
         self.assertEqual(default_jobs(0), 1)
         self.assertEqual(default_jobs(1), 1)
@@ -76,6 +133,22 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(
             format_progress(0, 1, {}, [], 0, checkpoint=True).startswith("checkpoint")
         )
+
+    def test_only_sta_and_assert_are_native_includes(self):
+        # `propertyHelper.js` and `isConstructor.js` define behaviour the
+        # native counterparts only approximated (the destructive probes, the
+        # `restore` option, exact messages), so they run their upstream
+        # source like every other include; the adapter rejects them as
+        # unsupported unless the runner supplies that source.
+        self.assertEqual(run.NATIVE_INCLUDES, frozenset({"sta.js", "assert.js"}))
+        for include in (
+            "propertyHelper.js",
+            "isConstructor.js",
+            "compareArray.js",
+            "deepEqual.js",
+            "testTypedArray.js",
+        ):
+            self.assertNotIn(include, run.NATIVE_INCLUDES)
 
     def test_metadata_and_modes(self):
         self.assertEqual(modes(metadata("/*---\nflags: [async]\n---*/")), ["sloppy", "strict"])
@@ -156,6 +229,213 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(instruction_budget(data, 100_000, sibling), 10_000_000)
         self.assertEqual(case_timeout(data, 2, sibling), 60)
 
+    def test_substr_number_matrix_gets_an_exact_path_dispatch_allowance(self):
+        # annexB/.../substr/start-and-length-as-numbers.js checks
+        # String.prototype.substr against a reference implementation for
+        # 4 strings x 35 starts x 36 lengths = 5,040 finite calls, each with a
+        # per-character comparison loop. Measured minimum: 1,496,386
+        # dispatches (identically in both modes), about 15x the default. The
+        # allowance is exact-path and leaves the 2 s wall deadline untouched.
+        relative = "annexB/built-ins/String/prototype/substr/start-and-length-as-numbers.js"
+        self.assertEqual(STRING_SUBSTR_NUMBER_MATRIX_FIXTURES, frozenset({relative}))
+        self.assertEqual(STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET, 6_000_000)
+        self.assertEqual(instruction_budget({}, 100_000, relative), 6_000_000)
+        self.assertEqual(case_timeout({}, 2, relative), 2)
+        # A sibling fixture keeps the default, and so does an unrelated path
+        # whose name merely resembles this one.
+        for sibling in (
+            "annexB/built-ins/String/prototype/substr/length-negative.js",
+            "annexB/built-ins/String/prototype/substr/start-and-length-as-numbers-2.js",
+            "built-ins/String/prototype/substring/start-and-length-as-numbers.js",
+        ):
+            self.assertNotIn(sibling, STRING_SUBSTR_NUMBER_MATRIX_FIXTURES)
+            self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
+            self.assertEqual(case_timeout({}, 2, sibling), 2)
+        # The allowance raises the floor only: a larger default is kept, so a
+        # caller asking for more dispatches is never reduced.
+        self.assertEqual(
+            instruction_budget({}, 20_000_000, relative), 20_000_000
+        )
+
+    def test_large_finite_fixtures_get_exact_path_resource_allowances(self):
+        # Each of these fixtures is finite but bigger than the default 1 MiB
+        # string, 16 MiB heap (which also caps an ArrayBuffer), dispatch or
+        # wall-clock ceiling. The allowances are about 3-4x the measured
+        # minimum, exact-path only and never unlimited.
+        mib = 1024 * 1024
+        self.assertEqual(
+            LARGE_FIXTURE_RESOURCES,
+            {
+                "staging/sm/extensions/dataview.js": {"heap_limit": 64 * mib},
+                "staging/sm/RegExp/unicode-braced.js": {
+                    "string_limit": 128 * mib,
+                    "heap_limit": 128 * mib,
+                    "timeout": 20,
+                },
+                "staging/sm/RegExp/unicode-class-braced.js": {
+                    "string_limit": 128 * mib,
+                    "heap_limit": 128 * mib,
+                    "timeout": 20,
+                },
+                "staging/sm/regress/regress-610026.js": {
+                    "string_limit": 64 * mib,
+                    "heap_limit": 128 * mib,
+                    "instruction_budget": 100_000_000,
+                    "timeout": 90,
+                },
+                "staging/sm/JSON/parse-mega-huge-array.js": {
+                    "string_limit": 16 * mib,
+                    "heap_limit": 512 * mib,
+                    "instruction_budget": 50_000_000,
+                    "timeout": 20,
+                },
+                "staging/sm/String/replace-math.js": {"string_limit": 4 * mib},
+                **{
+                    f"staging/sm/Date/dst-offset-caching-{part}-of-8.js": {
+                        "instruction_budget": 200_000_000,
+                        "timeout": 70,
+                    }
+                    for part in range(1, 9)
+                },
+                "staging/sm/Date/two-digit-years.js": {
+                    "instruction_budget": 30_000_000,
+                    "timeout": 10,
+                },
+                "staging/sm/Array/toSpliced-dense.js": {
+                    "instruction_budget": 80_000_000,
+                    "timeout": 20,
+                },
+                "staging/sm/regress/regress-1507322-deep-weakmap.js": {
+                    "instruction_budget": 30_000_000,
+                    "heap_limit": 64 * mib,
+                    "timeout": 15,
+                },
+            },
+        )
+        # The heavy-fuel/wall-clock staging fixtures each get their own exact
+        # dispatch budget and wall deadline; only the deep-WeakMap fixture
+        # also needs a bigger managed heap.
+        for part in range(1, 9):
+            dst = f"staging/sm/Date/dst-offset-caching-{part}-of-8.js"
+            self.assertEqual(instruction_budget({}, 100_000, dst), 200_000_000, dst)
+            self.assertEqual(case_timeout({}, 2, dst), 70, dst)
+            self.assertEqual(large_fixture_limits(dst), {}, dst)
+        two_digit_years = "staging/sm/Date/two-digit-years.js"
+        self.assertEqual(instruction_budget({}, 100_000, two_digit_years), 30_000_000)
+        self.assertEqual(case_timeout({}, 2, two_digit_years), 10)
+        to_spliced = "staging/sm/Array/toSpliced-dense.js"
+        self.assertEqual(instruction_budget({}, 100_000, to_spliced), 80_000_000)
+        self.assertEqual(case_timeout({}, 2, to_spliced), 20)
+        deep_weakmap = "staging/sm/regress/regress-1507322-deep-weakmap.js"
+        self.assertEqual(instruction_budget({}, 100_000, deep_weakmap), 30_000_000)
+        self.assertEqual(case_timeout({}, 2, deep_weakmap), 15)
+        self.assertEqual(large_fixture_limits(deep_weakmap), {"heap_limit": 64 * mib})
+        # Dispatch budget and wall deadline follow the table, and only for
+        # the entries that name them.
+        long_running = "staging/sm/regress/regress-610026.js"
+        self.assertEqual(instruction_budget({}, 100_000, long_running), 100_000_000)
+        self.assertEqual(case_timeout({}, 2, long_running), 90)
+        braced = "staging/sm/RegExp/unicode-braced.js"
+        self.assertEqual(instruction_budget({}, 100_000, braced), 100_000)
+        self.assertEqual(case_timeout({}, 2, braced), 20)
+        dataview = "staging/sm/extensions/dataview.js"
+        self.assertEqual(instruction_budget({}, 100_000, dataview), 100_000)
+        self.assertEqual(case_timeout({}, 2, dataview), 2)
+        # The byte limits go to the adapter with the request.
+        self.assertEqual(large_fixture_limits(dataview), {"heap_limit": 64 * mib})
+        self.assertEqual(
+            large_fixture_limits(long_running),
+            {"string_limit": 64 * mib, "heap_limit": 128 * mib},
+        )
+        self.assertEqual(large_fixture_limits("staging/sm/regress/regress-610025.js"), {})
+        huge_array = "staging/sm/JSON/parse-mega-huge-array.js"
+        self.assertEqual(
+            large_fixture_limits(huge_array),
+            {"string_limit": 16 * mib, "heap_limit": 512 * mib},
+        )
+        self.assertEqual(instruction_budget({}, 100_000, huge_array), 50_000_000)
+        self.assertEqual(case_timeout({}, 2, huge_array), 20)
+        replace_math = "staging/sm/String/replace-math.js"
+        self.assertEqual(large_fixture_limits(replace_math), {"string_limit": 4 * mib})
+        self.assertEqual(instruction_budget({}, 100_000, replace_math), 100_000)
+        self.assertEqual(case_timeout({}, 2, replace_math), 2)
+        # A larger default is never reduced.
+        self.assertEqual(instruction_budget({}, 200_000_000, long_running), 200_000_000)
+        self.assertEqual(case_timeout({}, 120, long_running), 120)
+        # Neighbouring and same-named paths keep every default.
+        for sibling in (
+            "staging/sm/regress/regress-610025.js",
+            "staging/sm/RegExp/unicode-lead-trail.js",
+            "staging/sm/extensions/dataview2.js",
+            "built-ins/DataView/extensions/dataview.js",
+            "test/staging/sm/regress/regress-610026.js",
+        ):
+            self.assertNotIn(sibling, LARGE_FIXTURE_RESOURCES)
+            self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
+            self.assertEqual(case_timeout({}, 2, sibling), 2)
+
+    def test_finite_staging_fixtures_get_exact_path_dispatch_allowances(self):
+        # Each of these fixtures is a fixed, finite loop or a run of eagerly
+        # message-building assertions whose size only just exceeds the
+        # 100,000-dispatch default. The allowance is 4x the measured minimum
+        # (identical in sloppy and strict mode), applies to the exact path
+        # only, and leaves the ordinary 2 s wall deadline untouched. Fixtures
+        # that are too slow for that deadline even with fuel (the
+        # dst-offset-caching parts, toSpliced-dense) must NOT be listed here:
+        # they need a wall-deadline allowance too, which only
+        # `LARGE_FIXTURE_RESOURCES` can express.
+        self.assertEqual(
+            FINITE_FIXTURE_INSTRUCTION_BUDGETS,
+            {
+                "staging/sm/Array/with-dense.js": 750_000,
+                "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
+                "staging/sm/Math/log2-approx.js": 1_300_000,
+                "staging/sm/extensions/es5ish-defineGetter-defineSetter.js": 450_000,
+            },
+        )
+        for relative, budget in FINITE_FIXTURE_INSTRUCTION_BUDGETS.items():
+            self.assertEqual(instruction_budget({}, 100_000, relative), budget, relative)
+            self.assertEqual(case_timeout({}, 2, relative), 2, relative)
+            # Raises the floor only: a larger default is never reduced.
+            self.assertEqual(instruction_budget({}, budget * 10, relative), budget * 10)
+        for other in (
+            "staging/sm/Array/with-dense-2.js",
+            "built-ins/Array/prototype/with/index-bigger-or-eq-than-length.js",
+        ):
+            self.assertNotIn(other, FINITE_FIXTURE_INSTRUCTION_BUDGETS)
+            self.assertEqual(instruction_budget({}, 100_000, other), 100_000, other)
+            self.assertEqual(case_timeout({}, 2, other), 2, other)
+        for heavy in (
+            "staging/sm/Array/toSpliced-dense.js",
+            "staging/sm/Date/dst-offset-caching-1-of-8.js",
+        ):
+            self.assertNotIn(heavy, FINITE_FIXTURE_INSTRUCTION_BUDGETS)
+            self.assertIn(heavy, LARGE_FIXTURE_RESOURCES)
+
+    def test_a_fixture_that_needs_a_huge_string_gets_an_exact_path_string_limit(self):
+        # staging/sm/String/unicode-braced.js evaluates a source string built
+        # from 2**24 zeros, which is 32 MiB of UTF-16 by itself and needs a
+        # string limit of at least 33,558,528 bytes (33,554,432 fails). The
+        # rest of the fixture is ordinary and takes about a second, well inside
+        # the unchanged 2 s wall deadline and the default dispatch budget. The
+        # limit is 64 MiB, twice the requirement: it is a data size, so extra
+        # headroom would buy nothing.
+        relative = "staging/sm/String/unicode-braced.js"
+        self.assertEqual(FIXTURE_STRING_LIMITS, {relative: 64 * 1024 * 1024})
+        self.assertEqual(fixture_string_limit(relative), 64 * 1024 * 1024)
+        self.assertEqual(instruction_budget({}, 100_000, relative), 100_000)
+        self.assertEqual(case_timeout({}, 2, relative), 2)
+        # Neighbours, and fixtures whose failure is a different resource (a
+        # string of 2**36 units, a 2**21-element JSON array), keep the default.
+        for other in (
+            "staging/sm/String/unicode-braced-2.js",
+            "staging/sm/String/replace-math.js",
+            "staging/sm/JSON/parse-mega-huge-array.js",
+            "staging/sm/RegExp/unicode-class-braced.js",
+            "built-ins/String/prototype/repeat/repeat-string-n-times.js",
+        ):
+            self.assertIsNone(fixture_string_limit(other), other)
+
     def test_wall_clock_busy_wait_fixture_gets_an_exact_path_dispatch_allowance(self):
         # await-import-evaluation_FIXTURE.js spins `while (true)` until
         # Date.now() has advanced 100 ms, so its dispatch count is a property
@@ -173,6 +453,67 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(case_timeout({}, 2, relative), 2)
         sibling = "language/expressions/dynamic-import/await-import-evaluation-2.js"
         self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
+
+    def test_canblock_flag_mismatch_is_excluded_not_failed_or_unsupported(self):
+        # This host's Atomics.wait genuinely suspends the agent (every
+        # CanBlockIsTrue fixture already passes against that behavior), so
+        # its declared [[CanBlock]] is true. A CanBlockIsFalse fixture
+        # assumes the opposite and can only be satisfied by making
+        # Atomics.wait always throw, which would break every already-passing
+        # CanBlockIsTrue fixture -- so it is excluded rather than dispatched,
+        # and "excluded" is its own status, never conflated with
+        # "unsupported" (a capability this host actually lacks).
+        self.assertTrue(HOST_CAN_BLOCK)
+        reason = canblock_exclusion(["CanBlockIsFalse"])
+        self.assertIsNotNone(reason)
+        self.assertIn("CanBlockIsFalse", reason)
+        # A flag combined with an unrelated one is still excluded.
+        self.assertIsNotNone(canblock_exclusion(["onlyStrict", "CanBlockIsFalse"]))
+        # The matching flag, and no flag at all, are not excluded.
+        self.assertIsNone(canblock_exclusion(["CanBlockIsTrue"]))
+        self.assertIsNone(canblock_exclusion([]))
+        self.assertIsNone(canblock_exclusion(["onlyStrict"]))
+
+    def test_excluded_kind_classifies_as_its_own_status(self):
+        self.assertEqual(classify({"kind": "excluded", "reason": "x"}, None), "excluded")
+        # Never satisfies a negative-error expectation either.
+        expected = {"phase": "runtime", "type": "TypeError"}
+        self.assertEqual(classify({"kind": "excluded", "reason": "x"}, expected), "excluded")
+
+    def test_stale_corpus_kind_classifies_as_its_own_status(self):
+        # `analyze.py` re-derives every record's status with `classify` and
+        # rejects the run if it disagrees with the runner's own, so a
+        # `stale_corpus` record (which carries a `stale_corpus` reply kind and
+        # never reaches the adapter) must round-trip rather than becoming "fail".
+        self.assertEqual(
+            classify({"kind": "stale_corpus", "reason": "x"}, None), "stale_corpus"
+        )
+        expected = {"phase": "runtime", "type": "TypeError"}
+        self.assertEqual(
+            classify({"kind": "stale_corpus", "reason": "x"}, expected), "stale_corpus"
+        )
+
+    def test_stale_corpus_fixtures_are_a_distinct_status_from_fail_unsupported_and_excluded(self):
+        # A fixture whose own assertions contradict the *current* ECMA-262
+        # draft (verified directly against the live spec text, not merely
+        # inferred from disagreement), with an upstream Test262 issue/fix
+        # already open, is not a BlueJS engine gap ("fail"), a capability
+        # this host lacks ("unsupported"), or a host capability declaration
+        # ("excluded") -- it is the corpus itself that hasn't caught up.
+        stale_path = "annexB/language/function-code/block-decl-func-skip-arguments.js"
+        self.assertIn(stale_path, STALE_CORPUS_FIXTURES)
+        reason = stale_corpus_reason(stale_path)
+        self.assertIsNotNone(reason)
+        self.assertIn("tc39/test262#5113", reason)
+        self.assertIn("tc39/test262#5112", reason)
+        # Every entry documents both the spec section verified and the
+        # upstream issue/PR -- never a bare "we disagree" -- and every
+        # unrelated path is unaffected.
+        for path, entry_reason in STALE_CORPUS_FIXTURES.items():
+            self.assertRegex(entry_reason, r"tc39/test262#\d+")
+        self.assertIsNone(stale_corpus_reason("staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments.js"))
+        self.assertIsNone(stale_corpus_reason("annexB/language/function-code/block-decl-func-skip-arguments2.js"))
+        self.assertIsNone(stale_corpus_reason(""))
 
     def test_typed_array_harness_receives_a_bounded_extended_wall_deadline(self):
         self.assertEqual(case_timeout({"includes": []}, 2), 2)
@@ -779,6 +1120,28 @@ class RunnerTests(unittest.TestCase):
             try:
                 self.assertEqual(worker.run({"stall": True})["kind"], "timeout")
                 self.assertEqual(worker.run({})["kind"], "ok")
+            finally:
+                worker.close()
+
+    def test_supervisor_flushes_a_live_adapter_on_final_close(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "adapter"
+            marker = Path(temporary) / "closed"
+            executable.write_text(
+                "#!/usr/bin/env python3\nimport json,sys\n"
+                "print('{\"ready\":1}',flush=True)\nfor line in sys.stdin:\n"
+                " print('{\"kind\":\"ok\"}',flush=True)\n"
+                f"open({str(marker)!r},'w').write('done')\n"
+            )
+            executable.chmod(0o755)
+            worker = Worker(executable, 1)
+            try:
+                self.assertEqual(worker.run({})["kind"], "ok")
+                process = worker.process
+                worker.close(flush_profile=True)
+                self.assertEqual(process.returncode, 0)
+                self.assertEqual(marker.read_text(), "done")
+                self.assertIsNone(worker.process)
             finally:
                 worker.close()
 

@@ -49,6 +49,17 @@ fn assert_no_failures(body: &str) {
     }
 }
 
+#[test]
+fn mutating_typed_array_methods_reject_primitive_receivers() {
+    assert_no_failures(
+        r#"
+check('fill receiver', typeError(function () { Uint8Array.prototype.fill.call(1, 7); }));
+check('copyWithin receiver', typeError(function () { Uint8Array.prototype.copyWithin.call(null, 0, 1); }));
+check('atomics receiver', typeError(function () { Atomics.store(1, 0, 7); }));
+"#,
+    );
+}
+
 // --- ArrayBuffer.prototype.immutable -------------------------------------
 
 #[test]

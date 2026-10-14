@@ -232,6 +232,149 @@ fn add_rejects_calendar_units_without_a_relative_anchor() {
     }
 }
 
+#[test]
+fn duration_like_conversion_preserves_string_and_getter_errors() {
+    assert_true(
+        r#"
+        const duration = new Temporal.Duration();
+        let invalidString = false;
+        try {
+            duration.add(String.fromCharCode(0xD800));
+        } catch (error) {
+            invalidString = error instanceof RangeError;
+        }
+        const marker = {};
+        let originalGetterError = false;
+        try {
+            duration.add(new Proxy({}, { get() { throw marker; } }));
+        } catch (error) {
+            originalGetterError = error === marker;
+        }
+        let otherTemporalTypeError = false;
+        try {
+            duration.add(new Temporal.PlainDate(2024, 1, 2));
+        } catch (error) {
+            otherTemporalTypeError = error instanceof TypeError;
+        }
+        invalidString && originalGetterError && otherTemporalTypeError
+    "#,
+    );
+}
+
+#[test]
+fn duration_to_string_rejects_unpaired_surrogate_fractional_digits() {
+    assert_true(
+        r#"(function() {
+          let laterOptionRead = false;
+          try {
+            new Temporal.Duration(0, 0, 0, 0, 0, 0, 1).toString({
+              fractionalSecondDigits: '\uD800',
+              get roundingMode() { laterOptionRead = true; throw new TypeError('later option'); }
+            });
+          } catch (error) {
+            return error instanceof RangeError && !laterOptionRead;
+          }
+          return false;
+        })()"#,
+    );
+}
+
+#[test]
+fn duration_operations_preserve_errors_from_each_observable_option_getter() {
+    for (source, expected) in [
+        (
+            "new Temporal.Duration().with({ get days() { throw new Error('days'); } })",
+            "days",
+        ),
+        (
+            "new Temporal.Duration().round({ get largestUnit() { throw new Error('largestUnit'); } })",
+            "largestUnit",
+        ),
+        (
+            "new Temporal.Duration().round({ get relativeTo() { throw new Error('relativeTo'); } })",
+            "relativeTo",
+        ),
+        (
+            "new Temporal.Duration().total({ get relativeTo() { throw new Error('relativeTo'); } })",
+            "relativeTo",
+        ),
+        (
+            "Temporal.Duration.compare(new Temporal.Duration(0, 0, 0, 0, 1), new Temporal.Duration(0, 0, 0, 0, 2), { get relativeTo() { throw new Error('relativeTo'); } })",
+            "relativeTo",
+        ),
+        (
+            "new Temporal.Duration().toString({ get fractionalSecondDigits() { throw new Error('fractionalSecondDigits'); } })",
+            "fractionalSecondDigits",
+        ),
+        (
+            "new Temporal.Duration().toString({ get roundingMode() { throw new Error('roundingMode'); } })",
+            "roundingMode",
+        ),
+    ] {
+        let code = format!(
+            "(function() {{ try {{ {source}; }} catch (error) {{ return error instanceof Error && error.message === '{expected}'; }} return false; }})()"
+        );
+        assert_true(&code);
+    }
+}
+
+#[test]
+fn duration_methods_reject_invalid_receivers_and_options() {
+    for (name, arguments) in [
+        ("with", "{ days: 1 }"),
+        ("negated", ""),
+        ("add", "new Temporal.Duration()"),
+        ("round", "{ smallestUnit: 'second' }"),
+        ("total", "{ unit: 'second' }"),
+        ("toString", ""),
+        ("toLocaleString", ""),
+    ] {
+        assert_true(&format!(
+            "(function() {{ const method = Temporal.Duration.prototype.{name}; if (typeof method !== 'function') return false; try {{ method.call({{}}, {arguments}); }} catch (error) {{ return error instanceof TypeError; }} return false; }})()"
+        ));
+    }
+    assert_true(
+        "(function() { try { new Temporal.Duration().toString({ fractionalSecondDigits: Symbol() }); } catch (error) { return error instanceof TypeError; } return false; })()",
+    );
+    assert_true(
+        "(function() { try { new Temporal.Duration().toString(null); } catch (error) { return error instanceof TypeError; } return false; })()",
+    );
+    assert_true(
+        "(function() { try { new Temporal.Duration().toLocaleString('bad_'); } catch (error) { return error instanceof RangeError; } return false; })()",
+    );
+    assert_true(
+        "(function() { try { new Temporal.Duration(0, 0, 0, 1).add(new Temporal.Duration(1)); } catch (error) { return error instanceof RangeError; } return false; })()",
+    );
+    assert_true(
+        "(function() { try { new Temporal.Duration(1).add(new Temporal.Duration(0, 0, 0, 1)); } catch (error) { return error instanceof RangeError; } return false; })()",
+    );
+}
+
+#[test]
+fn duration_receiver_brand_is_checked_before_reading_argument_properties() {
+    for method in [
+        "with",
+        "add",
+        "round",
+        "total",
+        "toString",
+        "toLocaleString",
+    ] {
+        let source = format!(
+            "(function() {{
+                let touched = false;
+                const argument = new Proxy({{}}, {{
+                    get() {{ touched = true; throw new Error('argument read'); }}
+                }});
+                try {{ Temporal.Duration.prototype.{method}.call({{}}, argument); }}
+                catch (error) {{ return error instanceof TypeError && !touched; }}
+                return false;
+            }})()"
+        );
+        assert_true(&source);
+    }
+}
+
 /// `.../prototype/round/{relativeto-not-required-to-round-non-calendar-units,
 /// days-24-hours,succeeds-with-largest-unit-auto,largestunit-smallestunit-default,
 /// round-negative-result,balance-negative-result,balance-subseconds,

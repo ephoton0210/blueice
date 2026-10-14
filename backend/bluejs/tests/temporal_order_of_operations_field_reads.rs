@@ -97,6 +97,42 @@ fn date_and_date_time_with_reads_fields_alphabetically_before_options() {
     ));
 }
 
+#[test]
+fn date_and_date_time_with_propagate_each_observable_field_getter_error() {
+    assert_true(
+        r#"
+        const cases = [
+            [new Temporal.PlainDate(2000, 5, 2), ["calendar", "timeZone", "day"]],
+            [new Temporal.PlainDate(2000, 5, 2, "gregory"), ["era", "eraYear"]],
+            [new Temporal.PlainDateTime(2000, 5, 2, 1, 2, 3, 4, 5, 6),
+             ["hour", "microsecond", "millisecond", "minute", "nanosecond", "second"]],
+        ];
+        for (const testCase of cases) {
+            const receiver = testCase[0];
+            for (const name of testCase[1]) {
+                const expected = {};
+                const fields = {};
+                Object.defineProperty(fields, name, { get() { throw expected; } });
+                let caught = false;
+                try {
+                    receiver.with(fields);
+                } catch (error) {
+                    caught = error === expected;
+                }
+                if (!caught) throw new Error(name);
+            }
+        }
+        let primitiveRejected = false;
+        try {
+            cases[0][0].with(1);
+        } catch (error) {
+            primitiveRejected = error instanceof TypeError;
+        }
+        primitiveRejected;
+    "#,
+    );
+}
+
 /// `chinese`/`dangi` still see `era`/`eraYear` (in order to reject them),
 /// but `iso8601` never reads them at all -- confirmed directly, not just
 /// inferred from the `iso8601`-only case above.

@@ -47,6 +47,9 @@ fn labelled_early_errors_and_sloppy_let_asi_are_classified() {
         "label: async function value() {}",
         "label: function* value() {}",
         "L: let\n[a] = 0",
+        // A strict-reserved word is not a valid LabelIdentifier, a syntax
+        // error the parser reports itself.
+        "\"use strict\"; yield: 1",
     ] {
         assert!(parse(source).is_err(), "{source}");
     }
@@ -56,10 +59,6 @@ fn labelled_early_errors_and_sloppy_let_asi_are_classified() {
     ));
     assert!(matches!(
         compile(&parse("break missing;").unwrap()),
-        Err(CompileError::InvalidSyntax(_))
-    ));
-    assert!(matches!(
-        compile(&parse("\"use strict\"; yield: 1").unwrap()),
         Err(CompileError::InvalidSyntax(_))
     ));
     assert!(matches!(

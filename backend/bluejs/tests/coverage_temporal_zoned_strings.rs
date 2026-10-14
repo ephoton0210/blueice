@@ -87,6 +87,21 @@ fn run(body: &str) {
 }
 
 #[test]
+fn malformed_time_zone_component_is_rejected_by_temporal_string_parsers() {
+    run(r#"
+      range(() => Z.from("2020-06-15T12:34[Area/Bad!Zone]"));
+      range(() => Temporal.Instant.from("2020-06-15T12:34Z[Area/Bad!Zone]"));
+      range(() => D.from("2020-06-15[Area/Bad!Zone]"));
+      range(() => Z.from("2020-06-15T12:34[Area"));
+      range(() => Z.from("2020-06-15T12:34[UTC][foo"));
+      range(() => Z.from("2020-06-15T12:34[UTC][u-!=value]"));
+      range(() => Temporal.Instant.from("2020-06-15T12:34Z[UTC][foo"));
+      range(() => Temporal.Instant.from("2020-06-15T12:34Z[UTC][!foo=bar]"));
+      same(() => Z.from("2020-06-15T12:34[UTC][foo=bar]").timeZoneId, "UTC");
+    "#);
+}
+
+#[test]
 fn to_string_fractional_second_digits_and_smallest_unit() {
     run(r#"
       const z = Z.from("2020-06-15T12:34:56.789123456[America/New_York]");
@@ -321,5 +336,30 @@ fn get_time_zone_transition_finds_adjacent_offset_changes() {
       range(() => summer.getTimeZoneTransition("bogus"));
       range(() => summer.getTimeZoneTransition(""));
       same(() => Z.prototype.getTimeZoneTransition.length, 1);
+    "#);
+}
+
+#[test]
+fn get_time_zone_transition_propagates_option_getter_and_rejects_unpaired_surrogates() {
+    run(r#"
+      const instance = Z.from("2020-06-15T12:00[America/New_York]");
+      const expected = {};
+      const options = {};
+      Object.defineProperty(options, "direction", { get() { throw expected; } });
+      let caught = false;
+      try { instance.getTimeZoneTransition(options); }
+      catch (error) { caught = error === expected; }
+      same(() => caught, true);
+      const coercionError = {};
+      let coercionCaught = false;
+      try {
+        instance.getTimeZoneTransition({
+          direction: { toString() { throw coercionError; } },
+        });
+      } catch (error) {
+        coercionCaught = error === coercionError;
+      }
+      same(() => coercionCaught, true);
+      range(() => instance.getTimeZoneTransition({ direction: "\uD800" }));
     "#);
 }

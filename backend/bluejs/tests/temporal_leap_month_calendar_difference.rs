@@ -29,6 +29,27 @@ fn assert_true(source: &str) {
     assert_eq!(evaluate(source), Value::Bool(true), "{source}");
 }
 
+#[test]
+fn equal_dates_and_multi_year_month_differences_use_the_public_temporal_methods() {
+    assert_true(
+        r#"
+        (function() {
+          for (const calendar of ["coptic", "chinese", "hebrew"]) {
+            const first = Temporal.PlainDate.from({ year: 2000, month: 4, day: 1, calendar });
+            const later = Temporal.PlainDate.from({ year: 2005, month: 4, day: 1, calendar });
+            const zero = first.until(first, { largestUnit: "months" });
+            if (zero.years !== 0 || zero.months !== 0 || zero.days !== 0) return false;
+            const forward = first.until(later, { largestUnit: "months" });
+            const reverse = later.since(first, { largestUnit: "months" });
+            if (forward.months <= 0 || forward.months !== reverse.months ||
+                forward.years !== 0 || forward.days !== 0) return false;
+          }
+          return true;
+        })()
+        "#,
+    );
+}
+
 /// `leap-months-chinese.js`: 2001 is a leap year with an `M04L` leap month.
 /// `common1Month4.since(leapMonth4, { largestUnit: "months" })` must be
 /// `-12` months (2000 M04 -> 2001 M04, skipping the *later* M04L that year),

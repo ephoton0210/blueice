@@ -179,25 +179,61 @@ struct Worker {
     input: Option<Vec<u16>>,
 }
 
+/// The matcher executable's file name on this platform.
+#[cfg(test)]
+fn bare_worker_path() -> PathBuf {
+    PathBuf::from(format!(
+        "bluejs-regexp-worker{}",
+        std::env::consts::EXE_SUFFIX
+    ))
+}
+
+/// The matcher executable next to `executable` (or one directory up from a
+/// Cargo `deps`/`examples` directory), given the running executable's path.
+#[cfg(test)]
+fn sibling_worker_path(executable: io::Result<PathBuf>) -> io::Result<PathBuf> {
+    let executable = executable?;
+    let mut directory = executable.parent().unwrap();
+    if directory
+        .file_name()
+        .is_some_and(|name| name == "deps" || name == "examples")
+    {
+        directory = directory.parent().unwrap();
+    }
+    Ok(directory.join(bare_worker_path()))
+}
+
+/// A reply frame's payload: replies are plain data and always serialize.
+fn encode_reply(reply: &Reply) -> Vec<u8> {
+    serde_json::to_vec(reply).expect("a regex reply always serializes")
+}
+
 impl Worker {
     fn start() -> io::Result<Self> {
         let path = match std::env::var_os("BLUEJS_REGEXP_WORKER") {
-            Some(path) => PathBuf::from(path),
-            None => {
-                let executable = std::env::current_exe()?;
-                let mut directory = executable.parent().unwrap();
-                if directory
-                    .file_name()
-                    .is_some_and(|name| name == "deps" || name == "examples")
-                {
-                    directory = directory.parent().unwrap();
-                }
-                directory.join(format!(
-                    "bluejs-regexp-worker{}",
-                    std::env::consts::EXE_SUFFIX
-                ))
-            }
+            Some(path) => Ok(PathBuf::from(path)),
+            None => Self::sibling_worker_path(std::env::current_exe()),
         };
+        Self::start_from_path(path)
+    }
+
+    fn sibling_worker_path(executable: io::Result<PathBuf>) -> io::Result<PathBuf> {
+        let executable = executable?;
+        let mut directory = executable.parent().unwrap();
+        if directory
+            .file_name()
+            .is_some_and(|name| name == "deps" || name == "examples")
+        {
+            directory = directory.parent().unwrap();
+        }
+        Ok(directory.join(format!(
+            "bluejs-regexp-worker{}",
+            std::env::consts::EXE_SUFFIX
+        )))
+    }
+
+    fn start_from_path(path: io::Result<PathBuf>) -> io::Result<Self> {
+        let path = path?;
         let mut child = Command::new(path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -251,14 +287,14 @@ impl Worker {
             .as_ref()
             .unwrap()
             .send(bytes)
-            .map_err(worker_error)?;
+            .map_err(|error| worker_error(error.to_string()))?;
         let reply = self.replies.recv_timeout(timeout);
         reply
             .map_err(|error| match error {
                 mpsc::RecvTimeoutError::Timeout => RuntimeError::RegexTimeout,
-                error => worker_error(error),
+                error => worker_error(error.to_string()),
             })?
-            .map_err(worker_error)
+            .map_err(|error| worker_error(error.to_string()))
     }
 
     fn request(
@@ -267,16 +303,17 @@ impl Worker {
         timeout: Duration,
         input_length: Option<usize>,
     ) -> Result<Reply, RuntimeError> {
-        let bytes = serde_json::to_vec(&request).map_err(worker_error)?;
+        let bytes = serde_json::to_vec(&request).expect("a regex request always serializes");
         if bytes.len() > MAX_FRAME {
-            return Err(worker_error("regex request exceeds frame limit"));
+            return Err(worker_error("regex request exceeds frame limit".into()));
         }
         let bytes = self.transact(bytes, timeout)?;
-        let reply: Reply = serde_json::from_slice(&bytes).map_err(worker_error)?;
+        let reply: Reply =
+            serde_json::from_slice(&bytes).map_err(|error| worker_error(error.to_string()))?;
         if input_length.is_some_and(
             |length| matches!(&reply, Reply::Found(Some(matched)) if !matched.valid(length)),
         ) {
-            return Err(worker_error("invalid regex capture range"));
+            return Err(worker_error("invalid regex capture range".into()));
         }
         Ok(reply)
     }
@@ -377,9 +414,9 @@ impl Drop for Worker {
         // platform. Workers are only dropped from ordinary code (never from a
         // thread's exit destructor; see `IDLE`), where that join is safe.
         if let Some(requests) = self.requests.as_ref() {
-            if let Ok(shutdown) = serde_json::to_vec(&Request::Shutdown) {
-                let _ = requests.send(shutdown);
-            }
+            let shutdown =
+                serde_json::to_vec(&Request::Shutdown).expect("a shutdown request serializes");
+            let _ = requests.send(shutdown);
         }
         drop(self.requests.take());
         if let Some(thread) = self.io_thread.take() {
@@ -389,33 +426,54 @@ impl Drop for Worker {
     }
 }
 
-fn worker_error(error: impl std::fmt::Display) -> RuntimeError {
-    RuntimeError::RegexWorker(error.to_string())
+fn worker_error(message: String) -> RuntimeError {
+    RuntimeError::RegexWorker(message)
+}
+
+/// The worker's compiled pattern.
+struct Compiled {
+    source: Vec<u16>,
+    flags: String,
+    regex: regress::Regex,
+    /// A case-insensitive pattern without the `u` and `v` flags is compiled
+    /// case-sensitively from its canonical form and matched against the
+    /// canonicalized subject (see `regex_canonicalize`).
+    canonical: bool,
 }
 
 fn cache_pattern(
-    cached: &mut Option<(Vec<u16>, String, regress::Regex)>,
+    cached: &mut Option<Compiled>,
     source: Vec<u16>,
     flags: String,
 ) -> Result<(), String> {
     let same = cached
         .as_ref()
-        .is_some_and(|(old_source, old_flags, _)| *old_source == source && *old_flags == flags);
+        .is_some_and(|old| old.source == source && old.flags == flags);
     if same {
         return Ok(());
     }
-    let unicode = flags.contains(['u', 'v']);
-    let points: Vec<u32> = if unicode {
-        char::decode_utf16(source.iter().copied())
-            .map(|c| c.map_or_else(|e| u32::from(e.unpaired_surrogate()), |c| c as u32))
-            .collect()
+    let pattern = crate::regex_group_names::regress_points(&source, &flags);
+    let mut regress_flags = if pattern.canonical {
+        flags.replace('i', "")
     } else {
-        source.iter().map(|&c| u32::from(c)).collect()
+        flags.clone()
     };
-    let regex =
-        regress::Regex::from_unicode(points.into_iter(), regress::Flags::from(flags.as_str()))
-            .map_err(|error| error.to_string())?;
-    *cached = Some((source, flags, regex));
+    // `v` includes everything `u` means, but `regress` only treats a pattern as
+    // Unicode (case folding, for one) when it is also given `u`.
+    if regress_flags.contains('v') && !regress_flags.contains('u') {
+        regress_flags.push('u');
+    }
+    let regex = regress::Regex::from_unicode(
+        pattern.points.into_iter(),
+        regress::Flags::from(regress_flags.as_str()),
+    )
+    .map_err(|error| error.to_string())?;
+    *cached = Some(Compiled {
+        source,
+        flags,
+        regex,
+        canonical: pattern.canonical,
+    });
     Ok(())
 }
 
@@ -440,7 +498,7 @@ fn with_worker<T>(
     let idle = IDLE.lock().unwrap_or_else(PoisonError::into_inner).pop();
     let mut worker = match idle {
         Some(worker) => worker,
-        None => Worker::start().map_err(worker_error)?,
+        None => Worker::start().map_err(|error| worker_error(error.to_string()))?,
     };
     let result = operation(&mut worker);
     // A rejected pattern is an expected reply from a healthy worker. Keep it;
@@ -452,14 +510,23 @@ fn with_worker<T>(
     {
         worker.failed = true;
     } else {
-        let mut idle = IDLE.lock().unwrap_or_else(PoisonError::into_inner);
-        if idle.len() < MAX_IDLE_WORKERS {
-            idle.push(worker);
-            return result;
-        }
+        recycle_worker(worker, &IDLE);
+        return result;
     }
     drop(worker);
     result
+}
+
+/// Retire an excess healthy helper outside the pool lock: its shutdown joins
+/// the transport thread and waits for the owned child process.
+fn recycle_worker(worker: Worker, pool: &Mutex<Vec<Worker>>) {
+    let mut idle = pool.lock().unwrap_or_else(PoisonError::into_inner);
+    if idle.len() < MAX_IDLE_WORKERS {
+        idle.push(worker);
+        return;
+    }
+    drop(idle);
+    drop(worker);
 }
 
 /// Patterns the helper has already accepted. A regular expression literal in a
@@ -540,12 +607,18 @@ impl FindMemo {
             return;
         }
         while self.results.len() >= MEMO_ENTRIES || self.units + size > MEMO_UNITS {
-            let Some(oldest) = self.order.pop_front() else {
-                break;
-            };
-            if self.results.remove(&oldest).is_some() {
-                self.units -= oldest.source.len() + oldest.input.len();
-            }
+            // Only remember mutates this private queue/map pair. Each admitted
+            // key occurs once in both, and units is the sum of their sizes.
+            // An empty memo plus an admitted key cannot exceed MEMO_UNITS.
+            let oldest = self
+                .order
+                .pop_front()
+                .expect("a full memo has an oldest key");
+            let _ = self
+                .results
+                .remove(&oldest)
+                .expect("the oldest memo key retains its cached result, including a miss");
+            self.units -= oldest.source.len() + oldest.input.len();
         }
         self.units += size;
         self.order.push_back(key.clone());
@@ -600,12 +673,16 @@ pub(crate) fn validate(
 /// Entry point for the separately installed matcher executable.
 #[doc(hidden)]
 pub fn serve() -> io::Result<()> {
-    let (mut input, mut output) = (io::stdin().lock(), io::stdout().lock());
-    frame_write(&mut output, READY)?;
-    let mut cached: Option<(Vec<u16>, String, regress::Regex)> = None;
-    let mut cached_input = None;
+    serve_on(&mut io::stdin().lock(), &mut io::stdout().lock())
+}
+
+fn serve_on(stream_in: &mut dyn Read, stream_out: &mut dyn Write) -> io::Result<()> {
+    frame_write(stream_out, READY)?;
+    let mut cached: Option<Compiled> = None;
+    let mut cached_input: Option<Vec<u16>> = None;
+    let mut canonical_input: Option<Vec<u16>> = None;
     loop {
-        let bytes = match frame_read(&mut input) {
+        let bytes = match frame_read(stream_in) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
             Err(error) => return Err(error),
@@ -648,10 +725,7 @@ pub fn serve() -> io::Result<()> {
                         io::Error::new(io::ErrorKind::InvalidData, "missing regex flags")
                     })?;
                     if let Err(message) = cache_pattern(&mut cached, source, flags) {
-                        frame_write(
-                            &mut output,
-                            &serde_json::to_vec(&Reply::SyntaxError(message))?,
-                        )?;
+                        frame_write(stream_out, &encode_reply(&Reply::SyntaxError(message)))?;
                         continue;
                     }
                 } else if flags.is_some() {
@@ -662,19 +736,27 @@ pub fn serve() -> io::Result<()> {
                 }
                 if let Some(input) = input {
                     cached_input = Some(input);
+                    canonical_input = None;
                 }
                 let input = cached_input.as_ref().ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "missing regex subject")
                 })?;
-                let (_, flags, regex) = cached.as_ref().ok_or_else(|| {
+                let compiled = cached.as_ref().ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "missing regex pattern")
                 })?;
+                let subject: &[u16] = if compiled.canonical {
+                    canonical_input.get_or_insert_with(|| {
+                        crate::regex_canonicalize::canonicalize_subject(input)
+                    })
+                } else {
+                    input
+                };
                 let found = if start > input.len() {
                     None
-                } else if flags.contains(['u', 'v']) {
-                    regex.find_from_utf16(input, start).next()
+                } else if compiled.flags.contains(['u', 'v']) {
+                    compiled.regex.find_from_utf16(subject, start).next()
                 } else {
-                    regex.find_from_ucs2(input, start).next()
+                    compiled.regex.find_from_ucs2(subject, start).next()
                 };
                 Reply::Found(found.map(|m| {
                     Match {
@@ -693,10 +775,221 @@ pub fn serve() -> io::Result<()> {
                     .collect(),
             ),
         };
-        frame_write(&mut output, &serde_json::to_vec(&reply)?)?;
+        frame_write(stream_out, &encode_reply(&reply))?;
     }
 }
 
 #[cfg(test)]
 #[path = "../tests/fixtures/regex_framing.rs"]
 mod tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../tests/fixtures/regex_pool_boundaries.rs"]
+mod pool_boundary_contracts;
+
+#[cfg(coverage)]
+#[doc(hidden)]
+pub use pool_boundary_contracts::verify_regex_pool_boundary_contracts;
+
+#[cfg(test)]
+mod transport_failure_tests {
+    use super::*;
+
+    /// A writer that accepts `budget` bytes and then fails.
+    struct Budget(usize);
+
+    impl Write for Budget {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.0 < bytes.len() {
+                return Err(io::Error::other("out of budget"));
+            }
+            self.0 -= bytes.len();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn frame(payload: &[u8]) -> Vec<u8> {
+        let mut framed = Vec::new();
+        frame_write(&mut framed, payload).unwrap();
+        framed
+    }
+
+    #[test]
+    fn a_frame_that_cannot_be_written_or_read_is_an_error() {
+        assert!(frame_write(&mut Budget(0), b"x").is_err());
+        assert!(frame_write(&mut Budget(4), b"x").is_err());
+        assert_eq!(
+            frame_read(&mut io::empty()).unwrap_err().kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+        // A length prefix promising more payload than the stream holds.
+        let truncated = [5u8, 0, 0, 0, 1, 2];
+        assert_eq!(
+            frame_read(&mut truncated.as_slice()).unwrap_err().kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+    }
+
+    /// A process that exits immediately: these tests need an owned child, not
+    /// a working matcher.
+    fn exited_child() -> Child {
+        #[cfg(windows)]
+        {
+            Command::new("cmd.exe")
+                .args(["/C", "exit", "0"])
+                .spawn()
+                .unwrap()
+        }
+
+        #[cfg(not(windows))]
+        {
+            Command::new("true").spawn().unwrap()
+        }
+    }
+
+    #[test]
+    fn a_validation_over_a_closed_transport_is_a_worker_failure() {
+        let (sender, receiver) = mpsc::channel();
+        drop(receiver);
+        let (_reply, replies) = mpsc::channel();
+        let mut worker = Worker {
+            child: exited_child(),
+            requests: Some(sender),
+            replies,
+            io_thread: None,
+            failed: true,
+            pattern: None,
+            input: None,
+        };
+        assert!(worker
+            .validate(Vec::new(), Duration::from_millis(50))
+            .is_err());
+    }
+
+    #[test]
+    fn the_worker_path_is_next_to_the_executable_or_above_its_deps_directory() {
+        let suffix = format!("bluejs-regexp-worker{}", std::env::consts::EXE_SUFFIX);
+        assert_eq!(
+            sibling_worker_path(Ok(PathBuf::from("/build/debug/deps/test"))).unwrap(),
+            PathBuf::from("/build/debug").join(&suffix)
+        );
+        assert_eq!(
+            sibling_worker_path(Ok(PathBuf::from("/build/debug/examples/demo"))).unwrap(),
+            PathBuf::from("/build/debug").join(&suffix)
+        );
+        assert_eq!(
+            sibling_worker_path(Ok(PathBuf::from("/build/debug/app"))).unwrap(),
+            PathBuf::from("/build/debug").join(&suffix)
+        );
+        assert_eq!(
+            sibling_worker_path(Err(io::Error::other("no executable")))
+                .unwrap_err()
+                .to_string(),
+            "no executable"
+        );
+    }
+
+    #[test]
+    fn the_worker_loop_reports_transport_and_request_errors() {
+        // The ready frame cannot be written.
+        assert!(serve_on(&mut io::empty(), &mut Budget(0)).is_err());
+        // A request that is not JSON of a known shape.
+        let garbage = frame(b"not json");
+        assert!(serve_on(&mut garbage.as_slice(), &mut Vec::new()).is_err());
+        // A find that supplies a pattern without its flags.
+        let missing_flags = frame(
+            &serde_json::to_vec(&Request::Find {
+                source: Some(vec![97]),
+                flags: None,
+                input: Some(vec![97]),
+                start: 0,
+            })
+            .unwrap(),
+        );
+        assert_eq!(
+            serve_on(&mut missing_flags.as_slice(), &mut Vec::new())
+                .unwrap_err()
+                .to_string(),
+            "missing regex flags"
+        );
+        // A syntax-error reply that cannot be written after the ready frame,
+        // and an ordinary reply that cannot.
+        let ready = 4 + READY.len();
+        for request in [
+            Request::Compile {
+                source: vec![40],
+                flags: String::new(),
+            },
+            Request::Find {
+                source: Some(vec![40]),
+                flags: Some(String::new()),
+                input: Some(vec![97]),
+                start: 0,
+            },
+            Request::Validate {
+                patterns: vec![(vec![97], String::new())],
+            },
+        ] {
+            let framed = frame(&serde_json::to_vec(&request).unwrap());
+            assert!(serve_on(&mut framed.as_slice(), &mut Budget(ready)).is_err());
+        }
+    }
+
+    /// A worker whose only reply is the given frame.
+    fn worker_replying(reply: Vec<u8>) -> (Worker, Receiver<Vec<u8>>) {
+        let (sender, requests) = mpsc::channel();
+        let (replier, replies) = mpsc::channel();
+        replier.send(Ok(reply)).unwrap();
+        let worker = Worker {
+            child: exited_child(),
+            requests: Some(sender),
+            replies,
+            io_thread: None,
+            failed: true,
+            pattern: None,
+            input: None,
+        };
+        (worker, requests)
+    }
+
+    #[test]
+    fn a_reply_is_decoded_and_its_captures_checked_after_the_transaction() {
+        let ask = |reply: Vec<u8>, request: Request, input_length: Option<usize>| {
+            let (mut worker, _requests) = worker_replying(reply);
+            worker.request(request, Duration::from_millis(50), input_length)
+        };
+        let validate = || Request::Validate {
+            patterns: Vec::new(),
+        };
+        let found = |captures: Vec<Option<Range<usize>>>| {
+            encode_reply(&Reply::Found(Some(Match {
+                captures,
+                names: Vec::new(),
+            })))
+        };
+
+        // A reply that is not a reply.
+        let garbage = ask(b"not json".to_vec(), validate(), None).unwrap_err();
+        assert!(garbage.to_string().contains("expected"), "{garbage}");
+        // A capture range beyond the subject is refused, a valid one passed on.
+        assert_eq!(
+            ask(found(vec![Some(0..9)]), validate(), Some(3)).unwrap_err(),
+            worker_error("invalid regex capture range".to_string())
+        );
+        let valid = ask(found(vec![Some(0..2)]), validate(), Some(3)).unwrap();
+        assert_eq!(
+            format!("{valid:?}"),
+            format!("{:?}", Reply::Found(Some(Match::whole(0..2))))
+        );
+        // Without a subject length there is nothing to check a match against.
+        let unchecked = ask(found(vec![Some(0..9)]), validate(), None).unwrap();
+        assert_eq!(
+            format!("{unchecked:?}"),
+            format!("{:?}", Reply::Found(Some(Match::whole(0..9))))
+        );
+    }
+}
