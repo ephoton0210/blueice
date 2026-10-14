@@ -1330,7 +1330,7 @@ fn module_page_console_typing_is_owner_scoped_and_source_separate() {
 }
 
 #[test]
-fn frozen_basic_erasure_and_astral_modules_execute_with_page_console() {
+fn frozen_primitive_and_standard_decorator_modules_execute_with_page_console() {
     for (name, fixture, expected) in [
         (
             "basic",
@@ -1338,7 +1338,7 @@ fn frozen_basic_erasure_and_astral_modules_execute_with_page_console() {
                 env!("CARGO_MANIFEST_DIR"),
                 "/../bluets/tests/fixtures/k11_source_maps/basic.ts"
             )),
-            3,
+            Some(3),
         ),
         (
             "erased",
@@ -1346,7 +1346,7 @@ fn frozen_basic_erasure_and_astral_modules_execute_with_page_console() {
                 env!("CARGO_MANIFEST_DIR"),
                 "/../bluets/tests/fixtures/k11_source_maps/erased.ts"
             )),
-            42,
+            Some(42),
         ),
         (
             "astral",
@@ -1354,11 +1354,50 @@ fn frozen_basic_erasure_and_astral_modules_execute_with_page_console() {
                 env!("CARGO_MANIFEST_DIR"),
                 "/../bluets/tests/fixtures/k11_source_maps/crlf_astral.ts"
             )),
-            2,
+            Some(2),
+        ),
+        (
+            "standard-method",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../bluets/tests/fixtures/k11_source_maps/decorated.ts"
+            )),
+            Some(42),
+        ),
+        (
+            "compacted-relocation",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../bluets/tests/fixtures/k11_source_maps/decorated_parenthesized.ts"
+            )),
+            Some(42),
+        ),
+        (
+            "erased-relocation",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../bluets/tests/fixtures/k11_source_maps/decorated_erased_assertion.ts"
+            )),
+            Some(42),
+        ),
+        (
+            "composed-decorators",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../bluets/tests/fixtures/k11_source_maps/decorated_multiple.ts"
+            )),
+            None,
         ),
     ] {
-        let loader = format!(
-            "var console = {{ log: function(value) {{ if (value !== {expected}) throw '{name} result'; }} }};"
+        let loader = expected.map_or_else(
+            || {
+                "var expected = ['inner', 'outer', 'class', 42]; var next = 0; var console = { log: function(value) { if (value !== expected[next++]) throw 'composed result'; } };".to_string()
+            },
+            |expected| {
+                format!(
+                    "var console = {{ log: function(value) {{ if (value !== {expected}) throw '{name} result'; }} }};"
+                )
+            },
         );
         let module_id = "blueice://page/k11-primitive.ts";
         let script = PageHostScript {

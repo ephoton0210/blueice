@@ -622,7 +622,13 @@ impl Vm {
             code_unit_ordinal,
             bytecode_offset: bytecode_offset as usize,
             caller_program_generation: Some(caller_generation),
-            intermediate_program_generation: None,
+            // A same-generation module may reach a verified child through
+            // one synchronous caller (for example, a decorator's IIFE).
+            // Retain that bounded frame just as the classic route does;
+            // linked dependency calls keep their distinct entry generation
+            // and cannot borrow this same-program intermediate allowance.
+            intermediate_program_generation: (generation == caller_generation)
+                .then_some(generation),
         });
         let result = (|| {
             self.execute_module_graph_inner(entry, modules, false, false, ImportPhase::Evaluation)?;

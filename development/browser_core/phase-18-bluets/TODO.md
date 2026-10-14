@@ -763,6 +763,14 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     ambient through an owner-only policy, keep it out of the source graph and
     runtime, and compare the installed JavaScript, complete map, source hash
     and `sourcesContent` with independent BlueTSC output for each row.
+  - [x] Repeat the exact-source emitted-ESM public debugger path for all four
+    standard-decorator rows: `decorated.ts`, `decorated_parenthesized.ts`,
+    `decorated_erased_assertion.ts` and `decorated_multiple.ts`. Verify each
+    installed artifact and complete map against independent BlueTSC output,
+    keep the page console separate, and resolve, pause, step and project all
+    six relocated method/class decorator tokens while leaving the synthetic
+    helper definition unbound. Retain the actual two- or three-frame caller
+    chain without replaying effects or inventing a source location after step.
   - [x] Add independently default-denied, same-stream receipted public
     debugger operations for generated breakpoint resolution/arming and
     paused step/stack-location projection. Unmapped helper bodies and
@@ -1476,6 +1484,24 @@ debugger tests 48/48. The three-crate all-target warnings-denied Clippy,
 workspace format and diff checks pass. This closes only the exact frozen
 emitted-ESM three-row subcheck; K.11.4 still requires the remaining matrix
 sites, and K.11.6 remains open.
+
+The four exact frozen standard-decorator rows now execute through the same
+owner-selected emitted-ESM page host without changing source bytes. Child
+admission checks the installed JavaScript, complete map, source hash and
+`sourcesContent` against independent BlueTSC output and verifies the
+page-supplied console's actual calls. A test-first BlueJS regression exposed
+that module nested pauses retained only two frames for a same-generation
+three-frame synchronous caller chain. The VM now permits its existing bounded
+one-intermediate-frame retention only when target and entry generations
+match; distinct-generation linked calls retain their prior restriction. The
+public launcher/core/child debugger resolves, arms, pauses and steps all six
+relocated method/class tokens across these four rows, projects their exact
+original positions, preserves their measured two- or three-frame stacks,
+and leaves the generated helper definition and stepped interior instruction
+without user-source attribution. BlueJS library tests pass 1,154/1,154,
+launcher library 198/198, engine library 489/489 and real-process public
+debugger 49/49. The remaining legacy/ES5 frozen rows, broader K.11.4
+matrix-site acceptance and K.11.6 final-source gate are still open.
 
 ### K.12 Projects — M10 — gap G-M2
 

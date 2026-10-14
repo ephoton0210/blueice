@@ -49,6 +49,8 @@ mod generated;
 mod generated_composed;
 #[path = "out_of_process_debugger/generated_es5.rs"]
 mod generated_es5;
+#[path = "out_of_process_debugger/generated_frozen_standard.rs"]
+mod generated_frozen_standard;
 #[path = "out_of_process_debugger/generated_legacy.rs"]
 mod generated_legacy;
 #[path = "out_of_process_debugger/generated_primitives.rs"]

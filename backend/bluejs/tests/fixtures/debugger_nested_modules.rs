@@ -5,6 +5,64 @@
 use super::*;
 
 #[cfg_attr(test, test)]
+fn nested_module_pause_retains_same_generation_intermediate_caller() {
+    let entry = "pages/three-frame.mjs";
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install_precompiled(
+            BlueJsSourceIdentity::new(entry, "sha256:three-frame").unwrap(),
+            module_code("globalThis.calls = 0; function inner(){ globalThis.calls++; return 42; } function middle(){ inner(); return 42; } export const answer = middle();"),
+        )
+        .unwrap();
+    let installed = registry.get(handle).unwrap().bytecode().clone();
+    let generation = installed.debugger_program_generation.unwrap();
+    let graph = HashMap::from([(entry.to_string(), installed)]);
+    let mut vm = Vm::default();
+    let VmDebuggerNestedExecutionState::Paused {
+        frame_serial,
+        code_unit_ordinal: 1,
+        bytecode_offset: 0,
+    } = vm
+        .execute_module_graph_until_nested_debugger_pause(entry, &graph, 1, 0)
+        .unwrap()
+    else {
+        panic!("the same-generation module caller chain must pause at inner")
+    };
+    let stack = vm
+        .debugger_stack_snapshot(Some(frame_serial), 3, 256)
+        .unwrap();
+    assert_eq!(stack.frames.len(), 3);
+    assert_eq!(
+        stack
+            .frames
+            .iter()
+            .map(|frame| frame.program_generation)
+            .collect::<Vec<_>>(),
+        vec![generation; 3]
+    );
+    assert_eq!(
+        vm.lookup_global_name("calls").unwrap(),
+        Some(Value::Number(0.0))
+    );
+    assert!(matches!(
+        vm.step_debugger_nested_instruction(frame_serial).unwrap(),
+        VmDebuggerNestedExecutionState::Paused { .. }
+    ));
+    assert!(matches!(
+        vm.resume_debugger_nested_execution(frame_serial).unwrap(),
+        VmDebuggerNestedExecutionState::FrameReturned { .. }
+    ));
+    assert_eq!(
+        vm.resume_debugger_module_execution().unwrap(),
+        VmDebuggerExecutionState::Completed
+    );
+    assert_eq!(
+        vm.lookup_global_name("calls").unwrap(),
+        Some(Value::Number(1.0))
+    );
+}
+
+#[cfg_attr(test, test)]
 fn nested_module_pause_retains_its_entry_graph_after_dependency_evaluation() {
     let entry = "pages/entry.mjs";
     let dependency = "pages/dep.mjs";
