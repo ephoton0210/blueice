@@ -129,6 +129,124 @@ pub(super) fn arm_child_generated_breakpoint(
     }
 }
 
+pub(super) fn resolve_child_generated_system_breakpoint(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerGeneratedSystemBreakpointTarget,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid generated System breakpoint target".to_string(),
+        };
+    }
+    let emitted = target.emitted.program;
+    let mut tab_id = None;
+    for program in [emitted, target.loader] {
+        match authorize_generated_program(
+            tabs,
+            locations,
+            metadata_session,
+            program,
+            DebuggerMetadataCapability::OpaqueGeneratedBreakpoint,
+        ) {
+            Ok(authorized) if tab_id.is_none_or(|prior| prior == authorized) => {
+                tab_id = Some(authorized);
+            }
+            Ok(_) => return unavailable_generated_breakpoint(),
+            Err(reply) => return *reply,
+        }
+    }
+    let tab_id = tab_id.expect("well-formed System target has two programs");
+    let point = match locations.debugger_system_emitted_safe_point(
+        tab_id,
+        emitted.realm.realm_generation,
+        JavaScriptPageDebuggerProgram {
+            program_handle: target.loader.program_handle,
+            program_generation: target.loader.program_generation,
+        },
+        JavaScriptPageDebuggerProgram {
+            program_handle: emitted.program_handle,
+            program_generation: emitted.program_generation,
+        },
+        target.emitted.generated_line,
+        target.emitted.generated_column_utf16,
+    ) {
+        Ok(point) => point,
+        Err(error) => return debugger_program_error(error),
+    };
+    let safe_point = point.map(|point| DebuggerSafePoint {
+        program: emitted,
+        code_unit_ordinal: point.code_unit_ordinal,
+        bytecode_offset: point.bytecode_offset,
+    });
+    let binding = DebuggerGeneratedSystemBreakpoint { target, safe_point };
+    if !binding.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidSafePoint,
+            message: "invalid generated System breakpoint binding".to_string(),
+        };
+    }
+    if let Some(point) = safe_point {
+        match validate_child_safe_point(tabs, locations, point) {
+            DebuggerReply::SafePointValidated { safe_point } if safe_point == point => {}
+            reply => return reply,
+        }
+    }
+    DebuggerReply::GeneratedSystemBreakpoint(binding)
+}
+
+pub(super) fn arm_child_generated_system_breakpoint(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerGeneratedSystemBreakpointTarget,
+) -> DebuggerReply {
+    let binding = match resolve_child_generated_system_breakpoint(
+        tabs,
+        locations,
+        metadata_session,
+        target,
+    ) {
+        DebuggerReply::GeneratedSystemBreakpoint(binding) => binding,
+        DebuggerReply::Unsupported { .. } => return unavailable_generated_breakpoint_arm(),
+        reply => return reply,
+    };
+    let Some(safe_point) = binding.safe_point else {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidSafePoint,
+            message: "generated System position has no exact executable safe point".to_string(),
+        };
+    };
+    if !locations.debugger_execution_control_available()
+        || !locations.debugger_nested_frames_available()
+    {
+        return unavailable_generated_breakpoint_arm();
+    }
+    let emitted = target.emitted.program;
+    let tab_id = TabId::from_u64(emitted.realm.tab_id);
+    match locations.arm_debugger_system_nested_breakpoint(
+        tab_id,
+        emitted.realm.realm_generation,
+        JavaScriptPageDebuggerProgram {
+            program_handle: target.loader.program_handle,
+            program_generation: target.loader.program_generation,
+        },
+        JavaScriptPageDebuggerProgram {
+            program_handle: emitted.program_handle,
+            program_generation: emitted.program_generation,
+        },
+        JavaScriptPageDebuggerSafePoint {
+            code_unit_ordinal: safe_point.code_unit_ordinal,
+            bytecode_offset: safe_point.bytecode_offset,
+        },
+    ) {
+        Ok(()) => DebuggerReply::GeneratedSystemBreakpointArmed(binding),
+        Err(error) => debugger_program_error(error),
+    }
+}
+
 pub(super) fn child_generated_paused_location(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,

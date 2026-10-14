@@ -131,6 +131,79 @@ fn system_generated_stack_requires_exact_emitted_loader_emitted_order() {
 }
 
 #[test]
+fn system_generated_breakpoint_requires_distinct_realm_bound_loader() {
+    let emitted = DebuggerProgram {
+        realm: realm(),
+        program_handle: 11,
+        program_generation: 12,
+    };
+    let loader = DebuggerProgram {
+        program_handle: 21,
+        program_generation: 22,
+        ..emitted
+    };
+    let target = DebuggerGeneratedSystemBreakpointTarget {
+        emitted: DebuggerGeneratedBreakpointTarget {
+            program: emitted,
+            generated_line: 3,
+            generated_column_utf16: 4,
+        },
+        loader,
+    };
+    assert!(target.is_well_formed());
+    assert!(!DebuggerGeneratedSystemBreakpointTarget {
+        loader: emitted,
+        ..target
+    }
+    .is_well_formed());
+    let point = DebuggerSafePoint {
+        program: emitted,
+        code_unit_ordinal: 1,
+        bytecode_offset: 9,
+    };
+    let binding = DebuggerGeneratedSystemBreakpoint {
+        target,
+        safe_point: Some(point),
+    };
+    assert!(binding.is_well_formed());
+    assert!(!DebuggerGeneratedSystemBreakpoint {
+        safe_point: Some(DebuggerSafePoint {
+            program: loader,
+            ..point
+        }),
+        ..binding
+    }
+    .is_well_formed());
+    assert!(!DebuggerGeneratedSystemBreakpoint {
+        safe_point: Some(DebuggerSafePoint {
+            code_unit_ordinal: 0,
+            ..point
+        }),
+        ..binding
+    }
+    .is_well_formed());
+    for request in [
+        DebuggerRequest::ResolveGeneratedSystemBreakpoint { target },
+        DebuggerRequest::ArmGeneratedSystemBreakpoint { target },
+    ] {
+        assert_eq!(
+            serde_json::from_slice::<DebuggerRequest>(&serde_json::to_vec(&request).unwrap())
+                .unwrap(),
+            request
+        );
+    }
+    for reply in [
+        DebuggerReply::GeneratedSystemBreakpoint(binding),
+        DebuggerReply::GeneratedSystemBreakpointArmed(binding),
+    ] {
+        assert_eq!(
+            serde_json::from_slice::<DebuggerReply>(&serde_json::to_vec(&reply).unwrap()).unwrap(),
+            reply
+        );
+    }
+}
+
+#[test]
 fn symbol_breakpoint_candidate_requires_executable_kind_and_contained_exact_span() {
     let program = DebuggerProgram {
         realm: realm(),
@@ -605,7 +678,7 @@ fn public_static_scope_grant_and_wire_are_independent_of_values() {
             static_scope_relation: true,
             ..Default::default()
         });
-    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 47);
+    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 48);
     assert_eq!(DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION, 6);
     assert_eq!(
         manifest.capabilities,

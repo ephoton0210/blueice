@@ -3,13 +3,21 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use blueice_ipc::debugger::{DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget};
+use blueice_ipc::debugger::{
+    DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget,
+    DebuggerGeneratedSystemBreakpoint, DebuggerGeneratedSystemBreakpointTarget,
+};
 
 const PAGE_SYSTEM_LOADER: &str = r#"
+    var systemLogCount = 0;
+    var systemRegisterCount = 0;
     var console = { log: function(value) {
+        systemLogCount++;
         if (value !== 42) throw 'System console result';
     } };
     var System = { register: function(dependencies, declare) {
+        systemRegisterCount++;
+        if (systemRegisterCount !== 1) throw 'System wrapper replay';
         if (dependencies.length !== 0) throw 'unexpected System dependency';
         var exports = {};
         var body = declare(function(name, value) {
@@ -18,6 +26,7 @@ const PAGE_SYSTEM_LOADER: &str = r#"
         }, { id: 'main' });
         if (body.setters.length !== 0) throw 'unexpected System setter';
         body.execute();
+        if (systemLogCount !== 1) throw 'System execute replay';
         if (exports.answer !== 42) throw 'System export result';
     } };
 "#;
@@ -62,7 +71,7 @@ fn position(text: &str, byte: usize) -> (u32, u32) {
 }
 
 #[test]
-fn public_system_wrapper_and_foreign_loader_target_fail_closed() {
+fn public_system_requires_explicit_dual_program_breakpoint_and_stack_route() {
     let source = system_source();
     let module = "memory:///main.ts";
     let compilation = blueice_bluets::compile(
@@ -164,6 +173,7 @@ fn public_system_wrapper_and_foreign_loader_target_fail_closed() {
         panic!("page loader and emitted System wrapper must both be installed: {inventory:?}")
     };
     assert_eq!(programs.len(), 2);
+    let loader = programs[0];
     let program = programs[1];
     let raw_target = safe_points(
         debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
@@ -239,6 +249,162 @@ fn public_system_wrapper_and_foreign_loader_target_fail_closed() {
         DebuggerReply::Breakpoints(Vec::new()),
         "refused generated System arming must not retain a partial breakpoint"
     );
+    let system_wrapper = DebuggerGeneratedSystemBreakpointTarget {
+        emitted: wrapper_target,
+        loader,
+    };
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveGeneratedSystemBreakpoint {
+                target: system_wrapper,
+            },
+        ),
+        DebuggerReply::GeneratedSystemBreakpoint(DebuggerGeneratedSystemBreakpoint {
+            target: system_wrapper,
+            safe_point: None,
+        }),
+        "explicit System lookup must keep the generated wrapper unbound"
+    );
+    let system_target = DebuggerGeneratedSystemBreakpointTarget {
+        emitted: target,
+        loader,
+    };
+    let binding = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ResolveGeneratedSystemBreakpoint {
+            target: system_target,
+        },
+    );
+    let DebuggerReply::GeneratedSystemBreakpoint(DebuggerGeneratedSystemBreakpoint {
+        safe_point: Some(bound),
+        ..
+    }) = binding
+    else {
+        panic!("mapped System execute token must bind exactly: {binding:?}")
+    };
+    assert_eq!(bound.program, program);
+    assert_ne!(bound.code_unit_ordinal, 0);
+    let expected_binding = DebuggerGeneratedSystemBreakpoint {
+        target: system_target,
+        safe_point: Some(bound),
+    };
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmGeneratedSystemBreakpoint {
+                target: system_wrapper,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidSafePoint,
+            message: "generated System position has no exact executable safe point".to_string(),
+        }
+    );
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ListBreakpoints { realm }),
+        DebuggerReply::Breakpoints(Vec::new())
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmGeneratedSystemBreakpoint {
+                target: system_target,
+            },
+        ),
+        DebuggerReply::GeneratedSystemBreakpointArmed(expected_binding)
+    );
+    let (frame, paused) = await_nested_paused_execution(&mut debugger, program);
+    assert_eq!(paused, bound);
+    let projection = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetGeneratedSystemStackLocations { frame, loader },
+    );
+    let DebuggerReply::GeneratedSystemStackLocations(projection) = projection else {
+        panic!("explicit System stack must project all three frames: {projection:?}")
+    };
+    assert!(projection.is_well_formed());
+    assert_eq!(projection.safe_points[0], bound);
+    assert_eq!(projection.safe_points[1].program, loader);
+    assert_eq!(projection.safe_points[2].program, program);
+    assert_eq!(projection.locations[1], None);
+    let location = projection.locations[0].expect("mapped System token has an exact location");
+    assert_eq!(
+        (location.generated_line, location.generated_column_utf16),
+        call
+    );
+    let original_location = location
+        .original
+        .expect("mapped System token has an original");
+    assert_eq!(
+        (
+            original_location.source_index,
+            original_location.line,
+            original_location.column_utf16
+        ),
+        (0, original.0, original.1)
+    );
+    assert_eq!(projection.locations[2], None);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepNestedInstruction { frame },
+        ),
+        DebuggerReply::NestedStepRequested { frame }
+    );
+    let (stepped_frame, stepped) = await_nested_paused_execution(&mut debugger, program);
+    assert_eq!(stepped_frame, frame);
+    assert_ne!(stepped, bound);
+    let stepped_projection = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetGeneratedSystemStackLocations { frame, loader },
+    );
+    let DebuggerReply::GeneratedSystemStackLocations(stepped_projection) = stepped_projection
+    else {
+        panic!("stepped System stack must remain exact: {stepped_projection:?}")
+    };
+    assert_eq!(stepped_projection.safe_points[0], stepped);
+    assert_eq!(stepped_projection.safe_points[1], projection.safe_points[1]);
+    assert_eq!(stepped_projection.safe_points[2], projection.safe_points[2]);
+    assert_eq!(stepped_projection.locations[1], None);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeNestedExecution { frame },
+        ),
+        DebuggerReply::NestedResumeRequested { frame }
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ) {
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::Paused { safe_point },
+                ..
+            } if safe_point.code_unit_ordinal == 0 => break,
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::NestedResuming { frame: active },
+                ..
+            } if active == frame && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            reply => panic!("System execute must rejoin its root: {reply:?}"),
+        }
+    }
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    await_completed_execution(&mut debugger, program);
+    write_client_message(&mut browser, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::BlueTsScriptReports(reports)
+            if reports.len() == 1
+                && reports[0].outcome == blueice_ipc::BlueTsScriptExecutionOutcome::Executed
+    ));
     drop(debugger);
     launcher.shutdown();
     fixture.join().unwrap();

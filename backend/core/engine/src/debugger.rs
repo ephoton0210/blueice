@@ -43,6 +43,7 @@ use blueice_ipc::debugger::{
     DebuggerGeneratedBreakpoint, DebuggerGeneratedBreakpointTarget,
     DebuggerGeneratedLinkedStackLocations, DebuggerGeneratedOriginalPosition,
     DebuggerGeneratedPausedLocation, DebuggerGeneratedPausedSourceLocation,
+    DebuggerGeneratedSystemBreakpoint, DebuggerGeneratedSystemBreakpointTarget,
     DebuggerGeneratedSystemStackLocations, DebuggerLinkedArmTarget, DebuggerLinkedExecutionState,
     DebuggerLinkedFrame, DebuggerLinkedScopeSnapshot, DebuggerLinkedScopeTarget,
     DebuggerLinkedStackCoordinates, DebuggerLinkedStackCoordinatesTarget, DebuggerLinkedStackFrame,
@@ -416,6 +417,7 @@ impl DebuggerRequestReceiver {
                 | DebuggerReply::RootSafePointBreakpointArmed { .. }
                 | DebuggerReply::NestedSafePointBreakpointArmed { .. }
                 | DebuggerReply::LinkedNestedSafePointBreakpointArmed { .. }
+                | DebuggerReply::GeneratedSystemBreakpointArmed(..)
                 | DebuggerReply::ExecutionResumed { .. }
                 | DebuggerReply::ExecutionStepRequested { .. }
                 | DebuggerReply::NestedStepRequested { .. }
@@ -465,6 +467,9 @@ impl DebuggerRequestReceiver {
                 DebuggerRequest::ArmGeneratedBreakpoint { target } => {
                     Some(target.program.realm.tab_id)
                 }
+                DebuggerRequest::ArmGeneratedSystemBreakpoint { target } => {
+                    Some(target.emitted.program.realm.tab_id)
+                }
                 _ => None,
             };
             let requests_execution_transition = matches!(
@@ -475,6 +480,7 @@ impl DebuggerRequestReceiver {
                     | DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { .. }
                     | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
                     | DebuggerRequest::ArmGeneratedBreakpoint { .. }
+                    | DebuggerRequest::ArmGeneratedSystemBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
                     | DebuggerRequest::StepRootInstruction { .. }
                     | DebuggerRequest::StepNestedInstruction { .. }
@@ -528,6 +534,7 @@ impl DebuggerRequestReceiver {
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
                         | DebuggerReply::NestedSafePointBreakpointArmed { .. }
                         | DebuggerReply::LinkedNestedSafePointBreakpointArmed { .. }
+                        | DebuggerReply::GeneratedSystemBreakpointArmed(..)
                         | DebuggerReply::ExecutionResumed { .. }
                         | DebuggerReply::ExecutionStepRequested { .. }
                         | DebuggerReply::NestedStepRequested { .. }
@@ -542,6 +549,7 @@ impl DebuggerRequestReceiver {
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
                         | DebuggerReply::NestedSafePointBreakpointArmed { .. }
                         | DebuggerReply::LinkedNestedSafePointBreakpointArmed { .. }
+                        | DebuggerReply::GeneratedSystemBreakpointArmed(..)
                 ) {
                     let mut slot = self.admission_hold.borrow_mut();
                     if slot.as_ref().is_some_and(|hold| {
@@ -692,6 +700,12 @@ pub fn handle_debugger_request_with_javascript_executor(
         }
         DebuggerRequest::ResolveGeneratedBreakpoint { .. } => unavailable_generated_breakpoint(),
         DebuggerRequest::ArmGeneratedBreakpoint { .. } => unavailable_generated_breakpoint_arm(),
+        DebuggerRequest::ResolveGeneratedSystemBreakpoint { .. } => {
+            unavailable_generated_breakpoint()
+        }
+        DebuggerRequest::ArmGeneratedSystemBreakpoint { .. } => {
+            unavailable_generated_breakpoint_arm()
+        }
         DebuggerRequest::GetGeneratedPausedLocation { .. } => {
             unavailable_generated_paused_location()
         }
@@ -938,6 +952,12 @@ fn handle_debugger_request_with_child_locations_and_pause(
         }
         DebuggerRequest::ArmGeneratedBreakpoint { target } => {
             arm_child_generated_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::ResolveGeneratedSystemBreakpoint { target } => {
+            resolve_child_generated_system_breakpoint(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::ArmGeneratedSystemBreakpoint { target } => {
+            arm_child_generated_system_breakpoint(tabs, locations, metadata_session, target)
         }
         DebuggerRequest::GetGeneratedPausedLocation { program } => {
             child_generated_paused_location(tabs, locations, metadata_session, program)

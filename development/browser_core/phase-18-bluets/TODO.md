@@ -729,9 +729,18 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     project a BlueTS coordinate onto the foreign loader. Keep System
     resolution and arming closed until their own public checks are complete;
     real-process positive disclosure belongs to the remaining System item.
-  - [ ] Require independent same-stream loader and emitted receipts, then
-    expose only the exact three-frame generated/original projection with
-    step, resume and thrown-completion regressions.
+  - [x] Resolve and arm only an exact mapped System execute-body token through
+    the explicit public dual-program route. Require independent same-stream
+    emitted/loader receipts and the default-denied generated-breakpoint
+    grant, keep wrapper and generic/raw System arming unbound or denied, and
+    preserve owner-stream admission holds. Prove a real-process pause,
+    generated/original three-frame projection, nested step and normal resume
+    without replaying the loader, wrapper or mapped call.
+  - [ ] Prove thrown completion through the same public System pause without
+    replaying loader or wrapper effects; at that pause, show the classic
+    single-program stack still refuses to relabel the foreign frame. Reject
+    stale loader/emitted generations and a substituted cross-stream arm in
+    the real-process route.
   - [ ] Add independently default-denied, same-stream receipted public
     debugger operations for generated breakpoint resolution/arming and
     paused step/stack-location projection. Unmapped helper bodies and
@@ -1308,6 +1317,30 @@ fail-closed. With v47 binaries rebuilt, IPC, launcher and engine library
 suites pass 142/142, 194/194 and 484/484; the real-process public debugger
 suite passes 47/47. Three-crate all-target Clippy with warnings denied,
 workspace formatting and diff checks pass.
+
+Public debugger protocol v48 adds explicit System generated-token resolve and
+atomic nested arm requests. Both require the generated-breakpoint grant and
+independent same-stream emitted and earlier page-loader receipts; the core
+remints both generations, rejects same-program targets, validates only a
+mapped nested execute-body safe point, and delegates to the private
+loader-bound arm. The generic generated and raw System arms remain closed.
+Core now recognizes the successful public System arm in admission-hold
+release and pause-receipt invalidation, so a rejected wrapper never starts a
+pending document while a successful owner-stream arm can reach its pause.
+The frozen System fixture's real-process public debugger regression checks
+wrapper unbound/denied, generic/raw refusal with no retained breakpoint,
+explicit mapped resolution and arm, exact three-frame generated/original
+location, one nested step, normal resume and terminal completion. The page
+loader counts register and console calls, rejecting replay, and the browser
+reports the BlueTS script as `Executed` after continuation. IPC wire/shape
+and core-route tests cover the distinct dual-program target, emitted-only
+receipt denial, unbound wrapper and exact nested arm. This checks the public
+System positive-path subitem only: thrown completion and real-process
+stale/cross-stream negatives remain open, so K.11.4 is not checked.
+With v48 binaries rebuilt, IPC, launcher and engine library suites pass
+143/143, 194/194 and 485/485; the real-process public debugger suite passes
+47/47, including the focused System report assertion. Three-crate all-target
+Clippy with warnings denied, workspace formatting and diff checks pass.
 
 ### K.12 Projects — M10 — gap G-M2
 

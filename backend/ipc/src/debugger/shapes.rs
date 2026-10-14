@@ -520,6 +520,43 @@ impl DebuggerGeneratedBreakpoint {
     }
 }
 
+/// One exact generated System execute-body token under an independently
+/// inventoried, earlier installed page-loader program. The loader is not a
+/// source-map target and cannot be substituted with the emitted program.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedSystemBreakpointTarget {
+    pub emitted: DebuggerGeneratedBreakpointTarget,
+    pub loader: DebuggerProgram,
+}
+
+impl DebuggerGeneratedSystemBreakpointTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.emitted.is_well_formed()
+            && self.loader.is_well_formed()
+            && self.loader.realm == self.emitted.program.realm
+            && self.loader != self.emitted.program
+    }
+}
+
+/// Exact nested safe point for a System execute-body token, or an explicitly
+/// unbound wrapper/helper token. The bound point can never name the loader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerGeneratedSystemBreakpoint {
+    pub target: DebuggerGeneratedSystemBreakpointTarget,
+    pub safe_point: Option<DebuggerSafePoint>,
+}
+
+impl DebuggerGeneratedSystemBreakpoint {
+    pub fn is_well_formed(self) -> bool {
+        self.target.is_well_formed()
+            && self.safe_point.is_none_or(|point| {
+                point.is_well_formed()
+                    && point.program == self.target.emitted.program
+                    && point.code_unit_ordinal != 0
+            })
+    }
+}
+
 /// One original UTF-16 coordinate in the exact emitted artifact's source
 /// table. It has no module identity or source text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

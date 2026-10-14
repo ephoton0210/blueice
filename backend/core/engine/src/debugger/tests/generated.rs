@@ -232,6 +232,7 @@ struct SystemGeneratedLocations {
     foreign_location: bool,
     contradictory_original: bool,
     projection_calls: usize,
+    armed: bool,
 }
 
 impl PageJavaScriptDebuggerLocations for SystemGeneratedLocations {
@@ -287,6 +288,50 @@ impl PageJavaScriptDebuggerLocations for SystemGeneratedLocations {
 
     fn debugger_emitted_paused_root_location_available(&self) -> bool {
         true
+    }
+
+    fn debugger_emitted_map_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_system_emitted_safe_point(
+        &mut self,
+        _tab: TabId,
+        _generation: u64,
+        loader: JavaScriptPageDebuggerProgram,
+        emitted: JavaScriptPageDebuggerProgram,
+        line: u32,
+        column: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        if (loader.program_handle, loader.program_generation) != (8, 4)
+            || (emitted.program_handle, emitted.program_generation) != (7, 3)
+        {
+            return Err(JavaScriptPageDebuggerError::StaleProgram);
+        }
+        Ok(
+            ((line, column) == (1, 2)).then_some(JavaScriptPageDebuggerSafePoint {
+                code_unit_ordinal: 1,
+                bytecode_offset: 4,
+            }),
+        )
+    }
+
+    fn arm_debugger_system_nested_breakpoint(
+        &mut self,
+        _tab: TabId,
+        _generation: u64,
+        loader: JavaScriptPageDebuggerProgram,
+        emitted: JavaScriptPageDebuggerProgram,
+        point: JavaScriptPageDebuggerSafePoint,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if (loader.program_handle, loader.program_generation) != (8, 4)
+            || (emitted.program_handle, emitted.program_generation) != (7, 3)
+            || (point.code_unit_ordinal, point.bytecode_offset) != (1, 4)
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidSafePoint);
+        }
+        self.armed = true;
+        Ok(())
     }
 
     fn validate_debugger_safe_point(
@@ -443,6 +488,7 @@ fn system_stack_disclosure_requires_both_same_stream_receipts_and_never_maps_loa
         foreign_location: false,
         contradictory_original: false,
         projection_calls: 0,
+        armed: false,
     };
     assert_eq!(
         handle_debugger_request_with_child_locations(&tabs, &mut locations, None, request()),
@@ -606,6 +652,134 @@ fn system_stack_disclosure_requires_both_same_stream_receipts_and_never_maps_loa
             ..
         }
     ));
+}
+
+#[test]
+fn system_generated_arm_requires_dual_receipts_and_an_exact_nested_token() {
+    let (tabs, realm) = loaded_tabs();
+    let emitted = DebuggerProgram {
+        realm,
+        program_handle: 7,
+        program_generation: 3,
+    };
+    let loader = DebuggerProgram {
+        program_handle: 8,
+        program_generation: 4,
+        ..emitted
+    };
+    let target = DebuggerGeneratedSystemBreakpointTarget {
+        emitted: DebuggerGeneratedBreakpointTarget {
+            program: emitted,
+            generated_line: 1,
+            generated_column_utf16: 2,
+        },
+        loader,
+    };
+    let mut locations = SystemGeneratedLocations {
+        include_loader: false,
+        foreign_location: false,
+        contradictory_original: false,
+        projection_calls: 0,
+        armed: false,
+    };
+    let session = session(
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_generated_breakpoint(),
+    );
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            DebuggerRequest::ResolveGeneratedSystemBreakpoint { target },
+        ),
+        unavailable_generated_breakpoint()
+    );
+    let _ = handle_debugger_request_with_child_locations(
+        &tabs,
+        &mut locations,
+        Some(&session),
+        DebuggerRequest::ListPrograms { realm },
+    );
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            DebuggerRequest::ArmGeneratedSystemBreakpoint { target },
+        ),
+        unavailable_generated_breakpoint_arm(),
+        "one emitted receipt cannot authorize a System arm"
+    );
+    assert!(!locations.armed);
+    locations.include_loader = true;
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            DebuggerRequest::ListPrograms { realm },
+        ),
+        DebuggerReply::Programs(vec![emitted, loader])
+    );
+    let bound = DebuggerGeneratedSystemBreakpoint {
+        target,
+        safe_point: Some(DebuggerSafePoint {
+            program: emitted,
+            code_unit_ordinal: 1,
+            bytecode_offset: 4,
+        }),
+    };
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            DebuggerRequest::ResolveGeneratedSystemBreakpoint { target },
+        ),
+        DebuggerReply::GeneratedSystemBreakpoint(bound)
+    );
+    let wrapper = DebuggerGeneratedSystemBreakpointTarget {
+        emitted: DebuggerGeneratedBreakpointTarget {
+            generated_column_utf16: 3,
+            ..target.emitted
+        },
+        ..target
+    };
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            DebuggerRequest::ResolveGeneratedSystemBreakpoint { target: wrapper },
+        ),
+        DebuggerReply::GeneratedSystemBreakpoint(DebuggerGeneratedSystemBreakpoint {
+            target: wrapper,
+            safe_point: None,
+        })
+    );
+    assert!(matches!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            DebuggerRequest::ArmGeneratedSystemBreakpoint { target: wrapper },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidSafePoint,
+            ..
+        }
+    ));
+    assert!(!locations.armed);
+    assert_eq!(
+        handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            DebuggerRequest::ArmGeneratedSystemBreakpoint { target },
+        ),
+        DebuggerReply::GeneratedSystemBreakpointArmed(bound)
+    );
+    assert!(locations.armed);
 }
 
 #[test]
