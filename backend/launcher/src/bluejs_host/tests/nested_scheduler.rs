@@ -60,6 +60,115 @@ fn private_system_scheduler_binds_the_earlier_loader_without_public_stack_leak()
         bytecode_offset: point.bytecode_offset,
     };
     assert_ne!(target.code_unit_ordinal, 0);
+    let before_token = &bound.generated.source[..token];
+    let generated_line = before_token.bytes().filter(|byte| *byte == b'\n').count() as u32;
+    let generated_column_utf16 = before_token
+        .rsplit('\n')
+        .next()
+        .unwrap()
+        .encode_utf16()
+        .count() as u32;
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ResolveDebuggerEmittedSafePoint {
+            tab_id: 7,
+            document_generation: 1,
+            program: emitted_program,
+            generated_line,
+            generated_column_utf16,
+        }),
+        PageHostReply::DebuggerEmittedSafePoint {
+            safe_point: None,
+            ..
+        }
+    ));
+    assert_eq!(
+        host.handle_request(PageHostRequest::ResolveDebuggerSystemEmittedSafePoint {
+            tab_id: 7,
+            document_generation: 1,
+            loader_program,
+            program: emitted_program,
+            generated_line,
+            generated_column_utf16,
+        }),
+        PageHostReply::DebuggerSystemEmittedSafePoint {
+            tab_id: 7,
+            document_generation: 1,
+            loader_program,
+            program: emitted_program,
+            generated_line,
+            generated_column_utf16,
+            safe_point: Some(target),
+        }
+    );
+    let (wrapper_line, wrapper_column_utf16) = {
+        let generated = &host.documents[&7].emitted_maps[&emitted_program]
+            .generated
+            .source;
+        let before_wrapper = &generated[..generated.find("System.register").unwrap()];
+        (
+            before_wrapper.bytes().filter(|byte| *byte == b'\n').count() as u32,
+            before_wrapper
+                .rsplit('\n')
+                .next()
+                .unwrap()
+                .encode_utf16()
+                .count() as u32,
+        )
+    };
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ResolveDebuggerSystemEmittedSafePoint {
+            tab_id: 7,
+            document_generation: 1,
+            loader_program,
+            program: emitted_program,
+            generated_line: wrapper_line,
+            generated_column_utf16: wrapper_column_utf16,
+        }),
+        PageHostReply::DebuggerSystemEmittedSafePoint {
+            safe_point: None,
+            ..
+        }
+    ));
+    assert!(host.documents[&7].debugger_breakpoints.is_empty());
+    for wrong_loader in [emitted_program, programs[2]] {
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResolveDebuggerSystemEmittedSafePoint {
+                tab_id: 7,
+                document_generation: 1,
+                loader_program: wrong_loader,
+                program: emitted_program,
+                generated_line,
+                generated_column_utf16,
+            }),
+            PageHostReply::Error { .. }
+        ));
+    }
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ResolveDebuggerSystemEmittedSafePoint {
+            tab_id: 7,
+            document_generation: 1,
+            loader_program: PageHostDebuggerProgram {
+                program_generation: loader_program.program_generation + 1,
+                ..loader_program
+            },
+            program: emitted_program,
+            generated_line,
+            generated_column_utf16,
+        }),
+        PageHostReply::Error { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ResolveDebuggerSystemEmittedSafePoint {
+            tab_id: 7,
+            document_generation: 2,
+            loader_program,
+            program: emitted_program,
+            generated_line,
+            generated_column_utf16,
+        }),
+        PageHostReply::Error { .. }
+    ));
+    assert!(host.documents[&7].debugger_breakpoints.is_empty());
     assert!(host.arm_debugger_nested_target(7, 1, target).is_err());
     assert!(host.documents[&7].debugger_breakpoints.is_empty());
     assert!(matches!(

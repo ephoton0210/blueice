@@ -211,6 +211,21 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 
+    /// Resolves only a mapped System execute-body token under an exact
+    /// separately installed loader. This core-facing method does not grant
+    /// public debugger access or retain a breakpoint.
+    fn debugger_system_emitted_safe_point(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _loader: JavaScriptPageDebuggerProgram,
+        _emitted: JavaScriptPageDebuggerProgram,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
     fn debugger_emitted_paused_root_location(
         &mut self,
         _tab_id: TabId,
@@ -813,6 +828,15 @@ pub trait PageJavaScriptDebuggerLocations {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn system_emitted_lookup_is_default_denied() {
+        let mut debugger = MinimalDebugger;
+        assert_eq!(
+            debugger.debugger_system_emitted_safe_point(tab(), 1, program(), program(), 0, 0),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+    }
 
     /// Implements only this trait's 5 required methods, leaving every
     /// optional method at its trait default -- the same "test doubles must

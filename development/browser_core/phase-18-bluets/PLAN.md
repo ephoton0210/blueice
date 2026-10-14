@@ -10346,3 +10346,17 @@ rebuilding core, launcher and child binaries. Three-crate all-target Clippy,
 workspace formatting and diff checks pass. An initial engine run used a
 stale v48 child binary and failed three handshake tests; this is resolved in
 the rebuilt final-source run, not masked by ignoring those tests.
+
+The private System generated-position resolver is now separately available
+in page-host protocol v50. It requires an exact earlier pending loader and
+uses the artifact-bound source map and unique parser/bytecode token match;
+the ordinary generated route remains unbound for System nested code. The
+frozen System fixture binds its mapped execute-body `console` token but not
+the synthetic `System.register` wrapper. Core remints both program identities
+and checks the complete child echo before validating a nested safe point.
+This is read-only and does not authorize a public debugger client or arm a
+breakpoint. Same-stream receipts and generated/original three-frame stack
+projection still gate the parent K.11.4 System item.
+The rebuilt v50 final-source verification passes IPC 141/141, launcher
+194/194, engine 481/481 and the real-process public debugger suite 47/47;
+three-crate all-target Clippy, workspace formatting and diff checks pass.

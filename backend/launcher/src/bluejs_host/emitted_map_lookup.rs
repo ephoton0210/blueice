@@ -229,19 +229,19 @@ impl BlueJsChildHost {
         }
     }
 
-    pub(super) fn debugger_emitted_safe_point(
+    fn exact_emitted_safe_point_binding(
         &self,
         tab_id: u64,
         document_generation: u64,
         program: PageHostDebuggerProgram,
         generated_line: u32,
         generated_column_utf16: u32,
-    ) -> PageHostReply {
-        let (bound, installed) = match self.exact_emitted_map(tab_id, document_generation, program)
-        {
-            Ok(bound) => bound,
-            Err(reply) => return reply,
-        };
+        system_loader: Option<PageHostDebuggerProgram>,
+    ) -> Result<Option<PageHostDebuggerSafePoint>, PageHostReply> {
+        if let Some(loader) = system_loader {
+            self.validate_system_pending_loader(tab_id, document_generation, loader, program)?;
+        }
+        let (bound, installed) = self.exact_emitted_map(tab_id, document_generation, program)?;
         let original = match bound.map.original_position_at(
             &bound.generated.source,
             generated_line as usize,
@@ -251,9 +251,9 @@ impl BlueJsChildHost {
         ) {
             Ok(original) => original,
             Err(blueice_bluets::SourceMapLookupError::QueryOutOfBounds) => {
-                return invalid_request();
+                return Err(invalid_request());
             }
-            Err(_) => return host_failure(),
+            Err(_) => return Err(host_failure()),
         };
         if installed
             .ast_nodes()
@@ -262,7 +262,7 @@ impl BlueJsChildHost {
             .count()
             != bound.top_level_spans.len()
         {
-            return host_failure();
+            return Err(host_failure());
         }
         let safe_point = original
             .and_then(|_| {
@@ -296,23 +296,77 @@ impl BlueJsChildHost {
                 bytecode_offset: point.bytecode_offset,
             })
             .filter(|point| {
-                // A System module's execute body is entered through a page-supplied
-                // System.register loader, possibly from another installed program.
-                // The bounded nested scheduler cannot retain that foreign caller
-                // chain, so even an exact token/bytecode match must fail closed.
-                point.code_unit_ordinal == 0
-                    || bound.emission_profile != PageHostBlueTsEmissionProfile::System
+                if system_loader.is_some() {
+                    bound.emission_profile == PageHostBlueTsEmissionProfile::System
+                        && point.code_unit_ordinal != 0
+                } else {
+                    // The ordinary one-program route must not bind a System
+                    // execute-body target with an unidentified foreign caller.
+                    point.code_unit_ordinal == 0
+                        || bound.emission_profile != PageHostBlueTsEmissionProfile::System
+                }
             });
         if let Some(safe_point) = safe_point {
-            if let Err(reply) =
-                self.exact_debugger_safe_point(tab_id, document_generation, safe_point)
-            {
-                return reply;
-            }
+            self.exact_debugger_safe_point(tab_id, document_generation, safe_point)?;
         }
+        Ok(safe_point)
+    }
+
+    pub(super) fn debugger_emitted_safe_point(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> PageHostReply {
+        let safe_point = match self.exact_emitted_safe_point_binding(
+            tab_id,
+            document_generation,
+            program,
+            generated_line,
+            generated_column_utf16,
+            None,
+        ) {
+            Ok(point) => point,
+            Err(reply) => return reply,
+        };
         PageHostReply::DebuggerEmittedSafePoint {
             tab_id,
             document_generation,
+            program,
+            generated_line,
+            generated_column_utf16,
+            safe_point,
+        }
+    }
+
+    /// Resolves one System execute-body token only under an exact pending
+    /// loader relation. This private lookup does not retain a breakpoint.
+    pub(super) fn debugger_system_emitted_safe_point(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> PageHostReply {
+        let safe_point = match self.exact_emitted_safe_point_binding(
+            tab_id,
+            document_generation,
+            program,
+            generated_line,
+            generated_column_utf16,
+            Some(loader_program),
+        ) {
+            Ok(point) => point,
+            Err(reply) => return reply,
+        };
+        PageHostReply::DebuggerSystemEmittedSafePoint {
+            tab_id,
+            document_generation,
+            loader_program,
             program,
             generated_line,
             generated_column_utf16,

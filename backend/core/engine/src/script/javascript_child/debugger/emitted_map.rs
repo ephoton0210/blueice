@@ -19,6 +19,82 @@ fn valid_original(position: page_host::PageHostDebuggerEmittedOriginalPosition) 
 }
 
 impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
+    pub(super) fn core_debugger_system_emitted_safe_point(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        loader: JavaScriptPageDebuggerProgram,
+        emitted: JavaScriptPageDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        if !self.child.debugger_emitted_map_available()
+            || generated_line > MAX_EMITTED_COORDINATE
+            || generated_column_utf16 > MAX_EMITTED_COORDINATE
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_loader = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            loader.program_handle,
+            loader.program_generation,
+        )?;
+        let child_emitted = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            emitted.program_handle,
+            emitted.program_generation,
+        )?;
+        if child_loader == child_emitted {
+            return Err(JavaScriptPageDebuggerError::InvalidSafePoint);
+        }
+        let reply = self
+            .child
+            .debugger_system_emitted_safe_point(
+                tab_id.as_u64(),
+                document_generation,
+                child_loader,
+                child_emitted,
+                generated_line,
+                generated_column_utf16,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerSystemEmittedSafePoint {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            loader_program: reply_loader,
+            program: reply_program,
+            generated_line: reply_line,
+            generated_column_utf16: reply_column,
+            safe_point,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || reply_loader != child_loader
+            || reply_program != child_emitted
+            || reply_line != generated_line
+            || reply_column != generated_column_utf16
+            || safe_point.is_some_and(|point| {
+                !point.is_well_formed()
+                    || point.program != child_emitted
+                    || point.code_unit_ordinal == 0
+            })
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        if let Some(point) = safe_point {
+            validate_child_safe_point_reply(self, tab_id, document_generation, point)?;
+        }
+        Ok(safe_point.map(|point| JavaScriptPageDebuggerSafePoint {
+            code_unit_ordinal: point.code_unit_ordinal,
+            bytecode_offset: point.bytecode_offset,
+        }))
+    }
+
     pub(super) fn core_debugger_emitted_original_position(
         &mut self,
         tab_id: TabId,

@@ -37,12 +37,27 @@ enum StackReply {
     Truncated,
 }
 
+#[derive(Clone, Copy)]
+enum LookupReply {
+    Exact,
+    Unbound,
+    WrongTab,
+    WrongGeneration,
+    WrongLoader,
+    WrongProgram,
+    WrongCoordinate,
+    RootTarget,
+    ForeignTarget,
+}
+
 struct SystemLoaderChild {
     lifecycle: RecordingChild,
     arm_reply: ArmReply,
     arm_calls: usize,
     stack_reply: StackReply,
     stack_calls: usize,
+    lookup_reply: LookupReply,
+    lookup_calls: usize,
 }
 
 impl PageHostClient for SystemLoaderChild {
@@ -66,6 +81,10 @@ impl PageHostClient for SystemLoaderChild {
         true
     }
 
+    fn debugger_emitted_map_available(&self) -> bool {
+        true
+    }
+
     fn debugger_programs(&mut self, tab_id: u64, generation: u64) -> io::Result<PageHostReply> {
         Ok(PageHostReply::DebuggerPrograms {
             tab_id,
@@ -85,6 +104,55 @@ impl PageHostClient for SystemLoaderChild {
             tab_id,
             document_generation: generation,
             safe_point,
+        })
+    }
+
+    fn debugger_system_emitted_safe_point(
+        &mut self,
+        tab_id: u64,
+        generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        assert_eq!(loader_program, LOADER);
+        assert_eq!(program, EMITTED);
+        self.lookup_calls += 1;
+        Ok(PageHostReply::DebuggerSystemEmittedSafePoint {
+            tab_id: tab_id + u64::from(matches!(self.lookup_reply, LookupReply::WrongTab)),
+            document_generation: generation
+                + u64::from(matches!(self.lookup_reply, LookupReply::WrongGeneration)),
+            loader_program: if matches!(self.lookup_reply, LookupReply::WrongLoader) {
+                EMITTED
+            } else {
+                loader_program
+            },
+            program: if matches!(self.lookup_reply, LookupReply::WrongProgram) {
+                LOADER
+            } else {
+                program
+            },
+            generated_line: generated_line
+                + u32::from(matches!(self.lookup_reply, LookupReply::WrongCoordinate)),
+            generated_column_utf16,
+            safe_point: if matches!(self.lookup_reply, LookupReply::Unbound) {
+                None
+            } else {
+                Some(PageHostDebuggerSafePoint {
+                    program: if matches!(self.lookup_reply, LookupReply::ForeignTarget) {
+                        LOADER
+                    } else {
+                        program
+                    },
+                    code_unit_ordinal: if matches!(self.lookup_reply, LookupReply::RootTarget) {
+                        0
+                    } else {
+                        TARGET.code_unit_ordinal
+                    },
+                    bytecode_offset: TARGET.bytecode_offset,
+                })
+            },
         })
     }
 
@@ -225,6 +293,8 @@ fn setup(
             arm_calls: 0,
             stack_reply: StackReply::Exact,
             stack_calls: 0,
+            lookup_reply: LookupReply::Exact,
+            lookup_calls: 0,
         },
     );
     executor.synchronize_and_execute(&tabs).unwrap();
@@ -353,4 +423,55 @@ fn core_system_stack_rejects_stale_loader_before_private_inspection() {
         Err(JavaScriptPageDebuggerError::UnknownProgram)
     );
     assert_eq!(executor.child.stack_calls, 0);
+}
+
+#[test]
+fn core_system_generated_lookup_remints_both_programs_and_rejects_forged_replies() {
+    for reply in [
+        LookupReply::Exact,
+        LookupReply::Unbound,
+        LookupReply::WrongTab,
+        LookupReply::WrongGeneration,
+        LookupReply::WrongLoader,
+        LookupReply::WrongProgram,
+        LookupReply::WrongCoordinate,
+        LookupReply::RootTarget,
+        LookupReply::ForeignTarget,
+    ] {
+        let (mut executor, tab_id, loader, emitted) = setup(ArmReply::Exact);
+        executor.child.lookup_reply = reply;
+        let result = executor.debugger_system_emitted_safe_point(tab_id, 1, loader, emitted, 5, 8);
+        let expected = match reply {
+            LookupReply::Exact => Ok(Some(TARGET)),
+            LookupReply::Unbound => Ok(None),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        };
+        assert_eq!(result, expected);
+        assert_eq!(executor.child.lookup_calls, 1);
+        assert_eq!(executor.child.arm_calls, 0);
+    }
+}
+
+#[test]
+fn core_system_generated_lookup_rejects_stale_or_same_program_without_child_query() {
+    let (mut executor, tab_id, loader, emitted) = setup(ArmReply::Exact);
+    assert_eq!(
+        executor.debugger_system_emitted_safe_point(
+            tab_id,
+            1,
+            JavaScriptPageDebuggerProgram {
+                program_generation: loader.program_generation + 1,
+                ..loader
+            },
+            emitted,
+            5,
+            8,
+        ),
+        Err(JavaScriptPageDebuggerError::UnknownProgram)
+    );
+    assert_eq!(
+        executor.debugger_system_emitted_safe_point(tab_id, 1, emitted, emitted, 5, 8),
+        Err(JavaScriptPageDebuggerError::InvalidSafePoint)
+    );
+    assert_eq!(executor.child.lookup_calls, 0);
 }

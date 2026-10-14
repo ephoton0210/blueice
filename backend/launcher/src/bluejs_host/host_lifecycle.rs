@@ -318,6 +318,21 @@ impl BlueJsChildHost {
                 generated_line,
                 generated_column_utf16,
             ),
+            PageHostRequest::ResolveDebuggerSystemEmittedSafePoint {
+                tab_id,
+                document_generation,
+                loader_program,
+                program,
+                generated_line,
+                generated_column_utf16,
+            } => self.debugger_system_emitted_safe_point(
+                tab_id,
+                document_generation,
+                loader_program,
+                program,
+                generated_line,
+                generated_column_utf16,
+            ),
             PageHostRequest::GetDebuggerEmittedPausedRootLocation {
                 tab_id,
                 document_generation,

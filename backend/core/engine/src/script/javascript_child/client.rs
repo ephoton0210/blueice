@@ -478,6 +478,21 @@ pub trait PageHostClient {
         ))
     }
 
+    fn debugger_system_emitted_safe_point(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _loader_program: PageHostDebuggerProgram,
+        _program: PageHostDebuggerProgram,
+        _generated_line: u32,
+        _generated_column_utf16: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement System emitted safe points",
+        ))
+    }
+
     fn debugger_emitted_paused_root_location(
         &mut self,
         _tab_id: u64,
@@ -1076,6 +1091,15 @@ mod tests {
         assert_unsupported(
             client.debugger_programs(1, 1),
             "page-host child does not implement debugger locations",
+        );
+    }
+
+    #[test]
+    fn default_system_emitted_lookup_is_unsupported() {
+        let mut client = MinimalClient;
+        assert_unsupported(
+            client.debugger_system_emitted_safe_point(1, 1, program(), program(), 0, 0),
+            "page-host child does not implement System emitted safe points",
         );
     }
 

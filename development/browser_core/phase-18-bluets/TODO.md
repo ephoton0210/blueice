@@ -711,6 +711,11 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     reject a stale loader or changed top frame, validate all three safe points
     in core, and leave the ordinary classic stack unable to relabel the
     foreign intermediate caller.
+  - [x] Resolve a mapped System execute-body generated token only under the
+    exact earlier pending loader. Reuse the artifact-bound AST/bytecode match,
+    return unbound for wrapper scaffolding, echo both program generations and
+    coordinates, reject substituted replies in core, and retain no breakpoint.
+    Keep ordinary generated lookup and raw arming fail-closed for System.
   - [ ] Require independent same-stream loader and emitted receipts, then
     expose only the exact three-frame generated/original projection with
     step, resume and thrown-completion regressions.
@@ -1236,6 +1241,23 @@ public out-of-process debugger regression suite remains 47/47. Three-crate
 all-target Clippy with warnings denied, workspace formatting and diff checks
 pass. A pre-rebuild engine run reached an old v48 child binary and failed
 three protocol handshakes; the rebuilt final-source run passes them all.
+
+Private page-host protocol v50 adds read-only System generated-token lookup
+under a separately identified, earlier pending JavaScript loader. It shares
+the exact emitted artifact/map and BlueJS AST/bytecode binding with ordinary
+generated lookup, but only the explicit System route may bind a nested
+execute-body point; ordinary generated lookup still returns unbound. The
+frozen System fixture resolves its mapped `console` token exactly, while the
+`System.register` wrapper token stays unbound. Wrong, stale, later or
+same-program loaders and stale documents fail without retaining a breakpoint.
+Core remints both program identities and rejects wrong tab, document, loader,
+emitted program, generated coordinate, foreign or root safe point. This
+checks only the private resolver subitem; public same-stream receipts,
+three-frame original locations and public arm remain open under K.11.4.
+After rebuilding the v50 binaries, the IPC, launcher and engine library
+suites pass 141/141, 194/194 and 481/481; the real-process public debugger
+suite remains 47/47. Three-crate all-target Clippy with warnings denied,
+workspace formatting and diff checks pass.
 
 ### K.12 Projects — M10 — gap G-M2
 

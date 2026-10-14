@@ -332,36 +332,34 @@ impl BlueJsChildHost {
         Ok(())
     }
 
-    /// Child-private System arm with an explicit, earlier page-owned loader.
-    /// This is not reachable from raw or generated public arming until core
-    /// can require independent same-stream receipts for both programs.
-    pub(super) fn arm_debugger_system_target(
-        &mut self,
+    /// Read-only ownership relation shared by private System lookup and arm.
+    /// It does not expose a breakpoint or mutate the pending scheduler.
+    pub(super) fn validate_system_pending_loader(
+        &self,
         tab_id: u64,
         document_generation: u64,
         loader_program: PageHostDebuggerProgram,
-        safe_point: PageHostDebuggerSafePoint,
+        emitted_program: PageHostDebuggerProgram,
     ) -> Result<(), PageHostReply> {
-        self.exact_debugger_safe_point(tab_id, document_generation, safe_point)?;
         if !loader_program.is_well_formed()
-            || loader_program == safe_point.program
-            || safe_point.code_unit_ordinal == 0
+            || !emitted_program.is_well_formed()
+            || loader_program == emitted_program
         {
             return Err(invalid_debugger_state());
         }
-        let document = self.documents.get_mut(&tab_id).expect("validated document");
+        let document = self.exact_document(tab_id, document_generation)?;
         let target_pending = document
             .pending_debugger_executions
             .iter()
-            .find(|pending| pending.program == Some(safe_point.program))
+            .find(|pending| pending.program == Some(emitted_program))
             .ok_or_else(invalid_debugger_state)?;
         let target_ordinal = target_pending.ordinal;
         if !document.debugger_execution_control
-            || document.debugger_execution_states.get(&safe_point.program)
+            || document.debugger_execution_states.get(&emitted_program)
                 != Some(&ChildDebuggerExecutionStatus::Pending)
             || document
                 .emitted_maps
-                .get(&safe_point.program)
+                .get(&emitted_program)
                 .is_none_or(|map| map.emission_profile != PageHostBlueTsEmissionProfile::System)
             || target_pending.language != PageHostScriptLanguage::BlueTsEmitted
             || target_pending.kind != PageHostScriptKind::Classic
@@ -398,6 +396,30 @@ impl BlueJsChildHost {
         {
             return Err(invalid_debugger_state());
         }
+        Ok(())
+    }
+
+    /// Child-private System arm with an explicit, earlier page-owned loader.
+    /// This is not reachable from raw or generated public arming until core
+    /// can require independent same-stream receipts for both programs.
+    pub(super) fn arm_debugger_system_target(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> Result<(), PageHostReply> {
+        self.exact_debugger_safe_point(tab_id, document_generation, safe_point)?;
+        if safe_point.code_unit_ordinal == 0 {
+            return Err(invalid_debugger_state());
+        }
+        self.validate_system_pending_loader(
+            tab_id,
+            document_generation,
+            loader_program,
+            safe_point.program,
+        )?;
+        let document = self.documents.get_mut(&tab_id).expect("validated document");
         let max = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
             .expect("page-host debugger breakpoint cap fits usize");
         if !document.debugger_breakpoints.contains(&safe_point)

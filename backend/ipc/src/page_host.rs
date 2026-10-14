@@ -137,6 +137,8 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V50 adds exact System generated-token lookup through a separately
+/// installed pending loader, without exposing public debugger authority.
 /// V49 adds a generation-labeled, exact three-frame private System stack.
 /// V48 adds an exact System loader-to-emitted-execute arm without granting
 /// any public debugger client access. V45 distinguishes compiler-emitted BlueTS JavaScript from direct AST
@@ -148,7 +150,7 @@ use std::io::{self, Read, Write};
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 49;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 50;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -690,6 +692,17 @@ pub enum PageHostRequest {
         generated_line: u32,
         generated_column_utf16: u32,
     },
+    /// Binds one mapped System execute-body token to its exact nested BlueJS
+    /// instruction only while the named earlier page loader is still pending.
+    /// No breakpoint is retained by this read-only private operation.
+    ResolveDebuggerSystemEmittedSafePoint {
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    },
     /// Projects one current root, same-program nested, or verified linked
     /// frame safe point through that program's exact emitted artifact. A
     /// linked query requires a complete live two-program pause in the child;
@@ -1089,6 +1102,15 @@ pub enum PageHostReply {
     DebuggerEmittedSafePoint {
         tab_id: u64,
         document_generation: u64,
+        program: PageHostDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+        safe_point: Option<PageHostDebuggerSafePoint>,
+    },
+    DebuggerSystemEmittedSafePoint {
+        tab_id: u64,
+        document_generation: u64,
+        loader_program: PageHostDebuggerProgram,
         program: PageHostDebuggerProgram,
         generated_line: u32,
         generated_column_utf16: u32,

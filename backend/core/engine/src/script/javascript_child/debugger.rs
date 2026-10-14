@@ -307,6 +307,25 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         )
     }
 
+    fn debugger_system_emitted_safe_point(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        loader: JavaScriptPageDebuggerProgram,
+        emitted: JavaScriptPageDebuggerProgram,
+        generated_line: u32,
+        generated_column_utf16: u32,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        self.core_debugger_system_emitted_safe_point(
+            tab_id,
+            document_generation,
+            loader,
+            emitted,
+            generated_line,
+            generated_column_utf16,
+        )
+    }
+
     fn debugger_emitted_paused_root_location(
         &mut self,
         tab_id: TabId,

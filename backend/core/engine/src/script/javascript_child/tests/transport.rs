@@ -5,6 +5,52 @@
 use super::*;
 
 #[test]
+fn system_emitted_lookup_connection_sends_both_private_programs_and_position() {
+    let (core, mut child) = UnixStream::pair().unwrap();
+    let loader_program = PageHostDebuggerProgram {
+        program_handle: 11,
+        program_generation: 13,
+    };
+    let program = PageHostDebuggerProgram {
+        program_handle: 17,
+        program_generation: 19,
+    };
+    let expected_reply = PageHostReply::DebuggerSystemEmittedSafePoint {
+        tab_id: 7,
+        document_generation: 3,
+        loader_program,
+        program,
+        generated_line: 5,
+        generated_column_utf16: 8,
+        safe_point: None,
+    };
+    let child_task = thread::spawn({
+        let expected_reply = expected_reply.clone();
+        move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::ResolveDebuggerSystemEmittedSafePoint {
+                    tab_id: 7,
+                    document_generation: 3,
+                    loader_program,
+                    program,
+                    generated_line: 5,
+                    generated_column_utf16: 8,
+                }
+            );
+            page_host::write_page_host_reply(&mut child, &expected_reply).unwrap();
+        }
+    });
+    assert_eq!(
+        PageHostConnection { stream: core }
+            .debugger_system_emitted_safe_point(7, 3, loader_program, program, 5, 8)
+            .unwrap(),
+        expected_reply
+    );
+    child_task.join().unwrap();
+}
+
+#[test]
 fn system_loader_connection_sends_exact_private_program_pair() {
     let (core, mut child) = UnixStream::pair().unwrap();
     let loader_program = PageHostDebuggerProgram {
@@ -718,7 +764,7 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
 
     let (core, mut child) = UnixStream::pair().unwrap();
     let canned = PageHostReply::ShutdownAck;
-    let expected_calls = 47;
+    let expected_calls = 48;
     let child_task = thread::spawn(move || {
         for _ in 0..expected_calls {
             page_host::read_page_host_request(&mut child).unwrap();
@@ -1008,6 +1054,12 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
     assert_eq!(
         connection
             .arm_debugger_system_nested_breakpoint(1, 1, program, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_system_emitted_safe_point(1, 1, program, dependency_program, 0, 0)
             .unwrap(),
         canned.clone()
     );
