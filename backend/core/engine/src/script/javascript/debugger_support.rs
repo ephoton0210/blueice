@@ -398,6 +398,23 @@ pub struct JavaScriptPageDebuggerStackSnapshot {
     pub stack_truncated: bool,
 }
 
+/// Private core-facing System frame with a separately reminted program ID.
+/// No child program handle or invocation serial crosses this boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerSystemStackFrame {
+    pub program: JavaScriptPageDebuggerProgram,
+    pub safe_point: JavaScriptPageDebuggerSafePoint,
+    pub scope_entries: Vec<JavaScriptPageDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerSystemStackSnapshot {
+    pub frame: JavaScriptPageDebuggerFrame,
+    pub frames: [JavaScriptPageDebuggerSystemStackFrame; 3],
+    pub max_scope_entries: u32,
+}
+
 /// One frame and exact safe point in a complete linked dependency/entry
 /// pause. The entry caller may have root ordinal zero; both identities remain
 /// core-reminted and contain no child program or invocation serial.

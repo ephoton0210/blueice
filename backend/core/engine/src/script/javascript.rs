@@ -69,7 +69,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
     JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerStaticScopeRelation,
-    JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerValuePreview,
+    JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerSystemStackFrame,
+    JavaScriptPageDebuggerSystemStackSnapshot, JavaScriptPageDebuggerValuePreview,
     JavaScriptPageDebuggerValueTarget,
 };
 

@@ -907,6 +907,15 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         )
     }
 
+    fn debugger_system_stack_snapshot(
+        &mut self,
+        frame: JavaScriptPageDebuggerFrame,
+        loader: JavaScriptPageDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerSystemStackSnapshot, JavaScriptPageDebuggerError> {
+        self.core_debugger_system_stack_snapshot(frame, loader, max_scope_entries)
+    }
+
     fn debugger_nested_execution_state(
         &mut self,
         tab_id: TabId,

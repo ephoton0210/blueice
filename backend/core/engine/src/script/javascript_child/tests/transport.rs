@@ -48,6 +48,44 @@ fn system_loader_connection_sends_exact_private_program_pair() {
 }
 
 #[test]
+fn system_stack_connection_sends_exact_frame_loader_and_budget() {
+    let (core, mut child) = UnixStream::pair().unwrap();
+    let emitted = PageHostDebuggerProgram {
+        program_handle: 11,
+        program_generation: 13,
+    };
+    let loader_program = PageHostDebuggerProgram {
+        program_handle: 17,
+        program_generation: 19,
+    };
+    let frame = PageHostDebuggerFrame {
+        tab_id: 7,
+        document_generation: 3,
+        program: emitted,
+        code_unit_ordinal: 2,
+        invocation_serial: 23,
+    };
+    let child_task = thread::spawn(move || {
+        assert_eq!(
+            page_host::read_page_host_request(&mut child).unwrap(),
+            PageHostRequest::GetDebuggerSystemStackSnapshot {
+                frame,
+                loader_program,
+                max_scope_entries: 7,
+            }
+        );
+        page_host::write_page_host_reply(&mut child, &PageHostReply::ShutdownAck).unwrap();
+    });
+    assert_eq!(
+        PageHostConnection { stream: core }
+            .debugger_system_stack_snapshot(frame, loader_program, 7)
+            .unwrap(),
+        PageHostReply::ShutdownAck
+    );
+    child_task.join().unwrap();
+}
+
+#[test]
 fn emitted_debugger_connection_preserves_exact_private_request_and_reply_tuples() {
     let (core, mut child) = UnixStream::pair().unwrap();
     let program = PageHostDebuggerProgram {
@@ -680,7 +718,7 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
 
     let (core, mut child) = UnixStream::pair().unwrap();
     let canned = PageHostReply::ShutdownAck;
-    let expected_calls = 46;
+    let expected_calls = 47;
     let child_task = thread::spawn(move || {
         for _ in 0..expected_calls {
             page_host::read_page_host_request(&mut child).unwrap();
@@ -970,6 +1008,12 @@ fn every_debugger_dispatch_method_forwards_its_reply_and_every_capability_flag_i
     assert_eq!(
         connection
             .arm_debugger_system_nested_breakpoint(1, 1, program, safe_point)
+            .unwrap(),
+        canned.clone()
+    );
+    assert_eq!(
+        connection
+            .debugger_system_stack_snapshot(frame, program, 1)
             .unwrap(),
         canned.clone()
     );

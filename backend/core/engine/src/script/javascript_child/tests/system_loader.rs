@@ -27,10 +27,22 @@ enum ArmReply {
     PrivateError,
 }
 
+#[derive(Clone, Copy)]
+enum StackReply {
+    Exact,
+    WrongFrame,
+    WrongLoader,
+    WrongMiddle,
+    WrongTopOffset,
+    Truncated,
+}
+
 struct SystemLoaderChild {
     lifecycle: RecordingChild,
     arm_reply: ArmReply,
     arm_calls: usize,
+    stack_reply: StackReply,
+    stack_calls: usize,
 }
 
 impl PageHostClient for SystemLoaderChild {
@@ -68,13 +80,92 @@ impl PageHostClient for SystemLoaderChild {
         generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     ) -> io::Result<PageHostReply> {
-        assert_eq!(safe_point.program, EMITTED);
-        assert_eq!(safe_point.code_unit_ordinal, TARGET.code_unit_ordinal);
-        assert_eq!(safe_point.bytecode_offset, TARGET.bytecode_offset);
+        assert!(safe_point.program == EMITTED || safe_point.program == LOADER);
         Ok(PageHostReply::DebuggerSafePointValidated {
             tab_id,
             document_generation: generation,
             safe_point,
+        })
+    }
+
+    fn debugger_execution_state(
+        &mut self,
+        tab_id: u64,
+        generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        assert_eq!(program, EMITTED);
+        Ok(PageHostReply::DebuggerExecutionState {
+            tab_id,
+            document_generation: generation,
+            program,
+            state: PageHostDebuggerExecutionState::NestedPaused {
+                frame: PageHostDebuggerFrame {
+                    tab_id,
+                    document_generation: generation,
+                    program,
+                    code_unit_ordinal: TARGET.code_unit_ordinal,
+                    invocation_serial: 23,
+                },
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: TARGET.code_unit_ordinal,
+                    bytecode_offset: TARGET.bytecode_offset,
+                },
+            },
+        })
+    }
+
+    fn debugger_system_stack_snapshot(
+        &mut self,
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        assert_eq!(frame.program, EMITTED);
+        assert_eq!(loader_program, LOADER);
+        self.stack_calls += 1;
+        let entry = |program, code_unit_ordinal, bytecode_offset| {
+            page_host::PageHostDebuggerSystemStackFrame {
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal,
+                    bytecode_offset,
+                },
+                scope_entries: Vec::new(),
+                scope_truncated: false,
+            }
+        };
+        let mut snapshot = page_host::PageHostDebuggerSystemStackSnapshot {
+            frames: [
+                entry(EMITTED, 2, 4),
+                entry(LOADER, 1, 4),
+                entry(EMITTED, 0, 4),
+            ],
+            stack_truncated: false,
+            max_scope_entries,
+        };
+        if matches!(self.stack_reply, StackReply::WrongMiddle) {
+            snapshot.frames[1].safe_point.program = EMITTED;
+        }
+        if matches!(self.stack_reply, StackReply::WrongTopOffset) {
+            snapshot.frames[0].safe_point.bytecode_offset += 1;
+        }
+        if matches!(self.stack_reply, StackReply::Truncated) {
+            snapshot.stack_truncated = true;
+        }
+        Ok(PageHostReply::DebuggerSystemStackSnapshot {
+            frame: PageHostDebuggerFrame {
+                invocation_serial: frame.invocation_serial
+                    + u64::from(matches!(self.stack_reply, StackReply::WrongFrame)),
+                ..frame
+            },
+            loader_program: if matches!(self.stack_reply, StackReply::WrongLoader) {
+                EMITTED
+            } else {
+                loader_program
+            },
+            snapshot: Box::new(snapshot),
         })
     }
 
@@ -132,6 +223,8 @@ fn setup(
             lifecycle: RecordingChild::default(),
             arm_reply,
             arm_calls: 0,
+            stack_reply: StackReply::Exact,
+            stack_calls: 0,
         },
     );
     executor.synchronize_and_execute(&tabs).unwrap();
@@ -194,4 +287,70 @@ fn core_system_loader_arm_rejects_stale_or_same_program_before_contacting_child(
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     );
     assert_eq!(executor.child.arm_calls, 0);
+}
+
+#[test]
+fn core_system_stack_remints_all_three_frames_and_rejects_substituted_child_replies() {
+    for shape in [
+        StackReply::Exact,
+        StackReply::WrongFrame,
+        StackReply::WrongLoader,
+        StackReply::WrongMiddle,
+        StackReply::WrongTopOffset,
+        StackReply::Truncated,
+    ] {
+        let (mut executor, tab_id, loader, emitted) = setup(ArmReply::Exact);
+        executor.child.stack_reply = shape;
+        let Some(JavaScriptPageDebuggerNestedExecutionState::Paused { frame, .. }) = executor
+            .debugger_nested_execution_state(
+                tab_id,
+                1,
+                emitted.program_handle,
+                emitted.program_generation,
+            )
+            .unwrap()
+        else {
+            panic!("expected an exact nested pause");
+        };
+        let result = executor.debugger_system_stack_snapshot(frame, loader, 1);
+        if matches!(shape, StackReply::Exact) {
+            let stack = result.unwrap();
+            assert_eq!(stack.frame, frame);
+            assert_eq!(stack.frames[0].program, emitted);
+            assert_eq!(stack.frames[1].program, loader);
+            assert_eq!(stack.frames[2].program, emitted);
+            assert_eq!(stack.frames[0].safe_point, TARGET);
+        } else {
+            assert_eq!(result, Err(JavaScriptPageDebuggerError::NoLiveRealm));
+        }
+        assert_eq!(executor.child.stack_calls, 1);
+    }
+}
+
+#[test]
+fn core_system_stack_rejects_stale_loader_before_private_inspection() {
+    let (mut executor, tab_id, loader, emitted) = setup(ArmReply::Exact);
+    let Some(JavaScriptPageDebuggerNestedExecutionState::Paused { frame, .. }) = executor
+        .debugger_nested_execution_state(
+            tab_id,
+            1,
+            emitted.program_handle,
+            emitted.program_generation,
+        )
+        .unwrap()
+    else {
+        panic!("expected an exact nested pause");
+    };
+    assert_eq!(
+        executor.debugger_system_stack_snapshot(
+            frame,
+            JavaScriptPageDebuggerProgram {
+                program_generation: loader.program_generation + 1,
+                ..loader
+            },
+            1,
+        ),
+        Err(JavaScriptPageDebuggerError::UnknownProgram)
+    );
+    assert_eq!(executor.child.stack_calls, 0);
 }

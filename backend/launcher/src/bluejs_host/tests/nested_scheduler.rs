@@ -162,6 +162,47 @@ fn private_system_scheduler_binds_the_earlier_loader_without_public_stack_leak()
             emitted_handle.generation().as_u64(),
         ]
     );
+    let public_frame = child_debugger_frame(7, 1, emitted_program, frame);
+    let PageHostReply::DebuggerSystemStackSnapshot {
+        frame: echoed_frame,
+        loader_program: echoed_loader,
+        snapshot: private_stack,
+    } = host.handle_request(PageHostRequest::GetDebuggerSystemStackSnapshot {
+        frame: public_frame,
+        loader_program,
+        max_scope_entries: 256,
+    })
+    else {
+        panic!("exact private System stack must be available");
+    };
+    assert_eq!(echoed_frame, public_frame);
+    assert_eq!(echoed_loader, loader_program);
+    assert!(private_stack.is_well_formed(public_frame, loader_program));
+    assert_eq!(private_stack.frames[0].safe_point, target);
+    assert_eq!(private_stack.frames[1].safe_point.program, loader_program);
+    assert_eq!(private_stack.frames[2].safe_point.program, emitted_program);
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerSystemStackSnapshot {
+            frame: public_frame,
+            loader_program: PageHostDebuggerProgram {
+                program_generation: loader_program.program_generation + 1,
+                ..loader_program
+            },
+            max_scope_entries: 256,
+        }),
+        PageHostReply::Error { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerSystemStackSnapshot {
+            frame: PageHostDebuggerFrame {
+                invocation_serial: public_frame.invocation_serial + 1,
+                ..public_frame
+            },
+            loader_program,
+            max_scope_entries: 256,
+        }),
+        PageHostReply::Error { .. }
+    ));
     host.request_debugger_nested_advance(7, 1, frame, true)
         .unwrap();
     assert!(matches!(

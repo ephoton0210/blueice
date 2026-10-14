@@ -5,6 +5,62 @@
 use super::*;
 
 #[test]
+fn system_stack_wire_requires_three_generation_labeled_frames() {
+    let emitted = PageHostDebuggerProgram {
+        program_handle: 11,
+        program_generation: 13,
+    };
+    let loader = PageHostDebuggerProgram {
+        program_handle: 17,
+        program_generation: 19,
+    };
+    let frame = PageHostDebuggerFrame {
+        tab_id: 7,
+        document_generation: 3,
+        program: emitted,
+        code_unit_ordinal: 2,
+        invocation_serial: 23,
+    };
+    let point = |program, code_unit_ordinal| PageHostDebuggerSystemStackFrame {
+        safe_point: PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal,
+            bytecode_offset: 4,
+        },
+        scope_entries: Vec::new(),
+        scope_truncated: false,
+    };
+    let snapshot = PageHostDebuggerSystemStackSnapshot {
+        frames: [point(emitted, 2), point(loader, 1), point(emitted, 0)],
+        stack_truncated: false,
+        max_scope_entries: 1,
+    };
+    assert!(snapshot.is_well_formed(frame, loader));
+    let request = PageHostRequest::GetDebuggerSystemStackSnapshot {
+        frame,
+        loader_program: loader,
+        max_scope_entries: 1,
+    };
+    let reply = PageHostReply::DebuggerSystemStackSnapshot {
+        frame,
+        loader_program: loader,
+        snapshot: Box::new(snapshot.clone()),
+    };
+    let (mut writer, mut reader) = UnixStream::pair().unwrap();
+    write_page_host_request(&mut writer, &request).unwrap();
+    assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+    let (mut writer, mut reader) = UnixStream::pair().unwrap();
+    write_page_host_reply(&mut writer, &reply).unwrap();
+    assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+    let mut wrong = snapshot;
+    wrong.frames[1].safe_point.program = emitted;
+    assert!(!wrong.is_well_formed(frame, loader));
+    wrong.frames[1].safe_point.program = loader;
+    wrong.frames[2].safe_point.code_unit_ordinal = 1;
+    assert!(!wrong.is_well_formed(frame, loader));
+}
+
+#[test]
 fn private_value_target_requires_exact_root_or_nested_frame_shape() {
     let program = PageHostDebuggerProgram {
         program_handle: 11,
@@ -65,7 +121,7 @@ fn private_value_target_requires_exact_root_or_nested_frame_shape() {
     target.safe_point.program.program_generation -= 1;
     target.frame_index = 2;
     assert!(!target.is_well_formed());
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 48);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 49);
 }
 
 #[test]
@@ -402,7 +458,7 @@ fn private_static_scope_relation_round_trips_without_values_or_displays() {
     let (mut writer, mut reader) = UnixStream::pair().unwrap();
     write_page_host_reply(&mut writer, &reply).unwrap();
     assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 48);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 49);
 }
 
 #[test]

@@ -469,6 +469,11 @@ impl BlueJsChildHost {
                 max_frames,
                 max_scope_entries,
             ),
+            PageHostRequest::GetDebuggerSystemStackSnapshot {
+                frame,
+                loader_program,
+                max_scope_entries,
+            } => self.debugger_system_stack_snapshot(frame, loader_program, max_scope_entries),
             PageHostRequest::GetDebuggerLinkedStackSnapshot {
                 frame,
                 max_scope_entries,

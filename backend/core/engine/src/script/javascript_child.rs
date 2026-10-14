@@ -61,7 +61,8 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
     JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerStaticScopeRelation,
-    JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerValuePreview,
+    JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerSystemStackFrame,
+    JavaScriptPageDebuggerSystemStackSnapshot, JavaScriptPageDebuggerValuePreview,
     JavaScriptPageDebuggerValueTarget, JavaScriptPageExecutionReport,
     PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };

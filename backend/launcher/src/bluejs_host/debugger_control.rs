@@ -948,6 +948,148 @@ impl BlueJsChildHost {
         }
     }
 
+    /// Re-maps the exact retained System execute path without passing through
+    /// the single-program classic stack or relabeling the foreign caller.
+    pub(super) fn debugger_system_stack_snapshot(
+        &self,
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    ) -> PageHostReply {
+        if !frame.is_well_formed()
+            || !loader_program.is_well_formed()
+            || loader_program == frame.program
+            || !(1..=PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&max_scope_entries)
+            || max_scope_entries > VM_DEBUGGER_MAX_SCOPE_ENTRIES
+        {
+            return invalid_request();
+        }
+        let document = match self.exact_document(frame.tab_id, frame.document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        if !document.debugger_execution_control
+            || !document
+                .pending_debugger_executions
+                .front()
+                .is_some_and(|pending| {
+                    pending.program == Some(frame.program)
+                        && pending.system_loader_program == Some(loader_program)
+                })
+        {
+            return invalid_debugger_state();
+        }
+        let Some(ChildDebuggerExecutionStatus::NestedPaused {
+            frame: active,
+            safe_point,
+        }) = document
+            .debugger_execution_states
+            .get(&frame.program)
+            .copied()
+        else {
+            return invalid_debugger_state();
+        };
+        if frame
+            != child_debugger_frame(
+                frame.tab_id,
+                frame.document_generation,
+                frame.program,
+                active,
+            )
+            || !frame.matches_safe_point(safe_point)
+        {
+            return invalid_debugger_state();
+        }
+        let runtime_handle = |program: PageHostDebuggerProgram| {
+            document
+                .debugger_programs
+                .get(&program.program_handle)
+                .filter(|record| record.program_generation == program.program_generation)
+                .map(|record| record.runtime_handle)
+                .ok_or_else(invalid_debugger_state)
+        };
+        let emitted_handle = match runtime_handle(frame.program) {
+            Ok(handle) if handle == active.program() => handle,
+            _ => return invalid_debugger_state(),
+        };
+        let loader_handle = match runtime_handle(loader_program) {
+            Ok(handle) => handle,
+            Err(reply) => return reply,
+        };
+        let snapshot = match self.runtime.debugger_foreign_intermediate_stack_snapshot(
+            frame.tab_id,
+            active,
+            loader_handle,
+            3,
+            max_scope_entries,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(_) => return invalid_debugger_state(),
+        };
+        let [child, loader, root] = snapshot.frames.as_slice() else {
+            return invalid_debugger_state();
+        };
+        if snapshot.stack_truncated
+            || [
+                child.program_generation,
+                loader.program_generation,
+                root.program_generation,
+            ] != [
+                emitted_handle.generation().as_u64(),
+                loader_handle.generation().as_u64(),
+                emitted_handle.generation().as_u64(),
+            ]
+        {
+            return invalid_debugger_state();
+        }
+        let remap = |source: &blueice_bluejs::VmDebuggerStackFrame,
+                     program: PageHostDebuggerProgram| {
+            PageHostDebuggerSystemStackFrame {
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: source.code_unit_ordinal,
+                    bytecode_offset: source.bytecode_offset,
+                },
+                scope_entries: source
+                    .scope_entries
+                    .iter()
+                    .map(|entry| PageHostDebuggerScopeEntry {
+                        slot_ordinal: entry.slot_ordinal,
+                        scope_depth: entry.scope_depth,
+                    })
+                    .collect(),
+                scope_truncated: source.scope_truncated,
+            }
+        };
+        let mapped = PageHostDebuggerSystemStackSnapshot {
+            frames: [
+                remap(child, frame.program),
+                remap(loader, loader_program),
+                remap(root, frame.program),
+            ],
+            stack_truncated: false,
+            max_scope_entries,
+        };
+        if !mapped.is_well_formed(frame, loader_program)
+            || mapped.frames[0].safe_point != safe_point
+            || mapped.frames.iter().any(|entry| {
+                self.exact_debugger_safe_point(
+                    frame.tab_id,
+                    frame.document_generation,
+                    entry.safe_point,
+                )
+                .is_err()
+            })
+        {
+            return invalid_debugger_state();
+        }
+        PageHostReply::DebuggerSystemStackSnapshot {
+            frame,
+            loader_program,
+            snapshot: Box::new(mapped),
+        }
+    }
+
     /// Re-maps only an exact retained dependency/entry stack. Every frame
     /// names its own child program; no partial stack is returned on failure.
     pub(super) fn debugger_linked_stack_snapshot(

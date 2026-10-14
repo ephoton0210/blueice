@@ -706,6 +706,11 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     loader and stale core identity before transport, validate the emitted
     safe point, and accept only an acknowledgement echoing the complete
     tab/document/loader/target tuple. Keep the public System route closed.
+  - [x] Capture an exact private three-frame System pause with independent
+    emitted/loader/emitted program generations. Bind the retained invocation,
+    reject a stale loader or changed top frame, validate all three safe points
+    in core, and leave the ordinary classic stack unable to relabel the
+    foreign intermediate caller.
   - [ ] Require independent same-stream loader and emitted receipts, then
     expose only the exact three-frame generated/original projection with
     step, resume and thrown-completion regressions.
@@ -1214,6 +1219,23 @@ engine all-target Clippy and workspace formatting checks also pass.
 This completes only the checked private core-routing subitem above; no
 public System capability, same-stream loader receipt, or three-frame source
 projection is available. The parent System item and K.11.4 remain open.
+
+The private v49 System stack route now preserves a complete child-first
+emitted/loader/emitted triple, with a generation-labeled safe point on every
+frame. The child checks its retained pending loader association and exact
+paused invocation before reading the VM stack; it refuses stale loader and
+frame identities and keeps the classic one-program stack route unchanged.
+Core remints both programs, checks the complete echoed tuple and shape,
+validates all three safe points and rechecks the pause before returning a
+source-free private snapshot. The standalone public debugger protocol still
+has no System stack operation or authority; same-stream receipts and original
+location projection remain open under the parent System item and K.11.4.
+After rebuilding the v49 core/launcher/child binaries, the IPC, launcher and
+engine library suites pass 140/140, 194/194 and 476/476 respectively; the
+public out-of-process debugger regression suite remains 47/47. Three-crate
+all-target Clippy with warnings denied, workspace formatting and diff checks
+pass. A pre-rebuild engine run reached an old v48 child binary and failed
+three protocol handshakes; the rebuilt final-source run passes them all.
 
 ### K.12 Projects — M10 — gap G-M2
 

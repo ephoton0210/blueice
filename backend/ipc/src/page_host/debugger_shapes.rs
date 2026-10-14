@@ -302,6 +302,54 @@ pub struct PageHostDebuggerStackSnapshot {
     pub stack_truncated: bool,
 }
 
+/// One genuine frame in a suspended System execute path. Unlike the classic
+/// stack, each frame carries its own installed program generation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerSystemStackFrame {
+    pub safe_point: PageHostDebuggerSafePoint,
+    pub scope_entries: Vec<PageHostDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+/// Complete child-first emitted/loader/emitted path. A shorter or relabeled
+/// classic stack cannot satisfy this private contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerSystemStackSnapshot {
+    pub frames: [PageHostDebuggerSystemStackFrame; 3],
+    pub stack_truncated: bool,
+    pub max_scope_entries: u32,
+}
+
+impl PageHostDebuggerSystemStackSnapshot {
+    pub fn is_well_formed(
+        &self,
+        frame: PageHostDebuggerFrame,
+        loader: PageHostDebuggerProgram,
+    ) -> bool {
+        frame.is_well_formed()
+            && loader.is_well_formed()
+            && loader != frame.program
+            && (1..=PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&self.max_scope_entries)
+            && !self.stack_truncated
+            && self.frames[0].safe_point.program == frame.program
+            && self.frames[0].safe_point.code_unit_ordinal == frame.code_unit_ordinal
+            && self.frames[1].safe_point.program == loader
+            && self.frames[1].safe_point.code_unit_ordinal != 0
+            && self.frames[2].safe_point.program == frame.program
+            && self.frames[2].safe_point.code_unit_ordinal == 0
+            && self.frames.iter().all(|entry| {
+                entry.safe_point.is_well_formed()
+                    && entry.scope_entries.len() <= self.max_scope_entries as usize
+                    && (!entry.scope_truncated
+                        || entry.scope_entries.len() == self.max_scope_entries as usize)
+                    && entry
+                        .scope_entries
+                        .windows(2)
+                        .all(|pair| pair[0].scope_depth <= pair[1].scope_depth)
+            })
+    }
+}
+
 /// Exact cross-program invocation retained by the private page host. The
 /// dependency child and entry caller are separate installed programs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

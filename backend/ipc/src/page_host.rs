@@ -137,6 +137,7 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V49 adds a generation-labeled, exact three-frame private System stack.
 /// V48 adds an exact System loader-to-emitted-execute arm without granting
 /// any public debugger client access. V45 distinguishes compiler-emitted BlueTS JavaScript from direct AST
 /// lowering for a separately admitted classic-script execution path. It
@@ -147,7 +148,7 @@ use std::io::{self, Read, Write};
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 48;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 49;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -839,6 +840,13 @@ pub enum PageHostRequest {
         max_frames: u32,
         max_scope_entries: u32,
     },
+    /// Reads only the exact suspended emitted/foreign-loader/emitted stack.
+    /// Every frame retains its own child-private program generation.
+    GetDebuggerSystemStackSnapshot {
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        max_scope_entries: u32,
+    },
     GetDebuggerLinkedStackSnapshot {
         frame: PageHostDebuggerLinkedFrame,
         max_scope_entries: u32,
@@ -1203,6 +1211,11 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         frame: Option<PageHostDebuggerFrame>,
         snapshot: PageHostDebuggerStackSnapshot,
+    },
+    DebuggerSystemStackSnapshot {
+        frame: PageHostDebuggerFrame,
+        loader_program: PageHostDebuggerProgram,
+        snapshot: Box<PageHostDebuggerSystemStackSnapshot>,
     },
     DebuggerLinkedStackSnapshot {
         frame: PageHostDebuggerLinkedFrame,

@@ -10330,3 +10330,19 @@ three-frame generated/original stack projection are still required before
 the parent K.11.4 System item may be checked.
 The 473-test engine library suite passes with local socket permission, as do
 engine all-target Clippy with denied warnings and workspace formatting.
+
+The next private System stack check is complete. Page-host protocol v49
+adds a fixed three-frame emitted/loader/emitted snapshot with an explicit
+program generation at each safe point. The child reads it only for the
+retained exact System invocation and separately installed loader; the
+ordinary classic stack route still refuses the foreign caller. Core remints
+both program identities and validates the echo, full shape, all three safe
+points and the unchanged pause. The public debugger has no new System route:
+same-stream receipts and generated/original three-frame projection remain
+prerequisites for exposing this snapshot or arming a System breakpoint.
+The v49 final-source verification passes IPC 140/140, launcher 194/194,
+engine 476/476 and the real-process public debugger suite 47/47 after
+rebuilding core, launcher and child binaries. Three-crate all-target Clippy,
+workspace formatting and diff checks pass. An initial engine run used a
+stale v48 child binary and failed three handshake tests; this is resolved in
+the rebuilt final-source run, not masked by ignoring those tests.
