@@ -10459,3 +10459,30 @@ seven `spawn_core` DOM callback cases. Launcher all-target Clippy with denied
 warnings, workspace rustfmt and whitespace checks pass. This is the K.0
 source-size maintenance step, not a new K.11 acceptance item; AC-K11.C/D
 remain open.
+
+### K.11.4 AC-K11.C — helper-frame non-disclosure (2026-10-15)
+
+`frozen_eleven_row_helper_frames_never_claim_user_source` reads the frozen
+K.11 matrix and asserts its exact 11-row inventory. Three rows have no helper
+and are checked for absent helper markers. For each of the other eight rows,
+the test compiles the frozen fixture, verifies the helper definition is
+unmapped, navigates a real launcher/core/BlueJS child session, and confirms
+the public generated-breakpoint resolver cannot bind that definition. Seven
+non-System rows pause at frozen helper code-unit entries, inspect the complete
+nested stack and paused location, step one actual instruction, and verify
+neither helper-body position receives an original user-source coordinate.
+The System row pauses at its generated execute breakpoint and checks its
+three-frame projection: only the execute body has an original location;
+loader and wrapper frames have none. The fixed code-unit ordinals are tied to
+these frozen emitted artifacts and must be revalidated if emission changes.
+No production source or authority was changed for this acceptance test.
+
+The complete `cargo test -p blueice-launcher --test out_of_process_debugger`
+target passes **55/55** tests (54 existing plus this one). Warnings-denied
+all-target Clippy for launcher and both BlueTS crates, workspace rustfmt, and
+whitespace checks pass. The two BlueTS crates' full `--include-ignored` K.0
+test run with pinned TypeScript 5.9.3 and Acorn 8.15.0 exits 0, including
+the 82-test TypeScript oracle and 23-test decoded source-map oracle. This is
+the AC-K11.C local gate, not K.11.6 workspace coverage or hosted CI.
+AC-K11.D and the K.11.4 parent remain unchecked until the tick rule is
+applied after this leaf is committed.

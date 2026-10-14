@@ -8,7 +8,7 @@ use blueice_ipc::debugger::{
     DebuggerGeneratedSystemBreakpoint, DebuggerGeneratedSystemBreakpointTarget,
 };
 
-const PAGE_SYSTEM_LOADER: &str = r#"
+pub(super) const PAGE_SYSTEM_LOADER: &str = r#"
     var systemLogCount = 0;
     var systemRegisterCount = 0;
     var console = { log: function(value) {

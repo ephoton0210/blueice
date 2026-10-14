@@ -53,6 +53,8 @@ mod generated_es5;
 mod generated_frozen_classic;
 #[path = "out_of_process_debugger/generated_frozen_standard.rs"]
 mod generated_frozen_standard;
+#[path = "out_of_process_debugger/generated_helper_matrix.rs"]
+mod generated_helper_matrix;
 #[path = "out_of_process_debugger/generated_legacy.rs"]
 mod generated_legacy;
 #[cfg(debug_assertions)]

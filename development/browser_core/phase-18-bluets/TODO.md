@@ -561,7 +561,7 @@ journal are in `PLAN_HISTORY.md` ("Archived from TODO.md: K.11"); only open work
   - [x] **AC-K11.B Substituted artifact/map, out-of-process.** Other-generation map, map for different
     JavaScript hash, externally asserted map. *Pass when:* each is refused with a distinct outcome and
     retains no breakpoint.
-  - [ ] **AC-K11.C Helper-frame non-disclosure.** *Pass when:* one test iterates all 11 rows and fails if
+  - [x] **AC-K11.C Helper-frame non-disclosure.** *Pass when:* one test iterates all 11 rows and fails if
     any helper-body frame is labelled with a user-source coordinate.
   - [ ] **AC-K11.D Tick rule.** Check K.11.4 only when A–C pass in `out_of_process_debugger` and the new
     test count is recorded.
