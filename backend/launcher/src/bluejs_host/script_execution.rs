@@ -152,7 +152,14 @@ type PreparedEmittedModule = (
     BTreeMap<String, BoundEmittedMap>,
 );
 
-fn emitted_bluets_compiler_options(
+/// Type-only description of the ordinary `console` value supplied by a page's
+/// System loader. It neither installs a runtime global nor broadens the
+/// standard emitted profile; an absent loader still fails at runtime.
+const SYSTEM_LOADER_CONSOLE_AMBIENT_ID: &str = "blueice://ambient/system-loader-console.d.ts";
+const SYSTEM_LOADER_CONSOLE_AMBIENT_SOURCE: &str =
+    "declare const console: { log(value: number): void };\n";
+
+pub(super) fn emitted_bluets_compiler_options(
     graph: &PageHostModuleGraph,
     page_dom_profile: PageDomProfile,
     emitted_profile: PageHostBlueTsEmissionProfile,
@@ -164,7 +171,15 @@ fn emitted_bluets_compiler_options(
     match emitted_profile {
         PageHostBlueTsEmissionProfile::Standard => {}
         PageHostBlueTsEmissionProfile::Es5 => options.target = EcmaTarget::Es5,
-        PageHostBlueTsEmissionProfile::System => options.module_kind = ModuleKind::System,
+        PageHostBlueTsEmissionProfile::System => {
+            options.module_kind = ModuleKind::System;
+            options
+                .ambient_declaration_modules
+                .push(blueice_bluets::ModuleSource::new(
+                    SYSTEM_LOADER_CONSOLE_AMBIENT_ID,
+                    SYSTEM_LOADER_CONSOLE_AMBIENT_SOURCE,
+                ));
+        }
         PageHostBlueTsEmissionProfile::LegacyDecorators => {
             options.experimental_decorators = true;
         }

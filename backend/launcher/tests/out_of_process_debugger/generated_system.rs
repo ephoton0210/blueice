@@ -61,11 +61,11 @@ const PAGE_SYSTEM_THROW_LOADER: &str = r#"
 "#;
 
 fn system_source() -> String {
-    let frozen = include_str!(concat!(
+    include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../bluets/tests/fixtures/k11_source_maps/system_wrapper.ts"
-    ));
-    format!("{frozen}\ndeclare const console: {{ log(value: number): void }};\n")
+    ))
+    .to_string()
 }
 
 fn serve_system_document(

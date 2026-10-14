@@ -692,7 +692,7 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     resume and thrown completion without replaying decorator side effects.
     A compiler-known target beyond the supported depth must continue to fail
     closed at resolution/arm.
-  - [ ] For the required System-wrapper row, pause at a mapped execute-body
+  - [x] For the required System-wrapper row, pause at a mapped execute-body
     safe point reached through a separately installed page-loader program.
     Preserve the suspended cross-program caller and both exact program
     generations; require same-stream receipts before a public stack or
@@ -752,7 +752,7 @@ TypeScript 5.9.3 and BlueTSC. A green sample position is not a green row.
     both emitted and loader programs. Keep the current single-client listener
     limitation explicit; this is an equivalent core-level admission test,
     not a concurrent public-socket demonstration.
-  - [ ] Repeat the public System pause, source projection and continuation
+  - [x] Repeat the public System pause, source projection and continuation
     with the unmodified frozen `system_wrapper.ts` source and its exact
     BlueTSC-emitted artifact/map. Supply any ambient `console` declaration
     separately rather than appending text to that source, and verify its
@@ -1393,9 +1393,24 @@ the next document. A foreign stream's explicit System arm returns
 owner can release it. The focused test and full engine library suite pass
 1/1 and 486/486; no production route or single-client listener behavior was
 changed. This is the checklist's equivalent core-level cross-stream proof,
-not a concurrent public-socket test. The parent System row remains unchecked
-until an unmodified frozen source and its exact generated artifact/map are
-installed and exercised without the appended ambient declaration.
+not a concurrent public-socket test. At that stage, the parent System row
+remained unchecked pending an unmodified frozen source and its exact generated
+artifact/map without the appended ambient declaration.
+
+The System row now uses the unmodified frozen `system_wrapper.ts` in both
+real-process public debugger cases. The owner-selected System compiler profile
+supplies the page loader's `console.log` type only as a separate ambient
+declaration; it changes neither the frozen source nor the Standard profile and
+does not install a runtime loader. A child regression proves that a missing
+page loader still rejects execution. The child-installed System program's
+generation-bound map, emitted JavaScript, source hash and `sourcesContent`
+match an independent BlueTSC compilation of the exact fixture. The public
+normal and caught-throw cases each pause, project and continue through the
+separately installed loader with no replay. Launcher library tests pass 196/196,
+real-process debugger tests pass 48/48, launcher all-target Clippy with denied
+warnings and workspace format check pass. The System row and its exact-source
+subcheck are complete; K.11.4 remains open for the broader generated/relocated
+matrix and malformed-map public fault paths, and K.11.6 remains open.
 
 ### K.12 Projects — M10 — gap G-M2
 

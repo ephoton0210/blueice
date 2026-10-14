@@ -1167,14 +1167,21 @@ fn child_owner_selected_system_profile_executes_with_page_loader() {
         env!("CARGO_MANIFEST_DIR"),
         "/../bluets/tests/fixtures/k11_source_maps/system_wrapper.ts"
     ));
-    let source = format!("{fixture}\ndeclare const console: {{ log(value: number): void }};\n");
-    let mut selected = document(
-        1,
-        vec![
-            classic(0, SYSTEM_PAGE_LOADER),
-            blue_ts_emitted_classic(1, &source),
-        ],
-    );
+    let source = fixture;
+    let script = blue_ts_emitted_classic(1, source);
+    let graph = script.graph.clone();
+    let options = emitted_bluets_compiler_options(
+        &graph,
+        PageDomProfile::Snapshot,
+        PageHostBlueTsEmissionProfile::System,
+    )
+    .unwrap();
+    let loader = bluets_loader(&graph, validate_graph(&graph).unwrap()).unwrap();
+    let compilation = blueice_bluets::compile(&graph.entry, &loader, options);
+    assert!(!compilation.has_errors(), "{:#?}", compilation.diagnostics);
+    let output = compilation.output.unwrap();
+    let artifact = &output.artifacts[&graph.entry];
+    let mut selected = document(1, vec![classic(0, SYSTEM_PAGE_LOADER), script]);
     selected.emitted_bluets_profile = PageHostBlueTsEmissionProfile::System;
     let mut host = BlueJsChildHost::default();
     let PageHostReply::Synchronized { reports, .. } =
@@ -1185,6 +1192,109 @@ fn child_owner_selected_system_profile_executes_with_page_loader() {
     assert_eq!(reports.len(), 2);
     assert_eq!(reports[0].outcome, PageHostScriptOutcome::Executed);
     assert_eq!(reports[1].outcome, PageHostScriptOutcome::Executed);
+    let mut selected = debugger_document(
+        1,
+        vec![
+            classic(0, SYSTEM_PAGE_LOADER),
+            blue_ts_emitted_classic(1, source),
+        ],
+    );
+    selected.emitted_bluets_profile = PageHostBlueTsEmissionProfile::System;
+    let mut debugger_host = BlueJsChildHost::default();
+    assert!(matches!(
+        debugger_host.handle_request(PageHostRequest::SynchronizeDocument { document: selected }),
+        PageHostReply::Synchronized { .. }
+    ));
+    let programs = match debugger_host.handle_request(PageHostRequest::ListDebuggerPrograms {
+        tab_id: 7,
+        document_generation: 1,
+    }) {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs,
+        reply => panic!("expected installed loader and System programs: {reply:?}"),
+    };
+    assert_eq!(programs.len(), 2);
+    let document = &debugger_host.documents[&7];
+    let maps = &document.emitted_maps;
+    assert_eq!(maps.len(), 1);
+    let (program, bound) = maps.iter().next().unwrap();
+    assert!(programs.contains(program));
+    let runtime_handle = document
+        .debugger_programs
+        .get(&program.program_handle)
+        .unwrap()
+        .runtime_handle;
+    let installed = debugger_host
+        .runtime
+        .program_registry()
+        .get(runtime_handle)
+        .unwrap();
+    assert_eq!(
+        installed.source().source_hash(),
+        bound.generated.source_hash
+    );
+    assert_eq!(
+        bound.emission_profile,
+        PageHostBlueTsEmissionProfile::System
+    );
+    assert_eq!(bound.generated.source, artifact.javascript);
+    assert_eq!(
+        bound.generated.source_hash,
+        page_host::source_hash(&artifact.javascript)
+    );
+    assert_eq!(bound.map, artifact.source_map.clone().unwrap());
+    assert_eq!(bound.map.sources_content, vec![source.to_string()]);
+}
+
+#[test]
+fn system_page_loader_console_typing_is_profile_scoped_and_source_separate() {
+    let fixture = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../bluets/tests/fixtures/k11_source_maps/system_wrapper.ts"
+    ));
+    let script = blue_ts_emitted_classic(1, fixture);
+    let system = emitted_bluets_compiler_options(
+        &script.graph,
+        PageDomProfile::Snapshot,
+        PageHostBlueTsEmissionProfile::System,
+    )
+    .unwrap();
+    let standard = emitted_bluets_compiler_options(
+        &script.graph,
+        PageDomProfile::Snapshot,
+        PageHostBlueTsEmissionProfile::Standard,
+    )
+    .unwrap();
+    assert_eq!(system.module_kind, ModuleKind::System);
+    assert!(system.ambient_declaration_modules.iter().any(|module| {
+        module.id.ends_with("system-loader-console.d.ts")
+            && module.text == "declare const console: { log(value: number): void };\n"
+    }));
+    assert!(standard
+        .ambient_declaration_modules
+        .iter()
+        .all(|module| !module.id.ends_with("system-loader-console.d.ts")));
+    assert_eq!(script.graph.modules[0].source, fixture);
+}
+
+#[test]
+fn system_console_typing_does_not_install_a_runtime_loader() {
+    let fixture = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../bluets/tests/fixtures/k11_source_maps/system_wrapper.ts"
+    ));
+    let mut selected = document(1, vec![blue_ts_emitted_classic(0, fixture)]);
+    selected.emitted_bluets_profile = PageHostBlueTsEmissionProfile::System;
+    let mut host = BlueJsChildHost::default();
+    let PageHostReply::Synchronized { reports, .. } =
+        host.handle_request(PageHostRequest::SynchronizeDocument { document: selected })
+    else {
+        panic!("System profile must return source-free reports")
+    };
+    assert_eq!(reports.len(), 1);
+    assert!(matches!(
+        reports[0].outcome,
+        PageHostScriptOutcome::Rejected { .. }
+    ));
 }
 
 #[test]
