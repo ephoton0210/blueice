@@ -15,8 +15,12 @@ document. Real JavaScript and BlueTS counter pages verify distinct unsolicited
 frames with matching Representation generations/text, plus timer cancellation
 and replacement lifetime behavior. See the
 [M1b record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
-Animation frames, task-source ordering, general queue/byte caps and Promise
-collectibility remain open.
+M1c extends the latest artifact to `core-script-dom-animation-frame-v12`
+(47 entries) and supplies a separate private v58 render entry, Core-owned
+software cadence, callback snapshots and pre-paint microtask cleanup. Typed and
+ordinary counter fixtures verify frame updates and direct rAF self-rearming.
+Task-source ordering, general queue/byte caps and Promise collectibility
+remain open.
 
 ## Objective
 

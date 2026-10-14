@@ -12,6 +12,175 @@ struct FailedBrowserTaskChild {
     delay: Option<u64>,
 }
 
+struct AnimationFrameChild {
+    base: FailedBrowserTaskChild,
+    pending: bool,
+    rendered: usize,
+    invalid_reply: Option<&'static str>,
+}
+
+impl AnimationFrameChild {
+    fn new() -> Self {
+        Self {
+            base: FailedBrowserTaskChild {
+                synchronized: 0,
+                flushed: 0,
+                closed: vec![],
+                mismatch: false,
+                delay: None,
+            },
+            pending: true,
+            rendered: 0,
+            invalid_reply: None,
+        }
+    }
+}
+
+impl PageHostClient for AnimationFrameChild {
+    fn browser_tasks_available(&self) -> bool {
+        true
+    }
+    fn animation_frames_available(&self) -> bool {
+        true
+    }
+    fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply> {
+        self.base.synchronize_document(document)
+    }
+    fn realm_stats(&mut self, tab: u64, generation: u64) -> io::Result<PageHostReply> {
+        self.base.realm_stats(tab, generation)
+    }
+    fn close_realm(&mut self, tab: u64, generation: u64) -> io::Result<PageHostReply> {
+        self.base.close_realm(tab, generation)
+    }
+    fn flush_drag_tasks_with_script_pump(
+        &mut self,
+        tab: u64,
+        generation: u64,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        let mut reply = self
+            .base
+            .flush_drag_tasks_with_script_pump(tab, generation, pump)?;
+        if let PageHostReply::DragTasksFlushed {
+            animation_frame_pending,
+            ..
+        } = &mut reply
+        {
+            *animation_frame_pending = self.pending;
+        }
+        Ok(reply)
+    }
+    fn run_animation_frame_with_script_pump(
+        &mut self,
+        tab: u64,
+        generation: u64,
+        _: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.rendered += 1;
+        Ok(PageHostReply::AnimationFrameRendered {
+            tab_id: tab + u64::from(self.invalid_reply == Some("tab")),
+            document_generation: generation + u64::from(self.invalid_reply == Some("generation")),
+            next_wake_in_ms: (self.invalid_reply == Some("delay")).then_some(u64::MAX),
+            animation_frame_pending: self.pending,
+        })
+    }
+}
+
+#[test]
+fn core_frame_cadence_uses_a_separate_entry_and_task_polling_cannot_postpone_it() {
+    let (mut tabs, tab) = loaded_tabs("<p>frames</p>", "https://example.test/frames");
+    let (_sender, receiver) = crate::script::script_request_channel();
+    let mut executor = OutOfProcessJavaScriptPageExecutor::new(AnimationFrameChild::new());
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    let first = executor.next_task_wake().unwrap();
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert_eq!(executor.next_task_wake(), Some(first));
+    assert_eq!(
+        executor.child.rendered, 0,
+        "task entry never invokes frame callbacks"
+    );
+    // Pin the owned deadline to avoid relying on wall-clock preemption.
+    executor
+        .animation_frame_wakes
+        .insert(tab, Instant::now() + Duration::from_secs(60));
+    executor
+        .run_render_opportunities_serving_script(&mut tabs, Some(&receiver))
+        .unwrap();
+    assert_eq!(executor.child.rendered, 0);
+    executor.animation_frame_wakes.insert(tab, Instant::now());
+    executor
+        .run_render_opportunities_serving_script(&mut tabs, Some(&receiver))
+        .unwrap();
+    assert_eq!(executor.child.rendered, 1);
+    let next = executor.next_task_wake().unwrap();
+    assert!(next > first);
+    executor.child.pending = false;
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    assert!(executor.next_task_wake().is_none());
+}
+
+#[test]
+fn malformed_frame_replies_revoke_only_the_realm_without_replaying_scripts() {
+    for invalid in ["tab", "generation", "delay"] {
+        let (mut tabs, tab) = loaded_tabs(
+            "<script>let once = 1;</script>",
+            "https://example.test/frame",
+        );
+        let (_sender, receiver) = crate::script::script_request_channel();
+        let mut child = AnimationFrameChild::new();
+        child.invalid_reply = Some(invalid);
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(child);
+        executor
+            .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+            .unwrap();
+        executor.animation_frame_wakes.insert(tab, Instant::now());
+        executor
+            .run_render_opportunities_serving_script(&mut tabs, Some(&receiver))
+            .unwrap();
+        assert_eq!(executor.child.base.closed, [(tab.as_u64(), 1)]);
+        assert!(executor.next_task_wake().is_none());
+        assert!(executor.realm_stats.is_empty());
+        executor
+            .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+            .unwrap();
+        assert_eq!(executor.child.base.synchronized, 1);
+        assert_eq!(executor.child.rendered, 1);
+    }
+}
+
+#[test]
+fn closing_and_replacing_a_document_remove_its_frame_wake_without_touching_another_tab() {
+    let (mut tabs, tab) = loaded_tabs("<p>first</p>", "https://example.test/first");
+    let other = tabs.open_tab();
+    tabs.get_mut(other)
+        .unwrap()
+        .load_html_str("<p>other</p>", Some("https://example.test/other".into()));
+    let (_sender, receiver) = crate::script::script_request_channel();
+    let mut executor = OutOfProcessJavaScriptPageExecutor::new(AnimationFrameChild::new());
+    executor
+        .synchronize_and_execute_serving_script(&mut tabs, &receiver)
+        .unwrap();
+    let other_wake = executor.animation_frame_wakes[&other];
+    executor.close_page(tab);
+    assert!(!executor.animation_frame_wakes.contains_key(&tab));
+    assert_eq!(executor.animation_frame_wakes[&other], other_wake);
+    tabs.get_mut(other).unwrap().load_html_str(
+        "<p>replacement</p>",
+        Some("https://example.test/replacement".into()),
+    );
+    let identity = live_page_identity(tabs.get(other).unwrap()).unwrap();
+    executor
+        .prepare_document(other, tabs.get(other).unwrap(), &identity)
+        .unwrap();
+    assert!(executor.next_task_wake().is_none());
+}
+
 impl PageHostClient for FailedBrowserTaskChild {
     fn browser_tasks_available(&self) -> bool {
         true
@@ -47,6 +216,7 @@ impl PageHostClient for FailedBrowserTaskChild {
             tab_id: tab_id + u64::from(self.mismatch),
             document_generation,
             next_wake_in_ms: self.delay,
+            animation_frame_pending: false,
         })
     }
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {

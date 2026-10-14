@@ -12,10 +12,10 @@
 //! invalidation.
 
 use crate::{
-    BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle, BlueJsProgramRegistry,
-    BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, BlueJsTimerRun, Bytecode, HeapError,
-    HeapStats, HostFunction, HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey,
-    HostObjectMethod, HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig,
+    BlueJsAnimationFrameRun, BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle,
+    BlueJsProgramRegistry, BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, BlueJsTimerRun,
+    Bytecode, HeapError, HeapStats, HostFunction, HostObject, HostObjectFactory, HostObjectFamily,
+    HostObjectKey, HostObjectMethod, HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig,
     VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
     VmDebuggerScopeEntry, VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
 };
@@ -257,6 +257,12 @@ impl BlueJsHostBindingRegistrar<'_> {
     /// [`BlueJsPageRuntime::run_due_timers`] with its own clock.
     pub fn install_host_timers(&mut self) -> Result<(), RuntimeError> {
         self.vm.install_host_timer_functions()
+    }
+
+    /// Installs frame scheduling globals without creating a task or clock.
+    /// The host must call the separate render entry with its frame timestamp.
+    pub fn install_host_animation_frames(&mut self) -> Result<(), RuntimeError> {
+        self.vm.install_host_animation_frame_functions()
     }
 
     /// Installs the same functions with a host-owned monotonic millisecond
@@ -546,6 +552,30 @@ impl BlueJsPageRuntime {
         realm
             .vm
             .run_due_host_timers(now_ms)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
+    /// Whether this realm has runnable frame callbacks. Paused debugger
+    /// continuations retain callbacks but suppress rendering wake-ups.
+    pub fn animation_frame_pending(&self, tab_id: u64) -> Result<bool, BlueJsPageRuntimeError> {
+        self.realms
+            .get(&tab_id)
+            .map(|realm| realm.vm.host_animation_frame_pending())
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))
+    }
+
+    /// Runs one frame's callback snapshot and checkpoints before the host
+    /// performs layout/paint. Browser tasks and timers use separate entries.
+    pub fn run_animation_frame(
+        &mut self,
+        tab_id: u64,
+        timestamp_ms: f64,
+    ) -> Result<BlueJsAnimationFrameRun, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .run_host_animation_frame(timestamp_ms)
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 

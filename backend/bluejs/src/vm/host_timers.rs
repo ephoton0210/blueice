@@ -60,7 +60,7 @@ pub(super) struct HostTimer {
 
 /// An uncaught page exception, as opposed to a resource failure that must
 /// stop the host's pass.
-fn is_page_exception(error: &RuntimeError) -> bool {
+pub(super) fn is_page_exception(error: &RuntimeError) -> bool {
     matches!(
         error,
         RuntimeError::Thrown(_)
@@ -71,18 +71,16 @@ fn is_page_exception(error: &RuntimeError) -> bool {
     )
 }
 
-/// Web IDL's signed `long` conversion without Clamp/EnforceRange, followed
-/// by HTML's non-negative timeout rule. Clearing uses the same conversion.
-fn timer_long(number: f64) -> i32 {
+/// Web IDL's wraparound unsigned `long` conversion, shared with frame handles.
+pub(super) fn unsigned_long(number: f64) -> u32 {
     if !number.is_finite() || number == 0.0 {
         return 0;
     }
-    let modulo = number.trunc().rem_euclid(4_294_967_296.0);
-    if modulo >= 2_147_483_648.0 {
-        (modulo - 4_294_967_296.0) as i32
-    } else {
-        modulo as i32
-    }
+    number.trunc().rem_euclid(4_294_967_296.0) as u32
+}
+
+fn timer_long(number: f64) -> i32 {
+    unsigned_long(number) as i32
 }
 
 fn nested_delay(delay: u64, nesting: u32) -> u64 {

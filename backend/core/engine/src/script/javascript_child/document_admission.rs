@@ -333,6 +333,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         }
         self.debugger_execution_deferrals.remove(&tab_id);
         self.timer_wakes.remove(&tab_id);
+        self.animation_frame_wakes.remove(&tab_id);
         self.realm_stats.remove(&tab_id);
         self.validation_usage.remove(&tab_id);
         self.debugger_programs.remove(&tab_id);
@@ -378,6 +379,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         // A successor cannot inherit the predecessor's accounting while its
         // child acknowledgement is still in flight.
         self.timer_wakes.remove(&tab_id);
+        self.animation_frame_wakes.remove(&tab_id);
         self.realm_stats.remove(&tab_id);
         self.validation_usage.remove(&tab_id);
         self.debugger_nested_frames.remove(&tab_id);

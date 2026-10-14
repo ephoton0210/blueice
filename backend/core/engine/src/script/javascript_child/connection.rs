@@ -162,6 +162,23 @@ impl PageHostConnection {
 }
 
 impl PageHostClient for PageHostConnection {
+    fn animation_frames_available(&self) -> bool {
+        true
+    }
+    fn run_animation_frame_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::RunAnimationFrame {
+                tab_id,
+                document_generation,
+            },
+            pump,
+        )
+    }
     fn browser_tasks_available(&self) -> bool {
         true
     }

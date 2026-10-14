@@ -29,6 +29,7 @@ mod errors;
 mod execution;
 mod for_in;
 mod functions;
+mod host_animation_frames;
 mod host_objects;
 mod host_registration;
 mod host_timers;
@@ -80,6 +81,9 @@ pub use debugger::{
     VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
     VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
 };
+use host_animation_frames::HostAnimationFrame;
+pub(crate) use host_animation_frames::HostAnimationFrameFunction;
+pub use host_animation_frames::{BlueJsAnimationFrameRun, MAX_HOST_ANIMATION_FRAME_CALLBACKS};
 use host_objects::{
     ActiveHostClickEvent, HostClickListener, HostObjectFactoryRegistration, HostObjectFamilyState,
     HostObjectMethodRegistration, HostObjectPairMethodRegistration,
@@ -1021,6 +1025,9 @@ pub struct Vm {
     host_timer_clock_ms: u64,
     host_timer_clock: Option<Box<dyn Fn() -> u64>>,
     host_timer_nesting: u32,
+    host_animation_frames: Vec<HostAnimationFrame>,
+    host_animation_frame_next_id: u64,
+    host_animation_frame_timestamp_ms: f64,
     active_host_drag_event: Option<ObjectId>,
     event_time_origin: std::time::Instant,
     global_bindings: HashMap<String, GlobalBinding>,

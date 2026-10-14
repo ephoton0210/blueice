@@ -9,11 +9,12 @@ implemented on `feature/browsable-web-mvp`.
 **2026-10-14 integration update:** `feature/bluejs-browser-integration-gaps`
 has merged the product and BlueTS lines and completed the host-owned bounded
 microtask checkpoint and session-driven timer increments. The owner-selected
-File DOM profile installs callable-only timers and `queueMicrotask`, with exact
-v11 typings and relative next-wake replies. Real JavaScript and BlueTS counter
+File DOM profile installs callable-only timers, `queueMicrotask` and animation
+frame APIs, with exact v12 typings and private v58 scheduling/render replies.
+The frame entry remains separate from ordinary tasks. Real JavaScript and BlueTS counter
 pages prove matching frame/Representation generations. See the
 [`browser-integration milestone record`](BROWSER_INTEGRATION_TODO.md#milestone-record)
-for current evidence and remaining animation-frame/resource work; the tables below are
+for current evidence and remaining task-ordering/resource work; the tables below are
 the original analysis baseline.
 
 BlueJS is measured against ECMA-262/402 (Test262 99.995%). That says the

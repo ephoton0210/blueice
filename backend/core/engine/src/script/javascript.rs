@@ -176,6 +176,16 @@ pub trait PageJavaScriptExecutor {
         None
     }
 
+    /// A distinct frame-scheduled script entry, called before the session's
+    /// dirty layout/paint publication. It does not drain ordinary task sources.
+    fn run_render_opportunities_serving_script(
+        &mut self,
+        _tabs: &mut TabManager,
+        _script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        Ok(())
+    }
+
     /// Synchronizes current tab/document state and records bounded source-free
     /// execution results.
     fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()>;

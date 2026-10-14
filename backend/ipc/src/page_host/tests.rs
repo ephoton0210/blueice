@@ -9,7 +9,7 @@ mod debugger_shapes;
 
 #[test]
 fn browser_turn_wake_delay_is_optional_and_round_trips() {
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 57);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 58);
     let old = r#"{"DragTasksFlushed":{"tab_id":7,"document_generation":3}}"#;
     assert_eq!(
         serde_json::from_str::<PageHostReply>(old).unwrap(),
@@ -17,6 +17,7 @@ fn browser_turn_wake_delay_is_optional_and_round_trips() {
             tab_id: 7,
             document_generation: 3,
             next_wake_in_ms: None,
+            animation_frame_pending: false,
         }
     );
     for delay in [None, Some(0), Some(i32::MAX as u64)] {
@@ -24,11 +25,33 @@ fn browser_turn_wake_delay_is_optional_and_round_trips() {
             tab_id: 7,
             document_generation: 3,
             next_wake_in_ms: delay,
+            animation_frame_pending: false,
         };
         assert_eq!(
             serde_json::from_slice::<PageHostReply>(&serde_json::to_vec(&reply).unwrap()).unwrap(),
             reply
         );
+    }
+}
+
+#[test]
+fn animation_frame_wire_round_trips_exact_document_scheduling_without_clock_or_callbacks() {
+    let request = PageHostRequest::RunAnimationFrame {
+        tab_id: 7,
+        document_generation: 3,
+    };
+    let (mut writer, mut reader) = UnixStream::pair().unwrap();
+    write_page_host_request(&mut writer, &request).unwrap();
+    assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+    for pending in [false, true] {
+        let reply = PageHostReply::AnimationFrameRendered {
+            tab_id: 7,
+            document_generation: 3,
+            next_wake_in_ms: Some(0),
+            animation_frame_pending: pending,
+        };
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
     }
 }
 

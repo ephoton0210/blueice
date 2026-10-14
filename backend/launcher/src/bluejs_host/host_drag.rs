@@ -162,6 +162,46 @@ impl BlueJsChildHost {
             tab_id,
             document_generation,
             next_wake_in_ms,
+            animation_frame_pending: self
+                .runtime
+                .animation_frame_pending(tab_id)
+                .unwrap_or(false),
+        }
+    }
+
+    /// The host supplies one document-clock sample for the whole callback
+    /// snapshot. Neither browser tasks nor due timers execute in this entry.
+    pub(super) fn run_animation_frame(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> PageHostReply {
+        let Some(document) = self.documents.get(&tab_id) else {
+            return stale_document();
+        };
+        if document.generation != document_generation {
+            return stale_document();
+        }
+        let epoch = document.timer_epoch;
+        if self
+            .runtime
+            .run_animation_frame(tab_id, epoch.elapsed().as_secs_f64() * 1000.0)
+            .is_err()
+        {
+            return host_failure();
+        }
+        let now = u64::try_from(epoch.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let (Ok(due), Ok(animation_frame_pending)) = (
+            self.runtime.next_timer_due(tab_id),
+            self.runtime.animation_frame_pending(tab_id),
+        ) else {
+            return host_failure();
+        };
+        PageHostReply::AnimationFrameRendered {
+            tab_id,
+            document_generation,
+            next_wake_in_ms: due.map(|due| due.saturating_sub(now)),
+            animation_frame_pending,
         }
     }
 }

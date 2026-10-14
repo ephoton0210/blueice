@@ -105,13 +105,13 @@ pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};
 pub use vm::{
-    BlueJsTimerRun, HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragImage,
-    HostDragItem, HostFileData, HostFileSelectionEvent, HostFunction, HostFunctionError,
-    HostInputFilesReader, HostInputFilesUpdate, HostObject, HostObjectFactory, HostObjectFamily,
-    HostObjectKey, HostObjectMethod, HostObjectPairMethod, HostObjectUrls, HostValue, RuntimeError,
-    Vm, VmConfig, VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget,
-    VmDebuggerNestedExecutionState, VmDebuggerScopeEntry, VmDebuggerStackFrame,
-    VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
-    MAX_HOST_TIMERS_PER_REALM, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
-    VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
+    BlueJsAnimationFrameRun, BlueJsTimerRun, HostDragEventData, HostDragEventKind,
+    HostDragEventOutcome, HostDragImage, HostDragItem, HostFileData, HostFileSelectionEvent,
+    HostFunction, HostFunctionError, HostInputFilesReader, HostInputFilesUpdate, HostObject,
+    HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod, HostObjectPairMethod,
+    HostObjectUrls, HostValue, RuntimeError, Vm, VmConfig, VmDebuggerExecutionState,
+    VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState, VmDebuggerScopeEntry,
+    VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
+    MAX_HOST_ANIMATION_FRAME_CALLBACKS, MAX_HOST_TIMERS_PER_REALM, VM_DEBUGGER_MAX_SCOPE_ENTRIES,
+    VM_DEBUGGER_MAX_STACK_FRAMES, VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
 };

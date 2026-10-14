@@ -12,6 +12,8 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 58 adds a Core-selected render opportunity and a source-free frame
+//! pending flag, keeping frame callbacks separate from ordinary task turns.
 //! Version 57 adds a relative next-timer delay to exact-document browser-turn
 //! replies. Callback identities and process-local clock epochs stay private.
 //! Version 48 adds a child-private System execute-body arm that binds an
@@ -146,6 +148,7 @@ pub use drag_drop::{
 };
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V58 adds exact-document animation-frame render requests and scheduling replies.
 /// V57 returns the next relative timer wake-up after a bounded browser turn.
 /// V56 carries document-bound drag image requests. V55 adds document-bound drag
 /// events and post-default drag string tasks. V54 adds document-bound native
@@ -166,7 +169,7 @@ pub use drag_drop::{
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 57;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 58;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -505,6 +508,11 @@ impl PageHostChildStats {
 /// cannot claim the child before its launcher does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageHostRequest {
+    /// A Core-owned render opportunity, separate from ordinary task turns.
+    RunAnimationFrame {
+        tab_id: u64,
+        document_generation: u64,
+    },
     DispatchDrag {
         tab_id: u64,
         document_generation: u64,
@@ -960,6 +968,12 @@ pub enum PageHostRequest {
 /// Child replies for [`PageHostRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageHostReply {
+    AnimationFrameRendered {
+        tab_id: u64,
+        document_generation: u64,
+        next_wake_in_ms: Option<u64>,
+        animation_frame_pending: bool,
+    },
     DragDispatched {
         tab_id: u64,
         document_generation: u64,
@@ -974,6 +988,9 @@ pub enum PageHostReply {
         /// replies may omit it; connected peers still require matching versions.
         #[serde(default)]
         next_wake_in_ms: Option<u64>,
+        /// Runnable frame work; Core owns the cadence and render entry.
+        #[serde(default)]
+        animation_frame_pending: bool,
     },
     FileSelectionDispatched {
         tab_id: u64,

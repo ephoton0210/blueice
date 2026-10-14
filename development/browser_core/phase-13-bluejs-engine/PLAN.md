@@ -4,7 +4,7 @@
 
 **Status**: In progress — BlueJS has a modular parser/compiler/VM, generational heap, standard-library and Temporal/Intl implementation. The complete unfiltered Test262 inventory of 2026-09-23 (commit `fbcbe2c2`, macOS, Apple M4) passes 102,921 of 102,926 modes with 0 failures: the other 5 are 4 `excluded` Atomics `CanBlockIsFalse` modes and 1 `stale_corpus` fixture that contradicts the current spec text, both individually verified (see [the triage](TEST262_ANALYSIS_REPORT.md)); ECMA-402 is 6,714 / 6,714. It is not a full-conformance claim. Linux/Windows re-runs at this commit, page-script integration and cross-platform verification remain tracked below.
 
-**2026-10-14 browser integration:** M1a/M0a/M1b establish bounded host checkpoints, merged BlueTS profile compatibility, and owner-selected File DOM timers with generated v11 typings and private protocol v57 wake-up replies. JavaScript and BlueTS counter pages satisfy the repeated frame/Representation acceptance. Animation frames, task-source ordering, queue/byte budgets, Promise collectibility and default-on policy remain open in the [browser integration TODO](BROWSER_INTEGRATION_TODO.md).
+**2026-10-14 browser integration:** M1a/M0a/M1b/M1c establish bounded host checkpoints, merged BlueTS profile compatibility, owner-selected File DOM timers and a separate animation-frame render entry, with generated v12 typings and private protocol v58 scheduling replies. JavaScript and BlueTS counter pages satisfy the repeated frame/Representation acceptance. Task-source ordering, queue/byte budgets, Promise collectibility and default-on policy remain open in the [browser integration TODO](BROWSER_INTEGRATION_TODO.md).
 
 ## Ubuntu verification scope (2026-09-19)
 

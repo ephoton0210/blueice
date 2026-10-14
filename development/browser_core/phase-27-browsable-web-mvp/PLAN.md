@@ -6,8 +6,8 @@
 `feature/phase-7-6-8-9-followup` with `feature/test262-remaining-failures`
 (PR #25) merged in (see "Integration record"). The integrated
 `feature/bluejs-browser-integration-gaps` branch completes M1a checkpoints,
-M0a compatibility and M1b session-driven timers with real frame/Representation
-acceptance. M1 remains in progress for animation frames, task-source ordering,
+M0a compatibility, M1b session-driven timers and M1c's separate animation-frame
+render entry with real frame/Representation acceptance. M1 remains in progress for task-source ordering,
 queue/byte budgets and Promise collectibility.
 
 ## Objective
@@ -101,7 +101,11 @@ Real JavaScript and BlueTS counter pages each produce three distinct unsolicited
 frames with increasing generation and matching Representation generation/text;
 clear and navigation stop old timer work. See the
 [milestone results](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
-Animation frames, task-source ordering, queue/byte accounting and Promise
+M1c adds `requestAnimationFrame`/`cancelAnimationFrame`, the exact v12 artifact,
+and private v58 render requests. A Core-owned software cadence runs the callback
+snapshot and its microtask cleanup before dirty frame publication. JavaScript
+and BlueTS counter fixtures also verify direct rAF self-rearming without further
+timers/frontend work. Task-source ordering, queue/byte accounting and Promise
 collectibility remain open, so M1 remains in progress.
 
 - **M0 — Integration.** Merge PR #25's BlueJS line; re-verify. (Done for the
@@ -110,7 +114,8 @@ collectibility remain open, so M1 remains in progress.
   collectibility and the other engine gaps are tracked in
   [`phase-13-bluejs-engine/BROWSER_RUNTIME_GAPS.md`](../phase-13-bluejs-engine/BROWSER_RUNTIME_GAPS.md)
   and land on a dedicated BlueJS branch after PR #25 merges to `main`; a
-  timer mechanism and parked argument/nesting limits are reconciled by M1b.
+  timer mechanism and parked argument/nesting limits are reconciled by M1b,
+  and M1c adds the separate render entry for animation-frame callbacks.
   The core-side frame push below stays in this phase.)* `setTimeout`/`clearTimeout`/
   `setInterval`/`clearInterval`/`queueMicrotask`/`requestAnimationFrame`,
   delivered by the session tick. Acceptance: a counter page updating via

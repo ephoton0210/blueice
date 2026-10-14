@@ -192,6 +192,9 @@ impl Vm {
                 self.host_click_listener_call(index, receiver, &args, construct, false)
             }
             NativeFunction::HostTimer(function) => self.host_timer_call(function, &args, construct),
+            NativeFunction::HostAnimationFrame(function) => {
+                self.host_animation_frame_call(function, &args, construct)
+            }
             NativeFunction::HostNodeDispatch(index) => {
                 self.host_node_dispatch_call(index, &receiver, &args, construct)
             }

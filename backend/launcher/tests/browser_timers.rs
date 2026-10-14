@@ -6,6 +6,7 @@
 
 use blueice_ipc::{ClientMessage, ServerMessage};
 use blueice_launcher::{CoreLaunchOptions, SpawnedCore};
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -34,11 +35,25 @@ impl Drop for Fixture {
 }
 
 fn request(stream: &mut UnixStream, id: u64, message: ClientMessage) -> ServerMessage {
+    request_with_frames(stream, id, message, &mut VecDeque::new())
+}
+
+type FrameMessage = (Option<u64>, Option<u64>, ServerMessage);
+
+fn request_with_frames(
+    stream: &mut UnixStream,
+    id: u64,
+    message: ClientMessage,
+    frames: &mut VecDeque<FrameMessage>,
+) -> ServerMessage {
     blueice_ipc::write_client_message_with_ids(stream, Some(1), Some(id), &message).unwrap();
     loop {
-        let (_, reply_id, message) = blueice_ipc::read_server_message_with_ids(stream).unwrap();
+        let (tab, reply_id, message) = blueice_ipc::read_server_message_with_ids(stream).unwrap();
         if reply_id == Some(id) && !matches!(message, ServerMessage::FrameReady { .. }) {
             return message;
+        }
+        if reply_id.is_none() && matches!(message, ServerMessage::FrameReady { .. }) {
+            frames.push_back((tab, reply_id, message));
         }
     }
 }
@@ -106,11 +121,42 @@ fn fixture(body: String) -> (Fixture, String, PathBuf) {
 
 #[test]
 fn javascript_and_bluets_intervals_publish_matching_frames_and_representations() {
+    counter_frames("let count: number = 0; let timer: number = 0;
+        function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
+        function tick(): void { count += 1; queueMicrotask(publish); if (count === 3) { clearInterval(timer); } }
+        timer = setInterval(tick, 500);", true);
+}
+
+#[test]
+fn javascript_and_bluets_animation_frames_publish_post_microtask_representations() {
+    counter_frames("let count: number = 0; let last: number = 0;
+        function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
+        function refused(timestamp: number): void { throw 'cancelled frame callback'; }
+        function arm(): void { requestAnimationFrame(tick); }
+        function tick(timestamp: number): void {
+            if (!(timestamp > last)) { throw 'frame timestamp must advance'; }
+            last = timestamp; count += 1; queueMicrotask(publish);
+            if (count < 3) { setTimeout(arm, 500); }
+        }
+        const cancelled: number = requestAnimationFrame(refused);
+        cancelAnimationFrame(cancelled); setTimeout(arm, 100);", true);
+}
+
+#[test]
+fn a_frame_callback_can_keep_rendering_without_further_timer_or_frontend_work() {
+    counter_frames("let count: number = 0; let last: number = 0;
+        function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
+        function arm(): void { requestAnimationFrame(tick); }
+        function tick(timestamp: number): void {
+            if (!(timestamp > last)) { throw 'frame timestamp must advance'; }
+            last = timestamp; count += 1; queueMicrotask(publish);
+            if (count < 3) { requestAnimationFrame(tick); }
+        }
+        setTimeout(arm, 100);", false);
+}
+
+fn counter_frames(source: &str, check_every_representation: bool) {
     for typed in [false, true] {
-        let source = "let count: number = 0; let timer: number = 0;
-            function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
-            function tick(): void { count += 1; queueMicrotask(publish); if (count === 3) { clearInterval(timer); } }
-            timer = setInterval(tick, 500);";
         let source = if typed {
             source.to_string()
         } else {
@@ -140,11 +186,12 @@ fn javascript_and_bluets_intervals_publish_matching_frames_and_representations()
         stream
             .set_read_timeout(Some(Duration::from_secs(20)))
             .unwrap();
+        let mut frames = VecDeque::new();
         assert!(matches!(
-            request(&mut stream, 1, ClientMessage::Navigate { url }),
+            request_with_frames(&mut stream, 1, ClientMessage::Navigate { url }, &mut frames),
             ServerMessage::Navigated { .. }
         ));
-        let reports = request(
+        let reports = request_with_frames(
             &mut stream,
             2,
             if typed {
@@ -152,6 +199,7 @@ fn javascript_and_bluets_intervals_publish_matching_frames_and_representations()
             } else {
                 ClientMessage::GetBlueJsScriptReports
             },
+            &mut frames,
         );
         match reports {
             ServerMessage::BlueJsScriptReports(reports) => assert!(
@@ -175,20 +223,21 @@ fn javascript_and_bluets_intervals_publish_matching_frames_and_representations()
         let mut previous_generation = 0;
         let mut previous_pixels = Vec::new();
         for count in 1..=3 {
-            let (tab, request_id, frame) =
-                blueice_ipc::read_server_message_with_ids(&mut stream).unwrap();
+            let (tab, request_id, frame) = frames
+                .pop_front()
+                .unwrap_or_else(|| blueice_ipc::read_server_message_with_ids(&mut stream).unwrap());
             let ServerMessage::FrameReady {
                 generation,
                 shm_path,
                 ..
             } = frame
             else {
-                panic!("expected timer frame: {frame:?}");
+                panic!("expected scheduled frame: {frame:?}");
             };
             assert_eq!(tab, Some(1));
             assert_eq!(
                 request_id, None,
-                "timer frames arrive without a frontend request"
+                "scheduled frames arrive without a frontend request"
             );
             assert!(generation > previous_generation);
             let pixels = std::fs::read(shm_path).unwrap();
@@ -197,19 +246,24 @@ fn javascript_and_bluets_intervals_publish_matching_frames_and_representations()
                 pixels, previous_pixels,
                 "a timer must paint its new counter"
             );
-            let ServerMessage::Representation(snapshot) =
-                request(&mut stream, 10 + count, ClientMessage::GetRepresentation)
-            else {
-                panic!("expected Representation");
-            };
-            assert_eq!(snapshot.generation, generation);
-            assert!(
-                snapshot
-                    .nodes
-                    .iter()
-                    .any(|node| node.name.as_deref() == Some(&format!("tick:{count}"))),
-                "{snapshot:?}"
-            );
+            if check_every_representation || count == 3 {
+                let ServerMessage::Representation(snapshot) = request_with_frames(
+                    &mut stream,
+                    10 + count,
+                    ClientMessage::GetRepresentation,
+                    &mut frames,
+                ) else {
+                    panic!("expected Representation");
+                };
+                assert_eq!(snapshot.generation, generation);
+                assert!(
+                    snapshot
+                        .nodes
+                        .iter()
+                        .any(|node| node.name.as_deref() == Some(&format!("tick:{count}"))),
+                    "{snapshot:?}"
+                );
+            }
             previous_generation = generation;
             previous_pixels = pixels;
         }
@@ -222,7 +276,7 @@ fn javascript_and_bluets_intervals_publish_matching_frames_and_representations()
                 error.kind(),
                 std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
             ),
-            "cleared interval must stop publishing: {error}"
+            "the completed counter must stop publishing: {error}"
         );
         drop(stream);
         drop(core);

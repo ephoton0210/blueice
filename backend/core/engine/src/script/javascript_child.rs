@@ -112,6 +112,8 @@ use std::time::{Duration, Instant};
 /// The maximum number of source-free child-host results retained by core for
 /// the existing tab-addressed control-plane drain.
 const MAX_EXECUTION_REPORTS: usize = 128;
+/// Software render cadence until the native shell provides a vsync source.
+const ANIMATION_FRAME_INTERVAL: Duration = Duration::from_micros(16_667);
 /// One page-host execution receives a fixed total DOM-call allowance. The
 /// session still limits each polling turn independently in `script.rs`.
 const MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT: usize = 1_024;
@@ -229,6 +231,7 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// this record nor a handle that could request it.
     realm_stats: BTreeMap<TabId, PageHostRealmStats>,
     timer_wakes: BTreeMap<TabId, Instant>,
+    animation_frame_wakes: BTreeMap<TabId, Instant>,
     validation_usage: BTreeMap<TabId, PageHostValidationUsage>,
     /// Core-minted public debugger identities keyed by the child-private
     /// program IDs they represent. Child IDs are transport keys only and can
@@ -684,6 +687,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             live_documents: BTreeMap::new(),
             realm_stats: BTreeMap::new(),
             timer_wakes: BTreeMap::new(),
+            animation_frame_wakes: BTreeMap::new(),
             validation_usage: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             debugger_nested_frames: BTreeMap::new(),
@@ -796,6 +800,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             live_documents: BTreeMap::new(),
             realm_stats: BTreeMap::new(),
             timer_wakes: BTreeMap::new(),
+            animation_frame_wakes: BTreeMap::new(),
             validation_usage: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             debugger_nested_frames: BTreeMap::new(),
@@ -1493,20 +1498,14 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
                 tab_id,
                 document_generation,
                 next_wake_in_ms,
+                animation_frame_pending,
             } if tab_id == target.tab_id && document_generation == target.document_generation => {
-                match next_wake_in_ms {
-                    Some(delay) if delay <= i32::MAX as u64 => {
-                        self.timer_wakes.insert(
-                            TabId::from_u64(tab_id),
-                            started + Duration::from_millis(delay),
-                        );
-                    }
-                    Some(_) => return Err(io::Error::other("Page host timer delay invalid")),
-                    None => {
-                        self.timer_wakes.remove(&TabId::from_u64(tab_id));
-                    }
-                }
-                Ok(())
+                self.update_scheduling_reply(
+                    TabId::from_u64(tab_id),
+                    started,
+                    next_wake_in_ms,
+                    animation_frame_pending,
+                )
             }
             _ => Err(io::Error::other("Page host drag task response invalid")),
         }
@@ -1530,7 +1529,19 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
     }
 
     fn next_task_wake(&self) -> Option<Instant> {
-        self.timer_wakes.values().copied().min()
+        self.timer_wakes
+            .values()
+            .chain(self.animation_frame_wakes.values())
+            .copied()
+            .min()
+    }
+
+    fn run_render_opportunities_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        self.render_opportunities(tabs, script_requests)
     }
 
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport> {
@@ -1575,6 +1586,7 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
     }
 }
 
+mod animation_frames;
 mod client;
 pub use client::PageHostClient;
 mod connection;

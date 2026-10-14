@@ -15,6 +15,7 @@ use blueice_bluets::ModuleSource;
 use std::fmt;
 
 mod abort;
+mod animation_frames;
 mod custom_events;
 mod file_reader;
 mod iteration;
@@ -98,6 +99,9 @@ pub const PAGE_HOST_DOM_ITERATION_DECLARATION_MODULE_ID_V10: &str =
 pub const PAGE_HOST_DOM_TIMERS_PROFILE_V11: &str = "core-script-dom-timers-v11";
 pub const PAGE_HOST_DOM_TIMERS_DECLARATION_MODULE_ID_V11: &str =
     "blueice:///profiles/core-script-dom-timers-v11/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_ANIMATION_FRAME_PROFILE_V12: &str = "core-script-dom-animation-frame-v12";
+pub const PAGE_HOST_DOM_ANIMATION_FRAME_DECLARATION_MODULE_ID_V12: &str =
+    "blueice:///profiles/core-script-dom-animation-frame-v12/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_TEE_DECLARATION_MODULE_ID_V9: &str =
     "blueice:///profiles/core-script-dom-stream-tee-v9/lib.blueice.d.ts";
 
@@ -590,6 +594,13 @@ pub fn page_host_dom_timers_runtime_bindings_v11() -> [PageHostRuntimeBindingV1;
     })
 }
 
+pub fn page_host_dom_animation_frame_runtime_bindings_v12() -> [PageHostRuntimeBindingV1; 47] {
+    animation_frames::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -717,6 +728,13 @@ impl PageHostDocumentTypingsV1 {
 
     pub fn generate_dom_timers() -> Self {
         Self::generate_from(PAGE_HOST_DOM_TIMERS_PROFILE_V11, &timers::bindings())
+    }
+
+    pub fn generate_dom_animation_frame() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_ANIMATION_FRAME_PROFILE_V12,
+            &animation_frames::bindings(),
+        )
     }
 
     fn generate_from(profile: &'static str, bindings: &[PageHostDocumentBindingV1]) -> Self {
@@ -936,6 +954,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_timers(),
             PAGE_HOST_DOM_TIMERS_DECLARATION_MODULE_ID_V11,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_animation_frame_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_animation_frame(),
+            PAGE_HOST_DOM_ANIMATION_FRAME_DECLARATION_MODULE_ID_V12,
             installed_bindings,
         )
     }

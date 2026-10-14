@@ -38,8 +38,9 @@ implemented and verified on `feature/bluejs-browser-integration-gaps`.
 ## A. Event loop and scheduling (P0)
 
 The integrated branch has host-owned Promise checkpoints and session-driven
-timers in the owner-selected File DOM profile. General task-source ordering,
-animation frames and complete queue/byte accounting remain open.
+timers and a separate render entry for animation frames in the owner-selected
+File DOM profile. General task-source ordering and complete queue/byte
+accounting remain open.
 
 - [ ] Macrotask queue that drains microtasks after every task (per
       `research/js-bytecode-eventloop.md`)
@@ -62,11 +63,16 @@ animation frames and complete queue/byte accounting remain open.
       child's due callbacks and checkpoints before publishing dirty layout/
       paint. Real JavaScript and BlueTS counter pages prove three unsolicited,
       distinct frames and matching Representation generations/text.
-- [ ] `requestAnimationFrame` / `cancelAnimationFrame`
+- [x] **M1c: `requestAnimationFrame` / `cancelAnimationFrame`.** The exact
+      `core-script-dom-animation-frame-v12` artifact adds both callable APIs.
+      Core's software render cadence drives a separate, document-bound entry
+      before dirty frame publication. Callback snapshots preserve order,
+      cancellation and one shared timestamp; newly registered callbacks wait
+      for another frame. Each callback and render exit checkpoint microtasks.
 - [ ] `MessageChannel` / `postMessage`
 - [ ] Timers and queued tasks are dropped on navigation (old document
       generation), bounded per tab, and accounted to the initiating tab
-      — timer lifetime/count/argument bounds are covered by M1b; complete
+      — timer/frame lifetime and count bounds are covered by M1b/M1c; complete
       queued-task and host-byte accounting is still required.
 - [x] **M1b: core / child timer ownership.** The child realm roots callbacks
       and arguments; the host injects a document-local monotonic clock. Core
@@ -80,6 +86,9 @@ animation frames and complete queue/byte accounting remain open.
       next runnable delay. Core validates its identity/range, clears it on
       replacement/close, and shortens its ordinary polling timeout for an
       earlier timer. Paused debugger realms retain timers without busy wakes.
+      M1c adds frame wake-ups to that deadline selection; repeated task polls
+      preserve an already requested frame's deadline, and paused/empty frame
+      queues clear it.
 - [ ] Microtask checkpoint also runs after every DOM event dispatch, not only
       after browser-task turns (*verify*)
 - [x] **M1b: reconcile the parked timer slice.** Retained the public
@@ -335,6 +344,56 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1c — Animation-frame render entry and continued frame delivery (2026-10-14)
+
+- Added VM-rooted `requestAnimationFrame` / `cancelAnimationFrame` with a
+  separate public page-runtime render entry. Ordinary browser/timer turns
+  cannot invoke frame callbacks. One render opportunity snapshots handles in
+  registration order, allows cancellation of later callbacks (including by a
+  microtask), and uses a shared fractional document timestamp. Registrations
+  made by callbacks or their jobs wait for the next opportunity. Callback and
+  render-exit checkpoints are bounded and continue after page exceptions.
+- Bounded the pending callback map at 64 entries and ran its complete
+  snapshot, retaining roots through invocation and releasing them on cancel
+  or completion. Navigation/close discard the map. Paused debugger realms
+  retain callbacks without advertising runnable frame work. Required-argument
+  function lengths, unsigned-long cancellation and finite monotonic host
+  timestamps are checked at the public VM/page-runtime boundaries.
+- Added the exact 47-entry `core-script-dom-animation-frame-v12` typing
+  artifact as a superset of v11; older artifacts remain unchanged. The latest
+  owner-selected File DOM installer and BlueTS admission use its matching
+  inventory. Wrong callbacks/handles fail typed admission; old profiles remain
+  statically and dynamically absent. No page selects its profile or clock.
+- Advanced the private protocol to v58 with exact-document
+  `RunAnimationFrame` / `AnimationFrameRendered` and a runnable-frame flag in
+  task replies. Core owns a 16.667 ms software cadence (the research permits
+  timer-driven render opportunities for the MVP), retains deadlines across
+  ordinary task polls, and selects the earliest timer/frame wake. Its separate
+  render call runs after task scheduling and before dirty frame publication,
+  pumping exact-document DOM calls while the child executes. Invalid tab,
+  generation or timer-delay replies revoke only the realm without replaying
+  the document scripts. Native vsync and broader visibility policy remain
+  later host work; this is not a guaranteed display-refresh-rate claim.
+- Red-first acceptance: the real rAF fixture failed at page script execution
+  before installation. JavaScript and BlueTS fixtures now update their counter
+  through rAF and a queued microtask, producing distinct unsolicited frames
+  and matching Representation generation/text. A separate continuous loop
+  re-registers directly from its frame callback with no further timers or
+  frontend work, proving that returned pending-frame state keeps scheduling.
+  The fixture retains asynchronous frames while awaiting correlated replies.
+- Final macOS verification: 1,191 BlueJS and 164 bridge library tests,
+  14 frame-runtime tests, 37 timer tests, four frame/timer/iteration typing
+  tests, Core's 815, IPC's 216 and launcher's 305 library tests passed (one
+  launcher case ignored), plus four real timer/frame tests and the real
+  FileReader fixture. The waiting-closure case checks that an actual collection
+  occurred. Core/launcher binaries were rebuilt at private protocol v58 before
+  real-process validation. All-target Clippy for the five affected crates
+  passed with `-D warnings`; formatting and staged/working diff checks passed.
+  Full workspace, coverage and unfiltered Test262 gates are not claimed.
+- General task-source ordering, pending-task/job and host-byte budgets,
+  Promise collectibility, error-event reporting and default-on execution are
+  still required; M1 as a whole remains in progress.
 
 ### M1b — Session-driven page timers and frame acceptance (2026-10-14)
 

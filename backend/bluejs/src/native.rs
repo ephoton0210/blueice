@@ -365,6 +365,7 @@ pub(crate) enum NativeFunction {
     /// VM-owned timer and `queueMicrotask` globals; callbacks stay rooted
     /// in the VM and never cross the embedding callback ABI.
     HostTimer(crate::vm::HostTimerFunction),
+    HostAnimationFrame(crate::vm::HostAnimationFrameFunction),
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

@@ -8,6 +8,20 @@ use super::*;
 /// separate from a VM/registry prevents the core from bypassing the child's
 /// process boundary and lets focused tests use a recording child peer.
 pub trait PageHostClient {
+    fn animation_frames_available(&self) -> bool {
+        false
+    }
+    fn run_animation_frame_with_script_pump(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Page host does not implement animation frames",
+        ))
+    }
     /// Production peers can schedule existing realm jobs between Core turns.
     /// Recording peers preserve their declared, smaller transport surface.
     fn browser_tasks_available(&self) -> bool {

@@ -2226,6 +2226,9 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
         if !synchronized_after_completion {
             synchronize_page_script_runtime(&mut page_script_runtime, tabs, requests.script)?;
         }
+        if let Some(executor) = page_script_runtime.javascript_executor.as_deref_mut() {
+            executor.run_render_opportunities_serving_script(tabs, requests.script)?;
+        }
         // Page script changes the document between client requests (timers,
         // and later network completions). Publish that render pass now, with
         // the next frame generation, so the human frame and a following

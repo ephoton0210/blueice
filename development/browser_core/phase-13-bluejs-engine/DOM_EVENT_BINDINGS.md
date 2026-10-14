@@ -39,7 +39,7 @@ operation. Other Phase 2 DOM properties, selectors, capture/bubble phases,
 `lib.dom.d.ts` remain later implementation slices. A missing operation stays
 absent at both the TypeScript and JavaScript boundaries.
 
-**2026-10-14 timer increment:** The latest owner-selected File DOM profile
+**2026-10-14 timer increment:** The owner-selected File DOM timer artifact
 uses `core-script-dom-timers-v11` (45 inventory entries), preserving all older
 artifacts. It adds `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`
 and `queueMicrotask`. Callbacks and arguments stay rooted in the exact child
@@ -53,6 +53,20 @@ String timer handlers, animation frames and complete task/byte accounting
 remain outside this profile. Timing conversion and nesting follow the
 [HTML timer algorithm](https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers)
 and [Web IDL signed long conversion](https://webidl.spec.whatwg.org/#es-long).
+
+**2026-10-14 frame increment:** The latest File DOM artifact is now
+`core-script-dom-animation-frame-v12` (47 entries), adding
+`requestAnimationFrame` and `cancelAnimationFrame` to the unchanged v11
+inventory. Frame callbacks have their own 64-entry rooted map and render
+entry. Core uses a 16.667 ms software cadence and the private protocol v58
+runnable-frame flag; task polling preserves the deadline. The child snapshots
+handles and one document-clock timestamp, checkpoints each callback and the
+render exit, then Core publishes dirty pixels before another frontend read.
+New registrations wait for another frame, cancellation can affect the current
+snapshot, and replacement/close/paused debugger handling follows realm lifetime.
+See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
+[HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
+The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).
 
 ## Ownership and identity
 

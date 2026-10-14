@@ -132,6 +132,10 @@ impl BlueJsChildHost {
     /// than accidentally resetting host state.
     pub fn handle_request(&mut self, request: PageHostRequest) -> PageHostReply {
         match request {
+            PageHostRequest::RunAnimationFrame {
+                tab_id,
+                document_generation,
+            } => self.run_animation_frame(tab_id, document_generation),
             PageHostRequest::DispatchDrag {
                 tab_id,
                 document_generation,
