@@ -7,7 +7,23 @@
 use crate::heap::{GeneratorHandlerFrame, GeneratorHandlerState, GeneratorPendingCompletion};
 use crate::Value;
 
-use super::RuntimeError;
+use super::{RuntimeError, Vm};
+
+impl Vm {
+    pub(super) fn take_pending_throw_origin(&mut self) -> crate::diagnostics::ThrowOrigin {
+        crate::diagnostics::ThrowOrigin {
+            source: self.pending_diagnostic_origin.take(),
+            debugger_site: self.pending_throw_site.take(),
+            epoch: self.throw_epoch,
+        }
+    }
+
+    pub(super) fn restore_pending_throw_origin(&mut self, origin: crate::diagnostics::ThrowOrigin) {
+        self.pending_diagnostic_origin = origin.source;
+        self.pending_throw_site = origin.debugger_site;
+        self.throw_epoch = origin.epoch;
+    }
+}
 
 #[derive(Clone)]
 pub(super) enum Completion {

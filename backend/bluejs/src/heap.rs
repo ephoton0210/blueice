@@ -255,9 +255,9 @@ impl ClosureMetadata {
 const CLOSURE_METADATA_BYTES: usize = size_of::<ClosureMetadata>();
 
 /// The interpreter handler state that must remain attached to a suspended
-/// generator frame.  It contains only bytecode and frame offsets, so keeping
-/// it with the heap-owned frame also keeps a `yield` in a catch or finally
-/// block independent of the VM's ambient execution context.
+/// generator frame. Keeping offsets and saved throw provenance with the
+/// heap-owned frame makes a `yield` in a catch or finally block independent
+/// of the VM's ambient execution context.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GeneratorHandlerState {
     Try,
@@ -276,6 +276,7 @@ pub(crate) struct GeneratorHandlerFrame {
     /// Index into `GeneratorState::Suspended::pending_completions` while a
     /// finally block is running an abrupt completion.
     pub(crate) pending: Option<usize>,
+    pub(crate) pending_origin: crate::diagnostics::ThrowOrigin,
 }
 
 /// A catchable completion displaced with a generator frame.  VM-only resource
@@ -519,6 +520,10 @@ impl GeneratorState {
             } => {
                 reference_bytes
                     + handlers.len() * size_of::<GeneratorHandlerFrame>()
+                    + handlers
+                        .iter()
+                        .map(|handler| handler.pending_origin.payload_bytes())
+                        .sum::<usize>()
                     + pending_completions.len() * size_of::<GeneratorPendingCompletion>()
                     + pending_completions
                         .iter()

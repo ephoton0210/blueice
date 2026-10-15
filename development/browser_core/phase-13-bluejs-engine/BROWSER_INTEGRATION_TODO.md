@@ -56,7 +56,9 @@ Complete section H's original-position follow-up for uncaught errors and
 rejections. The verified implementation now binds immutable source maps to
 live program generations and reports original classic JavaScript statement
 locations, including nested blocks and functions, through real Core/child
-`ErrorEvent` delivery. The checkpoint passes 1,731 tests across eight targets
+`ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
+cross-script generator resumption preserve the escaping throw's origin. The
+latest checkpoint passes 1,837 tests across twenty targets
 (one existing ignored), formatting and focused three-library Clippy. Two of
 the ten final acceptance gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Expression/parameter
@@ -496,9 +498,13 @@ the full source-position requirement.
       interpreter contexts, and keep unmapped `eval`/`Function` origins unknown.
 - [x] Verify original JavaScript root/block/function coordinates through real
       Core/child `window.onerror` delivery.
-- [x] Pass the three-library and public registry/lifecycle regression selection:
-      1,691 passed, zero failed, one existing ignored, across five targets.
-- [x] Pass the final current-source diagnostic/error/page replay: 40 passed,
+- [x] Preserve source/debugger origins through synchronous finalizers, ignored
+      iterator-close failures and yielded generator resumption across scripts;
+      verify collection and suspended filename payload charges.
+- [x] Pass the expanded three-library/public/debugger/GC/resource regression
+      selection: 1,837 passed, zero failed, one existing ignored, across twenty
+      targets.
+- [x] Pass the latest current-source diagnostic/error/page replay: 43 passed,
       zero failed, across three complete targets.
 - [x] Pass `cargo fmt --all -- --check` and focused Clippy for the BlueJS,
       BlueTS bridge and launcher libraries with `-D warnings`.
@@ -508,7 +514,8 @@ the full source-position requirement.
 - [ ] Complete precise expression/parameter and compiler-generated provenance.
 - [ ] Attach certified original locations for direct/emitted BlueTS, modules
       and debugger-driven execution.
-- [ ] Retain rejection/await and completion/finally origins across queued work.
+- [ ] Retain rejection/await origins across queued work, including rejected-await
+      and async-disposal interactions with finalizers.
 - [ ] Account retained diagnostic copies and carry bounded locations through
       Core/MCP, with integrated cancellation/navigation/GC/resource coverage.
 - [ ] Complete the full related Rust/Core/MCP, workspace/all-target Clippy/build
@@ -594,6 +601,32 @@ checkpoint has 1,731 passing tests across eight distinct targets and one
 existing ignored. Full workspace/all-target Clippy/build, final Core/MCP,
 pinned Test262 and fresh coverage were not run for this checkpoint; their
 previous M1p results are not substituted for M1q acceptance.
+
+The cleanup follow-up first reproduced four incorrect origins among five
+public cases (`/private/tmp/blueice-error-origins-cleanup-red.log`), plus a
+real Core/child finalizer reporting empty/zero coordinates
+(`/private/tmp/blueice-error-origins-cleanup-core-red.log`). Saving provenance
+with pending finalizers fixed synchronous cleanup; expanded tests then exposed
+a cross-script generator epoch collision (14 passed, one failed;
+`/private/tmp/blueice-error-origins-cleanup-suspended-red.log`). A fresh
+propagation epoch on resumption fixed the collision. The three-target replay
+passed all 43 cases, including real page finalizer/iterator cleanup and
+cross-script generator coordinates
+(`/private/tmp/blueice-error-origins-cleanup-final.log`). The expanded current
+source selection passed all 1,837 cases across twenty targets, with one
+existing ignored and zero failures
+(`/private/tmp/blueice-error-origins-cleanup-regressions.log`). This includes
+the three libraries, all fifteen diagnostic groups, twenty debugger groups,
+generator/async collection, completion, native Promise and scheduling limits,
+and all sixteen real page cases. The source-coordinate page fixture verifies
+six contexts, including finalizer/iterator cleanup and a generator resumed by
+another script. All nineteen recorded Rust hashes match the complete run's
+manifest (`target/source-diagnostics-cleanup-source-20261015.json`). Formatting
+and focused three-library Clippy with `-D warnings` pass; Clippy completed in
+1m 11s. See `target/source-diagnostics-cleanup-validation-20261015.json`.
+Finalizer filename copies join generator managed bytes and async/module
+continuation scheduling bytes. The broader M1q acceptance requirements above
+remain open; this follow-up does not close section H.
 See [the in-progress contract](SOURCE_DIAGNOSTICS.md) for the immutable ownership
 and admission model and the remaining expression/typed/async/transport work.
 

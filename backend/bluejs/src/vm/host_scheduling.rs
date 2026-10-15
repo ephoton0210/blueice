@@ -334,6 +334,7 @@ impl AsyncContinuation {
             .saturating_add(slots(&self.iterators))
             .saturating_add(values_bytes(&self.iterators))
             .saturating_add(slots(&self.handlers))
+            .saturating_add(handler_origins_bytes(&self.handlers))
     }
 }
 impl ModuleContinuation {
@@ -342,9 +343,16 @@ impl ModuleContinuation {
             .saturating_add(slots(&self.iterators))
             .saturating_add(values_bytes(&self.iterators))
             .saturating_add(slots(&self.handlers))
+            .saturating_add(handler_origins_bytes(&self.handlers))
             .saturating_add(self.module.capacity())
             .saturating_add(owned_code_bytes(&self.code))
     }
+}
+
+fn handler_origins_bytes(handlers: &[HandlerFrame]) -> usize {
+    handlers.iter().fold(0usize, |bytes, handler| {
+        bytes.saturating_add(handler.pending_origin.payload_bytes())
+    })
 }
 
 /// A module continuation owns a clone of the outer code unit. Child code and

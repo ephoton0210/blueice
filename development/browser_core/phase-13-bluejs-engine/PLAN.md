@@ -80,7 +80,10 @@ See [the rejection contract](HOST_PROMISE_REJECTIONS.md).
 source identities and instruction ranges to installed program generations,
 with combined code/metadata admission. Parser statements and compiler AST
 instruction owners now locate root, block and function throws through the
-real Core/child path. This is an implementation checkpoint; original typed,
+real Core/child path. Saved finalizers and ignored iterator-close failures
+preserve their pending throw's origin, including across generator suspension
+and later scripts; saved filename payloads join the existing suspension
+budgets. This is an implementation checkpoint; original typed,
 expression, module, asynchronous and copied MCP positions and the final full
 gates remain open in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record)
 and [source-position contract](SOURCE_DIAGNOSTICS.md).

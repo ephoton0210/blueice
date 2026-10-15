@@ -55,6 +55,24 @@ pub struct DiagnosticSourceLocation {
     pub column: u32,
 }
 
+/// Provenance displaced while cleanup runs user code. The epoch belongs to
+/// the saved throw too: an ignored cleanup failure must not masquerade as a
+/// new propagation of the original error.
+#[derive(Clone, Default)]
+pub(crate) struct ThrowOrigin {
+    pub(crate) source: Option<DiagnosticSourceLocation>,
+    pub(crate) debugger_site: Option<crate::VmDebuggerThrowSite>,
+    pub(crate) epoch: u64,
+}
+
+impl ThrowOrigin {
+    pub(crate) fn payload_bytes(&self) -> usize {
+        self.source
+            .as_ref()
+            .map_or(0, |source| source.filename.capacity())
+    }
+}
+
 /// One compiler-certified half-open instruction range in a code unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticSourceRange {

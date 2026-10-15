@@ -263,7 +263,7 @@ impl Vm {
                 if let Err(RuntimeError::Thrown(value)) = &outcome {
                     self.stack.push(value.clone());
                 }
-                let _ = self.iterator_close(&record);
+                self.iterator_close_preserving_throw(&record);
                 self.stack.truncate(error_base);
             }
             outcome
@@ -798,7 +798,7 @@ impl Vm {
                 if let Err(RuntimeError::Thrown(value)) = &outcome {
                     self.stack.push(value.clone());
                 }
-                let _ = self.iterator_close(&record);
+                self.iterator_close_preserving_throw(&record);
                 self.stack.truncate(error_base);
             }
             outcome

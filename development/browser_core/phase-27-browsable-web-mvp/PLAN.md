@@ -84,7 +84,9 @@ see [the rejection contract](../phase-13-bluejs-engine/HOST_PROMISE_REJECTIONS.m
 
 M1q is in progress. A verified source-provenance foundation supplies original
 classic JavaScript statement positions through the real Core/child error
-handler and charges immutable maps with installed code. Typed, expression,
+handler and charges immutable maps with installed code. The cleanup follow-up
+preserves these origins through finalizers, ignored iterator-close failures
+and cross-script generator resumption. Typed, expression,
 module, asynchronous and copied MCP positions remain required; see
 [the live record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
 

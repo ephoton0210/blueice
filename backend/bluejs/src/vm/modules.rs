@@ -1993,7 +1993,7 @@ impl Vm {
                     }
                     self.stack.extend(iterators.iter().cloned());
                     for record in iterators.into_iter().rev() {
-                        let _ = self.iterator_close(&record);
+                        self.iterator_close_preserving_throw(&record);
                     }
                     self.stack.truncate(base);
                     ambient.templates.extend(self.templates.clone());
@@ -2164,7 +2164,7 @@ impl Vm {
                     }
                     self.stack.extend(iterators.iter().cloned());
                     for record in iterators.into_iter().rev() {
-                        let _ = self.iterator_close(&record);
+                        self.iterator_close_preserving_throw(&record);
                     }
                     self.stack.truncate(base);
                     self.heap

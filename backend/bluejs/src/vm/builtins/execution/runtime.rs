@@ -843,7 +843,9 @@ impl Vm {
         if let RuntimeError::Thrown(value) = &error {
             self.stack.push(value.clone());
         }
+        let origin = self.take_pending_throw_origin();
         let _ = self.iterator_close_direct(iterator);
+        self.restore_pending_throw_origin(origin);
         self.stack.truncate(base);
         Err(error)
     }
@@ -1181,7 +1183,7 @@ impl Vm {
                 if let RuntimeError::Thrown(value) = &error {
                     self.stack.push(value.clone());
                 }
-                let _ = self.iterator_close(record);
+                self.iterator_close_preserving_throw(record);
                 self.stack.truncate(base);
                 Err(error)
             }
@@ -1656,7 +1658,7 @@ impl Vm {
                         if let RuntimeError::Thrown(thrown) = &error {
                             self.stack.push(thrown.clone());
                         }
-                        let _ = self.iterator_close(&Value::Object(record));
+                        self.iterator_close_preserving_throw(&Value::Object(record));
                         self.stack.truncate(error_base);
                     }
                     return Err(error);

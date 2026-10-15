@@ -30,7 +30,7 @@ impl Vm {
             // An IteratorStep abrupt completion has already marked the
             // record done, which makes IteratorClose a no-op in that case;
             // otherwise the original error wins over a close failure.
-            let _ = self.iterator_close(record);
+            self.iterator_close_preserving_throw(record);
             self.stack.truncate(error_base);
         }
         outcome

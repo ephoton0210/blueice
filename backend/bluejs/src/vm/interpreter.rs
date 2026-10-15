@@ -1866,6 +1866,7 @@ impl Vm {
                             with_depth: self.with_objects.len(),
                             state: HandlerState::Try,
                             pending: None,
+                            pending_origin: Default::default(),
                         });
                     }
                     Opcode::PopHandler => {

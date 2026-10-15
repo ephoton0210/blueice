@@ -417,7 +417,7 @@ impl Vm {
                     }
                     self.stack.extend(iterators.iter().cloned());
                     for record in iterators.into_iter().rev() {
-                        let _ = self.iterator_close(&record);
+                        self.iterator_close_preserving_throw(&record);
                     }
                     self.stack.truncate(base);
                     Err(error)
@@ -471,7 +471,7 @@ impl Vm {
                 }
                 self.stack.extend(iterators.iter().cloned());
                 for record in iterators.into_iter().rev() {
-                    let _ = self.iterator_close(&record);
+                    self.iterator_close_preserving_throw(&record);
                 }
                 self.stack.truncate(base);
             }
@@ -519,7 +519,7 @@ impl Vm {
                 }
                 self.stack.extend(iterators.iter().cloned());
                 for record in iterators.into_iter().rev() {
-                    let _ = self.iterator_close(&record);
+                    self.iterator_close_preserving_throw(&record);
                 }
                 self.stack.truncate(base);
             }

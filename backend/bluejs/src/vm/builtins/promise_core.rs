@@ -62,7 +62,7 @@ impl Vm {
         value: Value,
     ) -> Result<Value, RuntimeError> {
         // IteratorClose with a throw completion preserves the original rejection.
-        let _ = self.iterator_close(&Value::Object(record));
+        self.iterator_close_preserving_throw(&Value::Object(record));
         self.settle_promise(target, PromiseStatus::Rejected(value))
             .expect("an async-from-sync continuation retains its tracked target");
         Ok(Value::Undefined)

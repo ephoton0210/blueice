@@ -278,7 +278,7 @@ impl Vm {
                     Err(error) => {
                         // IteratorClose with a throw completion keeps that
                         // completion, whatever `return` does.
-                        let _ = self.iterator_close(&record);
+                        self.iterator_close_preserving_throw(&record);
                         return Err(error);
                     }
                 };

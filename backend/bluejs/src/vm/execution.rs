@@ -1086,7 +1086,17 @@ impl Vm {
     }
 
     pub(super) fn close_iterators_to(&mut self, iterators: &mut Vec<Value>, depth: usize) {
+        let origin = self.take_pending_throw_origin();
         let _ = self.close_iterators_to_first_error(iterators, depth);
+        self.restore_pending_throw_origin(origin);
+    }
+
+    /// IteratorClose with an existing throw ignores a close failure, including
+    /// its source position and throw epoch. Cleanup may also catch new errors.
+    pub(super) fn iterator_close_preserving_throw(&mut self, record: &Value) {
+        let origin = self.take_pending_throw_origin();
+        let _ = self.iterator_close(record);
+        self.restore_pending_throw_origin(origin);
     }
 
     /// Closes the records being left and returns the first close error after
@@ -1104,7 +1114,9 @@ impl Vm {
         // is visited, so retain the entire pending set until cleanup ends.
         let base = self.stack.len();
         self.stack.extend(active.iter().cloned());
+        let origin = self.take_pending_throw_origin();
         let mut first_error = None;
+        let mut first_origin = None;
         for record in active.into_iter().rev() {
             let result = self.iterator_close(&record);
             if let Err(error) = result {
@@ -1113,10 +1125,12 @@ impl Vm {
                         self.stack.push(value.clone());
                     }
                     first_error = Some(error);
+                    first_origin = Some(self.take_pending_throw_origin());
                 }
             }
         }
         self.stack.truncate(base);
+        self.restore_pending_throw_origin(first_origin.unwrap_or(origin));
         first_error
     }
 
@@ -1206,12 +1220,18 @@ impl Vm {
             // when the finalizer was entered.
             self.restore_completion();
             return match frame.pending {
-                Some(pending) => self.resolve_completion(
-                    code,
-                    handlers,
-                    iterators,
-                    self.pending_completions[pending].clone(),
-                ),
+                Some(pending) => {
+                    let completion = self.pending_completions[pending].clone();
+                    if matches!(completion, Completion::Throw(_)) {
+                        let mut origin = frame.pending_origin;
+                        // A suspended finalizer can resume in another script
+                        // whose counter happens to equal the old throw epoch.
+                        // This is a fresh propagation of the saved origin.
+                        origin.epoch = self.throw_epoch.wrapping_add(1);
+                        self.restore_pending_throw_origin(origin);
+                    }
+                    self.resolve_completion(code, handlers, iterators, completion)
+                }
                 None => Ok(CompletionAction::Continue),
             };
         }
@@ -1290,6 +1310,8 @@ impl Vm {
             if unwind {
                 self.stack.truncate(stack_depth);
                 self.unwind_scopes(code, scope_depth);
+                let original_origin = matches!(completion, Completion::Throw(_))
+                    .then(|| self.take_pending_throw_origin());
                 if let Some(error) = self.close_iterators_to_first_error(iterators, iterator_depth)
                 {
                     // IteratorClose preserves a pre-existing throw, but a
@@ -1306,6 +1328,9 @@ impl Vm {
                             .last_mut()
                             .expect("completion remains rooted") = completion.clone();
                     }
+                }
+                if let Some(origin) = original_origin {
+                    self.restore_pending_throw_origin(origin);
                 }
                 self.unwind_with(with_depth);
             }
@@ -1343,6 +1368,7 @@ impl Vm {
                     let frame = handlers.last_mut().expect("handler was inspected above");
                     frame.state = HandlerState::Finally;
                     frame.pending = Some(pending);
+                    frame.pending_origin = self.take_pending_throw_origin();
                     self.strict = code.strict;
                     return Ok(CompletionAction::Jump(target as usize));
                 }
@@ -1521,7 +1547,7 @@ impl Vm {
             for record in iterators.into_iter().rev() {
                 // IteratorClose preserves an existing throw even when return
                 // throws too. Resource exhaustion retains the original limit.
-                let _ = self.iterator_close(&record);
+                self.iterator_close_preserving_throw(&record);
             }
         }
         self.pending_completions.truncate(pending_base);

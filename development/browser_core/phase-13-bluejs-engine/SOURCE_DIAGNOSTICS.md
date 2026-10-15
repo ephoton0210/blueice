@@ -51,13 +51,45 @@ is separate: a mapped caller cannot manufacture a location for an unmapped
 `eval` or `Function` body. Error events preserve their existing cancellation,
 handler arguments, recursion and original-value behavior.
 
+## Saved completions and cleanup
+
+An abrupt finalizer saves the incoming diagnostic location, terminal debugger
+site and propagation epoch with its pending completion. A normally completing
+finalizer restores the saved throw with a fresh propagation epoch; an abrupt
+replacement keeps its own origin. A yielded generator retains the saved
+provenance in its heap-owned handler frame, independently of later scripts
+and collections. Explicitly unavailable origins remain unavailable.
+
+Iterator cleanup preserves the incoming throw's provenance when a close
+failure is ignored. When closing replaces a return or jump, the first close
+failure retains its own origin while outer iterators still receive cleanup.
+Native collection/iterator/Promise and host cleanup paths use the same
+preservation helper. Saved filename capacities participate in suspended
+generator managed bytes and async/module continuation scheduling bytes.
+
+The initial public cleanup regression failed four of five scenarios, and
+the real Core/child finalizer fixture reported `:0:0`. A follow-up exposed a
+cross-script generator epoch collision (14 passed, one failed). The corrected
+diagnostic/error/page selection passes all 43 cases, including the original
+throw, replacement, unknown-origin, GC and byte-charge controls. The complete
+follow-up selection passes 1,837 cases across twenty targets, with one existing
+ignored and zero failures. It covers the three related libraries, twenty
+debugger groups, generator/async GC, completion, native Promise and scheduling
+limits, and all sixteen real page cases. The page coordinate fixture verifies
+six original-source contexts. Formatting and focused three-library Clippy
+with `-D warnings` also pass (Clippy: 1m 11s). All nineteen Rust hashes in
+`target/source-diagnostics-cleanup-source-20261015.json` match this complete
+run; `target/source-diagnostics-cleanup-validation-20261015.json` records the
+selection and remaining gates.
+
 ## Required remaining work
 
 Precise expression/parameter/generated-code provenance, direct and emitted
 BlueTS, modules and debugger-driven execution still need their full acceptance.
-Queued Promise rejection/await origins, completion/finally preservation and
-copied Core/MCP source locations remain part of M1q. Copies held by asynchronous
-diagnostic state must join document-native accounting. Navigation, stale
+Queued Promise rejection/await origins, rejected-await/async-disposal finalizer
+interactions and copied Core/MCP source locations remain part of M1q.
+Other copies held by asynchronous diagnostic state must join document-native
+accounting. Navigation, stale
 generations, GC, source-map refusals and resource containment need integrated
 coverage. Broader host-buffer/network/UI/default-on policy remains separate.
 
@@ -67,9 +99,10 @@ Unknown and generated-only locations remain explicitly unavailable. Final
 related Rust/Core/MCP, formatting, workspace Clippy/build and complete pinned
 Test262 gates have not been claimed.
 
-## Verified implementation checkpoint (2026-10-15)
+## Foundation implementation checkpoint (2026-10-15)
 
-The BlueJS, BlueTS bridge and launcher library selection plus public
+Commit `ce8c45707` records the foundation. The BlueJS, BlueTS bridge and launcher
+library selection plus public
 registry/lifecycle targets passed 1,691 cases, with one existing ignored.
 After two Clippy-only type-alias corrections, the final public diagnostic,
 host-error and real Core/child page replay passed all 40 cases. All 27 Rust
@@ -79,7 +112,7 @@ passing cases and one existing ignored. Formatting and focused three-library
 Clippy with `-D warnings` pass.
 
 The [TODO progress checklist](BROWSER_INTEGRATION_TODO.md#milestone-record)
-records eight verified implementation steps and the remaining work. Two of
+records the verified implementation steps and remaining work. Two of
 the ten full M1q acceptance gates are complete. This checkpoint does not claim
 workspace/all-target Clippy/build, final Core/MCP acceptance, a fresh pinned
 Test262 run or fresh coverage.

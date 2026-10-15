@@ -130,7 +130,7 @@ impl Vm {
                     if let RuntimeError::Thrown(value) = error {
                         self.stack.push(value.clone());
                     }
-                    let _ = self.iterator_close(&record);
+                    self.iterator_close_preserving_throw(&record);
                     self.stack.truncate(close_base);
                 }
                 performed

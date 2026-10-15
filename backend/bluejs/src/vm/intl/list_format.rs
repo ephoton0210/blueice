@@ -155,7 +155,7 @@ impl Vm {
             if outcome.is_err() {
                 // StringListFromIterable closes the live iterator, preserving
                 // the original abrupt completion if close itself fails.
-                let _ = self.iterator_close(&record);
+                self.iterator_close_preserving_throw(&record);
             }
             outcome
         })();

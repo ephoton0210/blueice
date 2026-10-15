@@ -250,6 +250,176 @@ fn mapped_throw_positions_survive_error_handler_execution() {
 }
 
 #[test]
+fn cleanup_preserves_the_origin_of_the_throw_that_actually_escapes() {
+    let mut failures = Vec::new();
+    for (name, source, expected_line) in [
+        (
+            "caught error in finalizer",
+            "try { throw 'original'; } finally { try { throw 'caught'; } catch {} }",
+            2,
+        ),
+        (
+            "nested finalizer replacement",
+            "try { throw 'original'; } finally { try { throw 'replacement'; } finally { try { throw 'caught'; } catch {} } }",
+            3,
+        ),
+        (
+            "abrupt finalizer replacement",
+            "try { throw 'original'; } finally { throw 'replacement'; }",
+            3,
+        ),
+        (
+            "report during finalizer",
+            "try { throw 'original'; } finally { try { throw 'caught'; } catch {} reportError('report'); }",
+            2,
+        ),
+        (
+            "iterator close failure during throw",
+            "var iterator={ [Symbol.iterator](){return this;}, next(){return {value:1,done:false};}, return(){throw 'close';} }; for (var value of iterator) { throw 'original'; }",
+            2,
+        ),
+        (
+            "first iterator close failure during return",
+            "var outer={ [Symbol.iterator](){return this;}, next(){return {value:1,done:false};}, return(){throw 'outer';} }; var inner={ [Symbol.iterator](){return this;}, next(){return {value:1,done:false};}, return(){throw 'inner';} }; function fail(){for(var a of outer){for(var b of inner){return 9;}}} fail();",
+            3,
+        ),
+        (
+            "native collection adder failure",
+            "var input={ [Symbol.iterator](){return this;}, next(){return {value:[1,2],done:false};}, return(){throw 'close';} }; Map.prototype.set=function(){throw 'original';}; new Map(input);",
+            3,
+        ),
+        (
+            "direct iterator helper callback failure",
+            "var input={next(){return {value:1,done:false};},return(){throw 'close';}}; Iterator.from(input).map(function(){throw 'original';}).next();",
+            3,
+        ),
+        (
+            "unmapped original through mapped finalizer",
+            "try{eval(\"throw 'original';\");}finally{try{throw 'caught';}catch{}}",
+            0,
+        ),
+    ] {
+        let mut vm = page();
+        let code = mapped_throw_code(source, "memory:///position.js");
+        assert!(vm.execute_script(&code).is_err(), "{name}");
+        if name == "caught error in finalizer" {
+            let site = vm.debugger_uncaught_throw_site().unwrap();
+            assert_eq!(site.code_unit_ordinal, 0);
+            assert_eq!(code.diagnostic_source_location(site.bytecode_offset), Some(&location(2)));
+        }
+        let actual = observed(&mut vm);
+        let expected = Value::String(if expected_line == 0 {
+            ":0:0".into()
+        } else {
+            format!("memory:///position.js:{expected_line}:1").into()
+        });
+        if actual != expected {
+            failures.push((name, actual, expected));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+fn mapped_throw_code(source: &str, filename: &str) -> blueice_bluejs::Bytecode {
+    fn collect(
+        code: &blueice_bluejs::Bytecode,
+        filename: &str,
+        unit: &mut u32,
+        ranges: &mut Vec<DiagnosticSourceRange>,
+    ) {
+        let ordinal = *unit;
+        *unit += 1;
+        for instruction in code.instructions().filter(|i| i.opcode == Opcode::Throw) {
+            let mut row = range(
+                ordinal,
+                instruction.offset as u32,
+                instruction.offset as u32 + 1,
+            );
+            row.location = DiagnosticSourceLocation {
+                filename: filename.into(),
+                line: ranges.len() as u32 + 2,
+                column: 1,
+            };
+            ranges.push(row);
+        }
+        for child in code.child_code_units() {
+            collect(child, filename, unit, ranges);
+        }
+    }
+    let mut registry = BlueJsProgramRegistry::default();
+    let program = BlueJsProgramV1::Script(parse(source).unwrap());
+    let handle = registry.install(identity("original"), &program).unwrap();
+    let mut ranges = Vec::new();
+    collect(
+        registry.get(handle).unwrap().bytecode(),
+        filename,
+        &mut 0,
+        &mut ranges,
+    );
+    registry
+        .bind_diagnostic_sources(
+            handle,
+            DiagnosticSourceMap::new(identity("original"), ranges).unwrap(),
+        )
+        .unwrap();
+    registry.get(handle).unwrap().bytecode().clone()
+}
+
+#[test]
+fn a_suspended_finalizer_restores_its_throw_after_another_script_and_collection() {
+    let mut vm = page();
+    let code = mapped_throw_code(
+        "function* fail(){try{throw 'original';}finally{yield 1;try{throw 'caught';}catch{}}} var suspended=fail(); suspended.next();",
+        "memory:///position.js",
+    );
+    vm.execute_script(&code).unwrap();
+    let before = vm.heap().stats().minor_collections;
+    // The caller's first caught throw deliberately has the same epoch as the
+    // old generator throw. Resuming must publish a new propagation epoch.
+    let resume = compile(&parse("try{throw 'ambient';}catch{}; for(var i=0;i<1000;i++){var garbage={i:i};} suspended.next();").unwrap()).unwrap();
+    assert!(vm.execute_script(&resume).is_err());
+    assert!(vm.heap().stats().minor_collections > before);
+    let site = vm.debugger_uncaught_throw_site().unwrap();
+    assert_eq!(site.code_unit_ordinal, 1);
+    assert_eq!(
+        code.child_code_units()
+            .next()
+            .unwrap()
+            .diagnostic_source_location(site.bytecode_offset),
+        Some(&location(2))
+    );
+    assert_eq!(
+        observed(&mut vm),
+        Value::String("memory:///position.js:2:1".into())
+    );
+}
+
+#[test]
+fn suspended_finalizer_source_copies_join_generator_and_await_byte_budgets() {
+    fn retained_bytes(source: &str, filename: &str) -> (usize, usize) {
+        let mut vm = page();
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_throw_code(source, filename))
+            .unwrap();
+        (
+            vm.heap().stats().managed_bytes,
+            vm.host_scheduling_usage().unwrap().payload_bytes,
+        )
+    }
+    let short = "memory:///a.js";
+    let long = format!("memory:///{}.js", "x".repeat(4096));
+    let extra = long.len() - short.len();
+    let generator = "function* fail(){try{throw 'original';}finally{yield 1;}} var suspended=fail(); suspended.next();";
+    let (short_heap, _) = retained_bytes(generator, short);
+    let (long_heap, _) = retained_bytes(generator, &long);
+    assert_eq!(long_heap - short_heap, extra);
+    let asynchronous = "var hold=Promise.withResolvers(); async function fail(){try{throw 'original';}finally{await hold.promise;}} var suspended=fail();";
+    let (_, short_native) = retained_bytes(asynchronous, short);
+    let (_, long_native) = retained_bytes(asynchronous, &long);
+    assert_eq!(long_native - short_native, extra);
+}
+
+#[test]
 fn explicit_reports_use_the_active_call_position_and_leave_unknown_code_unmapped() {
     let mut vm = page();
     let mut registry = BlueJsProgramRegistry::default();

@@ -192,6 +192,21 @@ fn uncaught_page_errors_keep_the_throwing_script_source_coordinates() {
             "\nfunction fail() {\n  throw 'position-probe';\n}\nfail();\n",
             "3:3",
         ),
+        (
+            "finally",
+            "\ntry {\n  throw 'position-probe';\n} finally {\n  try { throw 'caught'; } catch {}\n}\n",
+            "3:3",
+        ),
+        (
+            "iterator cleanup",
+            "\nvar iterator={ [Symbol.iterator](){return this;}, next(){return {value:1,done:false};}, return(){throw 'close';} };\nfor(var value of iterator){\n  throw 'position-probe';\n}\n",
+            "4:3",
+        ),
+        (
+            "suspended finally",
+            "\nfunction* fail(){\n  try {\n    throw 'position-probe';\n  } finally { yield 1; try { throw 'caught'; } catch {} }\n}\nvar suspended=fail(); suspended.next();\n</script><script>\ntry { throw 'ambient'; } catch {} suspended.next();\n",
+            "4:5",
+        ),
     ] {
         let location = observed_error_source_location(source);
         if !location.starts_with("location:blueice://page/tab-1/document-")
