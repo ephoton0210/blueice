@@ -76,7 +76,7 @@ impl Pages {
                         setTimeout(function(){var value;[
                           [value]
                         ]=[null];},80);
-                        </script><script type='application/x-blueice-typescript'>const absent: any=null;function directOperand(): void {const value: any=1 + (\n absent.field);}function read(value: any): void {}function directArgument(): void {read(\n absent.field);}function directKey(): void {const value: any={[\n absent.field]:1};}function directTemplate(): void {const value: any=`value:${\n absent.field}`;}function directClass(): void {const C=class {go(): void {\n throw 'direct-class';}};new C().go();}function directClassKey(): void {const C=class {[\n absent.field]: any=0;};}queueMicrotask(directOperand);queueMicrotask(directArgument);queueMicrotask(directKey);queueMicrotask(directTemplate);queueMicrotask(directClass);queueMicrotask(directClassKey);</script><script type='application/x-blueice-typescript'>const bad: any=0;\n@bad class C {}</script><script type='application/x-blueice-typescript'>const Native: any=WeakMap;\n@Native class NativeDecorated {}</script><script type='application/x-blueice-typescript'>class Handler {get apply(): any {try{throw 'caught';}catch(error){}return 0;}}const Factory: any=(globalThis as any).Proxy;const dec: any=new Factory(WeakMap,new Handler());\n@dec class ProxyDecorated {}</script><script type='application/x-blueice-typescript'>namespace PageNamespace {export function fail(): void {\n throw 'namespace-source';}}PageNamespace.fail();</script><script type='application/x-blueice-typescript'>const enumAbsent: any=null;enum PageEnum {A=(\n enumAbsent.field)}</script>"
+                        </script><script type='application/x-blueice-typescript'>const absent: any=null;function directOperand(): void {const value: any=1 + (\n absent.field);}function read(value: any): void {}function directArgument(): void {read(\n absent.field);}function directKey(): void {const value: any={[\n absent.field]:1};}function directTemplate(): void {const value: any=`value:${\n absent.field}`;}function directClass(): void {const C=class {go(): void {\n throw 'direct-class';}};new C().go();}function directClassKey(): void {const C=class {[\n absent.field]: any=0;};}queueMicrotask(directOperand);queueMicrotask(directArgument);queueMicrotask(directKey);queueMicrotask(directTemplate);queueMicrotask(directClass);queueMicrotask(directClassKey);</script><script type='application/x-blueice-typescript'>const bad: any=0;\n@bad class C {}</script><script type='application/x-blueice-typescript'>const Native: any=WeakMap;\n@Native class NativeDecorated {}</script><script type='application/x-blueice-typescript'>class Handler {get apply(): any {try{throw 'caught';}catch(error){}return 0;}}const Factory: any=(globalThis as any).Proxy;const dec: any=new Factory(WeakMap,new Handler());\n@dec class ProxyDecorated {}</script><script type='application/x-blueice-typescript'>namespace PageNamespace {export function fail(): void {\n throw 'namespace-source';}}PageNamespace.fail();</script><script type='application/x-blueice-typescript'>const enumAbsent: any=null;enum PageEnum {A=(\n enumAbsent.field)}</script><script type='application/x-blueice-typescript'>const bindingAbsent: any=null;const\n {bindingValue}: any=bindingAbsent;</script><script type='application/x-blueice-typescript'>const defaultAbsent: any=null;const {value: defaultValue=1+(\n defaultAbsent.field)}: any={};</script>"
                         } else if matches!(mode, PageMode::Errors) {
                             "<button id=pending>error button</button><script>
                         onerror=function(message,filename,line,column,error){return error==='silenced';};
@@ -236,12 +236,12 @@ async fn real_mcp_keeps_queued_reference_and_nested_assignment_sources() {
             serde_json::from_value(page_json(&result)).unwrap();
         assert_eq!(batch.dropped_records, 0);
         records.extend(batch.records);
-        if records.len() >= 13 {
+        if records.len() >= 15 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    assert_eq!(records.len(), 13, "{records:?}");
+    assert_eq!(records.len(), 15, "{records:?}");
     let records = records
         .iter()
         .map(|record| {
@@ -262,6 +262,8 @@ async fn real_mcp_keeps_queued_reference_and_nested_assignment_sources() {
         ("4.ts", &[(2, 2)][..]),
         ("5.ts", &[(2, 2)][..]),
         ("6.ts", &[(2, 2)][..]),
+        ("7.ts", &[(2, 2)][..]),
+        ("8.ts", &[(2, 2)][..]),
     ] {
         let matching = records
             .iter()

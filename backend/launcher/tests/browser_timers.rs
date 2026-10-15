@@ -293,6 +293,21 @@ fn real_pages_report_original_direct_bluets_statement_and_call_sources() {
             "2:2",
         ),
         (
+            "application/x-blueice-typescript",
+            "const absent: any=null;const\n {value}: any=absent;",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
+            "const absent: any=null;const {value=1+(\n absent.field)}: any={};",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            "await 0;export default class {static {const\n [value]: any=null;}}",
+            "2:2",
+        ),
+        (
             "application/x-blueice-typescript-module",
             "await 0;export namespace N {export function fail(): void {\n throw 'namespace-module';}}N.fail();",
             "2:2",

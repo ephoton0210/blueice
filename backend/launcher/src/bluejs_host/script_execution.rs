@@ -168,6 +168,7 @@ pub(super) fn emitted_bluets_compiler_options(
     let mut options =
         bluets_compiler_options(graph, page_dom_profile).map_err(PreparedScriptFailure::plain)?;
     options.source_map = true;
+    options.diagnostic_source_map = true;
     options.inline_sources = true;
     match emitted_profile {
         PageHostBlueTsEmissionProfile::Standard => {}

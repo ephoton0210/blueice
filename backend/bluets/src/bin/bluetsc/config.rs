@@ -627,6 +627,7 @@ pub(super) fn resolve_config_document(
         check_js: config.check_js,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
         source_map: config.source_map || config.inline_source_map,
+        diagnostic_source_map: false,
         declaration: config.declaration,
         declaration_map: config.declaration_map,
         emit_declaration_only: config.emit_declaration_only,

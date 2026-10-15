@@ -137,6 +137,9 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(&options.limits.parser.max_type_depth.to_string());
     add(&options.limits.max_type_expansions.to_string());
     add(&options.limits.max_source_map_segments.to_string());
+    if options.diagnostic_source_map {
+        add("diagnostic-source-map-copied-tokens-v1");
+    }
     add(if options.source_map {
         "source-map"
     } else {

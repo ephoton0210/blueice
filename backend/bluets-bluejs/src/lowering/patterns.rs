@@ -8,7 +8,7 @@
 use super::*;
 use blueice_bluets::{BindingPattern, VariableBindingPattern};
 
-pub(super) fn variable(
+pub(crate) fn variable(
     module: &Module,
     pattern: &VariableBindingPattern,
 ) -> Result<bluejs::Pattern, BridgeError> {

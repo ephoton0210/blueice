@@ -170,6 +170,7 @@ pub(crate) fn emit(
                         javascript: String::new(),
                         provenance: Vec::new(),
                         segment_limit: None,
+                        diagnostic_source_map: false,
                         overflowed: false,
                     },
                     None,
@@ -334,6 +335,7 @@ struct EmittedJavaScript {
     javascript: String,
     provenance: Vec<ProvenanceSegment>,
     segment_limit: Option<usize>,
+    diagnostic_source_map: bool,
     overflowed: bool,
 }
 
@@ -465,12 +467,13 @@ fn emit_javascript(
         strict_runtime = Some(record);
     }
     let emitted = decorators::targets::lower(
-        apply_edits_with_provenance(
+        apply_edits_with_token_provenance(
             &module.source,
             edits,
             options
                 .source_map
                 .then_some(options.limits.max_source_map_segments),
+            options.source_map && options.diagnostic_source_map,
         ),
         module,
         project,
@@ -577,15 +580,25 @@ fn apply_edits(source: &str, edits: Vec<TextEdit>) -> EmittedJavaScript {
 
 fn apply_edits_with_provenance(
     source: &str,
+    edits: Vec<TextEdit>,
+    segment_limit: Option<usize>,
+) -> EmittedJavaScript {
+    apply_edits_with_token_provenance(source, edits, segment_limit, false)
+}
+
+fn apply_edits_with_token_provenance(
+    source: &str,
     mut edits: Vec<TextEdit>,
     segment_limit: Option<usize>,
+    diagnostic_source_map: bool,
 ) -> EmittedJavaScript {
     edits.sort_by_key(|edit| (edit.start, edit.end));
     // A replacement may carry relocation markers (see `decorators::relocated`):
     // the text of another source range, with the edits inside it applied.
     let relocating = edits.iter().any(|edit| edit.replacement.contains('\u{0}'));
     let snapshot = relocating.then(|| edits.clone());
-    let mut emitted = ProvenanceEmitter::new(source, source.len(), segment_limit);
+    let mut emitted =
+        ProvenanceEmitter::new(source, source.len(), segment_limit, diagnostic_source_map);
     let mut cursor = 0usize;
     for edit in edits {
         if edit.start < cursor || edit.end < edit.start || edit.end > source.len() {
@@ -810,6 +823,7 @@ struct ProvenanceEmitter<'a> {
     generated_line: usize,
     generated_column: usize,
     segment_limit: Option<usize>,
+    diagnostic_source_map: bool,
     overflowed: bool,
     tokens: Vec<crate::syntax::Token>,
     source_cursor: usize,
@@ -818,7 +832,12 @@ struct ProvenanceEmitter<'a> {
 }
 
 impl<'a> ProvenanceEmitter<'a> {
-    fn new(source: &'a str, capacity: usize, segment_limit: Option<usize>) -> Self {
+    fn new(
+        source: &'a str,
+        capacity: usize,
+        segment_limit: Option<usize>,
+        diagnostic_source_map: bool,
+    ) -> Self {
         Self {
             source,
             javascript: String::with_capacity(capacity),
@@ -826,6 +845,7 @@ impl<'a> ProvenanceEmitter<'a> {
             generated_line: 0,
             generated_column: 0,
             segment_limit,
+            diagnostic_source_map,
             overflowed: false,
             tokens: if segment_limit.is_some() {
                 crate::syntax::lex("<source-map>", source).unwrap_or_default()
@@ -850,7 +870,9 @@ impl<'a> ProvenanceEmitter<'a> {
             let position = source_offset + offset;
             if let Some(token) = self.tokens.get(token_index) {
                 if token.start == position
-                    && token_maps::mark_start(self.source, &self.tokens, token_index)
+                    && token.kind != crate::syntax::TokenKind::Eof
+                    && (self.diagnostic_source_map
+                        || token_maps::mark_start(self.source, &self.tokens, token_index))
                 {
                     self.mark(position);
                 }
@@ -999,6 +1021,7 @@ impl<'a> ProvenanceEmitter<'a> {
             javascript: self.javascript,
             provenance: self.provenance,
             segment_limit: self.segment_limit,
+            diagnostic_source_map: self.diagnostic_source_map,
             overflowed: self.overflowed,
         }
     }

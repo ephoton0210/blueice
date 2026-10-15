@@ -59,18 +59,19 @@ statement, expression and parameter locations through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest reference and
-assignment-pattern follow-up passes thirty-seven source scenarios, preserves
-unknown getter/Proxy origins, and appends a bounded source-only namespace
-without changing debugger ordinals. Its final selection passes 2,066 tests
-across forty-five targets (one existing ignored), including six additional
-real-page contexts and queued callee/nested-pattern positions at 3:27 and 6:27
-through official MCP. Formatting, focused six-library and changed integration-target Clippy
-pass. Three of the ten final acceptance
+Core and MCP, preserving unavailable locations. The latest follow-up maps
+checked direct BlueTS bindings and anonymous default exports, fixes duplicate
+async-module reports and stalled ready siblings, and adds exact copied-token
+anchors to owner-selected emitted BlueTS maps. Forty-four previously missing
+direct positions and the JavaScript/direct/emitted dependency controls pass.
+Its final scoped selection passes 2,314 tests across fifty-nine disjoint
+targets (twenty-nine existing ignored), including real pages and official MCP
+console checks. Formatting and related library/test Clippy pass. Three of the
+ten final acceptance
 gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Remaining
-expression/parameter/generated provenance, direct/emitted BlueTS,
-page-module/debugger source producers and
+expression/generated provenance, remaining direct/emitted BlueTS and
+page-module/debugger precision and
 the complete queued-origin matrix remain open,
 along with their final integrated Core/MCP/resource/GC checks and
 final workspace/Test262 gates. Unknown or generated-only locations remain
@@ -762,12 +763,44 @@ the full source-position requirement.
       scripts at 2:2. Formatting and related Clippy pass. Twelve Rust inputs,
       three Cargo inputs, three runtime and thirty-nine test executable hashes
       stay fixed throughout final acceptance.
+- [x] Replay checked flat variable patterns before binding their root, renamed/
+      skipped/rest children and original default expressions. Bind written
+      variable, parameter and catch names from checked token prefixes, including
+      erased `this` parameters and constructor properties. Forty-four missing
+      positions across twenty-two shapes/both field modes now pass; eight public
+      instruction-owner checks, four AST/bytecode controls and four contextual
+      keyword shorthand controls pass. Generated
+      export bindings remain gaps, and existing unsupported pattern forms remain
+      refused by the direct grammar.
+- [x] Preserve parameters and bodies through anonymous default-function and
+      default-class wrappers. Twenty-four dependency/default-export contexts
+      before/after await and both field modes pass, alongside twenty UTF-16/
+      newline contexts, callback/dynamic-source controls and queued retention
+      across actual major GC/navigation. All 221 bridge library cases pass.
+- [x] Reproduce and fix duplicate page-module errors and stalled ready siblings
+      after an async dependency completes. Cache every catchable evaluation
+      failure, including string limits; reject its static parents/waiters through
+      the retained error and continue ready siblings. Standalone/page-owned
+      source controls, sibling completion and language-limit/host-abort checks
+      pass. Instruction-limit aborts still escape unchanged.
+- [x] Add fingerprinted diagnostic copied-token map anchors for owner-selected
+      emitted BlueTS. Preserve ordinary maps and generated JavaScript bytes;
+      helper/scaffolding gaps remain unmapped. Exact dependency positions now
+      pass for JavaScript, direct BlueTS and emitted BlueTS. Frozen artifact
+      fixtures select the same map mode and retain full map/JavaScript equality.
+- [x] Pass the binding/default-export and module-parent follow-up: 2,314 cases
+      across fifty-nine disjoint targets, zero failures and twenty-nine existing
+      ignored. BlueJS adds 1,398, BlueTS 287, all bridge targets 292, launcher
+      313, real pages nineteen and MCP console five. Formatting and related
+      Clippy pass. Record twenty-two Rust inputs, four Cargo inputs, three
+      runtime and fifty-nine test executable hashes, with explicit source/test
+      refinements and the unchanged earlier BlueJS cohort.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
       compiler-generated provenance.
-- [ ] Complete remaining direct BlueTS expression/pattern and
+- [ ] Complete remaining direct BlueTS expression and
       generated-helper provenance, remaining decorator application and class/key
       precision, plus emitted-profile/module/debugger
       precision and lifecycle acceptance.
@@ -1468,6 +1501,48 @@ Final evidence is `target/namespace-origins-source-20261016.json` and
 before reference-budget refinement is archived under `namespace-origins-initial`.
 Remaining dispatch/pattern/generated precision, integrated lifecycle/resource
 and full workspace/all-target/Test262 gates stay open; M1q remains at 3/10.
+
+The binding/default-export follow-up (2026-10-16) reproduces forty-four missing
+direct BlueTS positions across twenty-two supported shapes and both field
+modes (`/private/tmp/blueice-pattern-origins-red-20261016.log`). Checked pattern
+replay binds written declaration roots, renamed/elided/rest children and
+defaults; exact token prefixes bind variable, parameter and catch names.
+Anonymous default functions/classes retain their written parameters/bodies,
+while generated export bindings stay unmapped. Eight instruction-owner checks,
+four unchanged AST/bytecode controls, four contextual-keyword shorthand controls,
+twenty UTF-16/newline contexts, twenty-four dependency/default-export contexts
+before/after await, callback/unknown-source controls and actual major-GC/
+navigation retention pass. All 221 bridge library cases pass.
+
+Awaited dependencies also exposed duplicate page-owned module errors, skipped
+ready siblings and uncached string-limit failures. Ready-parent settlement now
+propagates an already recorded catchable failure to static ancestors/waiters,
+continues ready siblings, and leaves uncatchable instruction exhaustion as a
+host abort. Standalone and bounded-page tests preserve known/unknown callee
+origins and report once across repeated checkpoints. The matching deferred
+host fixture exposed an emitted-only gap at a copied pattern opening after
+trivia. A separately fingerprinted `diagnostic_source_map` option adds exact
+copied-token anchors within existing map budgets. The page owner enables it;
+ordinary TypeScript-compatible maps and all emitted JavaScript bytes remain
+unchanged. Generated helpers/scaffolding remain unmapped. Two frozen artifact
+fixtures now select the same map mode and still compare entire maps and code.
+
+Final acceptance passes 2,314 cases across fifty-nine disjoint targets, zero
+failures and twenty-nine existing ignored: 1,398 BlueJS across thirteen targets,
+287 BlueTS across eight, 292 bridge across all thirty-five, 313 launcher,
+nineteen real-page and five official MCP console cases. MCP additionally keeps
+the root/default typed binding errors at their original 2:2 and preserves
+queued JavaScript positions 3:27 and 6:27. Formatting, seven-library Clippy,
+bridge/launcher test Clippy and changed integration-target Clippy pass with
+warnings denied. Receipts record twenty-two final Rust inputs, four Cargo
+inputs, three runtime and fifty-nine test executable hashes. The completed
+BlueJS cohort is retained because its source, Cargo inputs and thirteen test
+executable hashes stay unchanged through the later compiler/host refinements;
+each refinement and the launcher fixture replay is recorded explicitly.
+Evidence is `target/pattern-origins-source-20261016.json` and
+`target/pattern-origins-validation-20261016.json`. Remaining dispatch/generated
+precision, emitted-profile and integrated lifecycle/resource acceptance, and
+full workspace/all-target/Test262 gates stay open; M1q remains at 3/10.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

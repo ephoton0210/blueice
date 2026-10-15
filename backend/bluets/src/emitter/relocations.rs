@@ -194,7 +194,9 @@ impl ProvenanceEmitter<'_> {
         }
         let mut marks = Vec::with_capacity(source_tokens.len().saturating_mul(2));
         for ((index, source), generated) in source_tokens.into_iter().zip(generated_tokens) {
-            if token_maps::mark_start(self.source, &self.tokens, index) {
+            if self.diagnostic_source_map
+                || token_maps::mark_start(self.source, &self.tokens, index)
+            {
                 marks.push((generated.start, source.start));
             }
             if token_maps::mark_end(source) {

@@ -31,6 +31,7 @@ pub(super) fn relocate(
         javascript: String::new(),
         provenance: Vec::new(),
         segment_limit: emitted.segment_limit,
+        diagnostic_source_map: emitted.diagnostic_source_map,
         overflowed: emitted.overflowed,
     };
     let (mut line, mut column) = (0, 0);

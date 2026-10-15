@@ -6,7 +6,7 @@ pub(super) mod classes;
 mod computed_fields;
 mod module_exports;
 pub(super) mod namespaces;
-mod patterns;
+pub(super) mod patterns;
 
 use classes::*;
 use namespaces::*;

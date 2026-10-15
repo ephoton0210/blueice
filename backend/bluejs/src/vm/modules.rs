@@ -965,14 +965,7 @@ impl Vm {
                     record.completion = Some(value.clone());
                 }
                 Err(error) => {
-                    if matches!(
-                        error,
-                        RuntimeError::Thrown(_)
-                            | RuntimeError::TypeError(_)
-                            | RuntimeError::ReferenceError(_)
-                            | RuntimeError::RangeError(_)
-                            | RuntimeError::SyntaxError(_)
-                    ) {
+                    if error.is_catchable() {
                         match self.error_value(error.clone()) {
                             Ok(value) => {
                                 let origin = ThrowOrigin {
@@ -1725,7 +1718,22 @@ impl Vm {
                     .expect("async parent remains linked");
                 record.evaluating = false;
                 record.suspended = false;
-                self.evaluate_module_record(&parent, modules, linked)?;
+                if let Err(error) = self.evaluate_module_record(&parent, modules, linked) {
+                    let retained = if error.is_catchable() {
+                        linked.get(&parent).and_then(|record| record.error.clone())
+                    } else {
+                        None
+                    };
+                    let Some(retained) = retained else {
+                        return Err(error);
+                    };
+                    // A ready parent's language failure is a module rejection,
+                    // not a second exception from this dependency's Promise
+                    // job. Settle its waiters/ancestors and continue the ready
+                    // siblings. Resource aborts still escape unchanged.
+                    self.reject_module_and_parents(parent, retained, linked)?;
+                    continue;
+                }
                 if linked.get(&parent).is_some_and(|record| record.evaluated) {
                     self.settle_dynamic_import_waiters(&parent, linked)?;
                     completed.push_back(parent);
@@ -2567,13 +2575,10 @@ impl Vm {
         // Errors raised by the engine itself become one JavaScript value here
         // so that identity survives the propagation to the importers.
         let result = match result {
-            Err(
-                error @ (RuntimeError::Thrown(_)
-                | RuntimeError::TypeError(_)
-                | RuntimeError::ReferenceError(_)
-                | RuntimeError::RangeError(_)
-                | RuntimeError::SyntaxError(_)),
-            ) if !linked.get(name).is_some_and(|record| record.suspended) => {
+            Err(error)
+                if error.is_catchable()
+                    && !linked.get(name).is_some_and(|record| record.suspended) =>
+            {
                 let origin = self.caught_rejection_origin(evaluation_epoch);
                 let value = self.error_value(error)?;
                 let retained = self.retain_module_error(value.clone(), origin)?;

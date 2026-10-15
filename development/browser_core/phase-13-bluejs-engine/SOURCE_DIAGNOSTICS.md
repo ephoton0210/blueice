@@ -608,6 +608,96 @@ before reference-budget refinement is archived separately. Remaining dispatch/
 pattern/generated precision, integrated lifecycle/resource and full workspace/
 all-target/Test262 acceptance stay open; M1q remains at 3/10 final gates.
 
+### Direct binding patterns and anonymous exports
+
+The bridge replays each checked variable pattern with the production pattern
+lowerer before binding the final pattern tree. Root positions require the
+checked declaration keyword and exact original pattern spelling; child names
+require their checked key/rename/rest prefixes. Default values use the existing
+bounded expression-origin traversal. Written variable, ordinary/rest parameter
+and catch bindings receive their own source-only slots. Erased `this`
+parameters contribute no runtime binding; constructor properties keep the
+written parameter name. Generated export bindings remain explicitly unmapped.
+The existing direct grammar still refuses destructured parameters and nested
+patterns; source capture does not change executable syntax or emitted bytes.
+
+Anonymous default-function statements and anonymous default-class variable
+wrappers now traverse the written function/class parameters and bodies rather
+than discard their evidence. The wrapper's private binding receives no borrowed
+location. All retained metadata remains the same private coordinate inventory
+and AST certificate; checked tokens, replayed patterns and addresses are
+temporary. The existing shared inventory, expression and fingerprint budgets
+bound this work without adding runtime roots or debugger authority.
+
+Forty-four unavailable positions were reproduced across twenty-two supported
+shapes and both field modes, including null patterns, defaults, rest, class/
+namespace bodies, native Proxy reads and iterator next/close failures. They
+now pass. Eight public instruction-owner checks verify renamed/rest/parameter/
+catch positions, while generated export binding instructions remain gaps.
+Four unchanged AST/bytecode controls and four contextual-keyword shorthand
+controls preserve the direct grammar's existing accepted bindings. Twenty
+UTF-16/newline contexts, twenty-four dependency/default-export contexts before/
+after await, callback/unknown-source
+controls and major-GC/navigation retention pass. All 221 bridge library cases
+pass in final validation.
+
+### Ready async-module parents
+
+The awaited-dependency cases exposed a failure in parent settlement: a ready
+parent's language error escaped through the dependency's Promise job even
+though its module record already owned the error. Page-owned bounded
+checkpoints reported that job error and the entry's terminal module failure,
+duplicating the same source. Escaping early also skipped ready siblings and
+could leave an indirect entry suspended without its evaluation error.
+
+Parent settlement now propagates a recorded catchable failure through module
+waiters/static ancestors and continues its ready siblings. Both ordinary and
+debugger evaluation record every catchable error, including string limits, so
+these remain language completions with their original retained source. An
+uncatchable resource abort still escapes unchanged. Public standalone/page
+tests verify one report with known or explicitly unknown callee origins;
+independent sibling work completes, repeated checkpoints do not duplicate
+notifications, and instruction exhaustion remains a host abort.
+
+### Exact copied-token maps for emitted BlueTS
+
+The deferred host fixture checks the same dependency failure in JavaScript,
+direct BlueTS and emitted BlueTS. Its emitted case exposed a gap: ordinary
+TypeScript-compatible token maps can omit an opening pattern token after
+trivia, while runtime diagnostic lookup correctly requires an exact anchor.
+`CompilerOptions::diagnostic_source_map` adds starts for copied non-EOF tokens
+when source maps are enabled. Mapped edits and verified relocations preserve
+that mode, under the existing segment and payload limits. The page owner
+selects it for emitted scripts. It changes metadata only, has its own
+fingerprint tag, and defaults to false, preserving ordinary map output and
+fingerprints. Generated JavaScript bytes are identical in both modes.
+
+Public tests verify exact object/array/anonymous-export binding positions and
+unchanged JavaScript, while generated decorator helpers/scaffolding remain
+unmapped. Existing token-map oracle, System map, publication, target and output
+controls pass. Frozen host artifact fixtures select the owner's diagnostic
+mode and retain full map and JavaScript equality checks.
+
+This follow-up passes 2,314 cases across fifty-nine disjoint targets with zero
+failures and twenty-nine existing ignored: thirteen BlueJS targets (1,398),
+eight BlueTS (287), all thirty-five bridge targets (292), launcher (313), real
+pages (nineteen) and official MCP console (five). Three added page contexts,
+two direct deferred classic contexts and the three-language deferred module
+fixture preserve original positions. MCP adds root/default typed bindings at
+2:2, preserving the earlier queued JavaScript 3:27 and 6:27 controls.
+Formatting and related library/test Clippy pass with warnings denied.
+
+`target/pattern-origins-source-20261016.json` records twenty-two final Rust
+inputs, four Cargo inputs, three runtime and fifty-nine test executable hashes;
+per-target receipts are in `target/pattern-origins-validation-20261016.json`.
+Source/test refinements are explicit. The earlier thirteen-target BlueJS
+cohort remains valid because its source/Cargo inputs and executable hashes
+remain unchanged throughout the later compiler/host refinements. Final
+executables are checked before and after acceptance; the changed launcher
+fixture binary is rebuilt and replayed separately. Remaining dispatch/generated
+precision, emitted-profile and integrated lifecycle/resource acceptance, and
+full workspace/all-target/Test262 gates stay open. M1q remains at 3/10.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger

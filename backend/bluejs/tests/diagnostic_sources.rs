@@ -2197,3 +2197,113 @@ fn owner_ast_inventory_builds_exact_maps_without_changing_debugger_ordinals() {
         Value::String("memory:///position.js:22:1".into())
     );
 }
+
+#[test]
+fn asynchronous_dependency_parent_failures_report_once_and_keep_the_callee_origin() {
+    use std::collections::HashMap;
+    for (dependency, entry, expected) in [
+        (
+            "await 0;export function fail(){throw 'parent';}",
+            "import {fail} from './dep.js';fail();",
+            "memory:///dependency.js:3:1",
+        ),
+        (
+            "await 0;export const ready=1;",
+            "import './dep.js';throw 'parent';",
+            "memory:///entry.js:2:1",
+        ),
+        (
+            "await 0;export function fail(){Function(\"throw 'dynamic';\")();}",
+            "import {fail} from './dep.js';fail();",
+            ":0:0",
+        ),
+    ] {
+        let mut vm = page();
+        vm.install_host_timer_functions().unwrap();
+        vm.execute_script(&compile(&parse("var events=[];onerror=function(message,filename,line,column){events.push(filename+':'+line+':'+column);return true;};").unwrap()).unwrap()).unwrap();
+        let modules = HashMap::from([
+            ("main.js".into(), mapped_module(entry, "memory:///entry.js")),
+            (
+                "dep.js".into(),
+                mapped_module(dependency, "memory:///dependency.js"),
+            ),
+        ]);
+        assert!(vm.execute_module_graph("main.js", &modules).is_err());
+        vm.run_host_microtask_checkpoint().unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();
+        let actual = vm
+            .execute_script(&compile(&parse("events.join('|')").unwrap()).unwrap())
+            .unwrap();
+        assert_eq!(actual, Value::String(expected.into()), "{dependency}");
+        assert!(vm.drain_host_console().unwrap().records.is_empty());
+        // Page realms use bounded checkpoints, whose job-error reporting
+        // must not duplicate the entry module's terminal error notification.
+        let origin = BlueJsPageOrigin::new("https://modules.test").unwrap();
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(1, origin.clone()).unwrap();
+        runtime
+            .configure_realm_bindings(1, |host| {
+                host.install_web_file_api()?;
+                host.install_host_console()?;
+                host.install_window_aliases()?;
+                host.install_host_error_reporting()
+            })
+            .unwrap();
+        let mut handles = Vec::new();
+        for (name, source, filename) in [
+            ("main.js", entry, "memory:///entry.js"),
+            ("dep.js", dependency, "memory:///dependency.js"),
+        ] {
+            let source_identity = BlueJsSourceIdentity::new(name, name).unwrap();
+            let program = BlueJsProgramV1::Module(blueice_bluejs::parse_module(source).unwrap());
+            let handle = runtime
+                .install_program_with_diagnostics(
+                    1,
+                    &origin,
+                    source_identity.clone(),
+                    &program,
+                    |registry, handle| {
+                        fn rows(
+                            code: &blueice_bluejs::Bytecode,
+                            ordinal: &mut u32,
+                            filename: &str,
+                            output: &mut Vec<DiagnosticSourceRange>,
+                        ) {
+                            let unit = *ordinal;
+                            *ordinal += 1;
+                            let mut row = range(unit, 0, code.bytes().len() as u32);
+                            row.location = location(unit + 2);
+                            row.location.filename = filename.to_owned();
+                            output.push(row);
+                            for child in code.child_code_units() {
+                                rows(child, ordinal, filename, output);
+                            }
+                        }
+                        let mut output = Vec::new();
+                        rows(
+                            registry.get(handle).unwrap().bytecode(),
+                            &mut 0,
+                            filename,
+                            &mut output,
+                        );
+                        DiagnosticSourceMap::new(source_identity, output)
+                            .map_err(BlueJsPageRuntimeError::DiagnosticSourceMap)
+                    },
+                )
+                .unwrap();
+            handles.push(handle);
+        }
+        assert!(runtime
+            .execute_module_graph(1, handles[0], handles)
+            .is_err());
+        runtime.run_microtask_checkpoint(1).unwrap();
+        runtime.run_microtask_checkpoint(1).unwrap();
+        let messages = runtime.drain_console(1).unwrap();
+        assert_eq!(messages.records.len(), 1, "{dependency}: {messages:?}");
+        let actual = messages.records[0].source.as_ref().map_or_else(
+            || ":0:0".to_owned(),
+            |source| format!("{}:{}:{}", source.filename, source.line, source.column),
+        );
+        assert_eq!(actual, expected);
+    }
+}

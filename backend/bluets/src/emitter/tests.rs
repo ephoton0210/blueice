@@ -15,7 +15,7 @@ use super::{
 #[test]
 fn copied_token_provenance_stops_at_the_owner_segment_limit() {
     let source = "export const answer = 42;";
-    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(2));
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(2), false);
     emitter.copy(source, 0);
     let emitted = emitter.finish();
     assert_eq!(emitted.javascript, source);
@@ -26,7 +26,7 @@ fn copied_token_provenance_stops_at_the_owner_segment_limit() {
 #[test]
 fn incremental_source_positions_match_crlf_and_utf16_columns() {
     let source = "a\r\n😀b\rx";
-    let mut emitter = ProvenanceEmitter::new(source, source.len(), None);
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), None, false);
     for offset in [0, 1, 2, 3, 7, 8, 9, 10] {
         emitter.mark(offset);
         let point = emitter.provenance.last().unwrap();
@@ -41,7 +41,7 @@ fn incremental_source_positions_match_crlf_and_utf16_columns() {
 #[test]
 fn rewritten_relocation_does_not_claim_copied_token_columns() {
     let source = "original";
-    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(8));
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(8), false);
     emitter.relocate("rewritten", 0, source.len(), &[], false);
     let emitted = emitter.finish();
     assert_eq!(emitted.javascript, "rewritten");
@@ -54,7 +54,7 @@ fn rewritten_relocation_does_not_claim_copied_token_columns() {
 #[test]
 fn nonempty_relocation_edit_keeps_conservative_range_anchors() {
     let source = "(deco as any)";
-    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32));
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32), false);
     emitter.relocate("(deco)", 0, source.len(), &[], true);
     let emitted = emitter.finish();
     assert_eq!(emitted.javascript, "(deco)");
@@ -67,7 +67,7 @@ fn nonempty_relocation_edit_keeps_conservative_range_anchors() {
 #[test]
 fn erased_relocation_maps_surviving_tokens_to_their_original_columns() {
     let source = "(deco as any)";
-    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32));
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32), false);
     emitter.relocate("(deco)", 0, source.len(), &[(5, 12)], false);
     let emitted = emitter.finish();
     let mappings = decode_mappings(&encode_mappings(&emitted.provenance));
@@ -79,7 +79,7 @@ fn erased_relocation_maps_surviving_tokens_to_their_original_columns() {
 #[test]
 fn relocation_spliced_through_a_token_uses_range_anchors_only() {
     let source = "(deco as any)";
-    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32));
+    let mut emitter = ProvenanceEmitter::new(source, source.len(), Some(32), false);
     emitter.relocate("(dec)", 0, source.len(), &[(4, 12)], false);
     let emitted = emitter.finish();
     assert_eq!(emitted.javascript, "(dec)");

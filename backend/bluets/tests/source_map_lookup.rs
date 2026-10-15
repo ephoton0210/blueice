@@ -426,3 +426,85 @@ fn exact_lookup_accepts_the_emitters_original_cr_and_unicode_separator_coordinat
         );
     }
 }
+
+#[test]
+fn diagnostic_maps_certify_copied_pattern_tokens_without_changing_javascript() {
+    let module = "memory:///binding.ts";
+    for (source, token) in [
+        ("const\n {value}: any=null;", "{value}"),
+        ("const\n [value]: any=null;", "[value]"),
+        (
+            "await 0;export default function(){const\n {value}: any=null;}",
+            "{value}",
+        ),
+    ] {
+        let loader = MapLoader::from([ModuleSource::new(module, source)]);
+        let emit = |diagnostic_source_map| {
+            let result = compile(
+                module,
+                &loader,
+                CompilerOptions {
+                    source_map: true,
+                    diagnostic_source_map,
+                    inline_sources: true,
+                    ..CompilerOptions::default()
+                },
+            );
+            assert!(!result.has_errors(), "{:?}", result.diagnostics);
+            result.output.unwrap().artifacts.remove(module).unwrap()
+        };
+        let ordinary = emit(false);
+        let diagnostic = emit(true);
+        assert_eq!(ordinary.javascript, diagnostic.javascript);
+        assert_ne!(ordinary.fingerprint, diagnostic.fingerprint);
+        let generated = position(
+            &diagnostic.javascript,
+            diagnostic.javascript.find(token).unwrap(),
+        );
+        let expected = position(source, source.find(token).unwrap());
+        let found = diagnostic
+            .source_map
+            .as_ref()
+            .unwrap()
+            .original_positions_at_exact(&diagnostic.javascript, &[generated], 100_000, 16_000_000)
+            .unwrap();
+        let found = found[0].expect("copied pattern opening has an exact compiler anchor");
+        assert_eq!((found.line, found.column_utf16), expected);
+        assert_ne!(
+            ordinary.source_map.unwrap().mappings,
+            diagnostic.source_map.unwrap().mappings
+        );
+    }
+}
+
+#[test]
+fn diagnostic_token_maps_preserve_generated_helper_gaps() {
+    let module = "memory:///main.ts";
+    let source = include_str!("fixtures/k11_source_maps/decorated.ts");
+    let result = compile(
+        module,
+        &MapLoader::from([ModuleSource::new(module, source)]),
+        CompilerOptions {
+            source_map: true,
+            diagnostic_source_map: true,
+            inline_sources: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    let output = result.output.unwrap();
+    let artifact = &output.artifacts[module];
+    let queries = ["var __bluetsEsDecorate", "let _instanceExtraInitializers"].map(|text| {
+        position(
+            &artifact.javascript,
+            artifact.javascript.find(text).unwrap(),
+        )
+    });
+    let found = artifact
+        .source_map
+        .as_ref()
+        .unwrap()
+        .original_positions_at_exact(&artifact.javascript, &queries, 100_000, 16_000_000)
+        .unwrap();
+    assert_eq!(found, vec![None, None]);
+}

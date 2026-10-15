@@ -237,6 +237,9 @@ pub struct CompilerOptions {
     pub jsx_import_source: Option<String>,
     pub runtime_policy: RuntimePolicy,
     pub source_map: bool,
+    /// Add exact copied-token anchors for owner-selected runtime diagnostics.
+    /// This affects mapping metadata only and requires `source_map`.
+    pub diagnostic_source_map: bool,
     pub declaration: bool,
     /// Publish a map for declaration output within the measured mapping surface.
     pub declaration_map: bool,
@@ -323,6 +326,7 @@ impl Default for CompilerOptions {
             jsx_import_source: None,
             runtime_policy: RuntimePolicy::Checked,
             source_map: false,
+            diagnostic_source_map: false,
             declaration: false,
             declaration_map: false,
             emit_declaration_only: false,

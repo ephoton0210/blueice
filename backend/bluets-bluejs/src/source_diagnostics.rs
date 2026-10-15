@@ -10,6 +10,7 @@ use super::*;
 
 mod classes;
 mod namespaces;
+mod patterns;
 use bluejs::diagnostics::{self, DiagnosticSourceMap, DiagnosticSourceNode};
 use sha2::{Digest, Sha256};
 use std::fmt::Write;
@@ -320,7 +321,11 @@ impl Evidence<'_> {
 
     fn declaration(&mut self, original: &Declaration, statement: &bluejs::Stmt) {
         match (original, statement) {
-            (Declaration::Function(original), bluejs::Stmt::FunctionDecl(function)) => {
+            (Declaration::Function(original), bluejs::Stmt::FunctionDecl(function))
+            | (
+                Declaration::Function(original),
+                bluejs::Stmt::ModuleDefaultFunction { function, .. },
+            ) => {
                 self.bind(DiagnosticSourceNode::Statement(statement), &original.span);
                 self.function(&original.parameters, &original.body, function);
             }
@@ -328,9 +333,7 @@ impl Evidence<'_> {
                 if declarations.len() == 1 =>
             {
                 self.bind(DiagnosticSourceNode::Statement(statement), &original.span);
-                if let Some(value) = &declarations[0].init {
-                    self.expression(value, &original.initializer);
-                }
+                self.variable(original, &declarations[0]);
             }
             (Declaration::Raw(original), bluejs::Stmt::Expr(expression)) => {
                 self.bind(DiagnosticSourceNode::Statement(statement), &original.span);
@@ -339,6 +342,16 @@ impl Evidence<'_> {
             (Declaration::Class(original), bluejs::Stmt::ClassDecl(class)) => {
                 self.bind(DiagnosticSourceNode::Statement(statement), &original.span);
                 self.class(original, class);
+            }
+            (Declaration::Class(original), bluejs::Stmt::VarDecl(_, declarations))
+                if original.default_export && original.anonymous && declarations.len() == 1 =>
+            {
+                if let Some(expression @ bluejs::Expr::Class(class)) = &declarations[0].init {
+                    // The export's private binding and declaration wrapper are
+                    // generated. The written class and its members are not.
+                    self.bind(DiagnosticSourceNode::Expression(expression), &original.span);
+                    self.class(original, class);
+                }
             }
             // Namespace/enum wrappers are bound by their separate path replay;
             // an enclosing declaration is never a substitute for its nodes.
@@ -352,6 +365,7 @@ impl Evidence<'_> {
             .filter(|parameter| parameter.name != "this")
             .zip(&function.params)
         {
+            self.parameter_binding(original, parameter);
             if let (Some(tokens), Some(value)) = (&original.default, &parameter.default) {
                 self.expression(value, tokens);
             }
@@ -379,9 +393,7 @@ impl Evidence<'_> {
             (Item::Variable(original), bluejs::Stmt::VarDecl(_, declarations))
                 if declarations.len() == 1 =>
             {
-                if let Some(value) = &declarations[0].init {
-                    self.expression(value, &original.initializer);
-                }
+                self.variable(original, &declarations[0]);
                 &original.span
             }
             (Item::Expression { span, tokens }, bluejs::Stmt::Expr(expression))
@@ -420,6 +432,7 @@ impl Evidence<'_> {
             ) => {
                 self.body(&original.block, block);
                 if let (Some(original), Some(handler)) = (&original.handler, handler) {
+                    self.catch_binding(original, handler);
                     self.body(&original.body, &handler.body);
                 }
                 if let (Some(original), Some(finalizer)) = (&original.finalizer, finalizer) {

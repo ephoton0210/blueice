@@ -61,6 +61,8 @@ fn direct_bluets_diagnostics_survive_deferred_debugger_execution() {
         "const bad: any=0;\n@bad class C {}",
         "const Native: any=WeakMap;\n@Native class C {}",
         "namespace N {export function fail(): void {\n throw 'namespace';}}N.fail();",
+        "const absent: any=null;const\n {value}: any=absent;",
+        "const absent: any=null;const {value=1+(\n absent.field)}: any={};",
         "const absent: any=null;enum E {A=(\n absent.field)}",
         "class Handler {get apply(): any {try{throw 'caught';}catch(error){}return 0;}}const Factory: any=(globalThis as any).Proxy;const dec: any=new Factory(WeakMap,new Handler());\n@dec class C {}",
     ] {
@@ -103,6 +105,51 @@ fn emitted_bluets_diagnostics_use_original_source_after_debugger_execution() {
             (location.line, location.column),
             (3, 2),
             "{source}: {messages:?}"
+        );
+    }
+}
+
+#[test]
+fn ready_module_parent_failures_keep_one_original_debugger_diagnostic() {
+    for language in [
+        PageHostScriptLanguage::JavaScript,
+        PageHostScriptLanguage::BlueTs,
+        PageHostScriptLanguage::BlueTsEmitted,
+    ] {
+        let entry = "blueice://page/entry.ts";
+        let dependency = "blueice://page/dependency.ts";
+        let source = if language == PageHostScriptLanguage::JavaScript {
+            "await 0;export default function(){const\n {value}=null;}"
+        } else {
+            "await 0;export default function(){const\n {value}: any=null;}"
+        };
+        let mut source_graph = graph(
+            entry,
+            vec![
+                PageHostSource::new(entry, "import fail from './dependency.ts';fail();"),
+                PageHostSource::new(dependency, source),
+            ],
+        );
+        source_graph.resolutions.push(PageHostStaticResolution {
+            from_module: entry.into(),
+            specifier: "./dependency.ts".into(),
+            canonical_target: dependency.into(),
+        });
+        let messages = debugger_source_messages(PageHostScript {
+            ordinal: 0,
+            language,
+            kind: PageHostScriptKind::Module,
+            graph: source_graph,
+        });
+        assert_eq!(messages.records.len(), 1, "{language:?}: {messages:?}");
+        let location = messages.records[0]
+            .source
+            .as_ref()
+            .unwrap_or_else(|| panic!("{language:?}: {messages:?}"));
+        assert_eq!(
+            (location.filename.as_str(), location.line, location.column),
+            (dependency, 2, 2),
+            "{language:?}"
         );
     }
 }
@@ -1665,6 +1712,7 @@ fn frozen_primitive_and_standard_decorator_modules_execute_with_page_console() {
             )]),
             blueice_bluets::CompilerOptions {
                 source_map: true,
+                diagnostic_source_map: true,
                 inline_sources: true,
                 ..Default::default()
             },
@@ -1794,6 +1842,7 @@ fn frozen_legacy_and_es5_classic_sources_keep_exact_artifacts_with_owner_console
                 experimental_decorators: decorators,
                 emit_decorator_metadata: metadata,
                 source_map: true,
+                diagnostic_source_map: true,
                 inline_sources: true,
                 ..Default::default()
             },

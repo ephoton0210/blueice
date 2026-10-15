@@ -63,3 +63,4 @@ mod expressions;
 mod jsx_origins;
 mod namespace_origins;
 mod page_runtime;
+mod pattern_origins;

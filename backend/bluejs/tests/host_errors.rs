@@ -236,3 +236,70 @@ fn page_module_failures_report_once_but_caught_dynamic_imports_do_not_report() {
     );
     assert!(vm.drain_host_console().unwrap().records.is_empty());
 }
+
+#[test]
+fn asynchronous_dependency_parent_failure_settles_the_graph_without_stalling_siblings() {
+    let mut vm = page();
+    vm.install_host_timer_functions().unwrap();
+    let sources = [
+        ("main.js", "import './bad.js';import './good.js';"),
+        ("dep.js", "await 0;"),
+        ("bad.js", "import './dep.js';throw 'parent-failure';"),
+        ("good.js", "import './dep.js';globalThis.siblingFinished=1;"),
+    ];
+    let modules = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_owned(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert!(vm.execute_module_graph("main.js", &modules).is_err());
+    vm.run_host_microtask_checkpoint().unwrap();
+    assert_eq!(run(&mut vm, "siblingFinished").unwrap(), Value::Number(1.0));
+    let messages = vm.drain_host_console().unwrap();
+    assert_eq!(messages.records.len(), 1, "{messages:?}");
+    assert!(messages.records[0].message.contains("parent-failure"));
+    vm.run_host_microtask_checkpoint().unwrap();
+    assert!(vm.drain_host_console().unwrap().records.is_empty());
+}
+
+#[test]
+fn asynchronous_dependency_parent_limits_keep_language_failures_and_host_aborts_distinct() {
+    for (body, language) in [("'x'.repeat(4096);", true), ("while(true){}", false)] {
+        let config = VmConfig {
+            max_string_bytes: 2048,
+            instruction_budget: 512,
+            ..VmConfig::default()
+        };
+        let mut vm = Vm::new(config).unwrap();
+        vm.install_web_file_api().unwrap();
+        vm.install_host_console().unwrap();
+        vm.install_window_aliases().unwrap();
+        vm.install_host_error_reporting().unwrap();
+        let entry = format!("import './dep.js';{body}");
+        let modules = [
+            (
+                "main.js".to_owned(),
+                compile_module(&parse_module(&entry).unwrap()).unwrap(),
+            ),
+            (
+                "dep.js".to_owned(),
+                compile_module(&parse_module("await 0;").unwrap()).unwrap(),
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let error = vm.execute_module_graph("main.js", &modules).unwrap_err();
+        let messages = vm.drain_host_console().unwrap();
+        if language {
+            assert!(matches!(error, RuntimeError::Thrown(_)), "{error:?}");
+            assert_eq!(messages.records.len(), 1, "{messages:?}");
+        } else {
+            assert_eq!(error, RuntimeError::InstructionLimit);
+            assert!(messages.records.is_empty());
+        }
+    }
+}
