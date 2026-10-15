@@ -1100,10 +1100,11 @@ fn restoring_generator_state_updates_its_managed_byte_charge() {
 
 #[test]
 fn async_generator_request_origin_capacity_is_charged_and_refusal_is_atomic() {
-    let mut config = HeapConfig::default();
-    config.max_heap_bytes = 4096;
-    config.major_threshold_bytes = 1024;
-    config.nursery_capacity = 16;
+    let config = HeapConfig {
+        max_heap_bytes: 4096,
+        major_threshold_bytes: 1024,
+        nursery_capacity: 16,
+    };
     let mut heap = Heap::new(config).unwrap();
     let prototype = heap.alloc_object(None).unwrap();
     let generator = heap

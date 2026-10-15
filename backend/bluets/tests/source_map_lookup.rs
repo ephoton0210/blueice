@@ -478,6 +478,81 @@ fn diagnostic_maps_certify_copied_pattern_tokens_without_changing_javascript() {
 }
 
 #[test]
+fn diagnostic_maps_certify_copied_template_interiors_without_changing_javascript() {
+    let module = "memory:///template.ts";
+    for template in [
+        "`prefix:${\n operand}`",
+        "`operand:${\r\n /* } */ operand}`",
+        "`😀:${ '😀' + operand}`",
+        "`escaped \\${operand}: ${\n operand}`",
+        "`two:${operand}:${\n operand}`",
+        "`quoted:${ '}' + operand}`",
+    ] {
+        let source = format!("const operand: any=null;const result: any={template};");
+        let loader = MapLoader::from([ModuleSource::new(module, &source)]);
+        let emit = |diagnostic_source_map| {
+            let result = compile(
+                module,
+                &loader,
+                CompilerOptions {
+                    source_map: true,
+                    diagnostic_source_map,
+                    inline_sources: true,
+                    ..CompilerOptions::default()
+                },
+            );
+            assert!(!result.has_errors(), "{source:?}: {:?}", result.diagnostics);
+            result.output.unwrap().artifacts.remove(module).unwrap()
+        };
+        let ordinary = emit(false);
+        let diagnostic = emit(true);
+        assert_eq!(ordinary.javascript, diagnostic.javascript);
+        let generated = position(
+            &diagnostic.javascript,
+            diagnostic.javascript.rfind("operand").unwrap(),
+        );
+        let expected = position(&source, source.rfind("operand").unwrap());
+        let found = diagnostic
+            .source_map
+            .as_ref()
+            .unwrap()
+            .original_positions_at_exact(&diagnostic.javascript, &[generated], 100_000, 16_000_000)
+            .unwrap()[0]
+            .unwrap_or_else(|| panic!("missing template operand: {source:?}"));
+        assert_eq!((found.line, found.column_utf16), expected, "{source:?}");
+    }
+}
+
+#[test]
+fn diagnostic_template_interiors_obey_the_existing_segment_limit() {
+    let module = "memory:///bounded-template.ts";
+    let source = format!("const value: string=`{}${{1}}`;", "x".repeat(128));
+    let emit = |diagnostic_source_map| {
+        let mut options = CompilerOptions {
+            source_map: true,
+            diagnostic_source_map,
+            ..CompilerOptions::default()
+        };
+        options.limits.max_source_map_segments = 32;
+        compile(
+            module,
+            &MapLoader::from([ModuleSource::new(module, &source)]),
+            options,
+        )
+    };
+    assert!(!emit(false).has_errors());
+    let bounded = emit(true);
+    assert!(
+        bounded.has_errors(),
+        "dense copied positions must obey the segment cap"
+    );
+    assert!(
+        bounded.output.is_none(),
+        "an over-budget map must not be published"
+    );
+}
+
+#[test]
 fn diagnostic_token_maps_preserve_generated_helper_gaps() {
     let module = "memory:///main.ts";
     let source = include_str!("fixtures/k11_source_maps/decorated.ts");

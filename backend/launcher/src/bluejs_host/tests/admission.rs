@@ -47,6 +47,36 @@ fn debugger_source_batch(scripts: Vec<PageHostScript>) -> blueice_ipc::console::
 }
 
 #[test]
+fn implicit_protocol_sources_survive_deferred_execution_in_each_language() {
+    for language in [
+        PageHostScriptLanguage::JavaScript,
+        PageHostScriptLanguage::BlueTs,
+        PageHostScriptLanguage::BlueTsEmitted,
+    ] {
+        for (kind, prefix) in [
+            (PageHostScriptKind::Classic, ""),
+            (PageHostScriptKind::Module, "export const marker=0;"),
+            (PageHostScriptKind::Module, "export const marker=0;await 0;"),
+        ] {
+            for (typed,javascript) in [
+                ("const Base: any=0;const C=class extends\n Base {};","var Base=0;var C=class extends\n Base {};"),
+                ("const input: any=null;const result: any=[...\n input];","var input=null;var result=[...\n input];"),
+                ("const SymbolFactory: any=Symbol;const input: any=SymbolFactory();const result: any=`prefix:${\n input}`;","var input=Symbol();var result=`prefix:${\n input}`;"),
+                ("const Factory: any=(globalThis as any).Proxy;class Handler {ownKeys(): any {return 0;}}const input: {value: any}=new Factory({value:1},new Handler());const result: any={...\n input};","var input=new Proxy({},{ownKeys(){return 0;}});var result={...\n input};"),
+            ] {
+                let body=if language==PageHostScriptLanguage::JavaScript {javascript} else {typed};
+                let source=format!("{prefix}{body}");
+                let module="blueice://page/protocol.ts";
+                let messages=debugger_source_messages(PageHostScript {ordinal:0,language,kind,graph:graph(module,vec![PageHostSource::new(module,&source)])});
+                assert_eq!(messages.records.len(),1,"{language:?}, {kind:?}, {source}: {messages:?}");
+                let location=messages.records[0].source.as_ref().unwrap_or_else(||panic!("{language:?}, {kind:?}, {source}: {messages:?}"));
+                assert_eq!((location.filename.as_str(),location.line,location.column),(module,2,2),"{language:?}, {kind:?}, {source}");
+            }
+        }
+    }
+}
+
+#[test]
 fn computed_key_conversion_sources_survive_deferred_execution_in_each_language() {
     for language in [
         PageHostScriptLanguage::JavaScript,

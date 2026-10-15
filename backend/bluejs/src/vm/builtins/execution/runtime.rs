@@ -1588,6 +1588,7 @@ impl Vm {
             .expect("the validated private iterator record remains live")
             .unwrap_or(Value::Undefined);
         self.with_roots(|heap| heap.set(record, "asyncNextPending", Value::Bool(true)))?;
+        let epoch = self.throw_epoch;
         let result = self.call_native(next, iterator, argument.into_iter().collect(), false);
         if !matches!(
             self.heap
@@ -1599,11 +1600,26 @@ impl Vm {
         }
         match result {
             Ok(result) => self.async_from_sync_continue(record, result, true),
-            Err(error) => {
-                let error = self.error_value(error)?;
-                self.promise_reject(error)
-            }
+            Err(error) => self.async_iterator_rejection(error, epoch),
         }
+    }
+
+    fn async_iterator_rejection(
+        &mut self,
+        error: RuntimeError,
+        previous_epoch: u64,
+    ) -> Result<Value, RuntimeError> {
+        if !error.is_catchable() {
+            return Err(error);
+        }
+        // Preserve a fresh getter/callback throw, including explicit absence.
+        // A native validation error without a callee throw uses the protocol
+        // instruction's certified operand site.
+        let origin = self.caught_rejection_origin(previous_epoch);
+        self.with_rejection_origin(Some(origin), |vm| {
+            let error = vm.error_value(error)?;
+            vm.promise_reject(error)
+        })
     }
 
     pub(in super::super::super) fn async_from_sync_handler(
@@ -1637,6 +1653,7 @@ impl Vm {
         close_on_rejection: bool,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
+        let epoch = self.throw_epoch;
         let outcome = (|| {
             if !matches!(result, Value::Object(_)) {
                 return Err(RuntimeError::TypeError(
@@ -1694,10 +1711,7 @@ impl Vm {
         self.stack.truncate(base);
         match outcome {
             Ok(value) => Ok(value),
-            Err(error) => {
-                let error = self.error_value(error)?;
-                self.promise_reject(error)
-            }
+            Err(error) => self.async_iterator_rejection(error, epoch),
         }
     }
 

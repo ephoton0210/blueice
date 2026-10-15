@@ -1255,7 +1255,9 @@ impl Vm {
         }
         let result =
             self.call_object_callback(trap, Value::Object(handler), vec![Value::Object(target)])?;
-        let object = self.coerce_object(&result)?;
+        let object = result.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("Proxy ownKeys trap must return an object".into())
+        })?;
         self.stack.push(Value::Object(object));
         let length = self.get_property(&Value::Object(object), &"length".into())?;
         let length = self.coerce_length(&length)? as u64;

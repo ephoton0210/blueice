@@ -52,6 +52,21 @@ remain open. See the
 and [rejection contract](HOST_PROMISE_REJECTIONS.md).
 
 **Current work — M1q original diagnostic source positions (in progress).**
+The active checkpoint covers implicit class-heritage, spread, template and
+delegated-iterator failures, including AsyncFromSync rejection forwarding.
+Focused regressions also expose primitive `Proxy.ownKeys` trap results being
+accepted and missing emitted-template operand anchors. All ten public source-map
+groups and thirty-six deferred execution contexts now pass. Formatting and
+workspace/all-target build and Clippy pass. Full Rust/Core/MCP and pinned
+Test262 verification is still pending. The
+requested build cleanup preserves all source changes and evidence
+while removing 766,331 old compiled files and freeing 335.69 GiB.
+The first full Rust run passes the new VM, page and five MCP console cases,
+then stops at a downloader probe: BlueTS re-enables ureq's transparent gzip
+feature through Cargo feature unification. Matching the workspace's existing
+raw-header policy fixes all sixteen probe cases with BlueTS/net selected
+together. Complete validation is being repeated with the corrected manifest
+and lockfile; the failed full-run receipt remains available.
 Complete section H's original-position follow-up for uncaught errors and
 rejections. The verified implementation now binds immutable source maps to
 live program generations and reports tested original classic JavaScript
@@ -66,7 +81,7 @@ three byte-cap callback bypasses and five debugger states; exact charges,
 release on resume and fresh navigation now pass. Its final scoped selection
 passes 2,193 tests across fifty-five disjoint targets (sixteen existing ignored),
 including real page and official MCP source reporting.
-Formatting and related library/test Clippy pass. Three of the
+Formatting and related library/test Clippy pass. Four of the
 ten final acceptance
 gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Remaining
@@ -490,8 +505,8 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-16: native diagnostic-payload accounting follow-up
-verified; 3/10 final acceptance gates complete.** Completed
+**Progress updated 2026-10-16: implicit-protocol and emitted-template fixes
+under verification; 4/10 final acceptance gates complete.** Completed
 implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -837,6 +852,23 @@ the full source-position requirement.
       seven-library Clippy, bridge/launcher test Clippy and changed integration
       Clippy pass. Fifteen Rust and six Cargo inputs remain fixed throughout
       validation; record three runtime and fifty-five test executable hashes.
+- [x] Reproduce missing emitted-template operand anchors. Diagnostic copy maps
+      certify template character boundaries without changing emitted JavaScript
+      or ordinary maps. Six template scenarios, segment-overflow refusal and
+      existing generated-helper gaps pass in all ten public source-map groups.
+- [x] Verify thirty-six deferred implicit-protocol contexts across JavaScript,
+      direct BlueTS and emitted BlueTS: classic, module and awaited module
+      execution each retain the original operand at line 2, column 2.
+- [x] Pass formatting and complete workspace/all-target build and Clippy with
+      warnings denied on the final fifteen Rust inputs. An equivalent heap-test
+      initializer fixes the full-run Clippy warning without changing its limits.
+- [x] Keep certified operands through implicit heritage, spread, template and
+      delegated-iterator protocols. Forty-eight GC-varied source contexts and
+      fourteen callback/unknown/forwarding controls pass in all fifty-six
+      diagnostic groups, including native-entered AsyncFromSync continuations.
+- [x] Reject primitive `Proxy.ownKeys` trap results before boxed-property reads.
+      Three public regression groups pass 176 consumer/primitive/GC contexts,
+      eight no-getter-side-effect checks and four valid-object/error controls.
 
 #### Remaining implementation and verification
 
@@ -862,7 +894,7 @@ the full source-position requirement.
 - [x] Carry bounded copied locations through Core/MCP and retain unavailable cases.
 - [ ] Verify cancellation, stale generations, navigation, GC and resource limits.
 - [ ] Pass the related Rust and real Core/MCP acceptance selections.
-- [ ] Pass formatting and workspace/all-target Clippy/build.
+- [x] Pass formatting and workspace/all-target Clippy/build.
 - [ ] Compare the complete pinned Test262 inventory against M1p.
 - [ ] Finalize evidence, documentation and a detailed English commit.
 
@@ -1663,6 +1695,34 @@ and unchanged through final bridge/host acceptance. Evidence is
 `target/diagnostic-retention-origins-validation-20261016.json`. Remaining source
 precision, emitted-profile and integrated lifecycle/resource acceptance, and
 full workspace/all-target/Test262 gates stay open; M1q remains at 3/10.
+
+The implicit-protocol follow-up (2026-10-16) reproduces forty-six incorrect
+source coordinates across ordinary and aggressive-GC execution. Keeping the
+operand owner through heritage, spread, template conversion and delegated
+iteration fixes the expanded forty-eight-context matrix. Native-entered
+generator/module bodies mask Promise-request overrides; AsyncFromSync preserves
+fresh callback origins, including explicit absence, when turning throws into
+rejected Promises. Fourteen callback, unknown-source and forwarding controls
+pass alongside all fifty-six diagnostic groups.
+
+Public own-key tests separately reproduce 144 accepted primitive trap results.
+Requiring an object before reading `length` passes 176 primitive/consumer/GC
+contexts, eight boxed-getter side-effect checks and four positive/error controls.
+BlueTSC diagnostic maps also expose missing template-interior operand anchors;
+unchanged copy boundaries now supply exact positions within the existing
+segment cap. All ten public map groups and thirty-six three-language deferred
+protocol contexts pass. Emitted JavaScript, ordinary maps and ordinary compiler
+instruction bytes retain their established output.
+
+The first complete Rust run records 9,180 passes, one failure and 233 ignored
+before stopping at `blueice-net --test probe`. Cargo unifies BlueTS's default
+ureq gzip feature with the ranged downloader, removing encoded response headers
+before its identity check. The corrected BlueTS manifest follows Core/net's
+existing no-transparent-decompression policy; all sixteen probe cases pass with
+BlueTS and net selected together. A full fixed-input replay is in progress;
+the before-fix source snapshot, failed receipts and logs are preserved.
+M1q remains at 4/10 verified gates while complete Rust/Core/MCP and pinned
+Test262 acceptance are pending.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

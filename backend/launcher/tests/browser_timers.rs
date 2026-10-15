@@ -194,6 +194,26 @@ fn real_pages_report_original_direct_bluets_statement_and_call_sources() {
     for (script_type, source, coordinates) in [
         (
             "application/x-blueice-typescript",
+            "const Base: any=0;const C=class extends\n Base {};",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
+            "const input: any=null;const result: any=[...\n input];",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
+            "const SymbolFactory: any=Symbol;const input: any=SymbolFactory();const result: any=`prefix:${\n input}`;",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            "const input: any=null;await 0;export const result: any=[...\n input];",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
             "class Key {toString(): any {return {};}valueOf(): any {return {};}}const key: any=new Key();const value: any={[\n key]:1};",
             "2:2",
         ),
@@ -340,6 +360,41 @@ fn real_pages_report_original_direct_bluets_statement_and_call_sources() {
 #[test]
 fn real_pages_report_original_emitted_bluets_and_javascript_module_positions() {
     for (script_type, source, coordinates, extension, emitted) in [
+        (
+            "application/x-blueice-typescript",
+            "const Base: any=0;const C=class extends\n Base {};",
+            "2:2",
+            "ts",
+            true,
+        ),
+        (
+            "application/x-blueice-typescript",
+            "const input: any=null;const result: any=[...\n input];",
+            "2:2",
+            "ts",
+            true,
+        ),
+        (
+            "application/x-blueice-typescript",
+            "const SymbolFactory: any=Symbol;const input: any=SymbolFactory();const result: any=`prefix:${\n input}`;",
+            "2:2",
+            "ts",
+            true,
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            "const input: any=null;await 0;export const result: any=[...\n input];",
+            "2:2",
+            "ts",
+            true,
+        ),
+        (
+            "module",
+            "var input=null;function* fail(){yield*\n input;}fail().next();",
+            "2:2",
+            "js",
+            false,
+        ),
         (
             "application/x-blueice-typescript",
             "class Key {toString(): any {return {};}valueOf(): any {return {};}}const key: any=new Key();const value: any={[\n key]:1};",

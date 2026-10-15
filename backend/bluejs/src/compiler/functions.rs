@@ -359,8 +359,7 @@ impl Compiler {
         )?;
         self.emit(Opcode::SetClassHome, 0)?;
         if let Some(base) = &class.extends {
-            self.expression(base)?;
-            self.emit(Opcode::SetClassHeritage, 0)?;
+            self.expression_with_operation(base, Opcode::SetClassHeritage, 0)?;
         }
         // The class object and its prototype now exist.  Initialize the
         // hidden owner cells before creating element closures, so every

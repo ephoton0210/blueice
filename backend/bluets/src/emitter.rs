@@ -869,10 +869,20 @@ impl<'a> ProvenanceEmitter<'a> {
         while let Some((offset, character)) = characters.next() {
             let position = source_offset + offset;
             if let Some(token) = self.tokens.get(token_index) {
-                if token.start == position
-                    && token.kind != crate::syntax::TokenKind::Eof
-                    && (self.diagnostic_source_map
-                        || token_maps::mark_start(self.source, &self.tokens, token_index))
+                // The lexer keeps a template, including its substitutions,
+                // in one token. Every unchanged character boundary inside it
+                // has exact copy provenance; no nested token scan or guessed
+                // nearest source-map segment is needed. The existing segment
+                // cap also bounds these denser diagnostic-only positions.
+                let copied_template_position = self.diagnostic_source_map
+                    && token.kind == crate::syntax::TokenKind::Template
+                    && token.start <= position
+                    && position < token.end;
+                if copied_template_position
+                    || token.start == position
+                        && token.kind != crate::syntax::TokenKind::Eof
+                        && (self.diagnostic_source_map
+                            || token_maps::mark_start(self.source, &self.tokens, token_index))
                 {
                     self.mark(position);
                 }

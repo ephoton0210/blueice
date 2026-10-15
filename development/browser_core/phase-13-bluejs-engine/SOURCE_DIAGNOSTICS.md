@@ -185,6 +185,36 @@ hashes, test hashes and receipts are retained in
 `target/reference-origins-validation-20261015.json`. Remaining precision,
 source-producer, integrated and final conformance requirements stay open.
 
+### Implicit protocol operations
+
+Class heritage validation, array/call/constructor/super spreads, object spread,
+template substitution conversion and synchronous/asynchronous `yield*` keep
+the evaluated operand's certified owner through the implicit operation.
+Ordinary syntax, instruction ordering and instruction bytes remain unchanged.
+Actual callback throws keep their own known or explicitly unavailable source;
+the enclosing call regains its owner after successful argument expansion.
+
+Generator and module interpreter entries mask native Promise-request overrides
+while executing their own code, then restore the caller's state. AsyncFromSync
+converts catchable callback/native failures to rejected Promises with the
+captured throw origin, including explicit absence. A validation failure with no
+fresh callback throw uses the protocol instruction's owner. Uncatchable
+resource failures remain terminal.
+
+Protocol acceptance also exposes an independent `Proxy.ownKeys` conformance
+gap: primitive trap results were boxed and inspected as array-like objects.
+The implementation now requires an object before reading `length`; valid
+array-like ordering and original getter throws retain their behavior. Public
+regressions cover all eight consumers, primitive families and nursery stress.
+
+BlueTSC's lexer represents an entire template as one token. In diagnostic-map
+mode, copying that token now records exact original character boundaries,
+including substitutions, escapes, Unicode and comments. These positions come
+from unchanged copy ranges, without searching for expression text or using a
+nearby mapping segment. Ordinary source maps and emitted JavaScript keep their
+existing output. The shared segment cap bounds the denser diagnostic map and
+refuses publication on overflow; generated helper gaps remain unavailable.
+
 ## Emitted BlueTS, modules and debugger execution
 
 The emitted source producer binds the compiler artifact to the authorized
@@ -1013,9 +1043,11 @@ coverage. Broader host-buffer/network/UI/default-on policy remains separate.
 
 No source position may be inferred from a nearby token, an unrelated later
 callback, a page-selected source-map URL or an unauthenticated generation.
-Unknown and generated-only locations remain explicitly unavailable. Final
-related Rust/Core/MCP, formatting, workspace Clippy/build and complete pinned
-Test262 gates have not been claimed.
+Unknown and generated-only locations remain explicitly unavailable. The
+implicit-protocol checkpoint passes formatting and complete workspace/all-target
+Clippy/build on its final inputs. Full Rust/Core/MCP and complete pinned Test262
+acceptance are still pending; all integrated gates need current evidence before
+M1q closes.
 
 ## Foundation implementation checkpoint (2026-10-15)
 

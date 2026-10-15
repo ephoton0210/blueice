@@ -53,6 +53,31 @@ fn optional_member_parts(expr: &Expr) -> Option<OptionalMemberParts<'_>> {
 }
 
 impl Compiler {
+    /// Keep an operand's certified source through its implicit protocol step.
+    pub(super) fn expression_with_operation(
+        &mut self,
+        expression: &Expr,
+        opcode: Opcode,
+        operand: u32,
+    ) -> Result<(), CompileError> {
+        self.with_expression_owner(expression, |compiler| {
+            compiler.expression(expression)?;
+            compiler.emit(opcode, operand)?;
+            Ok(())
+        })
+    }
+
+    fn spread_argument(&mut self, argument: &Argument) -> Result<(), CompileError> {
+        match argument {
+            Argument::Normal(value) => {
+                self.expression(value)?;
+                self.emit(Opcode::ArrayPush, 0)?;
+                Ok(())
+            }
+            Argument::Spread(value) => self.expression_with_operation(value, Opcode::ArrayPush, 2),
+        }
+    }
+
     fn tagged_template_expression(
         &mut self,
         tag: &Expr,
@@ -563,20 +588,19 @@ impl Compiler {
                 {
                     self.emit(Opcode::NewArray, 0)?;
                     for element in elements {
-                        let kind = match element {
+                        match element {
                             None => {
                                 self.constant(Value::Undefined)?;
-                                1
+                                self.emit(Opcode::ArrayPush, 1)?;
                             }
-                            Some(element) => {
-                                self.expression(array_element_expr(element))?;
-                                match element {
-                                    ArrayElement::Normal(_) => 0,
-                                    ArrayElement::Spread(_) => 2,
-                                }
+                            Some(ArrayElement::Normal(value)) => {
+                                self.expression(value)?;
+                                self.emit(Opcode::ArrayPush, 0)?;
                             }
-                        };
-                        self.emit(Opcode::ArrayPush, kind)?;
+                            Some(ArrayElement::Spread(value)) => {
+                                self.expression_with_operation(value, Opcode::ArrayPush, 2)?;
+                            }
+                        }
                     }
                     return Ok(());
                 }
@@ -597,8 +621,7 @@ impl Compiler {
                 for property in properties {
                     match property {
                         ObjectProp::Spread(value) => {
-                            self.expression(value)?;
-                            self.emit(Opcode::CopyDataProperties, 0)?;
+                            self.expression_with_operation(value, Opcode::CopyDataProperties, 0)?;
                         }
                         ObjectProp::Method { key, function }
                         | ObjectProp::Accessor { key, function, .. } => {
@@ -822,8 +845,7 @@ impl Compiler {
                 }
                 self.constant(Value::String(quasis[0].clone()))?;
                 for (expr, tail) in expressions.iter().zip(&quasis[1..]) {
-                    self.expression(expr)?;
-                    self.emit(Opcode::ToString, 0)?;
+                    self.expression_with_operation(expr, Opcode::ToString, 0)?;
                     self.emit(Opcode::Add, 0)?;
                     self.constant(Value::String(tail.clone()))?;
                     self.emit(Opcode::Add, 0)?;
@@ -838,12 +860,7 @@ impl Compiler {
                     if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                         self.emit(Opcode::NewArray, 0)?;
                         for arg in args {
-                            let kind = match arg {
-                                Argument::Normal(_) => 0,
-                                Argument::Spread(_) => 2,
-                            };
-                            self.expression(argument_expr(arg))?;
-                            self.emit(Opcode::ArrayPush, kind)?;
+                            self.spread_argument(arg)?;
                         }
                         self.emit(Opcode::SuperCallSpread, 0)?;
                     } else {
@@ -901,12 +918,7 @@ impl Compiler {
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                     self.emit(Opcode::NewArray, 0)?;
                     for arg in args {
-                        let kind = match arg {
-                            Argument::Normal(_) => 0,
-                            Argument::Spread(_) => 2,
-                        };
-                        self.expression(argument_expr(arg))?;
-                        self.emit(Opcode::ArrayPush, kind)?;
+                        self.spread_argument(arg)?;
                     }
                     self.emit(
                         if !construct
@@ -963,42 +975,44 @@ impl Compiler {
                     let value = value
                         .as_deref()
                         .ok_or(CompileError::InvalidSyntax("yield* requires an operand"))?;
-                    self.expression(value)?;
-                    if !self.bytecode.async_function {
-                        // Keep the iterator record beneath the yielded value.
-                        // On resumption the ordinary generator receives its
-                        // next argument above that record, which IteratorNext
-                        // forwards to the delegate on the following turn.
-                        self.emit(Opcode::GetIterator, 0)?;
-                        self.constant(Value::Undefined)?;
-                        let next = self.offset();
-                        self.emit(Opcode::IteratorNext, 1)?;
-                        let done = self.emit(Opcode::IteratorStepValue, 0)?;
-                        self.emit(Opcode::Yield, 0)?;
-                        let resume = self.offset();
-                        self.emit(Opcode::Jump, next)?;
-                        let exit = self.offset();
-                        self.patch(done, exit);
-                        self.bytecode.yield_delegates.push((resume, exit));
-                        return Ok(());
-                    }
-                    // Keep the async iterator record beneath the yielded
-                    // value. A resumed generator receives its next argument
-                    // above that record, which AsyncIteratorNext forwards to
-                    // the delegate on the following loop turn.
-                    self.emit(Opcode::GetAsyncIterator, 0)?;
-                    self.constant(Value::Undefined)?;
-                    let next = self.offset();
-                    self.emit(Opcode::AsyncIteratorNext, 1)?;
-                    self.emit(Opcode::Await, 0)?;
-                    let done = self.emit(Opcode::AsyncIteratorStepValue, 0)?;
-                    self.emit(Opcode::Yield, 0)?;
-                    let resume = self.offset();
-                    self.emit(Opcode::Jump, next)?;
-                    let exit = self.offset();
-                    self.patch(done, exit);
-                    self.bytecode.async_yield_delegates.push((resume, exit));
-                    return Ok(());
+                    return self.with_expression_owner(value, |compiler| {
+                        compiler.expression(value)?;
+                        if !compiler.bytecode.async_function {
+                            // Keep the iterator record beneath the yielded value.
+                            // On resumption the ordinary generator receives its
+                            // next argument above that record, which IteratorNext
+                            // forwards to the delegate on the following turn.
+                            compiler.emit(Opcode::GetIterator, 0)?;
+                            compiler.constant(Value::Undefined)?;
+                            let next = compiler.offset();
+                            compiler.emit(Opcode::IteratorNext, 1)?;
+                            let done = compiler.emit(Opcode::IteratorStepValue, 0)?;
+                            compiler.emit(Opcode::Yield, 0)?;
+                            let resume = compiler.offset();
+                            compiler.emit(Opcode::Jump, next)?;
+                            let exit = compiler.offset();
+                            compiler.patch(done, exit);
+                            compiler.bytecode.yield_delegates.push((resume, exit));
+                            return Ok(());
+                        }
+                        // Keep the async iterator record beneath the yielded
+                        // value. A resumed generator receives its next argument
+                        // above that record, which AsyncIteratorNext forwards to
+                        // the delegate on the following loop turn.
+                        compiler.emit(Opcode::GetAsyncIterator, 0)?;
+                        compiler.constant(Value::Undefined)?;
+                        let next = compiler.offset();
+                        compiler.emit(Opcode::AsyncIteratorNext, 1)?;
+                        compiler.emit(Opcode::Await, 0)?;
+                        let done = compiler.emit(Opcode::AsyncIteratorStepValue, 0)?;
+                        compiler.emit(Opcode::Yield, 0)?;
+                        let resume = compiler.offset();
+                        compiler.emit(Opcode::Jump, next)?;
+                        let exit = compiler.offset();
+                        compiler.patch(done, exit);
+                        compiler.bytecode.async_yield_delegates.push((resume, exit));
+                        Ok(())
+                    });
                 }
                 if let Some(value) = value {
                     self.expression(value)?;
@@ -1154,12 +1168,7 @@ impl Compiler {
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                     self.emit(Opcode::NewArray, 0)?;
                     for arg in args {
-                        let kind = match arg {
-                            Argument::Normal(_) => 0,
-                            Argument::Spread(_) => 2,
-                        };
-                        self.expression(argument_expr(arg))?;
-                        self.emit(Opcode::ArrayPush, kind)?;
+                        self.spread_argument(arg)?;
                     }
                     self.emit(Opcode::CallSpread, 0)?;
                 } else {

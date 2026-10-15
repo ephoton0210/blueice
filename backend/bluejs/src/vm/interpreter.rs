@@ -45,15 +45,20 @@ impl Vm {
             ));
         self.active_diagnostic_frame =
             crate::diagnostics::ActiveDiagnosticFrame::new(code, start_pc);
-        let result = self.interpret_frame(
-            code,
-            iterators,
-            start_pc,
-            resume_value,
-            suspend_at,
-            restored_handlers,
-            iterator_root_base,
-        );
+        // Generator/module continuations can enter directly from a native
+        // Promise algorithm. Their JavaScript body owns its own known or
+        // unavailable sites, independently of the native request's origin.
+        let result = self.with_rejection_origin(None, |vm| {
+            vm.interpret_frame(
+                code,
+                iterators,
+                start_pc,
+                resume_value,
+                suspend_at,
+                restored_handlers,
+                iterator_root_base,
+            )
+        });
         // Every exit, including a resource refusal, releases this active
         // frame's records. A suspended frame's caller owns them afterwards.
         self.async_frame_roots.truncate(iterator_root_base);

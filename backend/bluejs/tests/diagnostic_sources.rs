@@ -1636,6 +1636,116 @@ fn class_lowering_and_decorators_keep_their_original_source() {
 }
 
 #[test]
+fn implicit_protocol_failures_keep_the_original_operand_source() {
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name,source) in [
+            ("nonconstructor heritage", "var Base=0;class C extends\n Base {}"),
+            ("invalid prototype", "function Base(){}Base.prototype=0;class C extends\n Base {}"),
+            ("revoked heritage", "var record=Proxy.revocable(function(){},{}),Base=record.proxy;record.revoke();class C extends\n Base {}"),
+            ("heritage caught getter noise", "var Base=new Proxy(function(){},{get(){try{missing;}catch{}return 0;}});class C extends\n Base {}"),
+            ("array spread", "var input=null;var result=[...\n input];"),
+            ("array iterator result", "var input={[Symbol.iterator](){return this;},next(){try{missing;}catch{}return 0;}};var result=[...\n input];"),
+            ("call spread", "function consume(){}var input=null;consume(...\n input);"),
+            ("method spread", "var subject={consume(){}};var input=null;subject.consume(...\n input);"),
+            ("construct spread", "var input=null;new Array(...\n input);"),
+            ("optional call spread", "function consume(){}var input=null;consume?.(...\n input);"),
+            ("optional member spread", "var subject={consume(){}};var input=null;subject?.consume(...\n input);"),
+            ("eval spread", "var input=null;eval(...\n input);"),
+            ("tail return spread", "'use strict';function consume(){}var input=null;function fail(){return consume(...\n input);}fail();"),
+            ("super spread", "class Base{}class C extends Base {constructor(){var input=null;super(...\n input);}}new C();"),
+            ("object spread", "var record=Proxy.revocable({value:1},{}),input=record.proxy;record.revoke();var result={...\n input};"),
+            ("ownKeys spread", "var input=new Proxy({},{ownKeys(){try{missing;}catch{}return 0;}});var result={...\n input};"),
+            ("symbol template", "var input=Symbol();var result=`prefix:${\n input}`;"),
+            ("native template", "var input={[Symbol.toPrimitive](){try{missing;}catch{}return {};}};var result=`prefix:${\n input}`;"),
+            ("delegate acquisition", "var input=null;function* fail(){yield*\n input;}fail().next();"),
+            ("delegate result", "var input={[Symbol.iterator](){return this;},next(){try{missing;}catch{}return 0;}};function* fail(){yield*\n input;}fail().next();"),
+        ] {
+            let mut config=blueice_bluejs::VmConfig::default();
+            if aggressive_gc {config.heap.nursery_capacity=1;config.heap.major_threshold_bytes=1;}
+            let mut vm=page_with_vm(Vm::new(config).unwrap());
+            assert!(vm.execute_script(&mapped_expression_code(source)).is_err(),"{name}");
+            let Value::String(actual)=observed(&mut vm) else {panic!("the handler records one location");};
+            let actual=String::from_utf16_lossy(actual.as_code_units());
+            if actual!="memory:///position.js:2:2" {failures.push((name,aggressive_gc,actual));}
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn asynchronous_delegate_protocol_failures_keep_the_original_operand_source() {
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name,source) in [
+            ("async acquisition", "var input=null;async function* fail(){yield*\n input;}fail().next();"),
+            ("async next result", "var input={[Symbol.asyncIterator](){return this;},next(){return Promise.resolve(0);}};async function* fail(){yield*\n input;}fail().next();"),
+            ("async next callable", "var input={[Symbol.asyncIterator](){return this;},next:0};async function* fail(){yield*\n input;}fail().next();"),
+            ("async sync fallback", "var input={[Symbol.iterator](){return this;},next(){return 0;}};async function* fail(){yield*\n input;}fail().next();"),
+        ] {
+            let mut config=blueice_bluejs::VmConfig::default();
+            if aggressive_gc {config.heap.nursery_capacity=1;config.heap.major_threshold_bytes=1;}
+            let mut vm=page_with_vm(Vm::new(config).unwrap());
+            vm.install_host_rejection_tracking().unwrap();
+            vm.execute_script(&mapped_expression_code(source)).unwrap();
+            vm.run_host_microtask_checkpoint().unwrap();
+            vm.run_browser_task_turn(1).unwrap();
+            let batch=vm.drain_host_console().unwrap();
+            assert_eq!(batch.records.len(),1,"{name}: {batch:?}");
+            let actual=batch.records[0].source.as_ref().map(|source|(source.filename.as_str(),source.line,source.column));
+            if actual!=Some(("memory:///position.js",2,2)) {failures.push((name,aggressive_gc,format!("{actual:?}")));}
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn implicit_protocol_scopes_preserve_callback_origins_and_later_operations() {
+    for (source,expected) in [
+        ("var Base=new Proxy(function(){},{get(){\n throw 'getter';}});class C extends\n Base {}", "memory:///position.js:2:2"),
+        ("var Base=new Proxy(function(){},{get:Function(\"throw 'unknown';\")});class C extends\n Base {}", ":0:0"),
+        ("var input={[Symbol.iterator](){\n throw 'iterator';}};var result=[...\n input];", "memory:///position.js:2:2"),
+        ("var input={[Symbol.iterator]:Function(\"throw 'unknown';\")};var result=[...\n input];", ":0:0"),
+        ("var input={toString(){\n throw 'coercion';}};var result=`prefix:${\n input}`;", "memory:///position.js:2:2"),
+        ("var input={toString:Function(\"throw 'unknown';\")};var result=`prefix:${\n input}`;", ":0:0"),
+        ("var input=[];var consume=0;\n consume(...input);", "memory:///position.js:2:2"),
+        ("var input=null;var result=[0,,...\n input,1];", "memory:///position.js:2:2"),
+        ("var input=new Proxy({value:1},{getOwnPropertyDescriptor:Function(\"throw 'unknown';\")});var result={...\n input};", ":0:0"),
+    ] {
+        let mut vm=page();
+        assert!(vm.execute_script(&mapped_expression_code(source)).is_err(),"{source}");
+        assert_eq!(observed(&mut vm),Value::String(expected.into()),"{source}");
+    }
+    let mut vm = page();
+    assert!(vm
+        .execute_script(&mapped_expression_code(
+            "var consume=null;consume?.(...null);"
+        ))
+        .is_ok());
+    assert_eq!(observed(&mut vm), Value::String("waiting".into()));
+}
+
+#[test]
+fn async_protocol_scopes_keep_forwarded_rejections_and_unknown_callbacks() {
+    for (source,expected) in [
+        ("var input={[Symbol.asyncIterator](){return this;},next(){\n throw 'callback';}};async function* fail(){yield*\n input;}fail().next();", Some((2,2))),
+        ("var input={[Symbol.iterator](){return this;},next:Function(\"throw 'unknown';\")};async function* fail(){yield*\n input;}fail().next();", None),
+        ("var fail=Function(\"return async function*(){yield*null;}\")();fail().next();", None),
+        ("var input={[Symbol.iterator](){return this;},next(){var failure=\n Promise.reject('callback');return {value:failure,done:false};}};async function* fail(){yield*\n input;}fail().next();", Some((2,2))),
+    ] {
+        let mut vm=page();
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_expression_code(source)).unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();
+        vm.run_browser_task_turn(1).unwrap();
+        let batch=vm.drain_host_console().unwrap();
+        assert_eq!(batch.records.len(),1,"{source}: {batch:?}");
+        let actual=batch.records[0].source.as_ref().map(|source|(source.line,source.column));
+        assert_eq!(actual,expected,"{source}: {batch:?}");
+    }
+}
+
+#[test]
 fn computed_key_conversion_failures_keep_the_written_expression_source() {
     let mut failures = Vec::new();
     for aggressive_gc in [false, true] {
