@@ -605,8 +605,9 @@ not `.tsbuildinfo` bytes.
     is refused. *Pass when:* a symlink-escape fixture is refused with a bounded diagnostic.
     - *Evidence:* PLAN.md, "K.12.1.6 Reference owner gate" (2026-10-15): pinned two-row build-order matrix, internal emit/run control, symlink escape refused before outside read or emission with a bounded diagnostic, K.0 two-crate gate.
 - [ ] **K.12.2 Incremental and watch (L).**
-  - [ ] **AC-K12.2.1 Cache key.** Key binds source hashes, compiler options and graph/configuration
+  - [x] **AC-K12.2.1 Cache key.** Key binds source hashes, compiler options and graph/configuration
     fingerprint (J.4.3). *Pass when:* changing any one of the three misses the cache (3 tests).
+    - *Evidence:* PLAN.md, "K.12.2.1 Cache key" (2026-10-15): six pinned ordered rebuild rows, three public cache-miss tests, same-mtime source-byte hash unit test, K.0 two-crate gate.
   - [ ] **AC-K12.2.2 Invalidation.** Changed manifest, nearer package, repointed symlink and changed
     `paths`/`types` each invalidate. *Pass when:* 4 named tests, plus one test that an unrelated file
     does not invalidate.

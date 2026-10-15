@@ -475,3 +475,38 @@ pub(super) fn run(
         ExitCode::from(1)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_fingerprint_changes_even_when_mtime_is_restored() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = env::temp_dir().join(format!(
+            "bluets-projkey-hash-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let root = fs::canonicalize(root).unwrap();
+        let source = root.join("main.ts");
+        fs::write(&source, "export const value = 1;\n").unwrap();
+        let modified = fs::metadata(&source).unwrap().modified().unwrap();
+        let inputs = Inputs::new("config".into(), Vec::new(), vec![source.clone()]);
+        let graph = Graph::new(root.clone());
+        let first = inputs.fingerprint(&graph).unwrap();
+        fs::write(&source, "export const value = 2;\n").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&source)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        assert_eq!(fs::metadata(&source).unwrap().modified().unwrap(), modified);
+        assert_ne!(inputs.fingerprint(&graph).unwrap(), first);
+        fs::remove_dir_all(root).unwrap();
+    }
+}

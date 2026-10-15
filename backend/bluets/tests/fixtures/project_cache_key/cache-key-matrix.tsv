@@ -1,0 +1,6 @@
+source-cold	dep_a/tsconfig.json;tsconfig.json
+source-changed	tsconfig.json
+options-cold	dep_a/tsconfig.json;tsconfig.json
+options-changed	tsconfig.json
+graph-cold	dep_a/tsconfig.json;tsconfig.json
+graph-changed	dep_b/tsconfig.json;tsconfig.json

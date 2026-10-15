@@ -10789,3 +10789,29 @@ and Node 24.21.0, including every ignored oracle. Cargo incremental
 compilation and dev/test debug symbols were disabled to bound artifacts.
 AC-K12.1.1 through AC-K12.1.6 are now checked; default `--build` error
 continuation and K.12.2 incremental/watch behavior remain named gaps.
+
+### K.12.2.1 Cache key (2026-10-15)
+
+The six-row two-project pinned TypeScript 5.9.3 `--build --verbose` matrix
+records cold and changed builds for three independent edits: the root
+source bytes, an effective compiler `target` option, and the root reference
+graph/configuration (switching from `dep_a` to `dep_b`). BlueTSC matches
+the ordered rebuilt projects in all six rows. The public replay checks
+emitted declarations and Node execution after each edit. Its three named
+acceptance tests verify that each changed input misses the owner-local
+build state. A direct build-fingerprint unit test restores a source file's
+original mtime after changing its contents and still observes a different
+fingerprint, separating the source-byte hash from timestamp invalidation.
+The ignored recorder can refresh the matrix with
+`BLUEICE_WRITE_PROJECT_CACHE_KEY_MATRIX=1`.
+
+The existing version-two state fingerprint already combines resolved
+configuration bytes/identities, selected source identities and SHA-256
+content labels, so this leaf needs test evidence rather than a new cache
+format. The focused four integration tests and direct unit test pass;
+workspace rustfmt, warnings-denied two-crate all-target Clippy, and the
+complete K.0 two-crate test gate pass with pinned TypeScript 5.9.3, Acorn
+8.15.0, and Node 24.21.0, including every ordinary and ignored oracle.
+Cargo incremental compilation and dev/test debug symbols were disabled to
+bound regenerated artifacts. Manifest, nearer-package, symlink and path/type
+invalidation remain AC-K12.2.2 rather than being implied by this claim.
