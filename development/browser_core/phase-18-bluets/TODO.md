@@ -592,9 +592,10 @@ not `.tsbuildinfo` bytes.
     rebuilds exactly it and its dependents; touching only a comment/whitespace in a dependency's
     declaration output behaves as `tsc` does. *Pass when:* rebuilt-set equality on >= 6 scenarios.
     - *Evidence:* PLAN.md, "K.12.1.3 Up-to-date decisions" (2026-10-15): 10/10 pinned rebuilt sets, emitted execution and declarations at every step, 16/16 focused tests, K.0 two-crate gate.
-  - [ ] **AC-K12.1.4 Referenced declarations.** A dependent project type-checks against the referenced
+  - [x] **AC-K12.1.4 Referenced declarations.** A dependent project type-checks against the referenced
     project's emitted `.d.ts`, not its sources. *Pass when:* an error that exists only in the referenced
     source is not reported in the dependent, and deleting the `.d.ts` is reported.
+    - *Evidence:* PLAN.md, "K.12.1.4 Referenced declarations" (2026-10-15): four-row pinned rebuild matrix, 11/11 focused integration tests, source-only error and missing-output controls, K.0 two-crate gate.
   - [ ] **AC-K12.1.5 Build errors.** A failing project stops its dependents, others continue; exit code and
     skipped-project reporting match `tsc`. *Pass when:* >= 3 fixtures.
   - [ ] **AC-K12.1.6 Gate.** Owner-only root rules (J.4.3) hold: a reference outside the canonical root

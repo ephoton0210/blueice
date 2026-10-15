@@ -15,17 +15,33 @@ mod statistics;
 use args::Args;
 
 pub(super) fn run(arguments: Vec<String>) -> ExitCode {
-    run_with_mode(arguments, false, None)
+    run_with_mode(arguments, false, None, None, None, &BTreeMap::new())
 }
 
-pub(super) fn run_build_project(arguments: Vec<String>, emitted: &mut Vec<PathBuf>) -> ExitCode {
-    run_with_mode(arguments, true, Some(emitted))
+pub(super) fn run_build_project(
+    arguments: Vec<String>,
+    emitted: &mut Vec<PathBuf>,
+    declarations: &mut BTreeMap<PathBuf, PathBuf>,
+    runtimes: &mut BTreeMap<PathBuf, PathBuf>,
+    references: &BTreeMap<PathBuf, file_loader::ReferencedOutput>,
+) -> ExitCode {
+    run_with_mode(
+        arguments,
+        true,
+        Some(emitted),
+        Some(declarations),
+        Some(runtimes),
+        references,
+    )
 }
 
 fn run_with_mode(
     arguments: Vec<String>,
     allow_references: bool,
     emitted_outputs: Option<&mut Vec<PathBuf>>,
+    emitted_declarations: Option<&mut BTreeMap<PathBuf, PathBuf>>,
+    emitted_runtimes: Option<&mut BTreeMap<PathBuf, PathBuf>>,
+    references: &BTreeMap<PathBuf, file_loader::ReferencedOutput>,
 ) -> ExitCode {
     let started = std::time::Instant::now();
     let empty_command = arguments.is_empty();
@@ -142,7 +158,7 @@ fn run_with_mode(
         );
         return failure(&error, pretty, diagnostics_json, diagnostic);
     }
-    let loader = match loader(&invocation) {
+    let loader = match loader(&invocation, references) {
         Ok(loader) => loader,
         Err(error) => return fail(&error, pretty),
     };
@@ -191,12 +207,22 @@ fn run_with_mode(
         );
     }
     let write_started = std::time::Instant::now();
-    let emitted = match output::publish(&invocation, &summary, &loader, &files) {
+    let output::Published {
+        paths: emitted,
+        declarations,
+        runtimes,
+    } = match output::publish(&invocation, &summary, &loader, &files) {
         Ok(emitted) => emitted,
         Err(error) => return fail(&error.to_string(), pretty),
     };
     if let Some(outputs) = emitted_outputs {
         outputs.extend(emitted.iter().cloned());
+    }
+    if let Some(outputs) = emitted_declarations {
+        outputs.extend(declarations);
+    }
+    if let Some(outputs) = emitted_runtimes {
+        outputs.extend(runtimes);
     }
     statistics.written(write_started.elapsed());
     if list_emitted {
@@ -235,7 +261,10 @@ fn failure(message: &str, pretty: bool, json: bool, diagnostic: Option<Diagnosti
     }
     ExitCode::FAILURE
 }
-fn loader(invocation: &Invocation) -> Result<FileLoader, String> {
+fn loader(
+    invocation: &Invocation,
+    references: &BTreeMap<PathBuf, file_loader::ReferencedOutput>,
+) -> Result<FileLoader, String> {
     Ok(FileLoader {
         root: invocation.root.clone(),
         imports: invocation.imports.clone(),
@@ -273,6 +302,7 @@ fn loader(invocation: &Invocation) -> Result<FileLoader, String> {
         } else {
             ImportMode::Import
         },
+        references: references.clone(),
     })
 }
 struct CompiledProject {

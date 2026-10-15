@@ -10,6 +10,12 @@ use super::*;
 mod mappings;
 pub(super) use mappings::PathMappings;
 
+#[derive(Clone)]
+pub(super) struct ReferencedOutput {
+    pub(super) declaration: PathBuf,
+    pub(super) runtime: Option<PathBuf>,
+}
+
 pub(super) struct FileLoader {
     pub(super) root: PathBuf,
     pub(super) imports: BTreeMap<String, PathBuf>,
@@ -27,6 +33,9 @@ pub(super) struct FileLoader {
     /// The verified cache and the pinned sources whose specifiers resolve to it.
     pub(super) remote: Option<(DeclarationCache, Vec<RemoteDeclarationSource>)>,
     pub(super) import_mode: ImportMode,
+    /// Exact, previously emitted declaration for each selected source in a
+    /// directly referenced project. No other file in that project is granted.
+    pub(super) references: BTreeMap<PathBuf, ReferencedOutput>,
 }
 
 impl ModuleLoader for FileLoader {
@@ -156,6 +165,9 @@ impl ModuleLoader for FileLoader {
                 .parent()
                 .map(Path::to_path_buf)
                 .ok_or_else(|| format!("module `{from_module}` has no directory"))?;
+            if let Some(reference) = self.reference_import(&from_directory, specifier) {
+                return Ok(reference);
+            }
             let resolver = self.packages.as_ref().unwrap_or(&self.relative);
             let found = if self.resolve_json_module && specifier.ends_with(".json") {
                 resolver.resolve_relative_json(&from_directory, specifier)
@@ -300,6 +312,42 @@ impl FileLoader {
     }
 
     pub(super) fn source_path(&self, module_id: &str) -> Result<PathBuf, String> {
+        if let Some((runtime, index)) = module_id
+            .strip_prefix("@reference-runtime/")
+            .map(|index| (true, index))
+            .or_else(|| {
+                module_id
+                    .strip_prefix("@reference-type/")
+                    .map(|index| (false, index))
+            })
+            .and_then(|(runtime, name)| {
+                name.strip_suffix(".d.ts")
+                    .and_then(|index| index.parse::<usize>().ok())
+                    .map(|index| (runtime, index))
+            })
+        {
+            let output =
+                self.references.values().nth(index).ok_or_else(|| {
+                    format!("module `{module_id}` is not a referenced declaration")
+                })?;
+            if runtime {
+                let sidecar = output.runtime.as_ref().ok_or_else(|| {
+                    format!("module `{module_id}` has no authorized runtime output")
+                })?;
+                let canonical = fs::canonicalize(sidecar)
+                    .map_err(|error| format!("cannot read referenced runtime: {error}"))?;
+                if canonical != *sidecar || !canonical.is_file() {
+                    return Err("referenced runtime is not an authorized regular file".into());
+                }
+            }
+            let path = &output.declaration;
+            let canonical = fs::canonicalize(path)
+                .map_err(|error| format!("cannot read referenced declaration: {error}"))?;
+            if canonical != *path || !canonical.is_file() {
+                return Err("referenced declaration is not an authorized regular file".into());
+            }
+            return Ok(canonical);
+        }
         let module_path = Path::new(module_id);
         if module_path.is_absolute()
             || module_path
@@ -339,7 +387,51 @@ impl FileLoader {
     }
 
     pub(super) fn module_id(&self, path: &Path) -> Result<String, String> {
+        if let Some(id) = self.reference_id(path) {
+            return Ok(id);
+        }
         authorized_module_id(&self.root, &self.extra_roots, path)
+    }
+
+    fn reference_id(&self, path: &Path) -> Option<String> {
+        self.references
+            .iter()
+            .enumerate()
+            .find(|(_, (source, output))| {
+                source.as_path() == path || output.declaration.as_path() == path
+            })
+            .map(|(index, (_, output))| {
+                let kind = if output.runtime.is_some() {
+                    "runtime"
+                } else {
+                    "type"
+                };
+                format!("@reference-{kind}/{index}.d.ts")
+            })
+    }
+
+    fn reference_import(&self, directory: &Path, specifier: &str) -> Option<String> {
+        let base = tsconfig::clean_path(&directory.join(specifier));
+        let mut candidates = vec![base.clone()];
+        if base.extension().is_none() {
+            for extension in ["ts", "tsx", "mts", "cts", "d.ts", "d.mts", "d.cts"] {
+                candidates.push(base.with_extension(extension));
+            }
+            for name in ["index.ts", "index.tsx", "index.d.ts"] {
+                candidates.push(base.join(name));
+            }
+        } else if matches!(
+            base.extension().and_then(|extension| extension.to_str()),
+            Some("js" | "mjs" | "cjs")
+        ) {
+            for extension in ["ts", "tsx", "mts", "cts", "d.ts", "d.mts", "d.cts"] {
+                candidates.push(base.with_extension(extension));
+            }
+        }
+        candidates
+            .iter()
+            .filter_map(|candidate| fs::canonicalize(candidate).ok())
+            .find_map(|candidate| self.reference_id(&candidate))
     }
 
     fn resolve_import_map(&self, specifier: &str) -> Result<PathBuf, String> {

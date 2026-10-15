@@ -150,9 +150,6 @@ impl Graph {
                 Vec::new(),
             ));
         }
-        if composite {
-            self.validate_file_coverage(path, &project.files)?;
-        }
         self.inputs.insert(
             path.to_path_buf(),
             freshness::Inputs::new(
@@ -183,6 +180,9 @@ impl Graph {
                 ));
             }
         }
+        if composite {
+            self.validate_file_coverage(path, &project.files, &edges)?;
+        }
         self.references.insert(path.to_path_buf(), edges);
         Ok(())
     }
@@ -207,9 +207,16 @@ impl Graph {
         &mut self,
         config: &Path,
         files: &[PathBuf],
+        references: &[PathBuf],
     ) -> Result<(), GraphFailure> {
         let selected = files
             .iter()
+            .filter_map(|file| fs::canonicalize(file).ok())
+            .collect::<BTreeSet<_>>();
+        let referenced = references
+            .iter()
+            .filter_map(|project| self.inputs.get(project))
+            .flat_map(freshness::Inputs::files)
             .filter_map(|file| fs::canonicalize(file).ok())
             .collect::<BTreeSet<_>>();
         for file in files {
@@ -245,7 +252,10 @@ impl Graph {
                 let target = fs::canonicalize(&target).map_err(|error| {
                     GraphFailure::Boundary(format!("cannot resolve source import: {error}"))
                 })?;
-                if !selected.contains(&target) && !target.to_string_lossy().ends_with(".d.ts") {
+                if !selected.contains(&target)
+                    && !referenced.contains(&target)
+                    && !target.to_string_lossy().ends_with(".d.ts")
+                {
                     return Err(self.diagnostic(
                         6307,
                         Some(file),

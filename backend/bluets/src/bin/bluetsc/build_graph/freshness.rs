@@ -8,7 +8,7 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-const STATE_VERSION: u8 = 1;
+const STATE_VERSION: u8 = 2;
 
 pub(super) struct Inputs {
     config_fingerprint: String,
@@ -27,6 +27,10 @@ impl Inputs {
             config_files,
             files,
         }
+    }
+
+    pub(super) fn files(&self) -> &[PathBuf] {
+        &self.files
     }
 
     fn fingerprint(&self, graph: &Graph) -> Result<String, String> {
@@ -80,6 +84,8 @@ struct State {
     version: u8,
     fingerprint: String,
     outputs: Vec<String>,
+    declarations: BTreeMap<String, String>,
+    runtimes: BTreeMap<String, String>,
 }
 
 impl State {
@@ -107,7 +113,60 @@ impl State {
                 .all(|output| safe_output(project, output).is_some())
     }
 
-    fn save(project: &Path, fingerprint: String, outputs: &[PathBuf]) -> io::Result<Self> {
+    fn declaration_paths(
+        &self,
+        project: &Path,
+        selected_files: &[PathBuf],
+    ) -> Option<BTreeMap<PathBuf, file_loader::ReferencedOutput>> {
+        let mut paths = BTreeMap::new();
+        for (source, declaration) in &self.declarations {
+            let source_path = safe_output(project, source)?;
+            if !selected_files.contains(&source_path)
+                || !self.outputs.contains(declaration)
+                || ![".d.ts", ".d.mts", ".d.cts"]
+                    .iter()
+                    .any(|extension| declaration.ends_with(extension))
+            {
+                return None;
+            }
+            let declaration = safe_output(project, declaration)?;
+            let runtime = self.runtimes.get(source).map(|runtime| {
+                self.outputs
+                    .contains(runtime)
+                    .then(|| safe_output(project, runtime))
+                    .flatten()
+            });
+            let runtime = match runtime {
+                Some(Some(runtime)) => Some(runtime),
+                Some(None) => return None,
+                None => None,
+            };
+            paths.insert(
+                source_path,
+                file_loader::ReferencedOutput {
+                    declaration,
+                    runtime,
+                },
+            );
+        }
+        if selected_files.iter().any(|source| {
+            ![".d.ts", ".d.mts", ".d.cts"]
+                .iter()
+                .any(|extension| source.to_string_lossy().ends_with(extension))
+                && !paths.contains_key(source)
+        }) {
+            return None;
+        }
+        Some(paths)
+    }
+
+    fn save(
+        project: &Path,
+        fingerprint: String,
+        outputs: &[PathBuf],
+        declarations: &BTreeMap<PathBuf, PathBuf>,
+        runtimes: &BTreeMap<PathBuf, PathBuf>,
+    ) -> io::Result<Self> {
         let directory = project.parent().expect("canonical config has parent");
         let outputs = outputs
             .iter()
@@ -117,10 +176,42 @@ impl State {
                     .map_err(|_| io::Error::other("build output is outside its project root"))
             })
             .collect::<io::Result<Vec<_>>>()?;
+        let declarations = declarations
+            .iter()
+            .map(|(source, declaration)| {
+                let source = source
+                    .strip_prefix(directory)
+                    .map_err(|_| io::Error::other("declaration source is outside project root"))?;
+                let declaration = declaration
+                    .strip_prefix(directory)
+                    .map_err(|_| io::Error::other("declaration output is outside project root"))?;
+                Ok((
+                    source.to_string_lossy().into_owned(),
+                    declaration.to_string_lossy().into_owned(),
+                ))
+            })
+            .collect::<io::Result<BTreeMap<_, _>>>()?;
+        let runtimes = runtimes
+            .iter()
+            .map(|(source, runtime)| {
+                let source = source
+                    .strip_prefix(directory)
+                    .map_err(|_| io::Error::other("runtime source is outside project root"))?;
+                let runtime = runtime
+                    .strip_prefix(directory)
+                    .map_err(|_| io::Error::other("runtime output is outside project root"))?;
+                Ok((
+                    source.to_string_lossy().into_owned(),
+                    runtime.to_string_lossy().into_owned(),
+                ))
+            })
+            .collect::<io::Result<BTreeMap<_, _>>>()?;
         let state = Self {
             version: STATE_VERSION,
             fingerprint,
             outputs,
+            declarations,
+            runtimes,
         };
         let path = state_path(project);
         let nonce = SystemTime::now()
@@ -218,6 +309,7 @@ fn output_names(project: &Path, outputs: &[PathBuf]) -> io::Result<Vec<String>> 
 
 pub(super) fn run(graph: &Graph, pretty: bool, verbose: bool) -> ExitCode {
     let mut declaration_changed = BTreeMap::new();
+    let mut available_declarations = BTreeMap::new();
     for project in &graph.order {
         let inputs = graph
             .inputs
@@ -240,20 +332,34 @@ pub(super) fn run(graph: &Graph, pretty: bool, verbose: bool) -> ExitCode {
         let outputs_exist = state
             .as_ref()
             .is_some_and(|state| state.outputs_exist(project));
+        if verbose
+            && state
+                .as_ref()
+                .is_some_and(|state| state.fingerprint == fingerprint && !outputs_exist)
+        {
+            println!(
+                "Project {} is out of date because a recorded build output is missing or unsafe",
+                graph.display_path(project)
+            );
+        }
+        let state_declarations = state
+            .as_ref()
+            .and_then(|state| state.declaration_paths(project, inputs.files()));
         let dependency_changed = graph.references.get(project).is_some_and(|references| {
             references
                 .iter()
                 .any(|reference| declaration_changed.get(reference) == Some(&true))
         });
-        if state
+        let up_to_date = state
             .as_ref()
             .is_some_and(|state| state.fingerprint == fingerprint && outputs_exist)
-            && !dependency_changed
-        {
+            && !dependency_changed;
+        if let Some(paths) = state_declarations.filter(|_| up_to_date) {
             if verbose {
                 println!("Project {} is up to date", graph.display_path(project));
             }
             declaration_changed.insert(project.clone(), false);
+            available_declarations.insert(project.clone(), paths);
             continue;
         }
         let before = if outputs_exist {
@@ -266,6 +372,18 @@ pub(super) fn run(graph: &Graph, pretty: bool, verbose: bool) -> ExitCode {
             println!("Building project: {}", graph.display_path(project));
         }
         let mut emitted = Vec::new();
+        let mut declarations = BTreeMap::new();
+        let mut runtimes = BTreeMap::new();
+        let mut references = BTreeMap::new();
+        for reference in graph.references.get(project).into_iter().flatten() {
+            references.extend(
+                available_declarations
+                    .get(reference)
+                    .expect("reference built before dependent")
+                    .iter()
+                    .map(|(source, declaration)| (source.clone(), declaration.clone())),
+            );
+        }
         let result = native_cli::run_build_project(
             vec![
                 "--project".into(),
@@ -274,6 +392,9 @@ pub(super) fn run(graph: &Graph, pretty: bool, verbose: bool) -> ExitCode {
                 pretty.to_string(),
             ],
             &mut emitted,
+            &mut declarations,
+            &mut runtimes,
+            &references,
         );
         if result != ExitCode::SUCCESS {
             return result;
@@ -288,10 +409,18 @@ pub(super) fn run(graph: &Graph, pretty: bool, verbose: bool) -> ExitCode {
             }
         };
         declaration_changed.insert(project.clone(), before != after);
-        if let Err(error) = State::save(project, fingerprint, &emitted) {
-            eprintln!("bluetsc: cannot publish build state: {error}");
+        let state = match State::save(project, fingerprint, &emitted, &declarations, &runtimes) {
+            Ok(state) => state,
+            Err(error) => {
+                eprintln!("bluetsc: cannot publish build state: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let Some(paths) = state.declaration_paths(project, inputs.files()) else {
+            eprintln!("bluetsc: cannot validate published declaration paths");
             return ExitCode::FAILURE;
-        }
+        };
+        available_declarations.insert(project.clone(), paths);
     }
     ExitCode::SUCCESS
 }

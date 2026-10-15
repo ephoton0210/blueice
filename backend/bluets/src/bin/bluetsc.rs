@@ -156,6 +156,7 @@ fn main() -> ExitCode {
         } else {
             ImportMode::Import
         },
+        references: BTreeMap::new(),
     };
     let mut summary = compile_entries(
         &invocation.entries,

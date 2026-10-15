@@ -7,12 +7,18 @@
 use super::*;
 use std::io::Write;
 
+pub(super) struct Published {
+    pub(super) paths: Vec<PathBuf>,
+    pub(super) declarations: BTreeMap<PathBuf, PathBuf>,
+    pub(super) runtimes: BTreeMap<PathBuf, PathBuf>,
+}
+
 pub(super) fn publish(
     invocation: &Invocation,
     summary: &CompileSummary,
     loader: &FileLoader,
     source_files: &[PathBuf],
-) -> io::Result<Vec<PathBuf>> {
+) -> io::Result<Published> {
     let metadata = build_metadata(invocation, summary, package_manifest(invocation, loader));
     let project = invocation.project_config.as_ref().expect("native project");
     if invocation.options.runtime_policy == RuntimePolicy::StrictRuntime {
@@ -46,7 +52,10 @@ pub(super) fn publish(
             &metadata,
         )?;
         let mut emitted = Vec::new();
+        let mut declarations = BTreeMap::new();
+        let mut runtimes = BTreeMap::new();
         for (module, artifact) in &summary.artifacts {
+            let source = invocation.root.join(module);
             let relative = tsconfig::emitted_path(module, &metadata)?;
             let extension =
                 output_extension(&relative, invocation.options.jsx == Some(JsxMode::Preserve));
@@ -55,8 +64,12 @@ pub(super) fn publish(
                 emitted.push(path.with_extension(format!("{extension}.map")));
             }
             if artifact.declaration.is_some() {
-                emitted.push(path.with_extension(node_modules::declaration_extension(extension)));
+                let declaration =
+                    path.with_extension(node_modules::declaration_extension(extension));
+                declarations.insert(source.clone(), declaration.clone());
+                emitted.push(declaration);
             }
+            runtimes.insert(source, path.clone());
             emitted.push(path);
         }
         emitted.extend([
@@ -67,10 +80,16 @@ pub(super) fn publish(
             emitted.push(out.join("bluetsc.importmap.json"));
         }
         emitted.sort();
-        return Ok(emitted);
+        return Ok(Published {
+            paths: emitted,
+            declarations,
+            runtimes,
+        });
     }
     strict_publish::verify(&metadata, &summary.artifacts, &summary.declaration_modules)?;
     let mut writes = BTreeMap::new();
+    let mut declarations = BTreeMap::new();
+    let mut runtimes = BTreeMap::new();
     for (module, artifact) in &summary.artifacts {
         let source = invocation.root.join(module);
         let relative = tsconfig::emitted_path(module, &metadata)?;
@@ -128,9 +147,11 @@ pub(super) fn publish(
                     map.to_json().into_bytes(),
                 )?;
             }
+            declarations.insert(source.clone(), path.clone());
             insert(&mut writes, path, declaration.into_bytes())?;
         }
         if !invocation.options.emit_declaration_only {
+            runtimes.insert(source.clone(), javascript_path.clone());
             insert(&mut writes, javascript_path, javascript.into_bytes())?;
         }
     }
@@ -165,7 +186,11 @@ pub(super) fn publish(
     for (path, contents) in writes {
         atomic_write(&path, &contents, &invocation.root)?;
     }
-    Ok(paths)
+    Ok(Published {
+        paths,
+        declarations,
+        runtimes,
+    })
 }
 fn insert(
     writes: &mut BTreeMap<PathBuf, Vec<u8>>,

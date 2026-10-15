@@ -6,6 +6,72 @@ use super::*;
 use blueice_bluets::{BuildArtifact, MapLoader, ModuleKind, SourceMap};
 use std::collections::BTreeMap;
 
+#[test]
+fn referenced_source_only_error_is_not_checked_in_dependent() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = env::temp_dir().join(format!(
+        "bluets-projdecl-unit-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(root.join("dep")).unwrap();
+    let root = fs::canonicalize(root).unwrap();
+    let config = serde_json::json!({
+        "compilerOptions": {"composite": true, "declaration": true, "module": "commonjs"},
+        "files": ["main.ts"],
+        "references": [{"path": "./dep"}]
+    });
+    fs::write(
+        root.join("tsconfig.json"),
+        serde_json::to_string(&config).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        root.join("main.ts"),
+        "import { value } from './dep/value';\nexport const result: number = value;\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("dep/value.ts"),
+        "export const value: string = 42;\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("dep/value.d.ts"),
+        "export declare const value: number;\n",
+    )
+    .unwrap();
+    fs::write(root.join("dep/value.js"), "exports.value = 1;\n").unwrap();
+    let mut references = BTreeMap::new();
+    references.insert(
+        root.join("dep/value.ts"),
+        file_loader::ReferencedOutput {
+            declaration: root.join("dep/value.d.ts"),
+            runtime: Some(root.join("dep/value.js")),
+        },
+    );
+    let mut emitted = Vec::new();
+    let mut declarations = BTreeMap::new();
+    let mut runtimes = BTreeMap::new();
+    let result = native_cli::run_build_project(
+        vec![
+            "--project".into(),
+            root.join("tsconfig.json").to_string_lossy().into_owned(),
+            "--pretty".into(),
+            "false".into(),
+        ],
+        &mut emitted,
+        &mut declarations,
+        &mut runtimes,
+        &references,
+    );
+    assert_eq!(result, ExitCode::SUCCESS);
+    assert!(emitted.contains(&root.join("main.d.ts")));
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn args(values: &[&str]) -> Result<Args, String> {
     parse_args(values.iter().map(|value| value.to_string()))
 }

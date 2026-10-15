@@ -1,0 +1,4 @@
+projdecl-default-cold	dep/tsconfig.json;tsconfig.json
+projdecl-default-edited-declaration	tsconfig.json
+projdecl-layout-cold	dep/tsconfig.json;tsconfig.json
+projdecl-layout-edited-declaration	tsconfig.json

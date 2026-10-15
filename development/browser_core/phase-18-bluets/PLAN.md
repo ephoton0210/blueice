@@ -10694,3 +10694,40 @@ verbose prose or broad imported/package-input invalidation. Referenced
 declaration consumption and error continuation remain K.12.1.4–K.12.1.5;
 cache-key completeness, manifest/symlink invalidation, randomized edit
 equivalence and corrupt `.tsbuildinfo` remain K.12.2.
+
+### K.12.1.4 Referenced declarations (2026-10-15)
+
+The frozen four-row fixture matrix runs two root-confined, two-project
+graphs through cold `--build --verbose` and a dependent-only rebuild after
+editing the dependency's emitted `.d.ts` without changing its `.ts`. One
+graph uses the default output paths and an executable value import; the
+other uses `rootDir`, `outDir`, and `declarationDir` with a type-only import.
+Pinned TypeScript 5.9.3 and BlueTSC agree on the ordered rebuilt projects in
+all four rows, accept the declaration-edited dependent, and produce the
+expected Node-observed result. The ignored pinned recorder can refresh the
+matrix with `BLUEICE_WRITE_PROJECT_DECLARATION_MATRIX=1`.
+
+BlueTSC's version-two owner-local build state now records exact
+source-to-declaration and source-to-runtime outputs from publication. A
+dependent's loader resolves a directly referenced selected source to that
+project's emitted declaration, not its source; a value import requires an
+actual recorded runtime output. The state and loader revalidate regular,
+canonical, owner-contained paths before use, and a missing or unsafe output
+forces a bounded rebuild message instead of silently consuming the source.
+Old version-one state rebuilds before it can supply references. A direct
+compiler test demonstrates that a source-only dependency error is not
+rechecked in the dependent when its valid emitted declaration is supplied;
+the public build reports that error only in the dependency. Pinned `tsc
+--project` reports TS6305 for a removed referenced declaration. BlueTSC's
+`--build` instead reports the missing recorded output and regenerates it;
+TypeScript's `--build` can consider its old `.tsbuildinfo` current after
+manual deletion, so exact missing-output prose is not claimed.
+
+Eleven focused integration tests, including four ignored pinned-oracle
+tests, pass. Workspace rustfmt and warnings-denied two-crate all-target
+Clippy pass. The complete K.0 two-crate test gate exits 0 with pinned
+TypeScript 5.9.3, Acorn 8.15.0, and Node 24.21.0; ordinary and ignored
+oracles, the public reference/declaration replay, and BlueJS all run.
+Incremental compilation and dev/test debug symbols were disabled to bound
+build artifacts. Build-error continuation and the reference-escape gate
+remain K.12.1.5–K.12.1.6.
