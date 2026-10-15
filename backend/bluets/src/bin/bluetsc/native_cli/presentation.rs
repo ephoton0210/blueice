@@ -6,7 +6,7 @@
 use super::*;
 use blueice_bluets::{TypeScriptDiagnostic, TypeScriptPosition};
 
-pub(super) fn format(
+pub(crate) fn format(
     diagnostics: &[Diagnostic],
     sources: &BTreeMap<String, String>,
     pretty: bool,

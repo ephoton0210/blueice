@@ -1,0 +1,125 @@
+{
+  "cases": [
+    {
+      "name": "projref-missing-composite",
+      "projects": {
+        ".": {
+          "config": {"files": ["root.ts"], "references": [{"path": "./dep"}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"root.ts": "export const root = 1;\n"}
+        },
+        "dep": {
+          "config": {"files": ["dep.ts"], "compilerOptions": {"declaration": true}},
+          "sources": {"dep.ts": "export const dep = 1;\n"}
+        }
+      }
+    },
+    {
+      "name": "projref-false-composite",
+      "projects": {
+        ".": {
+          "config": {"files": ["root.ts"], "references": [{"path": "./dep"}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"root.ts": "export const root = 1;\n"}
+        },
+        "dep": {
+          "config": {"files": ["dep.ts"], "compilerOptions": {"composite": false, "declaration": true}},
+          "sources": {"dep.ts": "export const dep = 1;\n"}
+        }
+      }
+    },
+    {
+      "name": "projref-root-no-declaration",
+      "projects": {
+        ".": {
+          "config": {"files": ["root.ts"], "references": [{"path": "./dep"}], "compilerOptions": {"composite": true, "declaration": false}},
+          "sources": {"root.ts": "export const root = 1;\n"}
+        },
+        "dep": {
+          "config": {"files": ["dep.ts"], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"dep.ts": "export const dep = 1;\n"}
+        }
+      }
+    },
+    {
+      "name": "projref-dep-no-declaration",
+      "projects": {
+        ".": {
+          "config": {"files": ["root.ts"], "references": [{"path": "./dep"}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"root.ts": "export const root = 1;\n"}
+        },
+        "dep": {
+          "config": {"files": ["dep.ts"], "compilerOptions": {"composite": true, "declaration": false}},
+          "sources": {"dep.ts": "export const dep = 1;\n"}
+        }
+      }
+    },
+    {
+      "name": "projref-root-file-uncovered",
+      "projects": {
+        ".": {
+          "config": {"include": ["root.ts"], "references": [{"path": "./dep"}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"root.ts": "import { extra } from './extra';\nexport const root = extra;\n", "extra.ts": "export const extra = 1;\n"}
+        },
+        "dep": {
+          "config": {"files": ["dep.ts"], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"dep.ts": "export const dep = 1;\n"}
+        }
+      }
+    },
+    {
+      "name": "projref-dep-file-uncovered",
+      "projects": {
+        ".": {
+          "config": {"files": ["root.ts"], "references": [{"path": "./dep"}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"root.ts": "export const root = 1;\n"}
+        },
+        "dep": {
+          "config": {"files": ["dep.ts"], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"dep.ts": "import { extra } from './extra';\nexport const dep = extra;\n", "extra.ts": "export const extra = 1;\n"}
+        }
+      }
+    },
+    {
+      "name": "projref-cycle-two",
+      "projects": {
+        ".": {
+          "config": {"files": ["root.ts"], "references": [{"path": "./dep"}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"root.ts": "export const root = 1;\n"}
+        },
+        "dep": {
+          "config": {"files": ["dep.ts"], "references": [{"path": ".."}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"dep.ts": "export const dep = 1;\n"}
+        }
+      }
+    },
+    {
+      "name": "projref-cycle-three",
+      "projects": {
+        ".": {
+          "config": {"files": ["root.ts"], "references": [{"path": "./dep"}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"root.ts": "export const root = 1;\n"}
+        },
+        "dep": {
+          "config": {"files": ["dep.ts"], "references": [{"path": "../tail"}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"dep.ts": "export const dep = 1;\n"}
+        },
+        "tail": {
+          "config": {"files": ["tail.ts"], "references": [{"path": ".."}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"tail.ts": "export const tail = 1;\n"}
+        }
+      }
+    },
+    {
+      "name": "projref-valid-chain",
+      "projects": {
+        ".": {
+          "config": {"files": ["root.ts"], "references": [{"path": "./dep"}], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"root.ts": "export const root = 1;\n"}
+        },
+        "dep": {
+          "config": {"files": ["dep.ts"], "compilerOptions": {"composite": true, "declaration": true}},
+          "sources": {"dep.ts": "export const dep = 1;\n"}
+        }
+      }
+    }
+  ]
+}

@@ -10,7 +10,7 @@ use serde_json::{json, Map, Value};
 
 pub(super) mod diagnostics;
 mod discovery;
-mod inheritance;
+pub(crate) mod inheritance;
 mod jsonc;
 mod options;
 mod output_layout;
@@ -52,6 +52,7 @@ pub(super) fn resolve(
     owner_path: Option<&Path>,
     report: &mut Option<blueice_bluets::Diagnostic>,
     sources: &mut BTreeMap<String, String>,
+    allow_references: bool,
 ) -> Result<Invocation, String> {
     let directory = path
         .parent()
@@ -109,6 +110,9 @@ pub(super) fn resolve(
         }
     }
     let mut reader = Reader::new(root.clone(), extra_roots);
+    if allow_references {
+        reader = reader.with_references();
+    }
     let mut document = match reader.load(path) {
         Ok(document) => document,
         Err(error) => {

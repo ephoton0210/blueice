@@ -9,12 +9,20 @@ use blueice_bluets::{Diagnostic, Project};
 use serde_json::Value;
 mod args;
 mod output;
-mod presentation;
+pub(crate) mod presentation;
 mod source_maps;
 mod statistics;
 use args::Args;
 
 pub(super) fn run(arguments: Vec<String>) -> ExitCode {
+    run_with_mode(arguments, false)
+}
+
+pub(super) fn run_build_project(arguments: Vec<String>) -> ExitCode {
+    run_with_mode(arguments, true)
+}
+
+fn run_with_mode(arguments: Vec<String>, allow_references: bool) -> ExitCode {
     let started = std::time::Instant::now();
     let empty_command = arguments.is_empty();
     let diagnostics_json = arguments
@@ -45,6 +53,7 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
         args.project,
         &mut config_diagnostic,
         &mut config_sources,
+        allow_references,
     ) {
         Ok(invocation) => invocation,
         Err(error) => {

@@ -39,6 +39,8 @@ mod node_modules;
 #[path = "bluetsc/source_map_data.rs"]
 mod source_map_data;
 
+#[path = "bluetsc/build_graph.rs"]
+mod build_graph;
 #[path = "bluetsc/native_cli/mod.rs"]
 mod native_cli;
 #[path = "bluetsc/tsconfig/mod.rs"]
@@ -50,6 +52,12 @@ const RUNTIME_HELPER_V1_SOURCE: &str = include_str!("../runtime_helper_v1.mjs");
 
 fn main() -> ExitCode {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
+    if arguments
+        .first()
+        .is_some_and(|argument| matches!(argument.as_str(), "--build" | "-b"))
+    {
+        return build_graph::run(arguments);
+    }
     if arguments
         .first()
         .is_none_or(|arg| arg.starts_with('-') && !matches!(arg.as_str(), "--help" | "-h"))

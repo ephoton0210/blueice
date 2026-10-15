@@ -1,0 +1,9 @@
+projref-missing-composite	reject	6306	tsconfig.json	10	5
+projref-false-composite	reject	6306	tsconfig.json	10	5
+projref-root-no-declaration	reject	6304	tsconfig.json	4	5
+projref-dep-no-declaration	reject	6304	dep/tsconfig.json	4	5
+projref-root-file-uncovered	reject	6307	root.ts	1	23
+projref-dep-file-uncovered	reject	6307	dep/dep.ts	1	23
+projref-cycle-two	reject	6202	-	0	0
+projref-cycle-three	reject	6202	-	0	0
+projref-valid-chain	accept	-	-	0	0

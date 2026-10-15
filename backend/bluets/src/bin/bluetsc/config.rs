@@ -393,13 +393,14 @@ pub(super) fn resolve_config_with_diagnostic(
     path: PathBuf,
     report: &mut Option<blueice_bluets::Diagnostic>,
 ) -> Result<Invocation, String> {
-    resolve_config_with_sources(path, report, &mut BTreeMap::new())
+    resolve_config_with_sources(path, report, &mut BTreeMap::new(), false)
 }
 
 pub(super) fn resolve_config_with_sources(
     path: PathBuf,
     report: &mut Option<blueice_bluets::Diagnostic>,
     sources: &mut BTreeMap<String, String>,
+    allow_references: bool,
 ) -> Result<Invocation, String> {
     let config_path = absolute_existing_path(&path).map_err(|error| {
         let message = format!("cannot read config {}: {error}", path.display());
@@ -445,6 +446,7 @@ pub(super) fn resolve_config_with_sources(
             owner_path.is_file().then_some(owner_path.as_path()),
             report,
             sources,
+            allow_references,
         );
     }
     let selected = value
@@ -459,7 +461,13 @@ pub(super) fn resolve_config_with_sources(
         return Err("owner tsconfig requires a string path".to_string());
     }
     if value.get("tsconfig").is_some() || selected.is_file() {
-        return tsconfig::resolve(&selected, Some(&config_path), report, sources);
+        return tsconfig::resolve(
+            &selected,
+            Some(&config_path),
+            report,
+            sources,
+            allow_references,
+        );
     }
     if value.get("entries").is_none() {
         return Err(format!(

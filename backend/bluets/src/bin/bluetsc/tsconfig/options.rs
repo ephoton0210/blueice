@@ -31,6 +31,7 @@ const BOOLEAN: &[&str] = &[
     "sourceMap",
     "inlineSourceMap",
     "declaration",
+    "composite",
     "declarationMap",
     "emitDeclarationOnly",
     "isolatedDeclarations",
@@ -76,6 +77,9 @@ pub(super) fn validate(
         .ok_or_else(|| "compilerOptions must be an object".to_string())?;
     let mut result = Map::new();
     for (name, value) in object {
+        if name == "composite" && !reader.allows_build_options() {
+            return Err("unknown or unsupported compiler option `composite`".into());
+        }
         if !BOOLEAN.contains(&name.as_str())
             && !STRICT.contains(&name.as_str())
             && !matches!(

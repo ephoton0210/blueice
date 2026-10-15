@@ -37,23 +37,34 @@ impl Document {
     }
 }
 
-pub(super) struct Reader {
+pub(crate) struct Reader {
     pub(super) root: PathBuf,
     pub(super) extra_roots: Vec<PathBuf>,
     active: BTreeSet<PathBuf>,
-    pub(super) inputs: BTreeMap<PathBuf, Vec<u8>>,
+    pub(crate) inputs: BTreeMap<PathBuf, Vec<u8>>,
     pub(super) diagnostic: Option<blueice_bluets::Diagnostic>,
+    allow_references: bool,
 }
 
 impl Reader {
-    pub(super) fn new(root: PathBuf, extra_roots: Vec<PathBuf>) -> Self {
+    pub(crate) fn new(root: PathBuf, extra_roots: Vec<PathBuf>) -> Self {
         Self {
             root,
             extra_roots,
             active: BTreeSet::new(),
             inputs: BTreeMap::new(),
             diagnostic: None,
+            allow_references: false,
         }
+    }
+
+    pub(super) fn with_references(mut self) -> Self {
+        self.allow_references = true;
+        self
+    }
+
+    pub(super) fn allows_build_options(&self) -> bool {
+        self.allow_references
     }
 
     fn allowed(&self, path: &Path, external: bool) -> bool {
@@ -61,7 +72,7 @@ impl Reader {
             || (external && self.extra_roots.iter().any(|root| path.starts_with(root)))
     }
 
-    pub(super) fn authorize_future(
+    pub(crate) fn authorize_future(
         &self,
         path: &Path,
         label: &str,
@@ -90,7 +101,7 @@ impl Reader {
         Ok(())
     }
 
-    pub(super) fn read(&mut self, path: &Path) -> Result<Value, String> {
+    pub(crate) fn read(&mut self, path: &Path) -> Result<Value, String> {
         self.authorize_future(path, "config", true)?;
         let canonical = fs::canonicalize(path)
             .map_err(|error| format!("cannot read config {}: {error}", path.display()))?;
@@ -151,6 +162,9 @@ impl Reader {
         let object = value
             .as_object()
             .ok_or_else(|| "tsconfig must be an object".to_string())?;
+        if object.contains_key("references") && !self.allow_references {
+            return Err("compiler project `references` requires the K.12 build graph".to_string());
+        }
         let directory = path
             .parent()
             .ok_or_else(|| "config has no parent".to_string())?;
@@ -188,9 +202,6 @@ impl Reader {
             exclude: self.paths(object.get("exclude"), directory, "exclude")?,
         };
         document.merge(local);
-        if object.contains_key("references") {
-            return Err("compiler project `references` requires the K.12 build graph".to_string());
-        }
         Ok(document)
     }
 

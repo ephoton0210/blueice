@@ -10585,3 +10585,43 @@ No production source changed after the final-source hash; this closure records
 evidence and checks K.11.6 only. K.11.1–K.11.6 are all checked, so K.11's
 exit rule holds within its named supported profile. Unsupported source-map
 forms remain named gaps; this does not claim unrestricted TypeScript parity.
+
+### K.12.1.1 Reference graph (2026-10-15)
+
+The pinned TypeScript 5.9.3 `--build` fixture set has nine multi-project
+cases: eight rejections and one executable chain. The frozen primary
+code/position matrix covers missing and explicit-false referenced
+`composite` (TS6306), disabled declaration emit in either project (TS6304),
+an imported file omitted by `include` or `files` (TS6307), and two- and
+three-project cycles (TS6202). Before implementation the public CLI replay
+rejected all nine cases as unknown `--build` (TS5023); after implementation
+its verdict and primary code/position match every matrix row. The accepted
+chain's emitted root and dependency exports execute identically under Node
+for BlueTSC and pinned `tsc`.
+
+The filesystem-owning `--build` entry first canonicalizes the selected root,
+loads bounded referenced configs under that root, checks effective composite
+options and source-file coverage, and detects an active-path cycle. It emits
+TS-coded diagnostics before any project publishes output. Only a fully valid
+graph is then compiled through the existing native project path in dependency
+order. The normal `--project` path keeps its references/composite refusals;
+the build path rejects a reference outside the canonical owner root. This
+does not claim TypeScript-compatible verbose build order, incremental
+up-to-date decisions, referenced `.d.ts` consumption, failure continuation,
+or watch. Those remain the named K.12.1.2–K.12.2 checks.
+
+The focused public/oracle target passes 6/6 including the pinned recorder
+replay and emit-and-run comparison. Workspace rustfmt and warnings-denied
+all-target Clippy for both BlueTS crates pass. The complete K.0 two-crate
+`--include-ignored` gate exits 0 with pinned TypeScript 5.9.3, Acorn 8.15.0,
+and Node 24.21.0; it includes the existing 82-test TypeScript oracle, the
+23-test decoded source-map oracle, and the BlueJS library's 163 tests.
+An initial local attempt omitted Acorn and stopped at `declaration_inference`
+because the test tool could not resolve it. Another attempt under Node 26.7.0
+stalled in Node/V8 worker shutdown after `tsc` had processed a one-file TS2322 case;
+the same command returned TS2322 immediately with Node 24.21.0. Neither
+incomplete attempt is counted as a passing gate. The final run uses
+`PATH=/opt/homebrew/Cellar/node@24/24.21.0/bin:$PATH`,
+`BLUEICE_BLUETSC_ORACLE=<TypeScript 5.9.3 tsc>`,
+`BLUEICE_ACORN_ORACLE=<Acorn 8.15.0 acorn>`, and
+`cargo test -q -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --include-ignored`.
