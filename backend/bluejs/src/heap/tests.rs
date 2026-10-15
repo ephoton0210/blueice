@@ -1099,6 +1099,84 @@ fn restoring_generator_state_updates_its_managed_byte_charge() {
 }
 
 #[test]
+fn async_generator_request_origin_capacity_is_charged_and_refusal_is_atomic() {
+    let mut config = HeapConfig::default();
+    config.max_heap_bytes = 4096;
+    config.major_threshold_bytes = 1024;
+    config.nursery_capacity = 16;
+    let mut heap = Heap::new(config).unwrap();
+    let prototype = heap.alloc_object(None).unwrap();
+    let generator = heap
+        .alloc_generator(GeneratorState::Done, prototype)
+        .unwrap();
+    heap.enable_async_generator(generator).unwrap();
+    let root = heap.root(generator).unwrap();
+    let target = heap.alloc_object(None).unwrap();
+    let mut control = heap.async_generator_control(generator).unwrap().unwrap();
+    let mut filename = String::with_capacity(1024);
+    filename.push_str("memory:///request.js");
+    let origin = crate::diagnostics::ThrowOrigin {
+        source: Some(crate::diagnostics::DiagnosticSourceLocation {
+            filename,
+            line: 7,
+            column: 3,
+        }),
+        ..Default::default()
+    };
+    let base = control.managed_bytes();
+    control.requests.push_back(AsyncGeneratorRequest {
+        id: 0,
+        completion: AsyncGeneratorCompletion::Throw(Value::Undefined),
+        target,
+        origin: Rc::new(origin),
+    });
+    assert_eq!(
+        control.managed_bytes() - base,
+        size_of::<AsyncGeneratorRequest>()
+            + size_of::<crate::diagnostics::ThrowOrigin>()
+            + 2 * size_of::<usize>()
+            + 1024
+    );
+    heap.set_async_generator_control(generator, control)
+        .unwrap();
+    let before = heap.stats().managed_bytes;
+    let mut replacement = heap.async_generator_control(generator).unwrap().unwrap();
+    let mut filename = String::with_capacity(8192);
+    filename.push_str("memory:///replacement.js");
+    replacement.requests.front_mut().unwrap().origin = Rc::new(crate::diagnostics::ThrowOrigin {
+        source: Some(crate::diagnostics::DiagnosticSourceLocation {
+            filename,
+            line: 9,
+            column: 1,
+        }),
+        ..Default::default()
+    });
+    assert_eq!(
+        heap.set_async_generator_control(generator, replacement),
+        Err(HeapError::HeapLimitExceeded { limit: 4096 })
+    );
+    assert_eq!(heap.stats().managed_bytes, before);
+    let retained = heap.async_generator_control(generator).unwrap().unwrap();
+    assert_eq!(
+        retained
+            .requests
+            .front()
+            .unwrap()
+            .origin
+            .source
+            .as_ref()
+            .unwrap()
+            .line,
+        7
+    );
+    assert!(heap.contains(target));
+    heap.unroot(root).unwrap();
+    heap.collect_major();
+    assert!(!heap.contains(generator));
+    assert!(!heap.contains(target));
+}
+
+#[test]
 fn async_generator_queue_keeps_request_targets_and_values_alive() {
     let mut heap = Heap::default();
     let prototype = heap.alloc_object(None).unwrap();
@@ -1115,6 +1193,7 @@ fn async_generator_queue_keeps_request_targets_and_values_alive() {
         id: 0,
         completion: AsyncGeneratorCompletion::Next(Value::Object(value)),
         target,
+        origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
     });
     control.next_request_id = 1;
     control.status = AsyncGeneratorStatus::Awaiting;
@@ -1231,6 +1310,7 @@ fn replacing_async_generator_queue_respects_the_heap_limit() {
             id,
             completion: AsyncGeneratorCompletion::Next(Value::Undefined),
             target,
+            origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
         });
     }
     assert_eq!(
@@ -2906,12 +2986,15 @@ fn completion_records_retain_object_references_and_charge_owned_payloads() {
             id: id as u64,
             completion,
             target: second,
+            origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
         });
     }
     assert_eq!(queue.references(), [second, first].repeat(6));
     assert_eq!(
         queue.managed_bytes(),
-        6 * size_of::<AsyncGeneratorRequest>()
+        6 * (size_of::<AsyncGeneratorRequest>()
+            + size_of::<crate::diagnostics::ThrowOrigin>()
+            + 2 * size_of::<usize>())
     );
 }
 

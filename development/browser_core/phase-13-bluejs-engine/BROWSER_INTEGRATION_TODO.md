@@ -59,10 +59,11 @@ locations, including nested blocks and functions, through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest Promise-origin
-follow-up passes 1,837 tests across twenty targets (one existing ignored),
-including 32 source scenarios and real MCP rejection coordinates after
-`finally`, formatting and focused six-library Clippy. Three of the ten final acceptance
+Core and MCP, preserving unavailable locations. The latest queued-generator
+follow-up passes 1,841 tests across twenty targets (one existing ignored),
+including twelve request-source scenarios under normal and aggressive GC,
+distinct/unknown FIFO origins, heap accounting and real MCP coordinates after
+queued `.throw()` and `finally`. Formatting and focused six-library Clippy pass. Three of the ten final acceptance
 gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Expression/parameter
 provenance, direct/emitted BlueTS, modules and queued origins remain open,
@@ -483,7 +484,7 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: Promise-origin follow-up verified; 3/10 final
+**Progress updated 2026-10-15: queued-generator origins verified; 3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -514,15 +515,21 @@ the full source-position requirement.
       32 source scenarios, cross-script/full-GC thunk retention and collection,
       filename payload charges and the document byte cap; real MCP verifies
       original JavaScript coordinates after `finally` and unavailable BlueTS.
-- [x] Pass the related Rust/Core/MCP regression selection: 2,117 passed, zero
+- [x] Pass source-copy acceptance at `55af67038`: 2,117 passed, zero
       final failures, one existing ignored, across twelve targets.
-- [x] Pass the latest current-source diagnostic/error/page replay: 52 passed,
+- [x] Pass the latest current-source diagnostic/error/page replay: 55 passed,
       zero failed, across three complete targets.
 - [x] Pass `cargo fmt --all -- --check` and focused Clippy for the BlueJS,
       BlueTS bridge, IPC, Core, launcher and MCP libraries with `-D warnings`.
-
-- [x] Pass the Promise-origin follow-up: 1,837 passed across twenty disjoint
-      targets, one existing ignored; formatting and focused six-library Clippy.
+- [x] Pass the Promise-origin follow-up at `97b021149`: 1,837 passed across
+      twenty disjoint targets, one existing ignored; formatting and focused six-library Clippy.
+- [x] Preserve FIFO async-generator request origins through queued throw/return,
+      awaited finalizers, delegate rejection and abrupt replacement. Verify
+      twelve source scenarios under two GC configurations, neighboring known/
+      unknown origins, observable major-GC collection, source capacity charges
+      and atomic heap refusal; real MCP reports inline line 5, column 25.
+- [x] Pass the queued-generator follow-up: 1,841 passed across twenty disjoint
+      targets, one existing ignored, formatting and focused six-library Clippy.
 
 #### Remaining implementation and verification
 
@@ -721,6 +728,43 @@ Source/runtime hashes and per-target results are recorded in
 implementation step within M1q; the ten final gates remain at 3/10. Queued
 async-generator request provenance, module failure fan-out, async-disposal
 interactions and the remaining source producers still need full acceptance.
+
+The next queued async-generator source regression initially loses four of
+nine origins: a queued throw after await/yield, an awaited finalizer and a
+return operand's throwing constructor getter
+(`/private/tmp/blueice-generator-request-origins-red.log`). Retaining the
+request origin fixes those nine cases. An expanded twelve-scenario follow-up
+then exposes two `yield*` completion bugs: an awaited finalizer loses the
+delegate's rejection origin, and an abrupt finalizer incorrectly keeps the
+superseded delegate origin
+(`/private/tmp/blueice-generator-request-origins-first.log`). The verified
+implementation now retains request-owned immutable metadata,
+replacement origins and fresh propagation epochs. Twelve source scenarios
+pass under normal and aggressive GC (24 executions). A separate same-value
+FIFO control preserves distinct known/unknown origins across scripts and
+collection, then observes a major GC and verifies the generator is released.
+Queue source capacities join managed heap accounting; an over-budget
+replacement preserves the original request atomically. The first collection
+fixture used only 100 allocations; its corrected release check requires
+observed major collection under greater allocation pressure.
+
+The real MCP regression fails with an absent source against the unchanged
+prechange Core/host binaries, then passes inline line 5, column 25 after
+queued `.throw()` and `finally` with fresh binaries. All three official MCP
+console tests and seventeen real browser tests pass. The BlueJS selection
+has fifteen successful targets plus the corrected complete diagnostic target
+(26 passed); no failed diagnostic attempt is counted toward the final totals.
+The first concurrent Launcher run had four Python helper startup/restart
+failures; a serial run passed those four but hit another startup timeout.
+After other validation finished, the identical Launcher executable passed all
+307 cases with four test threads (one existing ignored, 2.87s).
+The final disjoint selection passes 1,841 cases across twenty targets;
+format and focused six-library Clippy pass. Seven Rust input hashes,
+current/prechange runtime hashes and per-target results are recorded in
+`target/generator-request-origins-source-20261015.json` and
+`target/generator-request-origins-validation-20261015.json`. The complete
+queued-origin matrix, module/disposal interactions, remaining source producers
+and final workspace/Test262 gates stay open; M1q remains at 3/10 final gates.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

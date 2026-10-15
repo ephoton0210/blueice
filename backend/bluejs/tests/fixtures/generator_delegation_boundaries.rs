@@ -106,6 +106,7 @@ fn async_request_turns_separate_awaited_operands_and_reject_resumption_after_com
             id: 1,
             target,
             completion,
+            origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
         });
         vm.heap
             .set_async_generator_control(generator, control)
@@ -334,6 +335,7 @@ fn async_scheduler_helpers_reject_foreign_heap_handles_before_queue_changes() {
         vm.replace_async_generator_request(
             foreign,
             AsyncGeneratorCompletion::Next(Value::Undefined),
+            None,
         ),
         vm.finish_async_delegation(foreign, Value::Undefined),
     ] {
@@ -371,6 +373,7 @@ fn request_replacement_checks_the_brand_and_requires_a_queue_head() {
             vm.replace_async_generator_request(
                 generator,
                 crate::heap::AsyncGeneratorCompletion::ResumeThrow(Value::Number(7.0)),
+                None,
             ),
             Err(error)
         );

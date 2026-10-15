@@ -463,6 +463,136 @@ fn promise_rejection_sources_survive_jobs_awaits_and_native_forwarding() {
 }
 
 #[test]
+fn queued_async_generator_requests_keep_the_request_or_replacement_origin() {
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name, setup, request, expected_file, expected_line) in [
+        ("suspended start", "var hold=Promise.withResolvers();var iterator=(async function*(){})();", "iterator.throw('probe');", "request", 2),
+        ("queued after await", "var hold=Promise.withResolvers();var iterator=(async function*(){await hold.promise;})();iterator.next();", "iterator.throw('probe');", "request", 2),
+        ("queued after yield", "var hold=Promise.withResolvers();var iterator=(async function*(){yield 0;})();iterator.next();", "iterator.throw('probe');", "request", 2),
+        ("awaited finalizer", "var hold=Promise.withResolvers();var iterator=(async function*(){try{yield 0;}finally{await hold.promise;try{throw 'caught';}catch{}}})();iterator.next();", "iterator.throw('probe');", "request", 2),
+        ("replacement finalizer", "var hold=Promise.withResolvers();var iterator=(async function*(){try{yield 0;}finally{await hold.promise;throw 'probe';}})();iterator.next();", "iterator.throw('ignored');", "generator", 3),
+        ("rejected return", "var hold=Promise.withResolvers();var iterator=(async function*(){await hold.promise;yield 0;})();iterator.next();", "iterator.return(Promise.reject('probe'));", "request", 2),
+        ("return constructor throws", "var hold=Promise.withResolvers();var iterator=(async function*(){yield 0;})();iterator.next();", "var input=Promise.resolve();Object.defineProperty(input,'constructor',{get:function(){throw 'probe';}});iterator.return(input);", "request", 3),
+        ("return thenable throws", "var hold=Promise.withResolvers();var iterator=(async function*(){yield 0;})();iterator.next();", "iterator.return({then:function(){throw 'probe';}});", "request", 3),
+        ("unknown request", "var hold=Promise.withResolvers();var iterator=(async function*(){yield 0;})();iterator.next();", "Function(\"iterator.throw('probe');\")();", "", 0),
+        ("delegated rejection through awaited finalizer", "var hold=Promise.withResolvers();var delegate={[Symbol.asyncIterator](){return this;},next(){return Promise.resolve({done:false,value:0});}};var iterator=(async function*(){try{yield* delegate;}finally{await hold.promise;}})();iterator.next();", "delegate.throw=function(){return Promise.reject('probe');};iterator.throw('ignored');", "request", 3),
+        ("delegated rejection replaced by finalizer", "var hold=Promise.withResolvers();var delegate={[Symbol.asyncIterator](){return this;},next(){return Promise.resolve({done:false,value:0});}};var iterator=(async function*(){try{yield* delegate;}finally{throw 'probe';}})();iterator.next();", "delegate.throw=function(){return Promise.reject('ignored');};iterator.throw('ignored');", "generator", 5),
+        ("completed return constructor throws", "var hold=Promise.withResolvers();var iterator=(async function*(){})();", "var input=Promise.resolve();Object.defineProperty(input,'constructor',{get:function(){throw 'probe';}});iterator.return(input);", "request", 3),
+
+    ] {
+        let mut config = blueice_bluejs::VmConfig::default();
+        if aggressive_gc { config.heap.nursery_capacity = 1; config.heap.major_threshold_bytes = 1; }
+        let mut vm = page_with_vm(Vm::new(config).unwrap());
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_promise_code_with_filename(setup, "memory:///generator.js")).unwrap();
+        vm.execute_script(&mapped_promise_code_with_filename(request, "memory:///request.js")).unwrap();
+        vm.execute_script(&mapped_promise_code_with_filename("hold.resolve();", "memory:///later.js")).unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();
+        vm.run_browser_task_turn(1).unwrap();
+        let batch = vm.drain_host_console().unwrap();
+        assert_eq!(batch.records.len(), 1, "{name}: {batch:?}");
+        assert_eq!(batch.records[0].message, "Uncaught (in promise) probe", "{name}");
+        let expected = (expected_line != 0).then(|| DiagnosticSourceLocation {
+            filename: format!("memory:///{expected_file}.js"),
+            line: expected_line,
+            column: 1,
+        });
+        if batch.records[0].source != expected {
+            failures.push((name, batch.records[0].source.clone(), expected));
+        }
+    }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn neighboring_async_generator_requests_keep_distinct_and_unknown_sources() {
+    let mut config = blueice_bluejs::VmConfig::default();
+    config.heap.nursery_capacity = 1;
+    config.heap.major_threshold_bytes = 1;
+    let mut vm = page_with_vm(Vm::new(config).unwrap());
+    vm.install_host_rejection_tracking().unwrap();
+    vm.execute_script(&mapped_promise_code_with_filename(
+        "var hold=Promise.withResolvers();var iterator=(async function*(){await hold.promise;})();iterator.next();var weak=new WeakRef(iterator);",
+        "memory:///generator.js",
+    )).unwrap();
+    vm.execute_script(&mapped_promise_code_with_filename(
+        "iterator.throw('same');",
+        "memory:///first.js",
+    ))
+    .unwrap();
+    vm.execute_script(&compile(&parse("iterator.throw('same');").unwrap()).unwrap())
+        .unwrap();
+    vm.execute_script(&mapped_promise_code_with_filename(
+        "iterator.throw('same');",
+        "memory:///third.js",
+    ))
+    .unwrap();
+    vm.execute_script(
+        &compile(&parse("for(var i=0;i<3000;i++){var garbage={i:i};}hold.resolve();").unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    vm.run_host_microtask_checkpoint().unwrap();
+    vm.run_browser_task_turn(1).unwrap();
+    let batch = vm.drain_host_console().unwrap();
+    assert_eq!(batch.records.len(), 3, "{batch:?}");
+    for record in &batch.records {
+        assert_eq!(record.message, "Uncaught (in promise) same");
+    }
+    let sources = batch
+        .records
+        .iter()
+        .map(|record| {
+            record
+                .source
+                .as_ref()
+                .map(|source| (source.filename.as_str(), source.line, source.column))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sources,
+        [
+            Some(("memory:///first.js", 2, 1)),
+            None,
+            Some(("memory:///third.js", 2, 1))
+        ]
+    );
+    let before = vm.heap().stats().major_collections;
+    let collected = vm.execute_script(&compile(&parse("iterator=null;hold=null;for(var i=0;i<3000;i++){var garbage={i:i};}weak.deref()===undefined").unwrap()).unwrap()).unwrap();
+    assert!(vm.heap().stats().major_collections > before);
+    assert_eq!(collected, Value::Bool(true));
+}
+
+#[test]
+fn queued_async_generator_source_names_join_heap_accounting() {
+    fn usage(filename: &str) -> (usize, usize) {
+        let mut vm = page();
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_promise_code_with_filename(
+            "var hold=Promise.withResolvers();var iterator=(async function*(){await hold.promise;})();iterator.next();",
+            "memory:///generator.js",
+        )).unwrap();
+        vm.execute_script(&mapped_promise_code_with_filename(
+            "iterator.throw('probe');",
+            filename,
+        ))
+        .unwrap();
+        (
+            vm.heap().stats().managed_bytes,
+            vm.host_scheduling_usage().unwrap().payload_bytes,
+        )
+    }
+    let short = "memory:///a.js";
+    let long = format!("memory:///{}.js", "x".repeat(4096));
+    let (short_heap, short_native) = usage(short);
+    let (long_heap, long_native) = usage(&long);
+    assert_eq!(long_heap - short_heap, long.len() - short.len());
+    assert_eq!(long_native, short_native);
+}
+
+#[test]
 fn promise_rejection_records_and_queued_jobs_charge_source_copies() {
     fn usage(filename: &str) -> (usize, usize) {
         let mut vm = page();

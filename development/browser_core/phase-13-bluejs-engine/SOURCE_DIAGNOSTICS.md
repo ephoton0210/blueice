@@ -153,12 +153,43 @@ The fifteen Rust hashes and runtime/test hashes are recorded in
 gates are in `target/promise-origins-validation-20261015.json`.
 This verifies a scoped implementation step, leaving M1q at 3/10 final gates.
 
+Queued async-generator requests retain an immutable origin with their FIFO
+entry. Queue snapshots share this native metadata; its allocation and filename
+capacity are charged to the generator's managed heap bytes. Each head runs
+under its own native provenance scope. Injected throws publish fresh epochs
+before catch/finally can save them. A rejected return operand or a throwing
+getter replaces the request origin; a fulfilled operand preserves it.
+Delegate failures publish their own origin before entering the generator,
+and an abrupt finalizer replaces that origin rather than retaining it.
+No additional JavaScript roots or observable diagnostic properties are added.
+
+The first request regression lost four of nine origins. A twelve-scenario
+follow-up exposed two delegate/finalizer failures after the first nine passed.
+The final twelve scenarios pass with normal and aggressive GC, including
+unknown origins and abrupt replacement. Distinct known/unknown FIFO entries
+with identical rejection values keep their own sources across later scripts;
+a release assertion observes major collection before checking the weak owner.
+Heap tests verify actual filename capacity charges and atomic refusal without
+replacing the original request. All 26 diagnostic groups pass.
+
+Real MCP reproduces an absent queued-throw source against the unchanged old
+runtime binaries, then validates inline line 5, column 25 after `.throw()` and
+`finally` with the new runtime. The final disjoint selection passes 1,841
+cases across twenty targets, one existing ignored, plus formatting and focused
+six-library Clippy. Launcher Python helper startup failures under concurrent
+load and one serial timeout are recorded; an isolated complete replay of the
+identical executable passes all 307 cases with four test threads. The seven
+Rust hashes, runtime/test hashes and per-target receipts are in
+`target/generator-request-origins-source-20261015.json` and
+`target/generator-request-origins-validation-20261015.json`. This extends the
+verified implementation; M1q's final acceptance remains at 3/10.
+
 ## Required remaining work
 
 Precise expression/parameter/generated-code provenance, direct and emitted
 BlueTS, modules and debugger-driven execution still need their full acceptance.
-The complete queued-origin matrix, including async-generator request
-provenance, module failure fan-out and rejected-await/async-disposal finalizer
+The complete queued-origin matrix, including remaining delegate/protocol
+cases, module failure fan-out and rejected-await/async-disposal finalizer
 interactions, remains part of M1q.
 Other copies held by asynchronous diagnostic state must join document-native
 accounting. Navigation, stale generations, GC, source-map refusals and resource

@@ -448,6 +448,7 @@ pub(crate) struct AsyncGeneratorRequest {
     pub(crate) id: u64,
     pub(crate) completion: AsyncGeneratorCompletion,
     pub(crate) target: ObjectId,
+    pub(crate) origin: Rc<crate::diagnostics::ThrowOrigin>,
 }
 
 /// States which prevent `AsyncGeneratorResumeNext` from running a second
@@ -485,13 +486,18 @@ impl AsyncGeneratorControl {
             + self
                 .requests
                 .iter()
-                .map(|request| match &request.completion {
-                    AsyncGeneratorCompletion::Next(value)
-                    | AsyncGeneratorCompletion::Return(value)
-                    | AsyncGeneratorCompletion::Throw(value)
-                    | AsyncGeneratorCompletion::ReturnAwaited(value)
-                    | AsyncGeneratorCompletion::ResumeReturn(value)
-                    | AsyncGeneratorCompletion::ResumeThrow(value) => value.payload_bytes(),
+                .map(|request| {
+                    size_of::<crate::diagnostics::ThrowOrigin>()
+                        + 2 * size_of::<usize>()
+                        + request.origin.payload_bytes()
+                        + match &request.completion {
+                            AsyncGeneratorCompletion::Next(value)
+                            | AsyncGeneratorCompletion::Return(value)
+                            | AsyncGeneratorCompletion::Throw(value)
+                            | AsyncGeneratorCompletion::ReturnAwaited(value)
+                            | AsyncGeneratorCompletion::ResumeReturn(value)
+                            | AsyncGeneratorCompletion::ResumeThrow(value) => value.payload_bytes(),
+                        }
                 })
                 .sum::<usize>()
     }

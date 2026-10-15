@@ -1038,6 +1038,7 @@ fn async_generator_queue_rejects_invalid_brand_serial_and_completion_order() {
         id: 1,
         completion: AsyncGeneratorCompletion::Next(Value::Undefined),
         target: promise,
+        origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
     });
     vm.heap
         .set_async_generator_control(generator, control)
@@ -1070,6 +1071,7 @@ fn async_generator_queue_rejects_invalid_brand_serial_and_completion_order() {
         id: 1,
         completion: AsyncGeneratorCompletion::Next(Value::Undefined),
         target: wrong_target,
+        origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
     });
     vm.heap
         .set_async_generator_control(generator, control)
