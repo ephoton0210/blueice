@@ -87,9 +87,19 @@ fn task_and_frame_replies_release_the_real_vm_timer_payload_charge() {
     let mut host = BlueJsChildHost::default();
     host.configure_script_file_dom_capability(socket_path.clone(), capability)
         .unwrap();
-    let PageHostReply::Synchronized { reports, .. } = host.handle_request(PageHostRequest::SynchronizeDocument {
-        document: document(1, vec![classic(0, "function noop() {} function clearOwned() { clearTimeout(owned); } var owned = setTimeout(noop, 2147483647, 'x'.repeat(400000)); requestAnimationFrame(clearOwned);")]),
-    }) else { panic!("fixed File DOM profile must admit the timer fixture"); };
+    let PageHostReply::Synchronized { reports, .. } =
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(
+                1,
+                vec![classic(
+                    0,
+                    "function noop() {} function clearOwned() { clearTimeout(owned); } var owned;",
+                )],
+            ),
+        })
+    else {
+        panic!("fixed File DOM profile must admit the timer fixture");
+    };
     assert!(matches!(
         reports.as_slice(),
         [PageHostScriptReport {
@@ -97,13 +107,27 @@ fn task_and_frame_replies_release_the_real_vm_timer_payload_charge() {
             ..
         }]
     ));
+    let PageHostReply::RealmStats(baseline) = host.handle_request(PageHostRequest::GetRealmStats {
+        tab_id: 7,
+        document_generation: 1,
+    }) else {
+        panic!("the installed profile's empty native storage must be observable");
+    };
+    let origin = blueice_bluejs::BlueJsPageOrigin::new("https://example.test").unwrap();
+    let handle = host.runtime.install_program(
+        7,
+        &origin,
+        blueice_bluejs::BlueJsSourceIdentity::new("page:///timer-ledger.js", "sha256:timer-ledger").unwrap(),
+        &blueice_bluejs::BlueJsProgramV1::Script(blueice_bluejs::parse("owned = setTimeout(noop, 2147483647, 'x'.repeat(400000)); requestAnimationFrame(clearOwned);").unwrap()),
+    ).unwrap();
+    host.runtime.execute_program(7, handle).unwrap();
     let PageHostReply::RealmStats(before) = host.handle_request(PageHostRequest::GetRealmStats {
         tab_id: 7,
         document_generation: 1,
     }) else {
         panic!("retained timer payload must be observable");
     };
-    assert!(before.scheduling_payload_bytes >= 800000);
+    assert!(before.scheduling_payload_bytes >= baseline.scheduling_payload_bytes + 800000);
     assert!(
         matches!(host.handle_request(PageHostRequest::FlushDragTasks { tab_id: 7, document_generation: 1 }), PageHostReply::DragTasksFlushed { scheduling_payload_bytes, animation_frame_pending: true, .. } if scheduling_payload_bytes == before.scheduling_payload_bytes)
     );
@@ -113,11 +137,11 @@ fn task_and_frame_replies_release_the_real_vm_timer_payload_charge() {
             document_generation: 1
         }),
         PageHostReply::AnimationFrameRendered {
-            scheduling_payload_bytes: 0,
+            scheduling_payload_bytes,
             next_wake_in_ms: None,
             animation_frame_pending: false,
             ..
-        }
+        } if scheduling_payload_bytes == baseline.scheduling_payload_bytes
     ));
     let PageHostReply::RealmStats(after) = host.handle_request(PageHostRequest::GetRealmStats {
         tab_id: 7,
@@ -125,7 +149,10 @@ fn task_and_frame_replies_release_the_real_vm_timer_payload_charge() {
     }) else {
         panic!("completed frame must release its timer storage");
     };
-    assert_eq!(after.scheduling_payload_bytes, 0);
+    assert_eq!(
+        after.scheduling_payload_bytes,
+        baseline.scheduling_payload_bytes
+    );
     drop(host);
     server.join().unwrap();
     std::fs::remove_file(socket_path).unwrap();

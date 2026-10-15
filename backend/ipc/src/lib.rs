@@ -42,6 +42,7 @@ pub mod browser_contexts;
 pub mod compiler;
 pub mod compiler_catalog;
 pub mod compiler_output;
+pub mod console;
 pub mod context_menu;
 pub mod debugger;
 pub mod display;
@@ -338,6 +339,9 @@ pub enum ClientMessage {
     /// This is observability only: it neither enables JavaScript execution nor
     /// exposes a script's source, diagnostics, or runtime values.
     GetBlueJsScriptReports,
+    /// Drains bounded console output from the current document without
+    /// enabling script execution or running any page work.
+    GetConsoleMessages,
     /// Opens a new, blank tab, replied to with [`ServerMessage::TabOpened`]
     /// -- `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal first
     /// slice. `url` is optional purely for convenience (equivalent to
@@ -553,6 +557,7 @@ pub enum ServerMessage {
     /// standard JavaScript declarations executed by an explicitly enabled
     /// BlueJS page host.
     BlueJsScriptReports(Vec<BlueJsScriptExecutionReport>),
+    ConsoleMessages(console::ConsoleMessages),
     /// Reply to [`ClientMessage::OpenTab`]. `url` reflects whatever
     /// actually ended up loaded -- `None` for a blank tab (`OpenTab`
     /// was given no `url`), `Some(final_url)` once a requested

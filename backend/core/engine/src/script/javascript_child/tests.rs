@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 mod authorization;
+mod console;
 mod emitted_map;
 mod lifecycle;
 mod linked_execution;
@@ -363,9 +364,17 @@ struct RecordingChild {
     documents: Vec<PageHostDocument>,
     closes: Vec<(u64, u64)>,
     child_stats_reply: Option<PageHostReply>,
+    console_reply: Option<PageHostReply>,
+    console_requests: Vec<(u64, u64)>,
 }
 
 impl PageHostClient for RecordingChild {
+    fn drain_console(&mut self, tab_id: u64, generation: u64) -> io::Result<PageHostReply> {
+        self.console_requests.push((tab_id, generation));
+        self.console_reply
+            .take()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "console unavailable"))
+    }
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply> {
         let reply = PageHostReply::Synchronized {
             tab_id: document.tab_id,

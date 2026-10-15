@@ -605,6 +605,16 @@ impl BlueIceMcpServer {
 }
 
 mod browser_tools;
+fn console_messages_to_result(messages: &blueice_ipc::console::ConsoleMessages) -> CallToolResult {
+    if !messages.is_well_formed() {
+        return CallToolResult::error(vec![Content::text("Invalid page console reply")]);
+    }
+    let text =
+        serde_json::to_string(messages).expect("console records contain only bounded plain data");
+    CallToolResult::success(vec![Content::text(crate::wrap_untrusted_page_content(
+        &text,
+    ))])
+}
 mod compiler_tools;
 mod download_tools;
 mod locale_tools;

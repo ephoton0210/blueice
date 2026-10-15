@@ -162,6 +162,16 @@ impl PageHostConnection {
 }
 
 impl PageHostClient for PageHostConnection {
+    fn drain_console(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DrainConsole {
+            tab_id,
+            document_generation,
+        })
+    }
     fn animation_frames_available(&self) -> bool {
         true
     }

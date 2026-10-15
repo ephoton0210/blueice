@@ -30,6 +30,13 @@ mod execution;
 mod for_in;
 mod functions;
 mod host_animation_frames;
+mod host_console;
+pub(crate) use host_console::ConsoleFunction;
+pub use host_console::{
+    HostConsoleBatch, HostConsoleRecord, MAX_HOST_CONSOLE_BYTES, MAX_HOST_CONSOLE_GROUP_DEPTH,
+    MAX_HOST_CONSOLE_LABELS, MAX_HOST_CONSOLE_LABEL_BYTES, MAX_HOST_CONSOLE_MESSAGE_BYTES,
+    MAX_HOST_CONSOLE_RECORDS,
+};
 mod host_event_checkpoints;
 mod host_finalization;
 mod host_objects;
@@ -1027,6 +1034,7 @@ pub struct Vm {
     /// only an index into this vector, so GC sees no Rust references.
     host_functions: Vec<Box<dyn HostFunction>>,
     host_promises: host_promises::HostPromiseState,
+    host_console: Option<host_console::ConsoleState>,
     /// Opaque host-object factories and their collector-rooted, realm-private
     /// identity tables. Neither a JavaScript value nor a raw host key enters
     /// a Rust callback through the primitive-only HostValue ABI.

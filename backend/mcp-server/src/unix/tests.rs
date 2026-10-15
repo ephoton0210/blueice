@@ -94,4 +94,5 @@ mod transport;
 
 mod trust;
 
+mod console;
 mod tabs;

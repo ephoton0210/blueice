@@ -8,6 +8,16 @@ use super::*;
 /// separate from a VM/registry prevents the core from bypassing the child's
 /// process boundary and lets focused tests use a recording child peer.
 pub trait PageHostClient {
+    fn drain_console(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Page console is unavailable",
+        ))
+    }
     fn animation_frames_available(&self) -> bool {
         false
     }

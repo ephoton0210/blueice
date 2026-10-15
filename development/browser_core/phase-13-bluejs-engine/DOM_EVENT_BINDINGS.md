@@ -117,6 +117,14 @@ artifacts retain their bytes. Real Core/child JavaScript and checked BlueTS
 fixtures pin every section C global and exercise aliased DOM/timer access.
 This adds no private wire fields, nested browsing contexts or persistent
 WindowProxy. See [the global contract](WINDOW_GLOBALS.md).
+**2026-10-15 console increment:** M1m adds a 52nd
+inventory entry in `core-script-dom-console-v14`, preserving older artifacts.
+The owner installs the 19-method namespace and generated `BlueIceConsole` and
+`window.console` types. Private v60 drains bounded copied records for an exact
+document and refreshes Core's native-payload ledger; MCP publishes them inside
+the untrusted-page boundary. Public profile, real MCP, related Rust and full Test262
+acceptance are recorded in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+See [the console contract](HOST_CONSOLE.md).
 See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).

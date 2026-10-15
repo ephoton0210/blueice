@@ -170,6 +170,17 @@ pub enum BlueTsPageExecutionReport {
 /// executor may both implement it, but a session selects at most one owner for
 /// a page at a time.
 pub trait PageJavaScriptExecutor {
+    /// Reads bounded copied diagnostics; never resumes page execution.
+    fn drain_console(
+        &mut self,
+        _tabs: &TabManager,
+        _tab: TabId,
+    ) -> io::Result<blueice_ipc::console::ConsoleMessages> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Page console is unavailable",
+        ))
+    }
     /// Earliest runnable page task, in Core's monotonic clock. A child
     /// supplies a relative delay rather than sharing its clock epoch.
     fn next_task_wake(&self) -> Option<std::time::Instant> {

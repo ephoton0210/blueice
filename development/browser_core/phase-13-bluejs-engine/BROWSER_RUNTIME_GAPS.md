@@ -25,7 +25,8 @@ shared 64-task browser/cleanup cap; the milestone record tracks final gates. See
 [`browser-integration milestone record`](BROWSER_INTEGRATION_TODO.md#milestone-record)
 for current evidence and remaining task-ordering/resource work. The tables
 below retain the original analysis baseline except for the dated milestone
-updates, including M1l's verified global inventory and v13 File DOM aliases.
+updates, including M1l's verified global inventory/aliases and M1m's v14
+console integration, with real MCP and complete pinned Test262 acceptance.
 
 BlueJS is measured against ECMA-262/402 (Test262 99.995%). That says the
 *language* is nearly complete; it says nothing about whether the engine is a
@@ -84,15 +85,19 @@ bounded pending count, argument forwarding, nested-timer clamping, a host
 
 State is **absent** unless stated. "Host" means the page host owns it.
 M1l now verifies every section C name in the browser-integration TODO through
-real JavaScript and checked BlueTS Core/child pages. The active File DOM v13
+real JavaScript and checked BlueTS Core/child pages. The File DOM v13
 artifact adds top-level `window`/`self`/`top`/`parent` identity and generated
 host-member types; it does not implement nested contexts or WindowProxy.
 See [the global contract](WINDOW_GLOBALS.md).
+M1m advances the profile to v14 with typed console output and
+bounded document-owned diagnostics routed through private v60, Core and MCP.
+Real MCP, related Rust and full pinned Test262 acceptance pass; see the
+[milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
 
 | Group | Names | Layer |
 |---|---|---|
-| Global aliases | `window`, `self`, `top`, `parent` present in the owner-selected File DOM v13 profile (M1l) | Host; top-level realm identity and document lifetime |
-| Diagnostics | `console`, `reportError` | Engine mechanism, host sink (output must be bounded and untrusted-framed) |
+| Global aliases | `window`, `self`, `top`, `parent` present from File DOM v13 (M1l), inherited by v14 | Host; top-level realm identity and document lifetime |
+| Diagnostics | M1m implements bounded `console` in File DOM v14 with accepted Core/MCP output. `reportError` and global error/rejection reporting remain absent. | Engine mechanism, document-owned host sink; see `HOST_CONSOLE.md` |
 | Encoding | `TextEncoder`, `TextDecoder`, `atob`, `btoa` | Engine |
 | Cloning/identity | `structuredClone`, `crypto.getRandomValues`/`randomUUID`, `performance.now`/`timeOrigin` | Engine (clock and entropy must be injectable for tests) |
 | URL | `URL` present (`vm/web_url.rs`); `URLSearchParams` absent | Engine |

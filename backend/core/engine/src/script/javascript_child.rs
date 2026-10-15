@@ -1260,6 +1260,53 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
 }
 
 impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExecutor<C> {
+    fn drain_console(
+        &mut self,
+        tabs: &TabManager,
+        tab: TabId,
+    ) -> io::Result<blueice_ipc::console::ConsoleMessages> {
+        let identity = tabs
+            .get(tab)
+            .and_then(live_page_identity)
+            .filter(|identity| self.live_documents.get(&tab) == Some(identity))
+            .ok_or_else(|| io::Error::other("Page console document is unavailable"))?;
+        let reply = match self
+            .child
+            .drain_console(tab.as_u64(), identity.document_generation)
+        {
+            Ok(reply) => reply,
+            Err(error) if error.kind() == io::ErrorKind::Unsupported => return Err(error),
+            Err(_) => {
+                self.close_page(tab);
+                self.live_documents.insert(tab, identity);
+                return Err(io::Error::other("Page console transport failed"));
+            }
+        };
+        if let PageHostReply::ConsoleMessages {
+            messages,
+            scheduling_payload_bytes,
+        } = reply
+        {
+            if messages.tab_id == tab.as_u64()
+                && messages.document_generation == identity.document_generation
+                && messages.is_well_formed()
+            {
+                if let Some(stats) = self.realm_stats.get_mut(&tab) {
+                    let updated = PageHostRealmStats {
+                        scheduling_payload_bytes,
+                        ..stats.clone()
+                    };
+                    if updated.is_well_formed() {
+                        *stats = updated;
+                        return Ok(messages);
+                    }
+                }
+            }
+        }
+        self.close_page(tab);
+        self.live_documents.insert(tab, identity);
+        Err(io::Error::other("Page console reply is invalid"))
+    }
     fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()> {
         Self::synchronize_and_execute(self, tabs)
     }

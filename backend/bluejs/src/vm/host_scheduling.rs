@@ -13,7 +13,8 @@ pub const MAX_PENDING_HOST_REACTIONS: usize = 1024;
 pub const MAX_PENDING_BROWSER_TASKS: usize = 64;
 pub const MAX_HOST_SCHEDULING_BYTES: usize = 8 * 1024 * 1024;
 
-/// Owned scheduling slot capacities and payloads, separate from managed heap
+/// Owned scheduling slot capacities and native host payloads (including the
+/// bounded console buffer), separate from managed heap
 /// and shared installed bytecode. Allocator/control-table overhead, spare
 /// BigInt limb capacity and process RSS are not represented by this ledger.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -483,6 +484,11 @@ impl Vm {
                 .saturating_mul(std::mem::size_of::<PromiseJob>())
                 .saturating_add(self.active_scheduling_bytes),
         };
+        usage.payload_bytes = usage.payload_bytes.saturating_add(
+            self.host_console
+                .as_ref()
+                .map_or(0, |console| console.payload_bytes()),
+        );
         usage.payload_bytes = usage.payload_bytes.saturating_add(
             self.host_promises
                 .pending

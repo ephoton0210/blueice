@@ -35,6 +35,16 @@ and BlueTS lines. The baseline descriptions below remain the original gap
 inventory; the dated milestone records identify what has actually been
 implemented and verified on `feature/bluejs-browser-integration-gaps`.
 
+**Latest milestone — M1m console integration (2026-10-15).**
+The VM console, bounded diagnostic storage/accounting, v14 host typings,
+private v60 drain, Core validation and MCP tool are implemented in the
+owner-selected File DOM profile. Public VM/profile and Core/MCP boundaries,
+real MCP acceptance, 3,488 related Rust cases, the workspace/all-target build,
+Clippy and formatting pass. All 102,926 pinned Test262 modes match M1l's accepted inventory and
+results: 102,921 pass, one stale corpus and four exclusions, with no new
+failure or timeout. See the
+[M1m milestone record](#m1m--page-console-and-mcp-diagnostics-2026-10-15).
+
 ## A. Event loop and scheduling (P0)
 
 The integrated branch has host-owned Promise checkpoints and session-driven
@@ -194,7 +204,12 @@ exists). Several exist on the product line, marked below.
       tab/navigation isolation and real JavaScript/BlueTS DOM/timer use are
       covered; frames and a navigation-stable WindowProxy remain outside
       this increment. See [the global contract](WINDOW_GLOBALS.md).
-- [ ] `console` (log/warn/error/...) routed to the devtools/MCP surface
+- [x] `console` (log/warn/error/...) routed to the devtools/MCP surface —
+      **M1m:** implemented the 19-method namespace, bounded
+      copied output and Core/MCP drain with v14 typings. Initial public
+      VM/profile, Core/MCP, real MCP and final Rust/Clippy/build gates pass;
+      the complete pinned Test262 comparison matches M1l.
+      See [the diagnostic contract](HOST_CONSOLE.md).
 - [ ] `location`, `history`, `navigator`
 - [x] `URL` **(product line, integrated)** — M1l pins the installed global.
 - [ ] `URLSearchParams`
@@ -317,16 +332,18 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
       DOM profile typed timers and `queueMicrotask`; network waits still need
       section E. M1k verifies that page-module top-level await resumes from a
       later external completion task through the public runtime.
-- [ ] **No `console` or `fetch`** for typed page code. `setTimeout` and the
-      other M1b scheduling functions are now in the exact File DOM artifact.
+- [ ] **Typed `fetch` remains absent.** M1m implements typed `console` and
+      `window.console` in the exact File DOM v14 artifact; its public typing
+      test and real mixed-language MCP acceptance pass, as do the final
+      milestone gates. M1b already supplies typed scheduling functions.
 - [ ] **Ambient value queries and missing intermediate members.** M1l
       probes found that host-interface fields using `typeof setTimeout` do
       not retain the ambient function signature, and checked
-      `window.console.log('missing')` can pass despite absent `console`.
+      `window.console.log('missing')` can pass against v13 despite absent `console`.
       Acceptance must reject that chained access and preserve ambient value
       queries across declaration modules and local shadowing. The v13 Window
       member generator uses existing declaration text; these compiler gaps
-      are not claimed fixed by installing aliases.
+      are not claimed fixed by installing aliases or v14's console binding.
 - [ ] **Uncaught errors and rejections** cannot be mapped back to BlueTS
       original positions until the host reports them (section B); today
       only debugger pauses use the safe-point map (*verify* for thrown
@@ -415,6 +432,91 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1m — Page console and MCP diagnostics (2026-10-15)
+
+- [x] Implement and verify the complete public console VM target (10 cases).
+- [x] Generate v14 namespace/window typings and pass refusal controls.
+- [x] Pass Core containment and MCP transport/untrusted-framing boundaries.
+- [x] Pass the real official-MCP-client → Core → child acceptance.
+- [x] Pass `cargo fmt --all -- --check`.
+- [x] Finish the final related Rust regression batch (3,488 passed; 1 ignored;
+      38 targets after rerunning the three affected targets).
+- [x] Pass the final workspace/all-target production build.
+- [x] Pass final workspace/all-target Clippy.
+- [x] Compare the complete pinned Test262 inventory against M1l.
+- [x] Finalize milestone documentation and the detailed English commit.
+
+- **Delivered:** an owner-installed console namespace
+  with logging/assertion/inspection/trace/group/count/timer methods; bounded
+  copied records; native-byte accounting; exact File DOM v14 typings;
+  private v60 document-bound drain; Core reply validation/containment; and
+  MCP `get_console_messages` with untrusted-page-content framing.
+- **Verified so far:** the new real Core/child fixture first failed on
+  `console.log` before installation. Six initial public VM cases passed,
+  including formatting/coercion, exception propagation, side-effect-free
+  object previews, stateful methods and retained byte/count limits. The
+  public typing case passed valid namespace/window calls and wrong-argument
+  refusal controls. The first `cargo build --workspace --all-targets`
+  passed after adding the frontend's new-message branch.
+- **Review follow-ups implemented:** lossless
+  UTF-16 count/timer keys, native instruction fuel for long unknown format
+  specifiers, UTF-8 truncation that preserves a prefix, per-tab/navigation
+  cleanup, malformed Core reply containment and MCP transport/framing tests.
+  The focused batch passed four selected public VM cases, the typing case,
+  four Core cases and two MCP cases. The complete ten-case VM target also
+  passed unfiltered against that freshly built test binary, including native
+  fuel, lossless labels and UTF-8 prefix controls. Logs:
+  `/private/tmp/blueice-console-vm-complete.log` and
+  `/private/tmp/blueice-console-boundaries.log`.
+- **Real MCP acceptance passed:** official MCP client → Core → BlueJS
+  child, mixed JavaScript/checked BlueTS, microtask/timer/native-click logs,
+  draining and navigation isolation (one test, zero failures). Repeated
+  against the final production build: passed in 4.71s. Final log:
+  `/private/tmp/blueice-console-mcp-final.log` (initial run:
+  `/private/tmp/blueice-console-mcp-e2e.log`).
+- **Full pinned Test262 accepted:** 102,921 / 102,926 modes pass, with the
+  unchanged one `stale_corpus` and four exclusions, zero failures/timeouts,
+  in 394.494s. Every unique path/mode, source hash, expectation, flag and
+  disposition/result kind/phase matches M1l; only elapsed time and diagnostic
+  text are ignored per mode, and only binary hashes/elapsed time differ in
+  the summary. Frozen executable hashes remain intact. The
+  [unmodified machine summary](test262-browser-console-macos-summary.json)
+  is committed; raw results and comparison remain in
+  `target/test262-console-full-20261015/`. Full-run log:
+  `/private/tmp/blueice-console-test262.log`.
+- **Final Rust/build gates passed:** `cargo fmt --all -- --check`, workspace/
+  all-target production build and workspace/all-target Clippy with
+  `-D warnings`. Build/Clippy logs:
+  `/private/tmp/blueice-console-final-build.log` and
+  `/private/tmp/blueice-console-clippy-final.log`. Updated test sources also
+  pass targeted Clippy in `/private/tmp/blueice-console-affected-clippy-final.log`.
+- **Regression follow-up:** the broad batch exposed an older launcher test
+  that expected zero native bytes after timer/frame cleanup. Console's fixed
+  empty queue is now deliberately retained and charged. The test now measures
+  the installed profile's baseline before admitting timer work and requires
+  cleanup to return exactly to it; all ten launcher resource-accounting
+  cases passed their focused rerun (`/private/tmp/blueice-console-ledger-rerun.log`). The broad
+  batch also exposed the IPC test's old hard-coded v59 assertion (updated
+  to v60) and a frame/Representation generation mismatch in the existing
+  abort-timeout fixture during concurrent Clippy. All three affected targets
+  passed complete reruns; the strict frame assertion was not relaxed. The
+  remaining broad targets, including all 160 MCP library cases, passed.
+  Complete affected-target rerun:
+  `/private/tmp/blueice-console-affected-targets-final.log`.
+- Full behavior and limits are recorded in [HOST_CONSOLE.md](HOST_CONSOLE.md).
+  Console's MCP route is complete; global error/rejection delivery, source-map
+  positions, real request-service ingress and broader host buffers remain open.
+
+**Accepted Rust inventory:** 3,123 library cases, 352 public runtime/profile
+cases and 13 real Core/child page cases pass after the affected-target rerun;
+one existing launcher case remains ignored. The separate real MCP acceptance
+also passes. The audit preserves the broad batch's exit 101 and the successful
+three-target rerun, rather than presenting the first run as green:
+`target/console-rust-validation-20261015.json`. Targeted Clippy for the updated
+test sources and the final format check pass. Full pinned Test262 also passes
+the comparison above. This is macOS acceptance; no fresh full-workspace test
+suite, coverage or other-platform claim is made.
 
 ### M1l — Top-level global aliases and verified page inventory (2026-10-15)
 

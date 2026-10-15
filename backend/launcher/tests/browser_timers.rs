@@ -276,6 +276,22 @@ fn fixture(body: String) -> (Fixture, String, PathBuf) {
 }
 
 #[test]
+fn javascript_and_bluets_console_logging_keeps_page_tasks_rendering() {
+    counter_frames(
+        "let count: number = 0;
+        console.log('initial');
+        function tick(): void {
+            count += 1; console.warn('tick:%d', count);
+            window.document.getElementById('counter')!.textContent = 'tick:' + count;
+            if (count < 3) { window.setTimeout(tick, 500); }
+            else { console.error('finished', count); }
+        }
+        window.setTimeout(tick, 500);",
+        true,
+    );
+}
+
+#[test]
 fn javascript_and_bluets_pin_the_browser_integration_global_inventory() {
     // Every global named in section C of BROWSER_INTEGRATION_TODO.md, plus
     // the installed scheduling and DOM entries. These expectations are an
@@ -285,7 +301,7 @@ fn javascript_and_bluets_pin_the_browser_integration_global_inventory() {
         ("self", "object"),
         ("top", "object"),
         ("parent", "object"),
-        ("console", "undefined"),
+        ("console", "object"),
         ("location", "undefined"),
         ("history", "undefined"),
         ("navigator", "undefined"),

@@ -1847,6 +1847,7 @@ mod unix {
                     | ServerMessage::Dom(_)
                     | ServerMessage::BlueTsScriptReports(_)
                     | ServerMessage::BlueJsScriptReports(_)
+                    | ServerMessage::ConsoleMessages(_)
                     | ServerMessage::Hello { .. }
                     | ServerMessage::NavigationStarted { .. }
                     | ServerMessage::NavigationDownloadStarted { .. }

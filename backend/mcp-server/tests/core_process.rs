@@ -37,6 +37,8 @@ mod compiler_failures;
 mod compiler_output;
 #[path = "core_process/compiler_round_trip.rs"]
 mod compiler_round_trip;
+#[path = "core_process/console.rs"]
+mod console;
 
 #[derive(Debug, Clone, Default)]
 struct CompilerMcpClient;
@@ -203,6 +205,10 @@ impl LauncherManagedCore {
     }
 
     fn spawn_with_catalog(catalog: Option<CompilerCatalogBootstrap>) -> Self {
+        Self::spawn_with_profile(catalog, false)
+    }
+
+    fn spawn_with_profile(catalog: Option<CompilerCatalogBootstrap>, console: bool) -> Self {
         let rendezvous_socket = unique_socket_path("launcher-rendezvous");
         let control_socket = unique_socket_path("launcher-control");
         let compiler_socket = unique_socket_path("launcher-compiler");
@@ -223,6 +229,11 @@ impl LauncherManagedCore {
             None => CoreLaunchOptions::default()
                 .with_gatekeeper_socket(gatekeeper_socket.clone())
                 .with_core_closed_compiler_mcp_endpoint(compiler_socket.clone()),
+        };
+        let options = if console {
+            options.supervise_out_of_process_bluejs_with_page_dom()
+        } else {
+            options
         };
         let core = SpawnedCore::spawn_with_options(320.0, 200.0, &frame_dir, options)
             .expect("launcher must start a core with its fixed compiler profile");

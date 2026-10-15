@@ -4,6 +4,8 @@
 
 //! Private, versioned transport between `blueice-launcher` and its isolated
 //! BlueJS page host child.
+//! Version 60 adds a bounded, exact-document console drain. Copied diagnostic
+//! payloads share the existing document-owned native-byte accounting.
 //!
 //! This is intentionally neither the public frontend protocol nor the narrow
 //! script-to-DOM channel. A launcher creates one private Unix socket and a
@@ -169,7 +171,7 @@ pub use drag_drop::{
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 59;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 60;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
@@ -516,6 +518,11 @@ impl PageHostChildStats {
 /// cannot claim the child before its launcher does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageHostRequest {
+    /// Drains copied console output for exactly one current child document.
+    DrainConsole {
+        tab_id: u64,
+        document_generation: u64,
+    },
     /// A Core-owned render opportunity, separate from ordinary task turns.
     RunAnimationFrame {
         tab_id: u64,
@@ -976,6 +983,10 @@ pub enum PageHostRequest {
 /// Child replies for [`PageHostRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageHostReply {
+    ConsoleMessages {
+        messages: crate::console::ConsoleMessages,
+        scheduling_payload_bytes: u64,
+    },
     AnimationFrameRendered {
         tab_id: u64,
         document_generation: u64,

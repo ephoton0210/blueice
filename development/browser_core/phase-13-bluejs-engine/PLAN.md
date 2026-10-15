@@ -32,8 +32,18 @@ typings and four top-level global aliases. `BlueIceWindow` host members reuse
 existing declaration signatures; the older artifacts stay immutable.
 Real Core/child JavaScript and checked BlueTS pages pin the browser-global
 inventory and exercise aliased DOM/scheduling access. Nested contexts,
-navigation-stable WindowProxy, console and global error/rejection reporting
+navigation-stable WindowProxy and global error/rejection reporting
 remain open. See [the global contract](WINDOW_GLOBALS.md).
+
+**M1m console integration:** The File DOM profile adds an
+owner-installed 19-method console, bounded copied diagnostic records and native
+payload accounting. File DOM v14 provides matching namespace/window typings;
+private v60 carries an exact-document drain through Core to MCP's
+`get_console_messages`. Public profile, Core/MCP boundary and real MCP
+acceptance pass, as do the related Rust, build, Clippy and format gates.
+All 102,926 pinned Test262 modes match M1l's accepted source/result inventory.
+See [the console contract](HOST_CONSOLE.md) and the
+[live milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
 
 ## Ubuntu verification scope (2026-09-19)
 

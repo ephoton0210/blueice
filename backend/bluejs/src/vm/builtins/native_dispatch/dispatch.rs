@@ -199,6 +199,7 @@ impl Vm {
                 self.host_animation_frame_call(function, &args, construct)
             }
             NativeFunction::WindowAliasGet => self.window_alias_call(&receiver, None, construct),
+            NativeFunction::Console(function) => self.console_call(function, &args, construct),
             NativeFunction::WindowAliasSet(name) => {
                 self.window_alias_call(&receiver, Some((name, first.clone())), construct)
             }

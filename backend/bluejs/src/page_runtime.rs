@@ -298,6 +298,10 @@ impl BlueJsHostBindingRegistrar<'_> {
         self.vm.install_window_aliases()
     }
 
+    pub fn install_host_console(&mut self) -> Result<(), RuntimeError> {
+        self.vm.install_host_console()
+    }
+
     /// Installs the same functions with a host-owned monotonic millisecond
     /// clock. Scheduling samples it after argument conversion and interval
     /// callbacks, so long-running scripts do not schedule against an old tick.
@@ -633,6 +637,19 @@ impl BlueJsPageRuntime {
             .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
             .vm
             .next_host_task_wake(now_ms)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
+    /// Drains copied console records for this exact realm without running JS.
+    pub fn drain_console(
+        &mut self,
+        tab_id: u64,
+    ) -> Result<crate::HostConsoleBatch, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .drain_host_console()
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 

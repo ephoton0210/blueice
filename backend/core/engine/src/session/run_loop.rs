@@ -1608,6 +1608,31 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         }
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
+                    ClientMessage::GetConsoleMessages => {
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                        } else {
+                            let result = page_script_runtime
+                                .javascript_executor
+                                .as_deref_mut()
+                                .ok_or_else(|| io::Error::other("Page console is unavailable"))
+                                .and_then(|executor| executor.drain_console(tabs, target));
+                            match result {
+                                Ok(messages) => blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::ConsoleMessages(messages),
+                                )?,
+                                Err(_) => write_error(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    "Page console is unavailable".into(),
+                                )?,
+                            }
+                        }
+                    }
                     ClientMessage::GetBlueJsScriptReports => match tabs.get(target) {
                         Some(_) => match page_script_runtime.javascript_executor.as_deref_mut() {
                             Some(executor) => blueice_ipc::write_server_message_with_ids(

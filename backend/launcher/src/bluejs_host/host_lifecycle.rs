@@ -132,6 +132,10 @@ impl BlueJsChildHost {
     /// than accidentally resetting host state.
     pub fn handle_request(&mut self, request: PageHostRequest) -> PageHostReply {
         match request {
+            PageHostRequest::DrainConsole {
+                tab_id,
+                document_generation,
+            } => self.drain_console(tab_id, document_generation),
             PageHostRequest::RunAnimationFrame {
                 tab_id,
                 document_generation,
@@ -1504,6 +1508,46 @@ impl BlueJsChildHost {
                     document_generation,
                 }
             }
+        }
+    }
+
+    fn drain_console(&mut self, tab_id: u64, document_generation: u64) -> PageHostReply {
+        let Some(document) = self.documents.get(&tab_id) else {
+            return unknown_realm();
+        };
+        if document.generation != document_generation {
+            return stale_document();
+        }
+        let Ok(batch) = self.runtime.drain_console(tab_id) else {
+            return host_failure();
+        };
+        let Ok(stats) = self.runtime.realm_stats(tab_id) else {
+            return host_failure();
+        };
+        let messages = blueice_ipc::console::ConsoleMessages {
+            tab_id,
+            document_generation,
+            dropped_records: batch.dropped_records,
+            records: batch
+                .records
+                .into_iter()
+                .map(|record| blueice_ipc::console::ConsoleRecord {
+                    sequence: record.sequence,
+                    timestamp_ms: record.timestamp_ms,
+                    method: record.method.into(),
+                    level: record.level.into(),
+                    group_depth: record.group_depth,
+                    message: record.message,
+                    truncated: record.truncated,
+                })
+                .collect(),
+        };
+        if !messages.is_well_formed() {
+            return host_failure();
+        }
+        PageHostReply::ConsoleMessages {
+            messages,
+            scheduling_payload_bytes: stats.scheduling.payload_bytes as u64,
         }
     }
 

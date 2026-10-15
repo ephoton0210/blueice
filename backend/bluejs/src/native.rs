@@ -370,6 +370,7 @@ pub(crate) enum NativeFunction {
     HostAnimationFrame(crate::vm::HostAnimationFrameFunction),
     WindowAliasGet,
     WindowAliasSet(&'static str),
+    Console(crate::vm::ConsoleFunction),
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

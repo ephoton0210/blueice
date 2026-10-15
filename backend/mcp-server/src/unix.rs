@@ -148,6 +148,60 @@ pub struct CoreConnection<S> {
 }
 
 impl<S: Read + Write> CoreConnection<S> {
+    /// Drains the addressed document's bounded console snapshot. This never
+    /// triggers page execution and rejects mismatched or malformed replies.
+    pub fn console_messages(
+        &mut self,
+        tab_id: Option<u64>,
+    ) -> io::Result<blueice_ipc::console::ConsoleMessages> {
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            tab_id,
+            Some(request_id),
+            &ClientMessage::GetConsoleMessages,
+        )?;
+        loop {
+            let (reply_tab, reply_id, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            if let ServerMessage::FrameReady {
+                shm_path,
+                width,
+                height,
+                generation,
+            } = message
+            {
+                self.record_frame(
+                    reply_tab,
+                    FrameInfo {
+                        shm_path,
+                        width,
+                        height,
+                        generation,
+                    },
+                    false,
+                );
+                continue;
+            }
+            if reply_id != Some(request_id) {
+                continue;
+            }
+            return match message {
+                ServerMessage::ConsoleMessages(messages)
+                    if messages.is_well_formed()
+                        && reply_tab == Some(messages.tab_id)
+                        && messages.tab_id == tab_id.unwrap_or(1) =>
+                {
+                    Ok(messages)
+                }
+                ServerMessage::Error { .. } => Err(io::Error::other("Page console is unavailable")),
+                _ => Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Invalid page console reply",
+                )),
+            };
+        }
+    }
     pub fn new(stream: S) -> Self {
         CoreConnection {
             stream,
@@ -239,6 +293,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Dom(_)
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
+                | ServerMessage::ConsoleMessages(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
@@ -361,6 +416,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Dom(_)
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
+                | ServerMessage::ConsoleMessages(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
@@ -630,6 +686,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Dom(_)
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
+                | ServerMessage::ConsoleMessages(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
@@ -716,6 +773,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Representation(_)
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
+                | ServerMessage::ConsoleMessages(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
                 | ServerMessage::FindState(_)
@@ -848,6 +906,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Dom(_)
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
+                | ServerMessage::ConsoleMessages(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
@@ -931,6 +990,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Dom(_)
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
+                | ServerMessage::ConsoleMessages(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
@@ -1013,6 +1073,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Dom(_)
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
+                | ServerMessage::ConsoleMessages(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
@@ -1107,6 +1168,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Dom(_)
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
+                | ServerMessage::ConsoleMessages(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
@@ -1241,6 +1303,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Dom(_)
                 | ServerMessage::BlueTsScriptReports(_)
                 | ServerMessage::BlueJsScriptReports(_)
+                | ServerMessage::ConsoleMessages(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::TextInputState(_)
