@@ -1,0 +1,2 @@
+internal	accept	dep/tsconfig.json;tsconfig.json
+symlink-escape	accept	dep/tsconfig.json;tsconfig.json

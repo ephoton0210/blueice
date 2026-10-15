@@ -10764,3 +10764,28 @@ and Node 24.21.0. Every ordinary and ignored oracle runs, including the
 previous project build-order, freshness and referenced-declaration suites;
 Cargo incremental compilation and dev/test debug symbols were disabled to
 bound regenerated artifacts. The reference-escape gate remains K.12.1.6.
+
+### K.12.1.6 Reference owner gate (2026-10-15)
+
+The two-row multi-project fixture distinguishes an ordinary in-root
+reference from `owner/dep` symlinked to a sibling directory outside the
+canonical owner root. Pinned TypeScript 5.9.3 `--build --verbose` records
+the same dependency-before-root order for both; its symlink row follows
+the link and builds the external project. This is an intentional divergence:
+BlueTSC's J.4.3 owner-only policy checks the reference path's canonical
+ancestor before loading the referenced configuration, so the linked row
+fails with an explicit `resolves outside project root` diagnostic under
+1 KiB. The external marker remains unchanged and neither the external
+project nor the owner publishes outputs. The in-root control builds both
+projects in pinned order, publishes their declarations and runs the root
+export under Node. The ignored recorder can refresh the matrix with
+`BLUEICE_WRITE_PROJECT_OWNER_GATE_MATRIX=1`.
+
+The existing configuration reader already enforced this boundary; no
+production Rust change was needed. All three focused tests pass, as do
+workspace rustfmt, warnings-denied two-crate all-target Clippy and the
+complete K.0 two-crate test gate with pinned TypeScript 5.9.3, Acorn 8.15.0
+and Node 24.21.0, including every ignored oracle. Cargo incremental
+compilation and dev/test debug symbols were disabled to bound artifacts.
+AC-K12.1.1 through AC-K12.1.6 are now checked; default `--build` error
+continuation and K.12.2 incremental/watch behavior remain named gaps.

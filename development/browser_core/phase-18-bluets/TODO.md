@@ -580,7 +580,7 @@ Entry condition: AC-K11.F is closed. Depends on K.2 and K.9. Each item uses a co
 fixture set run against pinned `tsc` 5.9.3 `--build`, comparing *what is rebuilt and in what order*,
 not `.tsbuildinfo` bytes.
 
-- [ ] **K.12.1 References and build (XL).**
+- [x] **K.12.1 References and build (XL).**
   - [x] **AC-K12.1.1 Reference graph.** `references` + `composite` load a project graph; `composite`
     violations (missing `declaration`, file not covered by `include`) and cyclic references produce
     TS-coded diagnostics. *Pass when:* >= 8 reject fixtures match `tsc` primary code/position.
@@ -601,8 +601,9 @@ not `.tsbuildinfo` bytes.
     reporting match `tsc`. The default `--build` mode can still attempt dependents after errors.
     *Pass when:* >= 3 fixtures.
     - *Evidence:* PLAN.md, "K.12.1.5 Build errors" (2026-10-15): three pinned ordered-event fixtures, exact blocked/skip reasons and exit codes, K.0 two-crate gate.
-  - [ ] **AC-K12.1.6 Gate.** Owner-only root rules (J.4.3) hold: a reference outside the canonical root
+  - [x] **AC-K12.1.6 Gate.** Owner-only root rules (J.4.3) hold: a reference outside the canonical root
     is refused. *Pass when:* a symlink-escape fixture is refused with a bounded diagnostic.
+    - *Evidence:* PLAN.md, "K.12.1.6 Reference owner gate" (2026-10-15): pinned two-row build-order matrix, internal emit/run control, symlink escape refused before outside read or emission with a bounded diagnostic, K.0 two-crate gate.
 - [ ] **K.12.2 Incremental and watch (L).**
   - [ ] **AC-K12.2.1 Cache key.** Key binds source hashes, compiler options and graph/configuration
     fingerprint (J.4.3). *Pass when:* changing any one of the three misses the cache (3 tests).
