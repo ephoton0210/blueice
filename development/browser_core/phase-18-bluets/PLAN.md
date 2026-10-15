@@ -10979,3 +10979,26 @@ The refusal inventory script was rerun and section 4 remains identical.
 This is path/launch evidence, not a claim that the full TypeScript oracle
 matrix has run on Windows; symlink skip/report policy and hosted Windows
 legs remain K.13.1.2 and K.13.1.3.
+
+### K.13.1.2 Windows symlink test visibility (2026-10-16)
+
+The existing Unix-gated symlink fixtures are not silently counted as Windows
+passes. A source-derived CI report names all 24 test functions omitted by
+`#[cfg(unix)]` plus the repointed-symlink pinned oracle row filtered by
+`cfg!(unix)`. Each of the 25 entries prints `SKIPPED`, its source and the
+specific compile-time exclusion reason. The CI steps are wired to print
+the report in the Windows job log and append it to `GITHUB_STEP_SUMMARY`.
+The build/test matrix invokes the report after its
+workspace suite, even if that suite fails; the future Windows
+`typescript-oracle` legs invoke the same report after their differential
+suite. The report's three Node tests verify attribute-order discovery,
+the complete named inventory and exact log/summary output.
+
+A direct symlink-creation probe on the pb60g Windows VM succeeds. This
+checkpoint makes the current skip behavior auditable; it does not claim
+those Unix-specific fixtures have been ported or that Windows symlink
+policy is equivalent. That remains an explicit G-M3 limitation.
+
+The refusal inventory script was rerun without a section 4 change.
+`cargo fmt --all -- --check`, warnings-denied two-crate all-target Clippy,
+and the complete two-crate test suite with all ignored oracles exit 0.

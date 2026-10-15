@@ -188,6 +188,12 @@ jobs:
         run: cargo build --workspace --all-targets
       - name: Test
         run: cargo test --workspace
+      - name: Verify Windows symlink exclusion inventory
+        if: runner.os == 'Windows'
+        run: node --test development/browser_core/phase-18-bluets/tools/report_windows_symlink_tests.test.cjs
+      - name: Report Windows symlink exclusions
+        if: runner.os == 'Windows' && always()
+        run: node development/browser_core/phase-18-bluets/tools/report_windows_symlink_tests.cjs
       - name: NumberFormat Node differential matrix
         run: >-
           cargo test -p blueice-bluejs --test node_differential
@@ -329,6 +335,9 @@ jobs:
           npm exec --yes --package typescript@5.9.3 --package acorn@8.15.0 --
           env BLUEICE_BLUETSC_ORACLE=tsc BLUEICE_ACORN_ORACLE=acorn FORCE_COLOR=0
           cargo test -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --ignored
+      - name: Report Windows symlink exclusions
+        if: runner.os == 'Windows' && always()
+        run: node development/browser_core/phase-18-bluets/tools/report_windows_symlink_tests.cjs
 
   # The single check branch protection requires. It depends on every other
   # job and fails unless all of them succeeded, so the build matrix above can
