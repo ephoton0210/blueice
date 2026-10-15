@@ -1781,6 +1781,10 @@ impl Vm {
         // Whatever this call runs belongs to its own realm, not to the realm a
         // running native is acting for (see `acting_realm`).
         let acting_realm = self.acting_realm.take();
+        // A successful callback, including a tail-call transition, must not
+        // leave a caught throw masquerading as a later native failure. Move
+        // the caller's provenance aside without copying its filename.
+        let ambient_origin = self.take_pending_throw_origin();
         let result = self
             .dispatch_call(callee, receiver, args, construct)
             .and_then(|value| {
@@ -1809,6 +1813,9 @@ impl Vm {
         }
         self.call_depth -= 1;
         self.stack.truncate(base);
+        if result.is_ok() {
+            self.restore_pending_throw_origin(ambient_origin);
+        }
         result
     }
 

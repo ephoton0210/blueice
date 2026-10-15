@@ -1530,6 +1530,63 @@ fn decorator_application_checks_keep_each_evaluated_expression_origin() {
 }
 
 #[test]
+fn native_and_proxy_decorators_keep_application_and_callback_origins() {
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name, source, expected) in [
+            ("native constructor", "@WeakMap\nclass C {}", "memory:///position.js:1:2"),
+            ("bound native", "var dec=WeakMap.bind(null);\n@dec class C {}", "memory:///position.js:2:2"),
+            ("revoked proxy", "var record=Proxy.revocable(function(){},{}),dec=record.proxy;record.revoke();\n@dec class C {}", "memory:///position.js:2:2"),
+            ("invalid apply", "var dec=new Proxy(function(){},{apply:0});\n@dec class C {}", "memory:///position.js:2:2"),
+            ("apply getter caught noise", "var dec=new Proxy(function(){},{get apply(){try{missing;}catch{}return 0;}});\n@dec class C {}", "memory:///position.js:2:2"),
+            ("apply getter caught dynamic noise", "var dec=new Proxy(function(){},{get apply(){return Function(\"try{missing;}catch{}return 0;\")();}});\n@dec class C {}", "memory:///position.js:2:2"),
+            ("forwarded native", "var dec=new Proxy(WeakMap,{});\n@dec class C {}", "memory:///position.js:2:2"),
+            ("native apply", "var dec=new Proxy(function(){},{apply:WeakMap});\n@dec class C {}", "memory:///position.js:2:2"),
+            ("stacked native", "var first=WeakMap,second=WeakMap;\n@first\n@second class C {}", "memory:///position.js:3:2"),
+            ("successful neighbor caught noise", "var bad=WeakMap;function ok(){try{missing;}catch{}}\n@bad\n@ok\nclass C {}", "memory:///position.js:2:2"),
+            ("member native", "class C {\n @WeakMap method(){} }", "memory:///position.js:2:3"),
+            ("member invalid apply", "var dec=new Proxy(function(){},{apply:0});class C {\n @dec method(){} }", "memory:///position.js:2:3"),
+            ("revoked accessor result", "function dec(){var record=Proxy.revocable({},{});record.revoke();return record.proxy;}\nclass C {\n @dec accessor value=1; }", "memory:///position.js:3:3"),
+            ("accessor result invariant after caught noise", "function dec(){return new Proxy(Object.defineProperty({},'get',{value:1}),{get(){try{missing;}catch{}return 0;}});}\nclass C {\n @dec accessor value=1; }", "memory:///position.js:3:3"),
+            ("apply body throw", "var dec=new Proxy(function(){},{apply(){\n throw 'trap';}});\n@dec class C {}", "memory:///position.js:2:2"),
+            ("apply getter throw", "var dec=new Proxy(function(){},{get apply(){\n throw 'getter';}});\n@dec class C {}", "memory:///position.js:2:2"),
+            ("apply body native failure", "var dec=new Proxy(function(){},{apply(){\n WeakMap();}});\n@dec class C {}", "memory:///position.js:2:2"),
+            ("apply dynamic throw", "var dec=new Proxy(function(){},{apply:Function(\"throw 'dynamic';\")});\n@dec class C {}", ":0:0"),
+            ("apply getter dynamic throw", "var dec=new Proxy(function(){},{get apply(){Function(\"throw 'dynamic';\")();}});\n@dec class C {}", ":0:0"),
+            ("apply dynamic native failure", "var dec=new Proxy(function(){},{apply:Function(\"WeakMap();\")});\n@dec class C {}", ":0:0"),
+            ("accessor result trap throw", "function dec(){return new Proxy({},{get(){\n throw 'trap';}});}\nclass C { @dec accessor value=1; }", "memory:///position.js:2:2"),
+            ("accessor result dynamic throw", "function dec(){return new Proxy({},{get:Function(\"throw 'dynamic';\")});}\nclass C { @dec accessor value=1; }", ":0:0"),
+            ("successful application restores caller", "@Object class C {}\nmissing;", "memory:///position.js:2:1"),
+        ] {
+            let mut config = blueice_bluejs::VmConfig::default();
+            if aggressive_gc {
+                config.heap.nursery_capacity = 1;
+                config.heap.major_threshold_bytes = 1;
+            }
+            let mut vm = page_with_vm(Vm::new(config).unwrap());
+            assert!(vm.execute_script(&mapped_expression_code(source)).is_err(), "{name}");
+            let found = observed(&mut vm);
+            let expected = Value::String(expected.into());
+            if found != expected { failures.push((name, aggressive_gc, found, expected)); }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn successful_callbacks_restore_the_caller_origin_before_native_validation() {
+    for source in [
+        "var dec=new Proxy(function(){},{get apply(){try{missing;}catch{}return 0;}});\ndec();",
+        "var target=Object.defineProperty({},'value',{value:1});var object=new Proxy(target,{get(){try{missing;}catch{}return 0;}});\nobject.value;",
+        "function caught(){'use strict';try{missing;}catch{}return 0;}var dec=new Proxy(function(){},{get apply(){'use strict';return caught();}});\ndec();",
+    ] {
+        let mut vm = page();
+        assert!(vm.execute_script(&mapped_expression_code(source)).is_err(), "{source}");
+        assert_eq!(observed(&mut vm), Value::String("memory:///position.js:2:1".into()), "{source}");
+    }
+}
+
+#[test]
 fn generated_class_operations_and_dynamic_code_do_not_borrow_source_locations() {
     for source in [
         "class C {accessor value=1;}Object.getOwnPropertyDescriptor(C.prototype,'value').get.call({});",
@@ -1537,6 +1594,8 @@ fn generated_class_operations_and_dynamic_code_do_not_borrow_source_locations() 
         "class C {constructor(){eval(\"throw 'dynamic';\");}}new C();",
         "var dec=Function(\"throw 'dynamic';\");@dec class C {}",
         "function dec(){return {get get(){Function(\"throw 'dynamic';\")();}};}class C {@dec accessor field=1;}",
+        "Function(\"@WeakMap class C {}\")();",
+        "Function(\"var dec=new Proxy(function(){},{apply:0});@dec class C {}\")();",
     ] {
         let mut vm = page();
         assert!(vm.execute_script(&mapped_expression_code(source)).is_err(), "{source}");

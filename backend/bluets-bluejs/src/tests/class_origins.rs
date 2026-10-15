@@ -184,6 +184,9 @@ fn direct_class_decorators_keep_their_original_expressions() {
             "const absent: any=null;@(\n absent.field) class C {}",
             "const absent: any=null;class C {@(\n absent.field) go(): void {}}",
             "const bad: any=0;\n@bad class C {}",
+            "const Native: any=WeakMap;\n@Native class C {}",
+            "const Factory: any=(globalThis as any).Proxy;const dec: any=new Factory(WeakMap,{apply:0});\n@dec class C {}",
+            "class Handler {get apply(): any {try{throw 'caught';}catch(error){}return 0;}}const Factory: any=(globalThis as any).Proxy;const dec: any=new Factory(WeakMap,new Handler());\n@dec class C {}",
         ] {
             let artifact = compile_direct_script(
                 ENTRY,
@@ -308,17 +311,16 @@ fn lowered_class_keys_and_initializers_keep_utf16_and_line_terminators() {
 }
 
 #[test]
-fn lowered_class_module_dependencies_retain_key_and_field_origins_after_await() {
+fn lowered_class_module_dependencies_retain_key_field_and_decorator_origins_after_await() {
     for define in [true, false] {
         for awaited in [false, true] {
-            for body in [
-                "value: any=0 + (\n absent.field);",
-                "[\n absent.field]: any=0;",
+            let prefix = if awaited { "await 0;" } else { "" };
+            for source in [
+                format!("export const absent: any=null;{prefix}export class C {{value: any=0 + (\n absent.field);}}new C();"),
+                format!("export const absent: any=null;{prefix}export class C {{[\n absent.field]: any=0;}}new C();"),
+                format!("export const marker=0;{prefix}const Native: any=WeakMap;\n@Native class C {{}}"),
+                format!("export const marker=0;{prefix}const Factory: any=(globalThis as any).Proxy;const dec: any=new Factory(WeakMap,{{apply:0}});\n@dec class C {{}}"),
             ] {
-                let source = format!(
-                    "export const absent: any=null;{}export class C {{{body}}}new C();",
-                    if awaited { "await 0;" } else { "" }
-                );
                 let graph = compile_direct_module_graph(
                     GRAPH_ENTRY,
                     &MapLoader::from([

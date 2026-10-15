@@ -374,10 +374,13 @@ impl Bytecode {
 }
 
 /// Native execution context, restored when a nested interpreter returns.
-pub(crate) struct ActiveDiagnosticFrame {
-    map: Rc<DiagnosticSourceMap>,
-    unit: u32,
-    pub(crate) offset: u32,
+pub(crate) enum ActiveDiagnosticFrame {
+    Bytecode {
+        map: Rc<DiagnosticSourceMap>,
+        unit: u32,
+        offset: u32,
+    },
+    Native(Option<DiagnosticSourceLocation>),
 }
 
 impl ActiveDiagnosticFrame {
@@ -386,7 +389,7 @@ impl ActiveDiagnosticFrame {
         if map.generation != code.debugger_program_generation {
             return None;
         }
-        Some(Self {
+        Some(Self::Bytecode {
             map: map.clone(),
             unit: code.debugger_code_unit_ordinal?,
             offset: u32::try_from(offset).ok()?,
@@ -394,6 +397,15 @@ impl ActiveDiagnosticFrame {
     }
 
     pub(crate) fn location(&self) -> Option<&DiagnosticSourceLocation> {
-        self.map.location(self.unit, self.offset)
+        match self {
+            Self::Bytecode { map, unit, offset } => map.location(*unit, *offset),
+            Self::Native(source) => source.as_ref(),
+        }
+    }
+
+    pub(crate) fn set_offset(&mut self, next: u32) {
+        if let Self::Bytecode { offset, .. } = self {
+            *offset = next;
+        }
     }
 }

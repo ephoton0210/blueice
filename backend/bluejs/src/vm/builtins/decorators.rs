@@ -267,24 +267,55 @@ impl Vm {
         index: usize,
         message: String,
     ) -> RuntimeError {
-        self.pending_diagnostic_origin =
-            match self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 2) {
-                Value::String(filename) => filename.to_utf8().ok().map(|filename| {
-                    crate::diagnostics::DiagnosticSourceLocation {
-                        filename,
-                        line: number_or_zero(
-                            &self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 3),
-                        ) as u32,
-                        column: number_or_zero(
-                            &self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 4),
-                        ) as u32,
-                    }
-                }),
-                _ => None,
-            };
+        self.pending_diagnostic_origin = self.decorator_source(list, index);
         self.throw_epoch = self.throw_epoch.wrapping_add(1);
         self.pending_throw_site = None;
         RuntimeError::TypeError(message)
+    }
+
+    fn decorator_source(
+        &self,
+        list: &Value,
+        index: usize,
+    ) -> Option<crate::diagnostics::DiagnosticSourceLocation> {
+        match self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 2) {
+            Value::String(filename) => filename.to_utf8().ok().map(|filename| {
+                crate::diagnostics::DiagnosticSourceLocation {
+                    filename,
+                    line: number_or_zero(
+                        &self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 3),
+                    ) as u32,
+                    column: number_or_zero(
+                        &self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 4),
+                    ) as u32,
+                }
+            }),
+            _ => None,
+        }
+    }
+
+    /// Native dispatch and accessor-result reads execute at the saved
+    /// decorator expression. A nested interpreter masks this scope, including
+    /// an explicitly unmapped dynamic function. Only a failure with no fresh
+    /// callee throw receives the application origin.
+    fn with_decorator_origin<T>(
+        &mut self,
+        list: &Value,
+        index: usize,
+        callback: impl FnOnce(&mut Self) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        let frame =
+            crate::diagnostics::ActiveDiagnosticFrame::Native(self.decorator_source(list, index));
+        let previous = self.active_diagnostic_frame.replace(frame);
+        let epoch = self.throw_epoch;
+        let result = callback(self);
+        if matches!(&result, Err(error) if error.is_catchable()) && self.throw_epoch == epoch {
+            self.pending_diagnostic_origin = self.current_diagnostic_source_location();
+            self.pending_throw_site = None;
+            self.throw_epoch = self.throw_epoch.wrapping_add(1);
+        }
+        self.active_diagnostic_frame = previous;
+        result
     }
 
     /// Builds the context object of one decorator application and leaves it on
@@ -400,8 +431,12 @@ impl Vm {
         value: Value,
         context: Value,
         state: ObjectId,
+        decorators: &Value,
+        index: usize,
     ) -> Result<Value, RuntimeError> {
-        let result = self.call_native(decorator, receiver, vec![value, context], false);
+        let result = self.with_decorator_origin(decorators, index, |vm| {
+            vm.call_native(decorator, receiver, vec![value, context], false)
+        });
         self.promise_state_set(state, "finished", Value::Bool(true))
             .expect("replacing a Boolean with a Boolean needs no new room");
         result
@@ -483,9 +518,12 @@ impl Vm {
             } else {
                 self.stack[base + 4].clone()
             };
-            let result = self.call_decorator(entry, argument, context, state)?;
+            let result =
+                self.call_decorator(entry, argument, context, state, &decorators, index)?;
             self.stack.push(result.clone());
-            self.apply_element_result(kind, base, &initializers, &result, &decorators, index)?;
+            self.with_decorator_origin(&decorators, index, |vm| {
+                vm.apply_element_result(kind, base, &initializers, &result, &decorators, index)
+            })?;
             self.stack.truncate(frame);
         }
         let record = self.decorator_list()?;
@@ -605,7 +643,7 @@ impl Vm {
             self.decorator_context(name.clone(), metadata.clone(), state, None)?;
             let context = self.stack[self.stack.len() - 1].clone();
             let class = self.stack[base].clone();
-            let result = self.call_decorator(entry, class, context, state)?;
+            let result = self.call_decorator(entry, class, context, state, &decorators, index)?;
             if !matches!(result, Value::Undefined) {
                 if !self.decorator_is_callable(&result) {
                     return Err(self.decorator_application_error(

@@ -117,7 +117,7 @@ impl Vm {
                 .expect("compiler emits valid instruction boundaries");
             let operand = instruction.operand.unwrap_or(0) as usize;
             if let Some(frame) = &mut self.active_diagnostic_frame {
-                frame.offset = instruction.offset as u32;
+                frame.set_offset(instruction.offset as u32);
             }
             pc += instruction.opcode.width();
             let throw_epoch_before = self.throw_epoch;

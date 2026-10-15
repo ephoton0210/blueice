@@ -485,9 +485,10 @@ their own known or unavailable origin; caught noise cannot replace a later
 validation error's location. Ten JavaScript cases pass under normal and
 aggressive GC, including multiple decorators and invalid accessor results.
 
-Remaining native/proxy application, generated helper and namespace/enum/pattern
-precision, integrated lifecycle/resource acceptance and full workspace/all-target/
-Test262 gates remain open.
+The native/Proxy follow-up below extends these validation cases to dispatch and
+accessor-result property reads. Generated helper and namespace/enum/pattern
+precision, remaining dispatch/application cases, integrated lifecycle/resource
+acceptance and full workspace/all-target/Test262 gates remain open.
 
 The final selection passes 2,000 cases across forty-three disjoint targets,
 zero failures and sixteen existing ignored: 1,205 BlueJS library, 142 decorator,
@@ -502,6 +503,54 @@ host test executable hashes stay fixed; receipts are retained in
 `target/direct-class-lowering-source-20261016.json` and
 `target/direct-class-lowering-validation-20261016.json`. M1q remains at 3/10
 final acceptance gates.
+
+### Native and Proxy decorator dispatch
+
+Twelve native/Proxy failure shapes initially reported the class location or
+unavailable coordinates instead of the evaluated decorator expression, under
+both normal and aggressive GC. Native calls had no nested interpreter to
+publish a throwing source. A successful Proxy getter that caught an unrelated
+throw also left its propagation epoch behind, obscuring the subsequent native
+validation failure.
+
+An active diagnostic frame can now represent either certified bytecode or a
+copied native location, including an explicitly unavailable one. Decorator
+dispatch and accessor-result reads temporarily install the saved expression's
+location. A catchable failure without a fresh callee throw publishes that
+location; nested interpreted code masks the scope and keeps its own known or
+unavailable source. Every result path restores the displaced frame. The scope
+adds no persistent records, JavaScript object roots or debugger handles.
+
+Successful calls move the caller's pending throw metadata aside and restore it
+without copying its filename. This includes a successful tail-call transition.
+Caught callback noise therefore cannot disguise a later native failure, while
+an escaping callback error retains its own provenance. Actual debugger throw
+sites continue to come from interpreter instructions independently of these
+source-only locations.
+
+Twenty-three decorator scenarios pass with normal/aggressive GC: constructor-only
+and bound natives, revoked/forwarding Proxies, invalid apply traps, caught
+getter noise, stacked entries, accessor-result invariants and original callback
+throws. Three ordinary callback cases also verify successful-call restoration.
+Two dynamic native/Proxy decorator controls keep unavailable coordinates.
+All forty-seven diagnostic groups pass. Direct BlueTS adds six script cases
+across both field modes and eight native/Proxy dependency cases before/after
+await. Its fixtures obtain the existing Proxy through `globalThis` and use
+supported class getters rather than requiring new direct expression forms.
+
+The follow-up passes 2,302 cases over sixty-nine disjoint targets, zero failures
+and sixteen existing ignored: 1,694 BlueJS, 272 bridge, 312 launcher, nineteen
+real-page and five MCP console cases. Two additional real-page and deferred
+debugger contexts preserve 2:2; MCP verifies two more typed scripts at 2:2.
+Formatting and related library/integration/test Clippy pass with warnings
+denied. Nine Rust inputs, three Cargo inputs, three runtime and sixty-nine test
+executable hashes are recorded. The source receipt separately records a
+host-only fixture name correction before host builds; completed BlueJS inputs
+and executable hashes remain unchanged. Evidence is retained in
+`target/native-decorator-source-20261016.json` and
+`target/native-decorator-validation-20261016.json`. Remaining dispatch and
+generated-code precision, integrated lifecycle/resource and full workspace/
+all-target/Test262 gates remain open; M1q stays at 3/10 final acceptance gates.
 
 ## Saved completions and cleanup
 

@@ -277,6 +277,16 @@ fn real_pages_report_original_direct_bluets_statement_and_call_sources() {
             "const bad: any=0;\n@bad class C {}",
             "2:2",
         ),
+        (
+            "application/x-blueice-typescript",
+            "const Native: any=WeakMap;\n@Native class C {}",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
+            "class Handler {get apply(): any {try{throw 'caught';}catch(error){}return 0;}}const Factory: any=(globalThis as any).Proxy;const dec: any=new Factory(WeakMap,new Handler());\n@dec class C {}",
+            "2:2",
+        ),
     ] {
         let location = observed_script_error_source_location(source, script_type, false);
         assert!(

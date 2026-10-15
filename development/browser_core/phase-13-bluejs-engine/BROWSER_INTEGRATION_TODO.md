@@ -721,14 +721,28 @@ the full source-position requirement.
       and two deferred debugger contexts pass. MCP keeps a queued key at 7:2
       and application validation at 2:2. Formatting and related Clippy pass;
       thirteen Rust inputs, three Cargo inputs and runtime/test hashes stay fixed.
+- [x] Scope native/Proxy decorator dispatch and accessor-result reads to each
+      saved expression. Restore the caller's throw metadata after successful
+      calls, including tail-call transitions, so caught getter noise cannot
+      impersonate a later native failure. Twenty-three JavaScript scenarios
+      pass under normal/aggressive GC; three ordinary callback cases and two
+      dynamic native/Proxy controls pass. All forty-seven diagnostic groups
+      pass. Add six direct native/Proxy cases and eight dependency cases across
+      both field modes and before/after await; all class-source groups pass.
+- [x] Pass the native/Proxy follow-up: 2,302 cases across sixty-nine disjoint
+      targets, zero failures and sixteen existing ignored. Thirty-one BlueJS
+      targets pass 1,694 cases; all bridge targets pass 272; launcher, real pages
+      and MCP add 336. Two new page and deferred debugger contexts pass; MCP
+      keeps both new typed scripts at original 2:2. Formatting and related
+      Clippy pass. Record source revisions and immutable executable hashes.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
       compiler-generated provenance.
 - [ ] Complete remaining direct BlueTS expression/pattern, namespace/enum and
-      generated-helper provenance, native/proxy decorator application and
-      remaining class/key precision, plus emitted-profile/module/debugger
+      generated-helper provenance, remaining decorator application and class/key
+      precision, plus emitted-profile/module/debugger
       precision and lifecycle acceptance.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
       disposal acceptance beyond the verified module and disposal cases.
@@ -1370,6 +1384,31 @@ test executable hashes remain fixed. Receipts are retained in
 Remaining native/proxy application, generated helper and namespace/enum/pattern
 precision, integrated lifecycle/resource acceptance and full workspace/all-target/
 Test262 gates stay open; M1q remains at 3/10 final acceptance gates.
+
+The native/Proxy follow-up (2026-10-16) reproduces twelve failing shapes under
+normal/aggressive GC (`/private/tmp/blueice-native-decorator-red-20261016.log`).
+Native decorator dispatch and accessor-result reads now use the saved
+expression's source scope. Successful calls restore the caller's pending
+metadata, including tail-call transitions; escaping interpreted errors keep
+their own known/unavailable origin. Twenty-three decorator scenarios, three
+ordinary callback cases and two dynamic native/Proxy controls pass. Direct
+BlueTS adds six script cases across both field modes and eight dependency cases
+before/after await. No additional direct expression forms are required.
+
+Final acceptance passes 2,302 cases across sixty-nine disjoint targets, zero
+failures and sixteen existing ignored: 1,694 BlueJS, 272 bridge, 312 launcher,
+nineteen real-page and five MCP console cases. All forty-seven diagnostic groups
+pass. Two new real-page and deferred debugger contexts preserve original 2:2;
+MCP verifies two additional typed scripts at that same location. Formatting,
+seven-library Clippy and related integration/test Clippy pass with warnings
+denied. The source receipt records nine Rust inputs, three Cargo inputs, three
+runtime and sixty-nine test executable hashes. A host-only fixture correction
+gives consecutive MCP scripts distinct class names before any host build; the
+completed BlueJS inputs and executable hashes remain unchanged. Receipts are
+`target/native-decorator-source-20261016.json` and
+`target/native-decorator-validation-20261016.json`. Remaining dispatch/generated
+precision, integrated lifecycle/resource and full workspace/all-target/Test262
+gates remain open; M1q stays at 3/10 final acceptance gates.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 
