@@ -612,8 +612,9 @@ not `.tsbuildinfo` bytes.
     `paths`/`types` each invalidate. *Pass when:* 4 named tests, plus one test that an unrelated file
     does not invalidate.
     - *Evidence:* PLAN.md, "K.12.2.2 Observed-input invalidation" (2026-10-15): five-case pinned ordered matrix, four named invalidation tests plus unrelated-file no-op, forced-rebuild stale-output control, K.0 two-crate gate.
-  - [ ] **AC-K12.2.3 Equivalence.** Incremental output is byte-identical to a clean build over a
+  - [x] **AC-K12.2.3 Equivalence.** Incremental output is byte-identical to a clean build over a
     randomized edit sequence. *Pass when:* >= 20 steps over >= 3 projects, zero differences.
+    - *Evidence:* PLAN.md, "K.12.2.3 Incremental/clean equivalence" (2026-10-15): fixed-seed 24 edits across 3 projects, 25 pinned ordered rows, zero JavaScript/declaration byte differences, K.0 two-crate gate.
   - [ ] **AC-K12.2.4 Corrupt state.** A truncated or foreign `.tsbuildinfo` falls back to a clean build
     with a diagnostic, never a wrong result.
   - [ ] **AC-K12.2.5 Watch.** `--watch` re-emits on edit, add and delete of a file, debounces bursts, and

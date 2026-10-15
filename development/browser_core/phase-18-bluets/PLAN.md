@@ -10850,3 +10850,27 @@ The complete K.0 two-crate test gate exits 0 with pinned TypeScript 5.9.3,
 Acorn 8.15.0 and Node 24.21.0, including all ordinary and ignored oracles.
 Cargo incremental compilation and dev/test debug symbols were disabled to
 bound regenerated artifacts.
+
+### K.12.2.3 Incremental/clean equivalence (2026-10-15)
+
+A fixed-seed xorshift sequence applies 24 edits across a three-project
+reference chain. The sequence covers every project and three edit classes:
+exported value changes, comment-only source changes and toggled effective
+`target` options. At each step the incremental build and a newly materialized
+clean build emit byte-identical JavaScript and declaration files for all three
+projects. The same fixture runs through pinned TypeScript 5.9.3 and BlueTSC;
+their committed 25-row `--build --verbose` matrix (cold build plus 24 edits)
+has identical ordered rebuilt-project lists. The ignored pinned replay can
+refresh `build-equivalence-matrix.tsv` with
+`BLUEICE_WRITE_PROJECT_EQUIVALENCE_MATRIX=1`.
+
+The three focused tests pass, including the pinned oracle; no production
+compiler change was needed for this measured sequence. This is deterministic
+randomized coverage, not an assertion that every possible edit or imported
+package observation is already tracked; broader inputs remain G-M2.
+
+Workspace rustfmt and warnings-denied two-crate all-target Clippy pass. The
+complete K.0 two-crate test gate exits 0 with pinned TypeScript 5.9.3, Acorn
+8.15.0 and Node 24.21.0, including all ordinary and ignored oracles. Cargo
+incremental compilation and dev/test debug symbols were disabled to bound
+regenerated artifacts.
