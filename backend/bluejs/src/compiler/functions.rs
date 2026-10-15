@@ -787,8 +787,10 @@ impl Compiler {
     fn decorator_list_on_stack(&mut self, decorators: &[Expr]) -> Result<(), CompileError> {
         self.emit(Opcode::NewArray, 0)?;
         for decorator in decorators {
-            self.decorator_and_receiver(decorator)?;
-            self.emit(Opcode::PushDecorator, 0)?;
+            self.with_expression_owner(decorator, |compiler| {
+                compiler.decorator_and_receiver(decorator)?;
+                compiler.emit(Opcode::PushDecorator, 0)
+            })?;
         }
         Ok(())
     }

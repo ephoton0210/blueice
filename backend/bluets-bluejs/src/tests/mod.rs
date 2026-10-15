@@ -55,6 +55,7 @@ impl ModuleLoader for AliasedGraphLoader {
     }
 }
 
+mod class_origins;
 mod debug_attachment;
 mod direct;
 mod expression_origins;

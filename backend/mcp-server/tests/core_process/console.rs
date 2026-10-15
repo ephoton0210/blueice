@@ -76,7 +76,7 @@ impl Pages {
                         setTimeout(function(){var value;[
                           [value]
                         ]=[null];},80);
-                        </script><script type='application/x-blueice-typescript'>const absent: any=null;function directOperand(): void {const value: any=1 + (\n absent.field);}function read(value: any): void {}function directArgument(): void {read(\n absent.field);}function directKey(): void {const value: any={[\n absent.field]:1};}function directTemplate(): void {const value: any=`value:${\n absent.field}`;}function directClass(): void {const C=class {go(): void {\n throw 'direct-class';}};new C().go();}queueMicrotask(directOperand);queueMicrotask(directArgument);queueMicrotask(directKey);queueMicrotask(directTemplate);queueMicrotask(directClass);</script>"
+                        </script><script type='application/x-blueice-typescript'>const absent: any=null;function directOperand(): void {const value: any=1 + (\n absent.field);}function read(value: any): void {}function directArgument(): void {read(\n absent.field);}function directKey(): void {const value: any={[\n absent.field]:1};}function directTemplate(): void {const value: any=`value:${\n absent.field}`;}function directClass(): void {const C=class {go(): void {\n throw 'direct-class';}};new C().go();}function directClassKey(): void {const C=class {[\n absent.field]: any=0;};}queueMicrotask(directOperand);queueMicrotask(directArgument);queueMicrotask(directKey);queueMicrotask(directTemplate);queueMicrotask(directClass);queueMicrotask(directClassKey);</script><script type='application/x-blueice-typescript'>const bad: any=0;\n@bad class C {}</script>"
                         } else if matches!(mode, PageMode::Errors) {
                             "<button id=pending>error button</button><script>
                         onerror=function(message,filename,line,column,error){return error==='silenced';};
@@ -236,12 +236,12 @@ async fn real_mcp_keeps_queued_reference_and_nested_assignment_sources() {
             serde_json::from_value(page_json(&result)).unwrap();
         assert_eq!(batch.dropped_records, 0);
         records.extend(batch.records);
-        if records.len() >= 7 {
+        if records.len() >= 9 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    assert_eq!(records.len(), 7, "{records:?}");
+    assert_eq!(records.len(), 9, "{records:?}");
     let records = records
         .iter()
         .map(|record| {
@@ -253,7 +253,11 @@ async fn real_mcp_keeps_queued_reference_and_nested_assignment_sources() {
         .collect::<Vec<_>>();
     for (extension, expected) in [
         ("0.js", &[(3, 27), (6, 27)][..]),
-        ("1.ts", &[(2, 2), (3, 2), (4, 2), (5, 2), (6, 2)][..]),
+        (
+            "1.ts",
+            &[(2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 2)][..],
+        ),
+        ("2.ts", &[(2, 2)][..]),
     ] {
         let matching = records
             .iter()

@@ -698,15 +698,38 @@ the full source-position requirement.
       five. Formatting, seven-library/integration Clippy and complete BlueTS/
       bridge/launcher test Clippy pass. Seven Rust inputs, four Cargo inputs,
       four runtime executables and forty-six test executables remain fixed.
+- [x] Record class element paths, moved field assignments, pending key prefixes,
+      inferred-class wrappers and actual constructor insertion offsets in the
+      production lowerer. Join only after exact class replay. The 52 direct
+      declaration/expression/field-mode cases pass; thirty-four missing origins
+      were reproduced before the fix. Bound path capture independently of
+      executable node slots; six shape/output controls and a 50,000-member
+      capture refusal pass.
+- [x] Verify moved initializer/key coordinates through twenty UTF-16/newline
+      contexts, eight dependency cases before/after await, queued retention/
+      navigation and a constructor prefix with hoisted computed bindings.
+      Synthetic field-write errors keep unavailable positions.
+- [x] Preserve each decorator expression's copied source through application
+      validation. Keep source scalars in the existing private, heap-owned
+      records; ordinary bytecode stays identical. Ten JavaScript scenarios
+      pass under normal/aggressive GC, including stacked decorators, invalid
+      returns and caught getter/callback noise; dynamic throws stay unknown.
+- [x] Pass the class-path/application follow-up: 2,000 cases across forty-three
+      disjoint targets, zero failures and sixteen existing ignored. BlueJS
+      library/decorator/diagnostic targets pass 1,392 cases; all bridge targets
+      pass 272; launcher, real pages and MCP add 336. Three new page contexts
+      and two deferred debugger contexts pass. MCP keeps a queued key at 7:2
+      and application validation at 2:2. Formatting and related Clippy pass;
+      thirteen Rust inputs, three Cargo inputs and runtime/test hashes stay fixed.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
       compiler-generated provenance.
-- [ ] Complete remaining direct BlueTS expression/pattern, namespace/enum,
-      JSX helper and assignment-field lowering evidence, class/computed-key
-      provenance, and remaining emitted-profile/module/debugger precision
-      and lifecycle acceptance.
+- [ ] Complete remaining direct BlueTS expression/pattern, namespace/enum and
+      generated-helper provenance, native/proxy decorator application and
+      remaining class/key precision, plus emitted-profile/module/debugger
+      precision and lifecycle acceptance.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
       disposal acceptance beyond the verified module and disposal cases.
 - [ ] Complete retained-origin accounting and the integrated
@@ -1304,6 +1327,49 @@ JavaScript/BlueTS inputs. Remaining JSX helper, class/computed-key, pattern/
 namespace/enum and assignment-field precision, integrated lifecycle/resource
 acceptance and full workspace/all-target/Test262 gates stay open; M1q remains
 at 3/10 final acceptance gates.
+
+The class-path follow-up (2026-10-16) reproduces thirty-four missing origins
+across 52 declaration/expression/field-mode scenarios
+(`/private/tmp/blueice-direct-class-lowering-red.log`). The production lowerer
+now optionally records the exact member paths it emits: moved instance/static
+initializers, constructor prefix offsets including computed-binding hoisting,
+pending key sequences and anonymous-class NamedEvaluation wrappers. Exact class
+replay controls the join; temporary paths never survive the final coordinate
+inventory. A separate 8 MiB charge bounds path vectors even when many members
+have no executable expression slots. Six shape controls preserve ASTs, ordinary
+bytes and constants, and a 50,000-member capture refuses excess metadata.
+All 52 source scenarios, twenty UTF-16/newline contexts, eight dependency cases,
+queued retention/navigation and the hoisted-prefix case pass. Generated field
+writes remain explicitly unavailable.
+
+Decorator validation additionally reported the `@` instead of its expression.
+`PushDecorator` now owns that expression's diagnostic slot, and the private
+heap-owned record keeps copied filename/line/column scalars with each function
+and receiver. Native callable/result validation chooses the failing entry and
+starts a fresh propagation epoch. Callback/getter throws retain their own
+known/unknown origins; caught noise cannot replace a later validation failure.
+Ordinary instruction bytes and code-unit layout remain unchanged. The scalars
+use existing heap accounting/GC and add no JavaScript object roots or debugger
+handles. Ten JavaScript scenarios pass under normal/aggressive GC; two added
+dynamic decorator/getter controls remain unavailable.
+
+Final acceptance passes 1,205 BlueJS library cases, 142 decorator cases and all
+forty-five diagnostic groups. All thirty-five bridge targets pass 272 cases;
+312 launcher cases, nineteen real-page cases and five MCP console cases also
+pass. This is 2,000 passes across forty-three disjoint targets, zero failures
+and sixteen existing ignored. Three additional page contexts cover field/method
+keys and native decorator validation; two additional deferred debugger contexts
+pass. MCP verifies a queued direct key at original 7:2 and a second typed
+script's decorator validation at 2:2. Formatting, seven-library Clippy, changed
+integration Clippy and bridge/launcher test Clippy pass with warnings denied.
+Thirteen Rust inputs, three Cargo inputs, three runtime and thirty-eight host
+test executable hashes remain fixed. Receipts are retained in
+`target/direct-class-lowering-source-20261016.json` and
+`target/direct-class-lowering-validation-20261016.json`.
+
+Remaining native/proxy application, generated helper and namespace/enum/pattern
+precision, integrated lifecycle/resource acceptance and full workspace/all-target/
+Test262 gates stay open; M1q remains at 3/10 final acceptance gates.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

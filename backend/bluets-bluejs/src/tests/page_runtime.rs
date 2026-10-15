@@ -464,7 +464,7 @@ fn embedded_direct_sources_preserve_utf16_columns_and_original_line_terminators(
 }
 
 #[test]
-fn assignment_field_class_expression_descendants_keep_unavailable_sources() {
+fn assignment_field_class_expression_descendants_keep_original_sources() {
     let source = "const C=class {get value(): number {\n throw 'unmapped';}};new C().value;";
     let artifact = compile_direct_script(
         ENTRY,
@@ -482,7 +482,11 @@ fn assignment_field_class_expression_descendants_keep_unavailable_sources() {
     assert!(runtime.execute_program(7, attachment.handle).is_err());
     let messages = runtime.drain_console(7).unwrap();
     assert_eq!(messages.records.len(), 1, "{messages:?}");
-    assert!(messages.records[0].source.is_none(), "{messages:?}");
+    let location = messages.records[0].source.as_ref().unwrap();
+    assert_eq!(
+        (location.filename.as_str(), location.line, location.column),
+        (ENTRY, 2, 2)
+    );
 }
 
 fn artifact() -> DirectScript {

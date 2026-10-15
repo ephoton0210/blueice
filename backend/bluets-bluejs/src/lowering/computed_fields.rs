@@ -129,17 +129,18 @@ pub(super) fn ordered_key(
     }
 }
 
+pub(super) fn anonymous_class(value: &bluejs::Expr) -> bool {
+    match value {
+        bluejs::Expr::Class(class) => class.name.is_none(),
+        bluejs::Expr::Parenthesized(value) => anonymous_class(value),
+        _ => false,
+    }
+}
+
 pub(super) fn assign_this_key(key: bluejs::PropertyKey, value: bluejs::Expr) -> bluejs::Stmt {
     // Assignment emit still performs the field's NamedEvaluation. An object
     // data property supplies that name without introducing a class self binding
     // or a new function scope. Computed field keys are already captured above.
-    fn anonymous_class(value: &bluejs::Expr) -> bool {
-        match value {
-            bluejs::Expr::Class(class) => class.name.is_none(),
-            bluejs::Expr::Parenthesized(value) => anonymous_class(value),
-            _ => false,
-        }
-    }
     let value = if anonymous_class(&value) {
         let object = bluejs::Expr::Object(vec![bluejs::ObjectProp::KeyValue {
             key: key.clone(),

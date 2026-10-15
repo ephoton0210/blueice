@@ -370,8 +370,9 @@ contexts covering UTF-16 and CR/CRLF/LS/PS. Module dependencies retain template
 and class-expression origins before and after await. Five parser shapes retain
 ordinary ASTs, instruction bytes and constants. Shared-budget and nested-refusal
 controls pass. Dynamic function bodies reached through a mapped template or
-class keep unavailable origins, as do class-expression descendants in the
-separately lowered assignment-field mode. Remaining class/computed-key,
+class keep unavailable origins. This increment kept assignment-field class
+descendants unavailable; the class-path follow-up below supplies their own
+evidence. Remaining class/computed-key,
 pattern/namespace/enum/JSX/assignment-field evidence and integrated lifecycle/
 resource/full-workspace/Test262 acceptance stay open.
 
@@ -446,6 +447,61 @@ four Cargo inputs, four runtime executables (including the tested compiler CLI)
 and forty-six test executables remain fixed. Receipts are retained in
 `target/direct-jsx-source-20261016.json` and
 `target/direct-jsx-validation-20261016.json`. M1q remains at 3/10 final gates.
+
+### Class lowering paths and decorator application
+
+The actual class lowerer can now emit a temporary path recipe alongside its
+unchanged AST. It records original member indices, pending computed-key
+assignments consumed by later keys, moved instance/static field initializers,
+anonymous-class NamedEvaluation wrappers and the constructor's actual prefix
+length after computed-binding hoisting. A bounded replay must equal the final
+class before these paths bind any nodes. Class-expression names supplied by
+the enclosing proven expression are normalized at that boundary. The recipe
+is discarded after conversion to the ordinary coordinate inventory.
+
+This covers both field modes, generated constructors, original constructor
+statements around prologues, trailing pending-key blocks and erased fields
+that still evaluate their key. Source expressions inside synthetic assignments
+keep their own positions; assignment helpers and inferred-name scaffolding
+do not acquire a nearby declaration's location. Path vectors have a separate
+conservative 8 MiB charge before growth, including members without executable
+expression slots.
+
+Fifty-two direct class scenarios pass in both declaration/expression forms and
+both field modes, following thirty-four reproduced missing origins. Six shape
+controls preserve ordinary ASTs, instruction bytes and constants. Twenty source
+coordinate contexts, eight awaited/non-awaited dependency cases, queued
+retention/navigation and a hoisted constructor-prefix case pass. A synthetic
+read-only field write remains explicitly unavailable.
+
+Decorator application exposed an additional native validation gap. The compiler
+now attributes `PushDecorator` to the actual expression. Its existing private
+heap-owned array record retains copied filename/line/column scalars with the
+function and receiver. The scalars use normal heap accounting and tracing,
+introduce no JavaScript object roots or debugger handles, and are not passed
+to user callbacks. Native callable/result validation selects the failing entry's
+source and establishes a fresh propagation epoch. Callback/getter throws keep
+their own known or unavailable origin; caught noise cannot replace a later
+validation error's location. Ten JavaScript cases pass under normal and
+aggressive GC, including multiple decorators and invalid accessor results.
+
+Remaining native/proxy application, generated helper and namespace/enum/pattern
+precision, integrated lifecycle/resource acceptance and full workspace/all-target/
+Test262 gates remain open.
+
+The final selection passes 2,000 cases across forty-three disjoint targets,
+zero failures and sixteen existing ignored: 1,205 BlueJS library, 142 decorator,
+forty-five diagnostic groups, 272 bridge, 312 launcher, nineteen real-page and
+five MCP console cases. All bridge targets and the full related decorator
+targets pass, including allocation/instruction refusal regressions. Three
+additional real-page contexts and two deferred debugger contexts pass. MCP
+preserves a queued direct key at original 7:2 and typed decorator validation
+at 2:2. Formatting and related library/integration/test Clippy pass with warnings
+denied. Thirteen Rust inputs, three Cargo inputs, three runtime and thirty-eight
+host test executable hashes stay fixed; receipts are retained in
+`target/direct-class-lowering-source-20261016.json` and
+`target/direct-class-lowering-validation-20261016.json`. M1q remains at 3/10
+final acceptance gates.
 
 ## Saved completions and cleanup
 

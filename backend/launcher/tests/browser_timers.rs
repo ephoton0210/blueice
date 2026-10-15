@@ -262,6 +262,21 @@ fn real_pages_report_original_direct_bluets_statement_and_call_sources() {
             "await 0;export const C=class {go(): void {\n throw 'module-class';}};new C().go();",
             "2:2",
         ),
+        (
+            "application/x-blueice-typescript",
+            "const absent: any=null;class C {[\n absent.field]: any=0;}",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
+            "const absent: any=null;class C {[\n absent.field](): void {}}",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
+            "const bad: any=0;\n@bad class C {}",
+            "2:2",
+        ),
     ] {
         let location = observed_script_error_source_location(source, script_type, false);
         assert!(

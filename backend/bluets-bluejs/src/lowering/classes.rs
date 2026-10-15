@@ -6,6 +6,87 @@
 
 use super::*;
 
+/// Temporary paths emitted alongside exactly the same class lowering. These
+/// indices never survive conversion to the artifact's coordinate inventory.
+#[derive(Default)]
+pub(crate) struct ClassOrigins {
+    pub elements: Vec<ClassElementOrigin>,
+    pub assigned_fields: Vec<AssignedFieldOrigin>,
+    pending_keys: Vec<usize>,
+    captured_bytes: usize,
+}
+
+impl ClassOrigins {
+    fn charge<T>(&mut self) -> Result<(), BridgeError> {
+        self.captured_bytes = self
+            .captured_bytes
+            .checked_add(4 * std::mem::size_of::<T>())
+            .filter(|bytes| *bytes <= bluejs::diagnostics::MAX_DIAGNOSTIC_SOURCE_MAP_BYTES)
+            .ok_or_else(|| {
+                BridgeError::ProvenanceAttachment(
+                    "direct class source evidence exceeds its byte budget".into(),
+                )
+            })?;
+        Ok(())
+    }
+}
+
+pub(crate) struct AssignedFieldOrigin {
+    pub member: usize,
+    pub wrapped_class: bool,
+}
+
+pub(crate) struct MemberOrigin {
+    pub member: usize,
+    pub key_prefixes: Vec<usize>,
+    pub prologue_start: Option<usize>,
+    pub wrapped_initializer: bool,
+}
+
+pub(crate) enum ClassElementOrigin {
+    Generated,
+    Member(MemberOrigin),
+    Constructor,
+    PendingKeys(Vec<usize>),
+}
+
+fn record_member(
+    origins: &mut Option<&mut ClassOrigins>,
+    member: usize,
+    key_prefixes: Vec<usize>,
+    prologue_start: Option<usize>,
+    wrapped_initializer: bool,
+) -> Result<(), BridgeError> {
+    if let Some(origins) = origins.as_deref_mut() {
+        origins.charge::<ClassElementOrigin>()?;
+        origins
+            .elements
+            .push(ClassElementOrigin::Member(MemberOrigin {
+                member,
+                key_prefixes,
+                prologue_start,
+                wrapped_initializer,
+            }));
+    }
+    Ok(())
+}
+
+fn ordered_key(
+    key: bluejs::PropertyKey,
+    pending: &mut Vec<bluejs::Expr>,
+    origins: &mut Option<&mut ClassOrigins>,
+) -> (bluejs::PropertyKey, Vec<usize>) {
+    let prefixes = if matches!(&key, bluejs::PropertyKey::Computed(_)) {
+        origins
+            .as_deref_mut()
+            .map(|origins| std::mem::take(&mut origins.pending_keys))
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    (super::computed_fields::ordered_key(key, pending), prefixes)
+}
+
 fn lower_class_key(
     module: &Module,
     member: &blueice_bluets::ClassMemberShell,
@@ -63,6 +144,25 @@ pub(crate) fn lower_class(
     class: &ClassDeclaration,
     define_class_fields: bool,
 ) -> Result<bluejs::Stmt, BridgeError> {
+    lower_class_impl(module, class, define_class_fields, None)
+}
+
+pub(crate) fn lower_class_with_origins(
+    module: &Module,
+    class: &ClassDeclaration,
+    define_class_fields: bool,
+) -> Result<(bluejs::Stmt, ClassOrigins), BridgeError> {
+    let mut origins = ClassOrigins::default();
+    let statement = lower_class_impl(module, class, define_class_fields, Some(&mut origins))?;
+    Ok((statement, origins))
+}
+
+fn lower_class_impl(
+    module: &Module,
+    class: &ClassDeclaration,
+    define_class_fields: bool,
+    mut origins: Option<&mut ClassOrigins>,
+) -> Result<bluejs::Stmt, BridgeError> {
     let mut elements = Vec::new();
     let mut pending_keys = Vec::new();
     let properties = class.parameter_property_fields();
@@ -77,6 +177,10 @@ pub(crate) fn lower_class(
                 accessor: false,
                 decorators: Vec::new(),
             });
+            if let Some(origins) = origins.as_deref_mut() {
+                origins.charge::<ClassElementOrigin>()?;
+                origins.elements.push(ClassElementOrigin::Generated);
+            }
         }
     }
     // Instance fields lowered to constructor assignments, in source order. All
@@ -84,7 +188,7 @@ pub(crate) fn lower_class(
     // be written ahead of the fields.
     let mut field_assignments = Vec::new();
     if !define_class_fields {
-        for member in &class.members {
+        for (member_index, member) in class.members.iter().enumerate() {
             let Some(field) = member.field.as_ref().filter(|field| {
                 !field.declared && !field.is_static && !field.name.starts_with('#')
             }) else {
@@ -98,11 +202,18 @@ pub(crate) fn lower_class(
                     }
                     None => lower_class_key(module, member, &field.name)?,
                 };
+                if let Some(origins) = origins.as_deref_mut() {
+                    origins.charge::<AssignedFieldOrigin>()?;
+                    origins.assigned_fields.push(AssignedFieldOrigin {
+                        member: member_index,
+                        wrapped_class: super::computed_fields::anonymous_class(&initializer),
+                    });
+                }
                 field_assignments.push(super::computed_fields::assign_this_key(key, initializer));
             }
         }
     }
-    for member in &class.members {
+    for (member_index, member) in class.members.iter().enumerate() {
         if member.index.is_some() {
             continue;
         }
@@ -116,14 +227,17 @@ pub(crate) fn lower_class(
                 module,
                 &block.body,
             )?));
+            record_member(&mut origins, member_index, Vec::new(), None, false)?;
             continue;
         }
         if let Some(accessor) = &member.accessor {
+            let (key, key_prefixes) = ordered_key(
+                lower_class_key(module, member, &accessor.name)?,
+                &mut pending_keys,
+                &mut origins,
+            );
             elements.push(bluejs::ClassElement::Accessor {
-                key: super::computed_fields::ordered_key(
-                    lower_class_key(module, member, &accessor.name)?,
-                    &mut pending_keys,
-                ),
+                key,
                 function: lower_function_value(
                     module,
                     Some(accessor.name.clone()),
@@ -136,6 +250,7 @@ pub(crate) fn lower_class(
                 is_static: accessor.is_static,
                 decorators: lower_decorators(module, &member.decorators)?,
             });
+            record_member(&mut origins, member_index, key_prefixes, None, false)?;
             continue;
         }
         if let Some(field) = &member.field {
@@ -149,6 +264,10 @@ pub(crate) fn lower_class(
                     unreachable!("a captured field key is computed")
                 };
                 pending_keys.push(super::computed_fields::assign_key(name.clone(), *value));
+                if let Some(origins) = origins.as_deref_mut() {
+                    origins.charge::<usize>()?;
+                    origins.pending_keys.push(member_index);
+                }
             }
             let initializer = field
                 .initializer
@@ -163,12 +282,14 @@ pub(crate) fn lower_class(
                     accessor: field.accessor,
                     decorators: lower_decorators(module, &member.decorators)?,
                 });
+                record_member(&mut origins, member_index, Vec::new(), None, false)?;
             } else if !member.decorators.is_empty() || field.accessor {
                 return Err(unsupported(
                     member.span.clone(),
                     "decorators and auto-accessors need class fields to be defined (the default for ES2022)",
                 ));
             } else if let (true, Some(initializer)) = (field.is_static, initializer) {
+                let wrapped = super::computed_fields::anonymous_class(&initializer);
                 let key = match captured {
                     Some(name) => {
                         bluejs::PropertyKey::Computed(Box::new(bluejs::Expr::Identifier(name)))
@@ -178,6 +299,7 @@ pub(crate) fn lower_class(
                 elements.push(bluejs::ClassElement::StaticBlock(vec![
                     super::computed_fields::assign_this_key(key, initializer),
                 ]));
+                record_member(&mut origins, member_index, Vec::new(), None, wrapped)?;
             }
             continue;
         }
@@ -206,24 +328,35 @@ pub(crate) fn lower_class(
         };
         let mut function =
             lower_function_value(module, Some(name.clone()), parameters, body, false, false)?;
-        if let Some(constructor) = &member.constructor {
+        let prologue_start = if let Some(constructor) = &member.constructor {
             insert_constructor_prologue(
                 module,
                 constructor,
                 body,
                 &field_assignments,
                 &mut function,
-            )?;
-        }
+            )?
+        } else {
+            None
+        };
+        let (key, key_prefixes) = ordered_key(
+            lower_class_key(module, member, &name)?,
+            &mut pending_keys,
+            &mut origins,
+        );
         elements.push(bluejs::ClassElement::Method {
-            key: super::computed_fields::ordered_key(
-                lower_class_key(module, member, &name)?,
-                &mut pending_keys,
-            ),
+            key,
             function,
             is_static,
             decorators: lower_decorators(module, &member.decorators)?,
         });
+        record_member(
+            &mut origins,
+            member_index,
+            key_prefixes,
+            prologue_start,
+            false,
+        )?;
     }
     // Instance fields lowered to assignments, but no constructor to hold them.
     let has_constructor = class.members.iter().any(|member| {
@@ -234,8 +367,19 @@ pub(crate) fn lower_class(
     });
     if !field_assignments.is_empty() && !has_constructor {
         elements.insert(0, synthesized_constructor(class, field_assignments));
+        if let Some(origins) = origins.as_deref_mut() {
+            origins.charge::<ClassElementOrigin>()?;
+            origins.elements.insert(0, ClassElementOrigin::Constructor);
+        }
     }
     if !pending_keys.is_empty() {
+        if let Some(origins) = origins {
+            origins.charge::<ClassElementOrigin>()?;
+            let keys = std::mem::take(&mut origins.pending_keys);
+            origins
+                .elements
+                .insert(0, ClassElementOrigin::PendingKeys(keys));
+        }
         elements.insert(
             0,
             bluejs::ClassElement::StaticBlock(
@@ -326,9 +470,9 @@ pub(super) fn insert_constructor_prologue(
     body_items: &[FunctionBodyItem],
     field_assignments: &[bluejs::Stmt],
     function: &mut bluejs::Function,
-) -> Result<(), BridgeError> {
+) -> Result<Option<usize>, BridgeError> {
     if constructor.parameter_properties.is_empty() && field_assignments.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
     let Some(insertion) = constructor.prologue_insertion else {
         return Err(unsupported(
@@ -348,11 +492,12 @@ pub(super) fn insert_constructor_prologue(
         .collect();
     prologue.extend(field_assignments.iter().cloned());
     let mut body = lower_function_body(module, &body_items[..insertion.item_index])?;
+    let start = body.len();
     body.extend(prologue);
     body.extend(lower_function_body(
         module,
         &body_items[insertion.item_index..],
     )?);
     function.body = body;
-    Ok(())
+    Ok(Some(start))
 }

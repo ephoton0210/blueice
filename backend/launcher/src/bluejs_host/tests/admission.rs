@@ -57,6 +57,8 @@ fn direct_bluets_diagnostics_survive_deferred_debugger_execution() {
         "const absent: any=null;const value: any={[\n absent.field]:1};",
         "const absent: any=null;const value: any=`value:${\n absent.field}`;",
         "const C=class {get value(): number {\n throw 'class-expression';}};new C().value;",
+        "const absent: any=null;class C {[\n absent.field]: any=0;}",
+        "const bad: any=0;\n@bad class C {}",
     ] {
         let messages = debugger_source_batch(vec![classic(0, ";"), blue_ts_classic(1, source)]);
         assert_eq!(messages.records.len(), 1, "{source}: {messages:?}");

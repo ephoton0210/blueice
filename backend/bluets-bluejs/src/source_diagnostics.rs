@@ -7,6 +7,8 @@
 //! ordinals and coordinates, with no original source text or debugger handles.
 
 use super::*;
+
+mod classes;
 use bluejs::diagnostics::{self, DiagnosticSourceMap, DiagnosticSourceNode};
 use sha2::{Digest, Sha256};
 use std::fmt::Write;
@@ -245,9 +247,7 @@ impl Evidence<'_> {
                 self.bind(DiagnosticSourceNode::Statement(statement), &original.span);
                 self.expression(expression, &original.tokens);
             }
-            (Declaration::Class(original), bluejs::Stmt::ClassDecl(class))
-                if self.define_fields =>
-            {
+            (Declaration::Class(original), bluejs::Stmt::ClassDecl(class)) => {
                 self.bind(DiagnosticSourceNode::Statement(statement), &original.span);
                 self.class(original, class);
             }
@@ -378,11 +378,9 @@ impl Evidence<'_> {
         match ExpressionLowerer::for_module(self.module, tokens).parse_with_origins() {
             Ok((replayed, origins)) if &replayed == expression => {
                 let result = origins.bind(expression, &mut |node, offset| {
-                    if self.define_fields {
-                        if let bluejs::Expr::Class(class) = node {
-                            if let Some(original) = self.module.class_expression(offset) {
-                                self.class(&original.class, class);
-                            }
+                    if let bluejs::Expr::Class(class) = node {
+                        if let Some(original) = self.module.class_expression(offset) {
+                            self.class(&original.class, class);
                         }
                     }
                     self.bind(
@@ -437,79 +435,5 @@ impl Evidence<'_> {
             );
         }
         certified
-    }
-
-    fn class(&mut self, original: &ClassDeclaration, class: &bluejs::Class) {
-        // The lowering emits synthetic parameter-property fields first.
-        let mut index = original.parameter_property_fields().len();
-        for member in &original.members {
-            if member.index.is_some()
-                || member.abstract_modifier.is_some()
-                || member.field.as_ref().is_some_and(|field| field.declared)
-            {
-                continue;
-            }
-            let has_body = member
-                .constructor
-                .as_ref()
-                .is_none_or(|value| value.body.is_some())
-                && member
-                    .method
-                    .as_ref()
-                    .is_none_or(|value| value.body.is_some());
-            if !has_body {
-                continue;
-            }
-            let Some(element) = class.elements.get(index) else {
-                return;
-            };
-            index += 1;
-            match element {
-                bluejs::ClassElement::StaticBlock(body) => {
-                    if let Some(block) = &member.static_block {
-                        self.body(&block.body, body);
-                    }
-                }
-                bluejs::ClassElement::Accessor { function, .. } => {
-                    if let Some(accessor) = &member.accessor {
-                        self.function(&accessor.parameters, &accessor.body, function);
-                    }
-                }
-                bluejs::ClassElement::Method { function, .. } => {
-                    if let Some(method) = &member.method {
-                        if let Some(body) = &method.body {
-                            self.function(&method.parameters, body, function);
-                        }
-                    } else if let Some(constructor) = &member.constructor {
-                        if let Some(body) = &constructor.body {
-                            self.parameters(&constructor.parameters, function);
-                            let count = constructor.parameter_properties.len();
-                            if count == 0 {
-                                self.body(body, &function.body);
-                            } else if let Some(insertion) = &constructor.prologue_insertion {
-                                let at = insertion.item_index;
-                                if at <= body.len() && function.body.len() == body.len() + count {
-                                    self.body(&body[..at], &function.body[..at]);
-                                    self.body(&body[at..], &function.body[at + count..]);
-                                }
-                            }
-                        }
-                    }
-                }
-                bluejs::ClassElement::Field {
-                    initializer: Some(value),
-                    ..
-                } => {
-                    if let Some(tokens) = member
-                        .field
-                        .as_ref()
-                        .and_then(|field| field.initializer.as_deref())
-                    {
-                        self.expression(value, tokens);
-                    }
-                }
-                _ => {}
-            }
-        }
     }
 }

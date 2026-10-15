@@ -7,7 +7,8 @@
 //!
 //! The compiler evaluates every decorator expression in source order while it
 //! defines the class, collecting each element's decorators into an Array of
-//! `decorator, receiver` pairs (the receiver is the `this` a member-expression
+//! records holding the decorator, receiver and copied source coordinates (the
+//! receiver is the `this` a member-expression
 //! decorator is called with). Once every element exists it emits one
 //! [`Vm::decorate_element`] per decorated element (static methods and
 //! accessors first, then instance ones, then static fields, then instance
@@ -30,6 +31,8 @@ use super::arguments::number_or_zero;
 use super::*;
 use crate::bytecode::decoration::{FIELD, GETTER, KIND_MASK, METHOD, PRIVATE, SETTER, STATIC};
 use crate::native::DecoratorAccessOp;
+
+const DECORATOR_ENTRY_WIDTH: usize = 5;
 
 /// The kind of class element a decorator is applied to (the low bits of a
 /// `DecorateElement` / `ReplaceClassElement` operand).
@@ -97,8 +100,8 @@ impl Vm {
         self.array_push(list, value, 0)
     }
 
-    /// The number of entries of a plain list (a decorator list holds two per
-    /// decorator: the function and its receiver).
+    /// The number of entries of a plain list. Evaluated decorator records also
+    /// contain their copied filename/line/column; ordinary initializer lists do not.
     fn decorator_list_len(&self, list: &Value) -> usize {
         let id = list
             .object_id()
@@ -204,13 +207,26 @@ impl Vm {
         Ok(())
     }
 
-    /// `PushDecorator`: `list, decorator, receiver` -> `list`.
+    /// `PushDecorator`: `list, decorator, receiver` -> `list`. Copied source
+    /// scalars use own array slots, so normal heap accounting and GC own them;
+    /// they contain no debugger handles and are never passed to JavaScript.
     pub(in super::super) fn push_decorator(&mut self) -> Result<(), RuntimeError> {
         let base = self.stack.len() - 3;
         let list = self.stack[base].clone();
         let (decorator, receiver) = (self.stack[base + 1].clone(), self.stack[base + 2].clone());
         self.decorator_list_push(&list, &decorator)?;
         self.decorator_list_push(&list, &receiver)?;
+        let source = self.current_diagnostic_source_location();
+        let (filename, line, column) = source.map_or((Value::Undefined, 0, 0), |source| {
+            (
+                Value::String(source.filename.into()),
+                source.line,
+                source.column,
+            )
+        });
+        self.decorator_list_push(&list, &filename)?;
+        self.decorator_list_push(&list, &Value::Number(f64::from(line)))?;
+        self.decorator_list_push(&list, &Value::Number(f64::from(column)))?;
         self.stack.truncate(base + 1);
         Ok(())
     }
@@ -237,9 +253,38 @@ impl Vm {
     /// called with.
     fn decorator_entry(&self, list: &Value, index: usize) -> (Value, Value) {
         (
-            self.decorator_list_get(list, 2 * index),
-            self.decorator_list_get(list, 2 * index + 1),
+            self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index),
+            self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 1),
         )
+    }
+
+    /// Only errors created by application validation use the saved expression
+    /// origin. Throws from callbacks/getters retain their own known or unknown
+    /// origin, even when a successful callback caught unrelated noise.
+    fn decorator_application_error(
+        &mut self,
+        list: &Value,
+        index: usize,
+        message: String,
+    ) -> RuntimeError {
+        self.pending_diagnostic_origin =
+            match self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 2) {
+                Value::String(filename) => filename.to_utf8().ok().map(|filename| {
+                    crate::diagnostics::DiagnosticSourceLocation {
+                        filename,
+                        line: number_or_zero(
+                            &self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 3),
+                        ) as u32,
+                        column: number_or_zero(
+                            &self.decorator_list_get(list, DECORATOR_ENTRY_WIDTH * index + 4),
+                        ) as u32,
+                    }
+                }),
+                _ => None,
+            };
+        self.throw_epoch = self.throw_epoch.wrapping_add(1);
+        self.pending_throw_site = None;
+        RuntimeError::TypeError(message)
     }
 
     /// Builds the context object of one decorator application and leaves it on
@@ -407,11 +452,13 @@ impl Vm {
         let initializers = self.decorator_list()?;
         self.stack.push(initializers.clone());
         // The list is in source order; the last decorator applies first.
-        for index in (0..self.decorator_list_len(&decorators) / 2).rev() {
+        for index in (0..self.decorator_list_len(&decorators) / DECORATOR_ENTRY_WIDTH).rev() {
             self.charge_step()?;
             let entry = self.decorator_entry(&decorators, index);
             if !self.decorator_is_callable(&entry.0) {
-                return Err(RuntimeError::TypeError(
+                return Err(self.decorator_application_error(
+                    &decorators,
+                    index,
                     "a decorator must be a function".into(),
                 ));
             }
@@ -438,7 +485,7 @@ impl Vm {
             };
             let result = self.call_decorator(entry, argument, context, state)?;
             self.stack.push(result.clone());
-            self.apply_element_result(kind, base, &initializers, &result)?;
+            self.apply_element_result(kind, base, &initializers, &result, &decorators, index)?;
             self.stack.truncate(frame);
         }
         let record = self.decorator_list()?;
@@ -474,6 +521,8 @@ impl Vm {
         base: usize,
         initializers: &Value,
         result: &Value,
+        decorators: &Value,
+        index: usize,
     ) -> Result<(), RuntimeError> {
         if matches!(result, Value::Undefined) {
             return Ok(());
@@ -481,7 +530,9 @@ impl Vm {
         match kind {
             ElementKind::Method | ElementKind::Getter | ElementKind::Setter => {
                 if !self.decorator_is_callable(result) {
-                    return Err(RuntimeError::TypeError(
+                    return Err(self.decorator_application_error(
+                        decorators,
+                        index,
                         "a method, getter or setter decorator must return a function or undefined"
                             .into(),
                     ));
@@ -490,7 +541,9 @@ impl Vm {
             }
             ElementKind::Field => {
                 if !self.decorator_is_callable(result) {
-                    return Err(RuntimeError::TypeError(
+                    return Err(self.decorator_application_error(
+                        decorators,
+                        index,
                         "a field decorator must return a function or undefined".into(),
                     ));
                 }
@@ -498,7 +551,9 @@ impl Vm {
             }
             ElementKind::Accessor => {
                 if !matches!(result, Value::Object(_)) {
-                    return Err(RuntimeError::TypeError(
+                    return Err(self.decorator_application_error(
+                        decorators,
+                        index,
                         "an accessor decorator must return an object or undefined".into(),
                     ));
                 }
@@ -512,9 +567,7 @@ impl Vm {
                         continue;
                     }
                     if !self.decorator_is_callable(&value) {
-                        return Err(RuntimeError::TypeError(format!(
-                            "an accessor decorator's `{property}` must be a function or undefined"
-                        )));
+                        return Err(self.decorator_application_error(decorators, index, format!("an accessor decorator's `{property}` must be a function or undefined")));
                     }
                     match slot {
                         Some(slot) => self.stack[slot] = value,
@@ -537,11 +590,13 @@ impl Vm {
         let metadata = self.stack[base + 3].clone();
         let extras = self.decorator_list()?;
         self.stack.push(extras.clone());
-        for index in (0..self.decorator_list_len(&decorators) / 2).rev() {
+        for index in (0..self.decorator_list_len(&decorators) / DECORATOR_ENTRY_WIDTH).rev() {
             self.charge_step()?;
             let entry = self.decorator_entry(&decorators, index);
             if !self.decorator_is_callable(&entry.0) {
-                return Err(RuntimeError::TypeError(
+                return Err(self.decorator_application_error(
+                    &decorators,
+                    index,
                     "a decorator must be a function".into(),
                 ));
             }
@@ -553,7 +608,9 @@ impl Vm {
             let result = self.call_decorator(entry, class, context, state)?;
             if !matches!(result, Value::Undefined) {
                 if !self.decorator_is_callable(&result) {
-                    return Err(RuntimeError::TypeError(
+                    return Err(self.decorator_application_error(
+                        &decorators,
+                        index,
                         "a class decorator must return a function or undefined".into(),
                     ));
                 }

@@ -1506,11 +1506,37 @@ fn class_lowering_and_decorators_keep_their_original_source() {
 }
 
 #[test]
+fn decorator_application_checks_keep_each_evaluated_expression_origin() {
+    for aggressive_gc in [false, true] {
+        for (source, expected) in [
+        ("var bad=0;\n@bad class C {}", "2:2"),
+        ("var bad=0;class C {\n @bad method(){} }", "2:3"),
+        ("var bad=0;function ok(){}\n@bad\n@ok\nclass C {}", "2:2"),
+        ("var first=0,second=0;\n@first\n@second\nclass C {}", "3:2"),
+        ("function bad(){return 0;}\n@bad class C {}", "2:2"),
+        ("function bad(){return 0;}\nclass C {\n @bad method(){} }", "3:3"),
+        ("function bad(){return 0;}\nclass C {\n @bad field=1; }", "3:3"),
+        ("function bad(){return 0;}\nclass C {\n @bad accessor field=1; }", "3:3"),
+        ("function bad(){try {missing;}catch(error){}return 0;}\n@bad class C {}", "2:2"),
+        ("function bad(){return {get get(){try{missing;}catch(error){}return 0;}};}\nclass C {\n @bad accessor field=1; }", "3:3"),
+    ] {
+        let mut config=blueice_bluejs::VmConfig::default();
+        if aggressive_gc {config.heap.nursery_capacity=1;config.heap.major_threshold_bytes=1;}
+        let mut vm=page_with_vm(Vm::new(config).unwrap());
+        assert!(vm.execute_script(&mapped_expression_code(source)).is_err(),"{source}");
+        assert_eq!(observed(&mut vm),Value::String(format!("memory:///position.js:{expected}").into()),"{source}");
+    }
+    }
+}
+
+#[test]
 fn generated_class_operations_and_dynamic_code_do_not_borrow_source_locations() {
     for source in [
         "class C {accessor value=1;}Object.getOwnPropertyDescriptor(C.prototype,'value').get.call({});",
         "class Base {constructor(){return Object.preventExtensions({});}}class C extends Base {value;}new C();",
         "class C {constructor(){eval(\"throw 'dynamic';\");}}new C();",
+        "var dec=Function(\"throw 'dynamic';\");@dec class C {}",
+        "function dec(){return {get get(){Function(\"throw 'dynamic';\")();}};}class C {@dec accessor field=1;}",
     ] {
         let mut vm = page();
         assert!(vm.execute_script(&mapped_expression_code(source)).is_err(), "{source}");
