@@ -184,12 +184,49 @@ Rust hashes, runtime/test hashes and per-target receipts are in
 `target/generator-request-origins-validation-20261015.json`. This extends the
 verified implementation; M1q's final acceptance remains at 3/10.
 
+## Cached module completions
+
+Module evaluation errors now retain the rejection value with immutable native
+provenance. A cached import republishes the stored origin with a fresh throw
+epoch. Async dependency failures share their origin across static parents,
+and every waiting dynamic import receives the same certified source. Page
+module error events use the stored dependency location. Unknown generated
+code remains unavailable; a module path or later importer supplies no fallback.
+
+A weak native ledger charges origin allocations and filename capacities even
+while a linked graph is displaced into a Rust frame. It adds no JavaScript
+roots and releases dead entries during collection. Admission includes ledger
+growth before publishing a completion. Loader referrers are distinguished from
+active module execution so an installed idle referrer cannot suppress host
+rejection notification. Await continuations restore their ambient execution
+state, and debugger resumption preserves enclosing checkpoint cleanup.
+
+The initial public regressions report an unavailable dependency source and
+zero import rejection notifications with an installed loader referrer. The
+final selection passes all 1,487 BlueJS cases across twenty-six targets,
+including 1,204 library cases and thirty diagnostic groups. It verifies
+synchronous and awaited dependency errors, cached import replay, async parent
+fan-out, rejected-await and unknown-code sources, argument getters, debugger
+resumption, shared capacity charges, displaced ownership, major GC and native
+admission refusal. Bridge, Launcher, real page and official MCP acceptance
+bring the total to 1,981 passes over thirty targets, one existing ignored.
+Formatting, matching Core/host/Gatekeeper builds and six-library Clippy pass.
+
+Old build artifacts were cleared before validation; incremental caching and
+dev/test debug info are disabled. The first MCP attempt stopped at a missing
+Gatekeeper binary; the complete matched runtime passes all three cases.
+The thirteen final Rust input hashes, three runtime hashes, test hashes and
+receipts are in `target/module-origins-source-20261015.json` and
+`target/module-origins-validation-20261015.json`. This verifies retention of
+owner-certified module maps; original page-module/debugger source production
+remains a separate open requirement. M1q remains at 3/10 final gates.
+
 ## Required remaining work
 
 Precise expression/parameter/generated-code provenance, direct and emitted
-BlueTS, modules and debugger-driven execution still need their full acceptance.
+BlueTS and page-module/debugger source producers still need their full acceptance.
 The complete queued-origin matrix, including remaining delegate/protocol
-cases, module failure fan-out and rejected-await/async-disposal finalizer
+cases and rejected-await/async-disposal finalizer
 interactions, remains part of M1q.
 Other copies held by asynchronous diagnostic state must join document-native
 accounting. Navigation, stale generations, GC, source-map refusals and resource

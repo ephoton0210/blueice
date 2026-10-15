@@ -250,6 +250,26 @@ impl Vm {
         is_dynamic_import: bool,
         phase: ImportPhase,
     ) -> Result<Value, RuntimeError> {
+        self.module_execution_depth += 1;
+        let result = self.execute_module_graph_inner_scoped(
+            entry,
+            modules,
+            drain_jobs,
+            is_dynamic_import,
+            phase,
+        );
+        self.module_execution_depth -= 1;
+        result
+    }
+
+    fn execute_module_graph_inner_scoped(
+        &mut self,
+        entry: &str,
+        modules: &HashMap<String, Bytecode>,
+        drain_jobs: bool,
+        is_dynamic_import: bool,
+        phase: ImportPhase,
+    ) -> Result<Value, RuntimeError> {
         // An import that starts while module code is running (a dynamic
         // `import()` in a Promise job the entry's `await` lets run) joins the
         // graph that code belongs to instead of linking a second copy of it.
@@ -744,7 +764,7 @@ impl Vm {
                 .linked_record(entry)
                 .and_then(|record| record.error.clone())
             {
-                result = Err(RuntimeError::Thrown(error));
+                result = Err(self.propagate_module_error(error));
             }
         }
         if result.is_ok() && phase != ImportPhase::Defer {
@@ -812,6 +832,16 @@ impl Vm {
     }
 
     pub(super) fn resume_debugger_module_inner(
+        &mut self,
+        suspension_point: Option<InterpreterSuspensionPoint>,
+    ) -> Result<VmDebuggerExecutionState, RuntimeError> {
+        self.module_execution_depth += 1;
+        let result = self.resume_debugger_module_scoped(suspension_point);
+        self.module_execution_depth -= 1;
+        result
+    }
+
+    fn resume_debugger_module_scoped(
         &mut self,
         suspension_point: Option<InterpreterSuspensionPoint>,
     ) -> Result<VmDebuggerExecutionState, RuntimeError> {
@@ -945,9 +975,19 @@ impl Vm {
                     ) {
                         match self.error_value(error.clone()) {
                             Ok(value) => {
-                                record.evaluated = true;
-                                record.error = Some(value.clone());
-                                result = Err(RuntimeError::Thrown(value));
+                                let origin = ThrowOrigin {
+                                    source: self.pending_diagnostic_origin.clone(),
+                                    debugger_site: self.pending_throw_site,
+                                    epoch: self.throw_epoch,
+                                };
+                                match self.retain_module_error(value.clone(), origin) {
+                                    Ok(error) => {
+                                        record.evaluated = true;
+                                        record.error = Some(error);
+                                        result = Err(RuntimeError::Thrown(value));
+                                    }
+                                    Err(error) => result = Err(error),
+                                }
                             }
                             Err(error) => result = Err(error),
                         }
@@ -996,7 +1036,7 @@ impl Vm {
                 .linked_record(&module)
                 .and_then(|record| record.error.clone())
             {
-                result = Err(RuntimeError::Thrown(error));
+                result = Err(self.propagate_module_error(error));
             } else if let Some(value) = self
                 .linked_record(&module)
                 .and_then(|record| record.completion.clone())
@@ -1158,6 +1198,7 @@ impl Vm {
         let result = (|| {
             let promise = self.new_promise()?;
             self.stack.push(Value::Object(promise));
+            let argument_epoch = self.throw_epoch;
             match self.evaluate_import_call_arguments(specifier, options) {
                 Ok((specifier, module_type)) if phase == ImportPhase::Source => {
                     self.dynamic_import_source(promise, &specifier, module_type)?;
@@ -1176,9 +1217,9 @@ impl Vm {
                     });
                 }
                 Err(error) => {
+                    let origin = self.caught_rejection_origin(argument_epoch);
                     let error = self.error_value(error)?;
-                    self.settle_promise(promise, PromiseStatus::Rejected(error))
-                        .expect("the promise of an import() call is one of this VM's");
+                    self.reject_promise_with_origin(promise, error, origin)?;
                 }
             }
             Ok(Value::Object(promise))
@@ -1265,7 +1306,8 @@ impl Vm {
         }
         if let Some(record) = self.linked_record(&entry) {
             if let Some(error) = &record.error {
-                return Err(RuntimeError::Thrown(error.clone()));
+                let error = error.clone();
+                return Err(self.propagate_module_error(error));
             }
             if record.evaluated {
                 let modules = self.module_registry.clone();
@@ -1275,7 +1317,7 @@ impl Vm {
                         if let Some(error) = Self::cycle_root_error(&entry, &modules, linked)
                             .expect("every request of the graph resolves")
                         {
-                            return Err(RuntimeError::Thrown(error));
+                            return Err(vm.propagate_module_error(error));
                         }
                         // A dependency can finish without ever being an entry
                         // or namespace import. Its namespace is then created
@@ -1514,6 +1556,24 @@ impl Vm {
         value: Value,
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
+        let ambient = self.suspend_module_execution();
+        let root_base = self.async_frame_roots.len();
+        self.async_frame_roots
+            .extend(Self::suspended_execution_references(&ambient));
+        self.module_execution_depth += 1;
+        let result = self.resume_module_await_scoped(continuation, value, fulfilled);
+        self.module_execution_depth -= 1;
+        self.restore_module_execution(ambient);
+        self.async_frame_roots.truncate(root_base);
+        result
+    }
+
+    fn resume_module_await_scoped(
+        &mut self,
+        continuation: u64,
+        value: Value,
+        fulfilled: bool,
+    ) -> Result<(), RuntimeError> {
         // A reaction names the continuation of the await it was made for, and
         // fires once.
         let continuation = self
@@ -1529,6 +1589,7 @@ impl Vm {
             handlers,
         } = continuation;
         self.restore_module_execution(execution);
+        let resume_epoch = self.throw_epoch;
         let outcome = if fulfilled {
             self.interpret(
                 &code,
@@ -1600,7 +1661,9 @@ impl Vm {
                 Ok(Value::Undefined)
             }
             Err(error) => {
-                let error = self.error_value(error)?;
+                let origin = self.caught_rejection_origin(resume_epoch);
+                let value = self.error_value(error)?;
+                let error = self.retain_module_error(value, origin)?;
                 let record = graph
                     .linked
                     .get_mut(&module)
@@ -1611,8 +1674,8 @@ impl Vm {
                 record.evaluated = true;
                 record.completion = None;
                 record.error = Some(error.clone());
-                self.keep_module_value_alive(&error);
-                self.reject_module_and_parents(module.clone(), error, &mut graph.linked);
+                self.keep_module_value_alive(&error.value);
+                self.reject_module_and_parents(module.clone(), error, &mut graph.linked)?;
                 Ok(Value::Undefined)
             }
         })();
@@ -1620,7 +1683,7 @@ impl Vm {
             .linked
             .get(&module)
             .and_then(|record| record.error.as_ref())
-            .and_then(Value::object_id)
+            .and_then(|error| error.value.object_id())
             .map(|id| self.heap.root(id));
         if let Some(Ok(root)) = &error_root {
             graph.roots.push(*root);
@@ -1678,12 +1741,12 @@ impl Vm {
     pub(super) fn reject_module_and_parents(
         &mut self,
         module: String,
-        error: Value,
+        error: ModuleEvaluationError,
         linked: &mut HashMap<String, LinkedModule>,
-    ) {
+    ) -> Result<(), RuntimeError> {
         let mut rejected = std::collections::VecDeque::from([module]);
         while let Some(module) = rejected.pop_front() {
-            self.reject_dynamic_import_waiters(&module, error.clone());
+            self.reject_dynamic_import_waiters(&module, error.clone())?;
             for parent in self
                 .module_async_parents
                 .remove(&module)
@@ -1701,10 +1764,11 @@ impl Vm {
                 record.evaluated = true;
                 record.completion = None;
                 record.error = Some(error.clone());
-                self.keep_module_value_alive(&error);
+                self.keep_module_value_alive(&error.value);
                 rejected.push_back(parent);
             }
         }
+        Ok(())
     }
 
     /// Resolves every waiting `import()` with its namespace, observing an
@@ -1758,7 +1822,11 @@ impl Vm {
     }
 
     /// Rejects every `import()` promise that waited for `module` with `error`.
-    pub(super) fn reject_dynamic_import_waiters(&mut self, module: &str, error: Value) {
+    pub(super) fn reject_dynamic_import_waiters(
+        &mut self,
+        module: &str,
+        error: ModuleEvaluationError,
+    ) -> Result<(), RuntimeError> {
         let mut failed = Vec::new();
         self.deferred_import_waiters.retain(|waiter| {
             if waiter.pending.contains(module) {
@@ -1769,16 +1837,23 @@ impl Vm {
             }
         });
         for promise in failed {
-            self.settle_promise(promise, PromiseStatus::Rejected(error.clone()))
-                .expect("a waiting import promise is one of this VM's");
+            self.reject_promise_with_origin(
+                promise,
+                error.value.clone(),
+                error.origin.as_ref().clone(),
+            )?;
         }
         let Some(waiters) = self.module_import_waiters.remove(module) else {
-            return;
+            return Ok(());
         };
         for promise in waiters {
-            self.settle_promise(promise, PromiseStatus::Rejected(error.clone()))
-                .expect("a waiting import promise is one of this VM's");
+            self.reject_promise_with_origin(
+                promise,
+                error.value.clone(),
+                error.origin.as_ref().clone(),
+            )?;
         }
+        Ok(())
     }
 
     /// Registers a module frame on the Promise it awaits. A fulfilled input
@@ -2327,7 +2402,8 @@ impl Vm {
             .get(name)
             .expect("every module of the graph is linked");
         if let Some(error) = &record.error {
-            return Err(RuntimeError::Thrown(error.clone()));
+            let error = error.clone();
+            return Err(self.propagate_module_error(error));
         }
         if record.evaluated || record.evaluating {
             return Ok(Value::Undefined);
@@ -2336,6 +2412,7 @@ impl Vm {
             .get_mut(name)
             .expect("checked module record exists")
             .evaluating = true;
+        let evaluation_epoch = self.throw_epoch;
         let result = (|| {
             let code = modules.get(name).expect("linked module has bytecode");
             let mut pending_dependencies = Vec::new();
@@ -2497,12 +2574,14 @@ impl Vm {
                 | RuntimeError::RangeError(_)
                 | RuntimeError::SyntaxError(_)),
             ) if !linked.get(name).is_some_and(|record| record.suspended) => {
+                let origin = self.caught_rejection_origin(evaluation_epoch);
                 let value = self.error_value(error)?;
+                let retained = self.retain_module_error(value.clone(), origin)?;
                 let record = linked.get_mut(name).expect("checked module record exists");
                 record.evaluating = false;
                 record.evaluated = true;
                 record.completion = None;
-                record.error = Some(value.clone());
+                record.error = Some(retained);
                 self.keep_module_value_alive(&value);
                 Err(RuntimeError::Thrown(value))
             }

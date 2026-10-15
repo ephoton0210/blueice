@@ -410,7 +410,10 @@ fn unhandled_nested_module_throw_releases_both_debugger_frames() {
     assert!(vm.debugger_nested_continuation.is_none());
     let record = vm.linked_record(entry).unwrap();
     assert!(!record.suspended);
-    assert_eq!(record.error, Some(Value::Number(7.0)));
+    assert_eq!(
+        record.error.as_ref().map(|error| error.value.clone()),
+        Some(Value::Number(7.0))
+    );
     assert_eq!(
         vm.execute_script(&code("1 + 1")).unwrap(),
         Value::Number(2.0)
@@ -860,7 +863,7 @@ fn paused_module_rejects_concurrent_entry_points_and_recovers_after_throw() {
     assert!(record.evaluated);
     assert!(!record.evaluating && !record.suspended);
     assert_eq!(
-        record.error,
+        record.error.as_ref().map(|error| error.value.clone()),
         Some(match &thrown {
             RuntimeError::Thrown(value) => value.clone(),
             _ => unreachable!("checked thrown completion"),

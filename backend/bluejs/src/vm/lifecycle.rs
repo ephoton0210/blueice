@@ -111,6 +111,8 @@ impl Vm {
             module_import_waiters: HashMap::new(),
             active_module_name: None,
             module_closure_referrers: HashMap::new(),
+            module_execution_depth: 0,
+            module_error_origins: Vec::new(),
             dynamic_eval_bindings: HashMap::new(),
             eval_dynamic_slots: HashMap::new(),
             dynamic_eval_outer_bindings: Vec::new(),

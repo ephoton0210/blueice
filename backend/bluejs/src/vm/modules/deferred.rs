@@ -261,7 +261,7 @@ impl Vm {
                 .and_then(|record| record.evaluated.then(|| record.error.clone()))
         })?;
         match settled {
-            Some(Some(error)) => return Err(RuntimeError::Thrown(error)),
+            Some(Some(error)) => return Err(self.propagate_module_error(error)),
             Some(None) => return Ok(()),
             None => {}
         }
@@ -334,7 +334,7 @@ impl Vm {
         module: &str,
         modules: &HashMap<String, Bytecode>,
         linked: &HashMap<String, LinkedModule>,
-    ) -> Result<Option<Value>, RuntimeError> {
+    ) -> Result<Option<ModuleEvaluationError>, RuntimeError> {
         let mut candidates: Vec<_> = linked
             .iter()
             .filter(|(name, record)| name.as_str() != module && record.error.is_some())

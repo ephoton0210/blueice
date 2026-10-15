@@ -373,6 +373,17 @@ fn mapped_promise_code(source: &str) -> blueice_bluejs::Bytecode {
 }
 
 fn mapped_promise_code_with_filename(source: &str, filename: &str) -> blueice_bluejs::Bytecode {
+    mapped_program(BlueJsProgramV1::Script(parse(source).unwrap()), filename)
+}
+
+fn mapped_module(source: &str, filename: &str) -> blueice_bluejs::Bytecode {
+    mapped_program(
+        BlueJsProgramV1::Module(blueice_bluejs::parse_module(source).unwrap()),
+        filename,
+    )
+}
+
+fn mapped_program(program: BlueJsProgramV1, filename: &str) -> blueice_bluejs::Bytecode {
     fn collect(
         code: &blueice_bluejs::Bytecode,
         ordinal: &mut u32,
@@ -388,12 +399,7 @@ fn mapped_promise_code_with_filename(source: &str, filename: &str) -> blueice_bl
         }
     }
     let mut registry = BlueJsProgramRegistry::default();
-    let handle = registry
-        .install(
-            identity("original"),
-            &BlueJsProgramV1::Script(parse(source).unwrap()),
-        )
-        .unwrap();
+    let handle = registry.install(identity("original"), &program).unwrap();
     let mut rows = Vec::new();
     collect(registry.get(handle).unwrap().bytecode(), &mut 0, &mut rows);
     for row in &mut rows {
@@ -406,6 +412,189 @@ fn mapped_promise_code_with_filename(source: &str, filename: &str) -> blueice_bl
         )
         .unwrap();
     registry.get(handle).unwrap().bytecode().clone()
+}
+
+#[test]
+fn module_rejection_origins_survive_async_fanout_and_cached_imports() {
+    use std::collections::HashMap;
+    let mut failures = Vec::new();
+    for (name, dependency, parent, expected_file, expected_line) in [
+        (
+            "synchronous",
+            "throw 'probe';",
+            "import './dep.js';",
+            "dep",
+            2,
+        ),
+        (
+            "asynchronous",
+            "await 0;throw 'probe';",
+            "import './dep.js';",
+            "dep",
+            2,
+        ),
+        (
+            "awaited finalizer",
+            "try{throw 'probe';}finally{await 0;try{throw 'caught';}catch{}}",
+            "import './dep.js';",
+            "dep",
+            2,
+        ),
+        (
+            "rejected await",
+            "await globalThis.input;",
+            "import './dep.js';",
+            "driver",
+            2,
+        ),
+        (
+            "unknown module",
+            "Function(\"throw 'probe';\")();",
+            "import './dep.js';",
+            "",
+            0,
+        ),
+    ] {
+        let mut vm = page();
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_promise_code_with_filename(
+            "var input=Promise.reject('probe');input.catch(function(){});",
+            "memory:///driver.js",
+        ))
+        .unwrap();
+        vm.set_module_loader_context(
+            "root.js",
+            HashMap::from([
+                (
+                    "dep.js".into(),
+                    mapped_module(dependency, "memory:///dep.js"),
+                ),
+                ("one.js".into(), mapped_module(parent, "memory:///one.js")),
+                ("two.js".into(), mapped_module(parent, "memory:///two.js")),
+            ]),
+        );
+        for turn in 0..2 {
+            vm.execute_script(&mapped_promise_code_with_filename(
+                "import('./one.js');import('./two.js');",
+                "memory:///importer.js",
+            ))
+            .unwrap();
+            vm.run_host_microtask_checkpoint().unwrap();
+            vm.run_browser_task_turn(1).unwrap();
+            let batch = vm.drain_host_console().unwrap();
+            assert_eq!(batch.records.len(), 2, "{name}/{turn}: {batch:?}");
+            for record in batch.records {
+                assert_eq!(
+                    record.message, "Uncaught (in promise) probe",
+                    "{name}/{turn}"
+                );
+                let expected = (expected_line != 0).then(|| DiagnosticSourceLocation {
+                    filename: format!("memory:///{expected_file}.js"),
+                    line: expected_line,
+                    column: 1,
+                });
+                if record.source != expected {
+                    failures.push((name, turn, record.source, expected));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn asynchronous_module_parents_share_one_charged_origin() {
+    use std::collections::HashMap;
+    fn usage(filename: &str) -> usize {
+        let mut vm = page();
+        vm.execute_script(&compile(&parse("var hold=Promise.withResolvers();").unwrap()).unwrap())
+            .unwrap();
+        let modules = HashMap::from([
+            (
+                "main.js".into(),
+                mapped_module("import './one.js';import './two.js';", "memory:///main.js"),
+            ),
+            (
+                "one.js".into(),
+                mapped_module("import './dep.js';", "memory:///one.js"),
+            ),
+            (
+                "two.js".into(),
+                mapped_module("import './dep.js';", "memory:///two.js"),
+            ),
+            (
+                "dep.js".into(),
+                mapped_module("await globalThis.hold.promise;throw 'probe';", filename),
+            ),
+        ]);
+        vm.execute_module_graph("main.js", &modules).unwrap();
+        vm.execute_script(&compile(&parse("hold.resolve();").unwrap()).unwrap())
+            .unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();
+        vm.execute_script(&compile(&parse("0;").unwrap()).unwrap())
+            .unwrap();
+        vm.host_scheduling_usage().unwrap().payload_bytes
+    }
+    let short = "memory:///a.js";
+    let long = format!("memory:///{}.js", "x".repeat(4096));
+    assert_eq!(usage(&long) - usage(short), long.len() - short.len());
+}
+
+#[test]
+fn page_module_errors_keep_the_dependency_origin_after_top_level_await() {
+    use std::collections::HashMap;
+    for source in [
+        "throw 'probe';",
+        "await 0;throw 'probe';",
+        "try{throw 'probe';}finally{await 0;}",
+    ] {
+        let mut vm = page();
+        let modules = HashMap::from([
+            (
+                "main.js".into(),
+                mapped_module("import './dep.js';", "memory:///main.js"),
+            ),
+            ("dep.js".into(), mapped_module(source, "memory:///dep.js")),
+        ]);
+        assert!(
+            vm.execute_module_graph("main.js", &modules).is_err(),
+            "{source}"
+        );
+        vm.run_host_microtask_checkpoint().unwrap();
+        assert_eq!(
+            observed(&mut vm),
+            Value::String("memory:///dep.js:2:1".into()),
+            "{source}"
+        );
+        assert!(vm.drain_host_console().unwrap().records.is_empty());
+    }
+}
+
+#[test]
+fn dynamic_import_argument_failures_keep_their_own_origin() {
+    for (source, line) in [
+        ("import({toString(){throw 'probe';}});", Some(3)),
+        ("import('./dep.js',{get with(){throw 'probe';}});", Some(3)),
+        ("import({toString:Function(\"throw 'probe';\")});", None),
+    ] {
+        let mut vm = page();
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_promise_code(source)).unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();
+        vm.run_browser_task_turn(1).unwrap();
+        let records = vm.drain_host_console().unwrap().records;
+        assert_eq!(records.len(), 1, "{source}");
+        assert_eq!(
+            records[0].message, "Uncaught (in promise) probe",
+            "{source}"
+        );
+        let expected = line.map(|line| DiagnosticSourceLocation {
+            filename: "memory:///position.js".into(),
+            line,
+            column: 1,
+        });
+        assert_eq!(records[0].source, expected, "{source}");
+    }
 }
 
 #[test]

@@ -370,7 +370,11 @@ fn nested_module_object_throws_preserve_identity_and_root_failure_cleans_both_fr
         } else {
             assert_eq!(error, RuntimeError::Thrown(Value::Object(object)));
             assert_eq!(
-                vm.linked_record(entry).unwrap().error,
+                vm.linked_record(entry)
+                    .unwrap()
+                    .error
+                    .as_ref()
+                    .map(|error| error.value.clone()),
                 Some(Value::Object(object))
             );
         }

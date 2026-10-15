@@ -174,6 +174,7 @@ impl Vm {
     }
 
     pub(super) fn prune_collected_promise_state(&mut self) {
+        self.prune_module_error_origins();
         self.promises
             .retain(|promise, _| self.heap.contains(*promise));
         if self.promises.len().saturating_mul(4) < self.promises.capacity() {

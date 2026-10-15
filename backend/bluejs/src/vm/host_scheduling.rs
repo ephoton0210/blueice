@@ -459,7 +459,7 @@ impl Vm {
     pub(super) fn finish_host_checkpoint(&mut self) -> Result<(), RuntimeError> {
         // Implicit module drains can run inside an outer execution context;
         // its WeakRef keep-alive guarantee has not ended at that point.
-        if self.call_depth != 0 || self.top_level_module || self.active_module_name.is_some() {
+        if self.call_depth != 0 || self.top_level_module || self.module_execution_depth != 0 {
             return Ok(());
         }
         self.report_pending_host_module_errors()?;
@@ -498,6 +498,16 @@ impl Vm {
                 .saturating_mul(std::mem::size_of::<PromiseJob>())
                 .saturating_add(self.active_scheduling_bytes),
         };
+        usage.payload_bytes = usage
+            .payload_bytes
+            .saturating_add(slots(&self.module_error_origins));
+        for origin in &self.module_error_origins {
+            usage.payload_bytes = usage
+                .payload_bytes
+                .saturating_add(std::mem::size_of::<ThrowOrigin>())
+                .saturating_add(2 * std::mem::size_of::<usize>())
+                .saturating_add(origin.upgrade().map_or(0, |origin| origin.payload_bytes()));
+        }
         usage.payload_bytes = usage.payload_bytes.saturating_add(
             self.host_console
                 .as_ref()

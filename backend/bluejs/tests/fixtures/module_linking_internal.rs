@@ -128,7 +128,10 @@ fn namespace_and_deferred_walks_reject_invalid_requests_and_missing_execution_co
             Vm::scc_evaluated("main.mjs", &modules, &linked),
             Err(RuntimeError::ModuleResolution(_))
         ));
-        linked.get_mut("other.mjs").unwrap().error = Some(Value::Number(7.0));
+        linked.get_mut("other.mjs").unwrap().error = Some(ModuleEvaluationError {
+            value: Value::Number(7.0),
+            origin: Rc::new(ThrowOrigin::default()),
+        });
         linked.get_mut("other.mjs").unwrap().evaluated = true;
         assert!(matches!(
             Vm::cycle_root_error("main.mjs", &modules, &linked),
@@ -1571,4 +1574,128 @@ fn debugger_resume_preserves_an_unsettled_top_level_await() {
         vm.execute_script(&script("21 + 21")),
         Ok(Value::Number(42.0))
     );
+}
+
+#[cfg_attr(test, test)]
+fn module_origin_accounting_follows_displaced_owners_without_rooting_values() {
+    let mut vm = Vm::default();
+    let baseline = vm.host_scheduling_usage().unwrap().payload_bytes;
+    let value = vm.with_roots(|heap| heap.alloc_object(None)).unwrap();
+    let origin = ThrowOrigin {
+        source: Some(crate::diagnostics::DiagnosticSourceLocation {
+            filename: "memory:///displaced.js".into(),
+            line: 2,
+            column: 1,
+        }),
+        ..Default::default()
+    };
+    let error = vm
+        .retain_module_error(Value::Object(value), origin)
+        .unwrap();
+    let bytes = vm.host_scheduling_usage().unwrap().payload_bytes;
+    assert!(bytes > baseline);
+    // No linked graph owns this native completion yet. Its filename remains
+    // charged, while the native provenance ledger adds no JavaScript root.
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    assert!(!vm.heap.contains(value));
+    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, bytes);
+    drop(error);
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    assert!(vm.module_error_origins.is_empty());
+    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, baseline);
+}
+
+#[cfg_attr(test, test)]
+fn module_origin_admission_charges_spare_capacity_before_cache_publication() {
+    let mut vm = Vm::default();
+    vm.use_bounded_host_microtask_checkpoints();
+    let mut filename = String::with_capacity(MAX_HOST_SCHEDULING_BYTES);
+    filename.push_str("memory:///short.js");
+    let origin = ThrowOrigin {
+        source: Some(crate::diagnostics::DiagnosticSourceLocation {
+            filename,
+            line: 2,
+            column: 1,
+        }),
+        ..Default::default()
+    };
+    assert!(matches!(
+        vm.retain_module_error(Value::Undefined, origin),
+        Err(RuntimeError::SchedulingLimit)
+    ));
+    assert!(vm.module_error_origins.is_empty());
+    assert_eq!(
+        vm.check_scheduling_failure(),
+        Err(RuntimeError::SchedulingLimit)
+    );
+}
+
+#[cfg_attr(test, test)]
+fn debugger_resumed_module_reports_its_retained_source() {
+    use crate::diagnostics::{
+        DiagnosticSourceLocation, DiagnosticSourceMap, DiagnosticSourceRange,
+    };
+    for source in [
+        "throw 'probe';",
+        "await 0;throw 'probe';",
+        "try{throw 'probe';}finally{await 0;}",
+    ] {
+        let identity = crate::BlueJsSourceIdentity::new("memory:///paused.js", "original").unwrap();
+        let mut registry = crate::BlueJsProgramRegistry::default();
+        let handle = registry
+            .install(
+                identity.clone(),
+                &crate::BlueJsProgramV1::Module(crate::parse_module(source).unwrap()),
+            )
+            .unwrap();
+        let end = registry.get(handle).unwrap().bytecode().code.len() as u32;
+        registry
+            .bind_diagnostic_sources(
+                handle,
+                DiagnosticSourceMap::new(
+                    identity,
+                    vec![DiagnosticSourceRange {
+                        code_unit_ordinal: 0,
+                        start: 0,
+                        end,
+                        location: DiagnosticSourceLocation {
+                            filename: "memory:///paused.js".into(),
+                            line: 7,
+                            column: 3,
+                        },
+                    }],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let code = registry.get(handle).unwrap().bytecode().clone();
+        let offset = code.module_evaluate_entry.unwrap();
+        let graph = HashMap::from([("entry.js".into(), code)]);
+        let mut vm = Vm::default();
+        vm.install_web_file_api().unwrap();
+        vm.install_host_console().unwrap();
+        vm.install_window_aliases().unwrap();
+        vm.install_host_error_reporting().unwrap();
+        let script = |source| crate::compile(&crate::parse(source).unwrap()).unwrap();
+        vm.execute_script(&script("var observed='waiting';onerror=function(m,f,l,c){observed=f+':'+l+':'+c;return true;};"))
+            .unwrap();
+        vm.execute_module_graph_until_debugger_pause("entry.js", &graph, offset)
+            .unwrap();
+        assert!(vm.resume_debugger_module_execution().is_err(), "{source}");
+        vm.run_host_microtask_checkpoint().unwrap();
+        assert_eq!(
+            vm.execute_script(&script("observed")).unwrap(),
+            Value::String("memory:///paused.js:7:3".into()),
+            "{source}"
+        );
+        assert!(vm.drain_host_console().unwrap().records.is_empty());
+    }
 }

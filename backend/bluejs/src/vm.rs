@@ -417,10 +417,18 @@ struct LinkedModule {
     /// An asynchronous module keeps its abrupt completion after its frame has
     /// been released. Static parents and later dynamic imports observe this
     /// stored evaluation error instead of attempting to execute it again.
-    error: Option<Value>,
+    error: Option<ModuleEvaluationError>,
     /// A page-owned module entry reports its terminal rejection once;
     /// dynamic imports keep their Promise rejection semantics instead.
     host_error_pending: bool,
+}
+
+/// A cached evaluation completion keeps its value and certified provenance
+/// together. Async parent records share immutable native origin metadata.
+#[derive(Clone)]
+struct ModuleEvaluationError {
+    value: Value,
+    origin: Rc<ThrowOrigin>,
 }
 
 /// The realm keeps Source Text Module Records after an entry evaluation.
@@ -1031,6 +1039,12 @@ pub struct Vm {
     /// closure receives the same association at creation time.
     active_module_name: Option<String>,
     module_closure_referrers: HashMap<ObjectId, String>,
+    /// Loader referrers can remain installed outside execution. Only actual
+    /// module work suppresses an enclosing host checkpoint's final cleanup.
+    module_execution_depth: usize,
+    /// Weak accounting follows origins even while their graph is displaced
+    /// into a Rust frame, without rooting any JavaScript value or module.
+    module_error_origins: Vec<std::rc::Weak<ThrowOrigin>>,
     // Bindings created by sloppy direct eval in the active ordinary-function
     // VariableEnvironment. They move into a generator's suspended state when
     // it yields and are rooted at interpreter safepoints.

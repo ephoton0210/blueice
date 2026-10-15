@@ -59,14 +59,16 @@ locations, including nested blocks and functions, through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest queued-generator
-follow-up passes 1,841 tests across twenty targets (one existing ignored),
-including twelve request-source scenarios under normal and aggressive GC,
-distinct/unknown FIFO origins, heap accounting and real MCP coordinates after
-queued `.throw()` and `finally`. Formatting and focused six-library Clippy pass. Three of the ten final acceptance
+Core and MCP, preserving unavailable locations. The latest module-origin
+follow-up preserves cached evaluation failures, async dependency fan-out,
+debugger resumption and dynamic-import argument failures, with native capacity
+accounting and GC controls. Its final selection passes 1,981 tests across
+thirty targets (one existing ignored), including real Core/child and official
+MCP acceptance. Formatting and focused six-library Clippy pass. Three of the ten final acceptance
 gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Expression/parameter
-provenance, direct/emitted BlueTS, modules and queued origins remain open,
+provenance, direct/emitted BlueTS, page-module/debugger source producers and
+the complete queued-origin matrix remain open,
 along with their final integrated Core/MCP/resource/GC checks and
 final workspace/Test262 gates. Unknown or generated-only locations remain
 explicitly unavailable. Section H remains unchecked.
@@ -484,7 +486,7 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: queued-generator origins verified; 3/10 final
+**Progress updated 2026-10-15: module-origin follow-up verified; 3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -530,6 +532,16 @@ the full source-position requirement.
       and atomic heap refusal; real MCP reports inline line 5, column 25.
 - [x] Pass the queued-generator follow-up: 1,841 passed across twenty disjoint
       targets, one existing ignored, formatting and focused six-library Clippy.
+- [x] Retain certified module failure origins through synchronous/awaited
+      dependency evaluation, async parent fan-out, cached dynamic imports and
+      debugger resumption. Preserve argument-getter and explicitly unknown
+      origins; keep idle loader referrers from suppressing host notifications.
+- [x] Charge shared module origins and weak-ledger capacities before cache
+      publication, including displaced graph owners; verify major-GC release,
+      absence of added JavaScript roots and native-byte refusal.
+- [x] Pass the final module-origin follow-up: 1,981 passed across thirty
+      disjoint targets, one existing ignored, matched Core/host/Gatekeeper,
+      formatting and focused six-library Clippy.
 
 #### Remaining implementation and verification
 
@@ -765,6 +777,34 @@ current/prechange runtime hashes and per-target results are recorded in
 `target/generator-request-origins-validation-20261015.json`. The complete
 queued-origin matrix, module/disposal interactions, remaining source producers
 and final workspace/Test262 gates stay open; M1q remains at 3/10 final gates.
+
+The module-origin regression initially reports `:0:0` for dependency errors
+and no dynamic-import rejection notifications with an installed idle loader
+referrer (`/private/tmp/blueice-module-origins-red.log`). Cached module errors
+now retain their native origin with the original rejection value. Async
+parents share immutable metadata; cached replay republishes a fresh throw
+epoch, and import waiters receive the dependency's source. Module awaits
+restore the ambient execution state. Explicit module execution depth keeps
+real execution separate from loader referrers and preserves debugger checkpoint
+cleanup. A weak native ledger accounts for allocation and filename capacities
+through displaced graph ownership, without adding JavaScript roots.
+
+The final current-source selection passes all 1,487 BlueJS cases across
+twenty-six targets, including 1,204 library and thirty diagnostic groups.
+Bridge, Launcher and real Core/child page tests add 491 passes and one existing
+ignored; all three official MCP console cases pass, for 1,981 passes over
+thirty disjoint targets. Formatting, matched Core/host/Gatekeeper builds and
+focused six-library Clippy pass. The first clean-cache MCP attempt lacked the
+Gatekeeper executable and stopped during setup; rebuilding it resolves all
+three failures. Final validation includes the last debugger resource-refusal
+root cleanup. Thirteen Rust input hashes, three runtime hashes, test executable
+hashes and per-target receipts are recorded in
+`target/module-origins-source-20261015.json` and
+`target/module-origins-validation-20261015.json`. Incremental caching and
+dev/test debug info are disabled after the requested build-artifact cleanup.
+These tests validate retention of owner-certified module maps; page-module
+source production, the remaining await/disposal matrix and the broader final
+acceptance gates remain open. M1q stays at 3/10.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

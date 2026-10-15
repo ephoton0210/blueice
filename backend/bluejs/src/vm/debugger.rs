@@ -353,7 +353,7 @@ impl Vm {
             .linked_record(entry)
             .and_then(|record| record.error.clone())
         {
-            Err(RuntimeError::Thrown(error))
+            Err(self.propagate_module_error(error))
         } else {
             Err(RuntimeError::Unsupported(
                 "debugger module entry did not reach the requested safe point",
@@ -657,7 +657,7 @@ impl Vm {
             .linked_record(entry)
             .and_then(|record| record.error.clone())
         {
-            return Err(RuntimeError::Thrown(error));
+            return Err(self.propagate_module_error(error));
         }
         if self
             .linked_record(entry)
@@ -1056,7 +1056,7 @@ impl Vm {
             Ok(error)
         };
         let mut error_root = None;
-        let result = match result {
+        let mut result = match result {
             Ok(RuntimeError::Thrown(Value::Object(id))) => match self.heap.root(id) {
                 Ok(root) => {
                     error_root = Some(root);
@@ -1065,6 +1065,26 @@ impl Vm {
                 Err(error) => Err(RuntimeError::from(error)),
             },
             other => other,
+        };
+        let origin = ThrowOrigin {
+            source: self.pending_diagnostic_origin.clone(),
+            debugger_site: self.pending_throw_site,
+            epoch: self.throw_epoch,
+        };
+        let retained = match &result {
+            Ok(RuntimeError::Thrown(value)) => {
+                match self.retain_module_error(value.clone(), origin) {
+                    Ok(error) => Some(error),
+                    Err(error) => {
+                        if let Some(root) = error_root.take() {
+                            self.release_root(root);
+                        }
+                        result = Err(error);
+                        None
+                    }
+                }
+            }
+            _ => None,
         };
         let graph = self
             .module_graph
@@ -1080,9 +1100,9 @@ impl Vm {
         record.cells = std::mem::take(&mut self.cells);
         record.suspended = false;
         record.evaluating = false;
-        if let Ok(RuntimeError::Thrown(value)) = &result {
+        if retained.is_some() {
             record.evaluated = true;
-            record.error = Some(value.clone());
+            record.error = retained;
         }
         let error = match result {
             Ok(error) | Err(error) => error,
