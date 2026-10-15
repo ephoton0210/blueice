@@ -59,4 +59,5 @@ mod debug_attachment;
 mod direct;
 mod expression_origins;
 mod expressions;
+mod jsx_origins;
 mod page_runtime;

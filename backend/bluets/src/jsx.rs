@@ -163,17 +163,27 @@ impl Scanner<'_> {
     /// Whitespace and comments between the parts of a tag.
     fn trivia(&mut self) {
         loop {
+            let character = self.source[self.index..].chars().next();
             match self.peek() {
-                Some(byte) if byte.is_ascii_whitespace() => self.index += 1,
+                Some(byte)
+                    if byte.is_ascii_whitespace()
+                        || matches!(character, Some('\u{2028}' | '\u{2029}')) =>
+                {
+                    self.index += character.expect("a byte was just inspected").len_utf8();
+                }
                 Some(b'/') if self.bytes.get(self.index + 1) == Some(&b'/') => {
-                    while self.peek().is_some_and(|byte| byte != b'\n') {
-                        self.index += 1;
+                    self.index += 2;
+                    while let Some(character) = self.source[self.index..].chars().next() {
+                        if matches!(character, '\r' | '\n' | '\u{2028}' | '\u{2029}') {
+                            break;
+                        }
+                        self.index += character.len_utf8();
                     }
                 }
                 Some(b'/') if self.bytes.get(self.index + 1) == Some(&b'*') => {
                     self.index += 2;
                     while self.index < self.bytes.len()
-                        && !self.source[self.index..].starts_with("*/")
+                        && !self.bytes[self.index..].starts_with(b"*/")
                     {
                         self.index += 1;
                     }

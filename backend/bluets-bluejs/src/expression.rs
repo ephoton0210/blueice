@@ -609,16 +609,8 @@ impl<'a> ExpressionLowerer<'a> {
 
     pub(super) fn parse_atom(&mut self) -> Result<bluejs::Expr, BridgeError> {
         let scope = self.origin_scope();
-        let opaque_atom = self
-            .tokens
-            .get(self.index)
-            .is_some_and(|token| matches!(token.kind, TokenKind::JsxElement));
         let result = self.parse_atom_inner()?;
-        self.capture_origin(
-            scope,
-            &result,
-            opaque_atom || matches!(result, bluejs::Expr::Class(_)),
-        )?;
+        self.capture_origin(scope, &result, matches!(result, bluejs::Expr::Class(_)))?;
         Ok(result)
     }
 

@@ -12,7 +12,9 @@ pub(crate) struct ExpressionOrigin {
     kind: Discriminant<bluejs::Expr>,
     start: usize,
     end: usize,
-    // Opaque atoms (class and JSX) certify only their own root here.
+    // Generated JSX scaffolding can carry child evidence without a location.
+    mapped: bool,
+    // Class bodies use the separate checked-declaration evidence traversal.
     children: Option<Vec<ExpressionOrigin>>,
 }
 
@@ -23,7 +25,7 @@ pub(super) struct OriginCapture {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct OriginScope {
+pub(crate) struct OriginScope {
     pub(super) base: usize,
     pub(super) start: usize,
 }
@@ -124,7 +126,9 @@ impl ExpressionOrigin {
         if self.kind != discriminant(expression) {
             return Err(invalid());
         }
-        visit(expression, self.start);
+        if self.mapped {
+            visit(expression, self.start);
+        }
         if let Some(origins) = &self.children {
             let mut index = 0;
             let mut result = Ok(());
@@ -147,6 +151,13 @@ impl ExpressionOrigin {
 }
 
 impl ExpressionLowerer<'_> {
+    pub(crate) fn origin_scope_at(&self, start: usize) -> Option<OriginScope> {
+        self.origins.as_ref().map(|capture| OriginScope {
+            base: capture.roots.len(),
+            start,
+        })
+    }
+
     pub(super) fn origin_scope(&self) -> Option<OriginScope> {
         self.origins.as_ref().map(|capture| OriginScope {
             base: capture.roots.len(),
@@ -196,6 +207,26 @@ impl ExpressionLowerer<'_> {
                 return Ok(());
             }
         }
+        self.capture_lowered_origin(Some(scope), expression, end, true, opaque)
+    }
+
+    /// Explicit bounds belong to a lowered node, independently of the outer
+    /// token cursor. Generated nodes remain unmapped while retaining children.
+    pub(crate) fn capture_lowered_origin(
+        &mut self,
+        scope: Option<OriginScope>,
+        expression: &bluejs::Expr,
+        end: usize,
+        mapped: bool,
+        opaque: bool,
+    ) -> Result<(), BridgeError> {
+        let (Some(scope), Some(capture)) = (scope, &mut self.origins) else {
+            return Ok(());
+        };
+        if scope.base > capture.roots.len() || scope.start > end {
+            return Err(invalid());
+        }
+        let kind = discriminant(expression);
         let pending = &capture.roots[scope.base..];
         let mut count = 0;
         let mut consistent = true;
@@ -226,6 +257,7 @@ impl ExpressionLowerer<'_> {
             kind,
             start: scope.start,
             end,
+            mapped,
             children: (!opaque).then_some(children),
         });
         Ok(())

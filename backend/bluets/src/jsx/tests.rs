@@ -88,6 +88,26 @@ fn comments_and_newlines_are_allowed_inside_a_tag() {
 }
 
 #[test]
+fn unicode_tag_trivia_keeps_original_name_ranges() {
+    for newline in ["\r", "\r\n", "\u{2028}", "\u{2029}"] {
+        for source in [
+            format!("<{newline}Widget />"),
+            format!("<//😀{newline}Widget />"),
+            format!("</*🧊*/{newline}Widget />"),
+        ] {
+            let element = parse(&source).unwrap_or_else(|error| panic!("{source:?}: {error:?}"));
+            let name = element.name.unwrap();
+            let start = source.find("Widget").unwrap();
+            assert_eq!(
+                (name.text.as_str(), name.start, name.end),
+                ("Widget", start, start + 6)
+            );
+            assert_eq!(element.end, source.len());
+        }
+    }
+}
+
+#[test]
 fn mismatched_unterminated_and_malformed_elements_fail_with_late_errors() {
     for source in [
         "<a></b>",

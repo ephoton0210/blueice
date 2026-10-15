@@ -395,6 +395,58 @@ source identities are retained in the matching `direct-nested-initial-*`
 manifests. Final host replay keeps every recorded identity fixed. M1q remains
 at 3/10 final acceptance gates.
 
+### Direct classic JSX source evidence
+
+Classic JSX lowering now passes its original embedded token groups through the
+same optional source collector as ordinary expressions and templates. Written
+component names are lexed at their actual source byte offset; generated factory
+and fragment names have no copied element position. A lowered record can carry
+ordered child records while its own position is explicitly unavailable.
+Factory invocations, props objects and generated literals retain those gaps;
+precedence tiers preserve that status when returning the same lowered node.
+Only exact full-expression replay equality permits the final AST join.
+
+This preserves attribute/child expression positions through nested elements,
+element-valued attributes, fragments, spreads and templates. Repeated identical
+expressions keep independent source offsets. A real factory function or spread
+getter can still report its own body position beneath the generated scaffolding;
+dynamic function bodies cannot borrow a mapped embedded call's position. All
+records share the original capture allocation charge before growth, including
+synthetic wrappers and many small embedded children.
+
+Source-coordinate regressions also exposed JSX trivia that stopped only at LF
+and skipped only ASCII whitespace. The scanner now handles CR/LF/LS/PS comment
+termination and LS/PS tag whitespace, preserving original byte offsets. Block
+comments scan bytes safely through multibyte text. Twelve scanner cases verify
+name ranges across all four newline forms, line comments and Unicode block
+comments.
+
+Fourteen public failure forms, four unavailable-source controls and two known
+callback bodies pass. Six parser shapes preserve ordinary ASTs, instruction
+bytes and constants; ten coordinate contexts preserve UTF-16 and original
+line terminators. Dependency origins work before/after await, and queued JSX
+callbacks keep their source through later unmapped code and disappear on
+navigation. The 50,000-child capture test exercises the parser boundary
+independently of full-compiler admission. All 192 bridge and 254 BlueTS library
+cases pass.
+
+Direct JSX coverage uses the explicit classic-mode bridge API. The launcher's
+existing page compiler profile uses `jsx: None`; its Core/MCP regression
+selection verifies the shared reporting path with existing JavaScript/BlueTS
+inputs. Remaining helper, class/computed-key, pattern/namespace/enum and
+assignment-field precision, integrated lifecycle/resource acceptance and full
+workspace/all-target/Test262 gates stay open.
+
+Final acceptance passes 937 cases across forty-seven disjoint targets with zero
+failures and twenty-two existing ignored: 263 bridge, 294 BlueTS, forty-four
+BlueJS diagnostic groups, 312 launcher, nineteen real-page and five MCP console
+cases. Formatting, seven-library and changed integration Clippy, and complete
+BlueTS/bridge/launcher test Clippy pass with warnings denied. Seven Rust inputs,
+four Cargo inputs, four runtime executables (including the tested compiler CLI)
+and forty-six test executables remain fixed. Receipts are retained in
+`target/direct-jsx-source-20261016.json` and
+`target/direct-jsx-validation-20261016.json`. M1q remains at 3/10 final gates.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger

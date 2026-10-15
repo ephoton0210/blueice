@@ -137,7 +137,13 @@ impl ExpressionLowerer<'_> {
         let element = blueice_bluets::parse_jsx(self.module, &token.text, 0)
             .map_err(|error| unsupported(span.clone(), error.message))?;
         let mut expressions = group.into_iter();
-        self.lower_element(&element, &token.text, &context, &mut expressions)
+        self.lower_element(
+            &element,
+            &token.text,
+            token.start,
+            &context,
+            &mut expressions,
+        )
     }
 
     fn take_group(&mut self, token: &Token) -> Result<Vec<Vec<Token>>, BridgeError> {
@@ -177,11 +183,24 @@ impl ExpressionLowerer<'_> {
         Ok(groups)
     }
 
-    fn lower_expression_tokens(&self, tokens: &[Token]) -> Result<bluejs::Expr, BridgeError> {
-        ExpressionLowerer::new(self.module, tokens).parse()
+    fn lower_expression_tokens(&mut self, tokens: &[Token]) -> Result<bluejs::Expr, BridgeError> {
+        self.parse_embedded_expression(tokens)
     }
 
-    fn entity_expression(&self, entity: &str) -> Result<bluejs::Expr, BridgeError> {
+    fn generated_expression(
+        &mut self,
+        expression: bluejs::Expr,
+    ) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope_at(0);
+        self.capture_lowered_origin(scope, &expression, 0, false, true)?;
+        Ok(expression)
+    }
+
+    fn entity_expression(
+        &mut self,
+        entity: &str,
+        offset: Option<usize>,
+    ) -> Result<bluejs::Expr, BridgeError> {
         let mut tokens = blueice_bluets::lex(self.module, entity).map_err(|_| {
             unsupported(
                 SourceSpan::new(self.module, 0, 0),
@@ -189,26 +208,44 @@ impl ExpressionLowerer<'_> {
             )
         })?;
         tokens.pop();
-        self.lower_expression_tokens(&tokens)
+        if let Some(offset) = offset {
+            for token in &mut tokens {
+                token.start += offset;
+                token.end += offset;
+            }
+            self.lower_expression_tokens(&tokens)
+        } else {
+            // Factory and fragment settings are generated references, not
+            // source tokens at the element or at byte zero.
+            let expression = ExpressionLowerer::new(self.module, &tokens).parse()?;
+            self.generated_expression(expression)
+        }
     }
 
     fn lower_element(
-        &self,
+        &mut self,
         element: &JsxElement,
         source: &str,
+        offset: usize,
         context: &JsxContext,
         expressions: &mut std::vec::IntoIter<Vec<Token>>,
     ) -> Result<bluejs::Expr, BridgeError> {
-        let callee = self.entity_expression(&context.factory)?;
+        let scope = self.origin_scope_at(offset + element.start);
+        let callee = self.entity_expression(&context.factory, None)?;
         let tag = match &element.name {
-            None => self.entity_expression(&context.fragment)?,
-            Some(name) if jsx::is_intrinsic_name(&name.text) => string_expression(&name.text),
-            Some(name) => self.entity_expression(&name.text)?,
+            None => self.entity_expression(&context.fragment, None)?,
+            Some(name) if jsx::is_intrinsic_name(&name.text) => {
+                self.generated_expression(string_expression(&name.text))?
+            }
+            Some(name) => self.entity_expression(&name.text, Some(offset + name.start))?,
         };
         let mut args = vec![bluejs::Argument::Normal(tag)];
         if element.attributes.is_empty() {
-            args.push(bluejs::Argument::Normal(bluejs::Expr::Null));
+            args.push(bluejs::Argument::Normal(
+                self.generated_expression(bluejs::Expr::Null)?,
+            ));
         } else {
+            let property_scope = self.origin_scope_at(0);
             let mut properties = Vec::new();
             for attribute in &element.attributes {
                 match attribute {
@@ -220,17 +257,19 @@ impl ExpressionLowerer<'_> {
                     }
                     JsxAttribute::Named { name, value, .. } => {
                         let lowered = match value {
-                            None => bluejs::Expr::Bool(true),
+                            None => self.generated_expression(bluejs::Expr::Bool(true))?,
                             Some(JsxValue::String { start, end }) => {
                                 let raw = &source[*start..*end];
-                                string_expression(&jsx::decode_entities(&raw[1..raw.len() - 1]))
+                                self.generated_expression(string_expression(
+                                    &jsx::decode_entities(&raw[1..raw.len() - 1]),
+                                ))?
                             }
                             Some(JsxValue::Expression { .. }) => {
                                 let tokens = self.next_group(expressions)?;
                                 self.lower_expression_tokens(&tokens)?
                             }
                             Some(JsxValue::Element(inner)) => {
-                                self.lower_element(inner, source, context, expressions)?
+                                self.lower_element(inner, source, offset, context, expressions)?
                             }
                         };
                         properties.push(bluejs::ObjectProp::KeyValue {
@@ -241,13 +280,17 @@ impl ExpressionLowerer<'_> {
                     }
                 }
             }
-            args.push(bluejs::Argument::Normal(bluejs::Expr::Object(properties)));
+            let properties = bluejs::Expr::Object(properties);
+            self.capture_lowered_origin(property_scope, &properties, 0, false, false)?;
+            args.push(bluejs::Argument::Normal(properties));
         }
         for child in &element.children {
             match child {
                 JsxChild::Text { start, end } => {
                     if let Some(text) = jsx::text_value(&source[*start..*end]) {
-                        args.push(bluejs::Argument::Normal(string_expression(&text)));
+                        args.push(bluejs::Argument::Normal(
+                            self.generated_expression(string_expression(&text))?,
+                        ));
                     }
                 }
                 JsxChild::Expression { tokens, spread, .. } => {
@@ -263,14 +306,19 @@ impl ExpressionLowerer<'_> {
                     });
                 }
                 JsxChild::Element(inner) => args.push(bluejs::Argument::Normal(
-                    self.lower_element(inner, source, context, expressions)?,
+                    self.lower_element(inner, source, offset, context, expressions)?,
                 )),
             }
         }
-        Ok(bluejs::Expr::Call {
+        let expression = bluejs::Expr::Call {
             callee: Box::new(callee),
             args,
-        })
+        };
+        // The invocation itself is compiler scaffolding. Keep its bounds for
+        // parser-tier identity, but publish only the independently mapped
+        // component references and embedded user expressions below it.
+        self.capture_lowered_origin(scope, &expression, offset + element.end, false, false)?;
+        Ok(expression)
     }
 
     fn next_group(

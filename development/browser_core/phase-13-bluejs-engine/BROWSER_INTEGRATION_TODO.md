@@ -678,15 +678,35 @@ the full source-position requirement.
       cases. Five more page contexts and two deferred debugger contexts pass;
       queued template/class MCP errors retain original 5:2/6:2. Formatting and
       related Clippy pass; final source/runtime/test identities are recorded.
+- [x] Carry original classic JSX component-tag and embedded-expression tokens
+      through the same bounded direct origin collector. Retain child order
+      through generated calls/props, fragments, nested/attribute elements,
+      spreads and templates; generated scaffolding keeps unavailable positions.
+      Verify fourteen public failure forms, four unavailable controls and
+      original factory/getter callback sources.
+- [x] Verify six JSX AST/bytecode/constant equivalence shapes, ten UTF-16/line-
+      terminator coordinate contexts, dependency failures before/after await
+      and queued callback retention/navigation cancellation. A 50,000-child
+      parser case shares its capture budget. Fix JSX LS/PS and comment trivia
+      after a failing regression; twelve scanner cases retain original byte
+      ranges without splitting UTF-8. All 192 bridge and 254 BlueTS library
+      cases pass.
+- [x] Pass the JSX follow-up: 937 cases across forty-seven disjoint targets,
+      zero failures and twenty-two existing ignored. All bridge targets pass
+      (263 cases); BlueTS library/seven JSX targets add 294, diagnostic groups
+      add forty-four, launcher adds 312, real pages nineteen and MCP console
+      five. Formatting, seven-library/integration Clippy and complete BlueTS/
+      bridge/launcher test Clippy pass. Seven Rust inputs, four Cargo inputs,
+      four runtime executables and forty-six test executables remain fixed.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
       compiler-generated provenance.
-- [ ] Complete remaining direct BlueTS expression/pattern and namespace/enum/
-      JSX/assignment-field lowering evidence and remaining class/computed-key
-      provenance, plus remaining emitted-profile, module and debugger
-      precision/lifecycle acceptance.
+- [ ] Complete remaining direct BlueTS expression/pattern, namespace/enum,
+      JSX helper and assignment-field lowering evidence, class/computed-key
+      provenance, and remaining emitted-profile/module/debugger precision
+      and lifecycle acceptance.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
       disposal acceptance beyond the verified module and disposal cases.
 - [ ] Complete retained-origin accounting and the integrated
@@ -1248,6 +1268,42 @@ per-target and superseded receipts are retained in
 `direct-nested-initial-*` manifests. Final host replay keeps all identities
 fixed. Remaining provenance, integrated lifecycle/resource and full workspace/
 all-target/Test262 gates stay open; M1q remains at 3/10 final acceptance gates.
+
+The classic JSX follow-up (2026-10-16) reproduces twelve missing original
+expression locations and an incorrectly borrowed generated factory-call
+position (`/private/tmp/blueice-direct-jsx-red.log`). The direct lowerer now
+carries original embedded token groups and written component-name offsets
+through its bounded capture. Generated factory/fragment references, props
+objects, literals and invocations retain unavailable positions while carrying
+their independently mapped children. Exact replay equality and child order
+still govern the final AST join. Fourteen public failure forms, four unavailable
+controls, real factory/getter callback bodies, dependency failures before/after
+await and queued callback retention/navigation cancellation pass. Six JSX shapes
+retain ordinary ASTs, bytes and constants; ten coordinate contexts retain UTF-16
+and original line terminators. A 50,000-child parser case verifies the shared
+capture budget independently of full-compiler admission.
+
+The coordinate fixtures exposed JSX tag trivia that mishandled CR/LS/PS line
+comments, LS/PS whitespace and UTF-8 block comments. A separate failing scanner
+regression (`/private/tmp/blueice-jsx-trivia-red.log`) now passes twelve original-
+range contexts. All thirty-five bridge targets pass (263 cases, fifteen existing
+external-oracle cases ignored). BlueTS library and seven JSX targets pass 294
+cases with six existing oracle cases ignored. Forty-four BlueJS diagnostic
+groups, 312 launcher cases, nineteen real-page cases and five MCP console cases
+also pass: 937 passes across forty-seven disjoint targets, zero failures and
+twenty-two existing ignored. Formatting, seven-library Clippy, changed-target
+Clippy and complete BlueTS/bridge/launcher test Clippy pass with warnings denied.
+
+Seven Rust inputs, four Cargo inputs, four runtime executables and forty-six
+test executables stay fixed throughout final acceptance; receipts are retained
+in `target/direct-jsx-source-20261016.json` and
+`target/direct-jsx-validation-20261016.json`. JSX execution here uses the explicit
+classic-mode bridge API. The existing launcher page profile uses `jsx: None`,
+so the Core/MCP selection proves the shared reporting path with its existing
+JavaScript/BlueTS inputs. Remaining JSX helper, class/computed-key, pattern/
+namespace/enum and assignment-field precision, integrated lifecycle/resource
+acceptance and full workspace/all-target/Test262 gates stay open; M1q remains
+at 3/10 final acceptance gates.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 
