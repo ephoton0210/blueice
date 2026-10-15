@@ -51,6 +51,21 @@ remain open. See the
 [M1p milestone record](#m1p--promise-rejection-tracking-and-global-events-2026-10-15)
 and [rejection contract](HOST_PROMISE_REJECTIONS.md).
 
+**Current work — M1q original diagnostic source positions (in progress).**
+Complete section H's original-position follow-up for uncaught errors and
+rejections. The verified implementation now binds immutable source maps to
+live program generations and reports original classic JavaScript statement
+locations, including nested blocks and functions, through real Core/child
+`ErrorEvent` delivery. The checkpoint passes 1,731 tests across eight targets
+(one existing ignored), formatting and focused three-library Clippy. Two of
+the ten final acceptance gates are complete; the detailed implementation
+checklist below records the smaller completed steps. Expression/parameter
+provenance, direct/emitted BlueTS, modules, queued origins and copied Core/MCP
+locations remain open, along with their integrated resource/GC checks and
+final workspace/Test262 gates. Unknown or generated-only locations remain
+explicitly unavailable. Section H remains unchecked.
+See the [in-progress source-position contract](SOURCE_DIAGNOSTICS.md).
+
 ## A. Event loop and scheduling (P0)
 
 The integrated branch has host-owned Promise checkpoints and session-driven
@@ -367,11 +382,14 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
       Core/child refusal-before-mutation acceptance pass, with complete final
       gates recorded below; installed v13/v14 artifacts remain unchanged.
 - [ ] **Original positions for uncaught errors and rejections.** M1o
-      provides global exception events and copied Core/MCP diagnostics, but
-      generated errors use empty/zero source metadata at this boundary.
-      Mapping them back to BlueTS original positions remains open; only
-      debugger pauses currently use the safe-point map. M1p implements the
-      separate rejection tracker in B.
+      provides global exception events and copied Core/MCP diagnostics; M1p
+      adds the separate rejection tracker in B. M1q now verifies immutable
+      source maps and original classic JavaScript root/block/function
+      coordinates through real Core/child error handlers. Direct/emitted
+      BlueTS, precise expressions/parameters, queued origins and copied
+      Core/MCP locations remain open. See the detailed M1q implementation
+      checklist and final gates below; unmapped code retains empty/zero
+      metadata.
 
 ### BlueJS capabilities BlueTS should use or still needs
 
@@ -456,6 +474,128 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1q — Original diagnostic source positions (in progress)
+
+**Progress updated 2026-10-15: implementation checkpoint verified; 2/10 final
+acceptance gates complete.** Completed implementation steps and test evidence
+are recorded separately below so partial progress is visible without closing
+the full source-position requirement.
+
+#### Verified implementation steps
+
+- [x] Validate immutable source maps against exact source identities, live
+      generations, code-unit ordinals and instruction boundaries; retain
+      explicit gaps and reject malformed or overlapping ranges atomically.
+- [x] Charge map capacities with installed code and roll back rejected page
+      installation before execution.
+- [x] Capture parser statement provenance and compiler instruction owners,
+      including nested blocks/functions, repeated function bodies, Annex B
+      wrappers, labels and directive normalization.
+- [x] Report mapped throws and active `reportError` call sites, restore nested
+      interpreter contexts, and keep unmapped `eval`/`Function` origins unknown.
+- [x] Verify original JavaScript root/block/function coordinates through real
+      Core/child `window.onerror` delivery.
+- [x] Pass the three-library and public registry/lifecycle regression selection:
+      1,691 passed, zero failed, one existing ignored, across five targets.
+- [x] Pass the final current-source diagnostic/error/page replay: 40 passed,
+      zero failed, across three complete targets.
+- [x] Pass `cargo fmt --all -- --check` and focused Clippy for the BlueJS,
+      BlueTS bridge and launcher libraries with `-D warnings`.
+
+#### Remaining implementation and verification
+
+- [ ] Complete precise expression/parameter and compiler-generated provenance.
+- [ ] Attach certified original locations for direct/emitted BlueTS, modules
+      and debugger-driven execution.
+- [ ] Retain rejection/await and completion/finally origins across queued work.
+- [ ] Account retained diagnostic copies and carry bounded locations through
+      Core/MCP, with integrated cancellation/navigation/GC/resource coverage.
+- [ ] Complete the full related Rust/Core/MCP, workspace/all-target Clippy/build
+      and pinned Test262 gates, then finalize the milestone documentation.
+
+#### Final acceptance gates
+
+- [x] Reproduce missing source coordinates through the real Core/child boundary.
+- [x] Bind certified source positions to exact live program generations.
+- [ ] Preserve throw/reject/report origins across synchronous and queued work.
+- [ ] Map JavaScript, direct BlueTS and compiler-emitted source positions.
+- [ ] Carry bounded copied locations through Core/MCP and retain unavailable cases.
+- [ ] Verify cancellation, stale generations, navigation, GC and resource limits.
+- [ ] Pass the related Rust and real Core/MCP acceptance selections.
+- [ ] Pass formatting and workspace/all-target Clippy/build.
+- [ ] Compare the complete pinned Test262 inventory against M1p.
+- [ ] Finalize evidence, documentation and a detailed English commit.
+
+Initial inspection found that `report_host_error_value` deliberately wrote an
+empty filename and zero line/column. The VM has a generation/code-unit/PC
+throw sidecar for terminal debugger exceptions, while the current direct
+BlueTS safe-point map may describe an enclosing function rather than its
+throwing statement. Source-map support must extend the real reporting path
+and preserve certified provenance rather than infer a nearby location.
+The first real page regression failed before production changes: its global
+handler observed `location::0:0` instead of the throwing inline script's
+canonical identity and line 2, column 1 (one failed, fifteen filtered, 2.33s;
+`/private/tmp/blueice-error-origins-red.log`). The implementation started
+with immutable, owner-bound instruction/source metadata that follows compiled
+closures rather than a mutable ambient filename or a permanent VM root.
+The first three public registry groups pass: exact source identity, atomic
+refusal of unknown units/operand offsets, explicit gaps, immutable old code
+clones, retained owned-code maps and malformed/overlapping coordinate controls
+(`/private/tmp/blueice-error-origin-maps.log`). The next public VM regressions
+exercised mapped `ErrorEvent` fields and the active `reportError` call site
+before that reporting connection was implemented. Both failed with `:0:0`
+instead of the installed source location (three passed, two failed;
+`/private/tmp/blueice-error-origin-vm-red.log`). The VM now captures mapped
+throw sites and restores active source contexts after nested interpreters;
+the follow-up passes all seven source-map/VM groups and all twelve existing
+error-reporting groups (nineteen passed, zero failed;
+`/private/tmp/blueice-error-origin-vm-followup.log`). This verifies source
+identity/boundaries, metadata capacity charges, mapped throws, active reports,
+unknown raw code and nested interpreter restoration. A further public control
+for unmapped dynamic `eval`/`Function` code failed because it inherited the
+mapped caller's position (`/private/tmp/blueice-error-origin-unknown-red.log`).
+Separating diagnostic origin preservation from debugger fallback fixed this
+case; it passes in the final replay below. Final host/provenance, accounting,
+transport and conformance gates remain open.
+The preceding owner follow-up passed all 39 cases across three complete targets:
+eleven source-map/VM groups, twelve existing error groups and all sixteen real
+Core/child page cases, including the original red fixture
+(`/private/tmp/blueice-error-origins-owner-followup.log`). The page installer
+charges immutable map bytes with code and rolls back failed metadata admission.
+That prototype mapped classic JavaScript root statements only. Nested
+statement support followed in the next implementation step; expression
+provenance, direct/emitted BlueTS, modules, asynchronous origin retention and
+copied Core/MCP locations remain required before M1q or section H can close.
+The expanded real fixture confirmed a further gap: a block throw inherited
+line 2, column 1 from its outer `if`, and a function throw remained unlocated;
+both needed their own statement at line 3, column 3 (one failed, fifteen
+filtered, 4.46s; `/private/tmp/blueice-error-origins-nested-red.log`). The
+implementation then recorded parser statement provenance against compiler AST
+instruction owners instead of accepting the enclosing statement/function.
+The parser/compiler statement path now passes the expanded public/core rerun:
+40 passed, zero failed, across all three targets
+(`/private/tmp/blueice-error-origins-statements.log`). The real fixture verifies
+line 3, column 3 inside both blocks and functions. Public compiler checks also
+cover repeated function bodies, Annex B wrappers, labels and directive
+normalization. The broader library/registry/lifecycle selection subsequently
+passed 1,691 tests across five targets, with one existing ignored
+(`/private/tmp/blueice-error-origins-foundation-regressions.log`). Focused
+Clippy initially found two type-complexity warnings; named type aliases fixed
+both, and the three-library rerun passed in 27.58s
+(`/private/tmp/blueice-error-origins-foundation-clippy-fixed.log`). This alias-only
+correction followed the broader run; the final current-source public replay
+then passed all 40 cases across its three targets
+(`/private/tmp/blueice-error-origins-statements-final.log`). All 27 recorded Rust
+source hashes match that replay's manifest
+(`target/source-diagnostics-foundation-source-20261015.json`). Formatting also
+passed (`/private/tmp/blueice-error-origins-foundation-format.log`). The combined
+checkpoint has 1,731 passing tests across eight distinct targets and one
+existing ignored. Full workspace/all-target Clippy/build, final Core/MCP,
+pinned Test262 and fresh coverage were not run for this checkpoint; their
+previous M1p results are not substituted for M1q acceptance.
+See [the in-progress contract](SOURCE_DIAGNOSTICS.md) for the immutable ownership
+and admission model and the remaining expression/typed/async/transport work.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

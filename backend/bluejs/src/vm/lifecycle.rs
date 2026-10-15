@@ -58,6 +58,9 @@ impl Vm {
             next_debugger_frame_serial: 1,
             pending_throw_site: None,
             uncaught_throw_site: None,
+            active_diagnostic_frame: None,
+            pending_diagnostic_origin: None,
+            uncaught_diagnostic_origin: None,
             throw_epoch: 0,
             stack: Vec::new(),
             bindings: Vec::new(),
@@ -318,6 +321,9 @@ impl Vm {
         self.ensure_no_debugger_continuation()?;
         self.pending_throw_site = None;
         self.uncaught_throw_site = None;
+        self.active_diagnostic_frame = None;
+        self.pending_diagnostic_origin = None;
+        self.uncaught_diagnostic_origin = None;
         self.throw_epoch = 0;
         self.execute_module_graph_inner(entry, modules, true, false, ImportPhase::Evaluation)
     }

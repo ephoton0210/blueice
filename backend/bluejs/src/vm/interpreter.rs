@@ -37,6 +37,9 @@ impl Vm {
         restored_handlers: Option<(Vec<HandlerFrame>, usize)>,
     ) -> Result<InterpreterExit, RuntimeError> {
         let iterator_root_base = self.async_frame_roots.len();
+        let previous_diagnostic_frame = self.active_diagnostic_frame.take();
+        self.active_diagnostic_frame =
+            crate::diagnostics::ActiveDiagnosticFrame::new(code, start_pc);
         let result = self.interpret_frame(
             code,
             iterators,
@@ -49,6 +52,7 @@ impl Vm {
         // Every exit, including a resource refusal, releases this active
         // frame's records. A suspended frame's caller owns them afterwards.
         self.async_frame_roots.truncate(iterator_root_base);
+        self.active_diagnostic_frame = previous_diagnostic_frame;
         result
     }
 
@@ -112,6 +116,9 @@ impl Vm {
                 .instruction(pc)
                 .expect("compiler emits valid instruction boundaries");
             let operand = instruction.operand.unwrap_or(0) as usize;
+            if let Some(frame) = &mut self.active_diagnostic_frame {
+                frame.offset = instruction.offset as u32;
+            }
             pc += instruction.opcode.width();
             let throw_epoch_before = self.throw_epoch;
             let outcome: Result<Option<Completion>, RuntimeError> = (|| {
@@ -1954,6 +1961,16 @@ impl Vm {
                 }
                 Ok(None)
             })();
+            // Diagnostic provenance must preserve an explicit unknown origin
+            // from dynamic code. The debugger may still capture its mapped
+            // caller as a fallback, but that is not the throwing source.
+            let new_diagnostic_throw = match &outcome {
+                Ok(Some(Completion::Throw(error))) => {
+                    error.is_catchable() && instruction.opcode == Opcode::Throw
+                }
+                Err(error) if error.is_catchable() => self.throw_epoch == throw_epoch_before,
+                _ => false,
+            };
             let new_throw = match &outcome {
                 Ok(Some(Completion::Throw(error))) => error.is_catchable(),
                 Err(error) if error.is_catchable() => {
@@ -1968,6 +1985,11 @@ impl Vm {
             };
             if new_throw {
                 self.throw_epoch = self.throw_epoch.wrapping_add(1);
+                if new_diagnostic_throw {
+                    self.pending_diagnostic_origin = code
+                        .diagnostic_source_location(instruction.offset as u32)
+                        .cloned();
+                }
                 self.pending_throw_site = code
                     .debugger_program_generation
                     .zip(code.debugger_code_unit_ordinal)

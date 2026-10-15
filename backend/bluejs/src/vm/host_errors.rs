@@ -30,7 +30,7 @@ impl Vm {
             }
         }
         for error in errors {
-            self.report_host_error_value(error)?;
+            self.report_host_error_value(error, None)?;
         }
         Ok(())
     }
@@ -148,7 +148,8 @@ impl Vm {
                         "reportError requires an argument".into(),
                     ));
                 };
-                self.report_host_error_value(value.clone())?;
+                let origin = self.current_diagnostic_source_location();
+                self.report_host_error_value(value.clone(), origin)?;
                 Ok(Value::Undefined)
             }
             HostErrorNative::Handler(set) => {
@@ -214,13 +215,29 @@ impl Vm {
             return Ok(());
         }
         let value = self.error_value(error.clone())?;
-        self.report_host_error_value(value)
+        let origin = self
+            .pending_diagnostic_origin
+            .clone()
+            .or_else(|| self.uncaught_diagnostic_origin.clone());
+        self.report_host_error_value(value, origin)
     }
 
-    fn report_host_error_value(&mut self, value: Value) -> Result<(), RuntimeError> {
+    pub(super) fn current_diagnostic_source_location(
+        &self,
+    ) -> Option<crate::diagnostics::DiagnosticSourceLocation> {
+        self.active_diagnostic_frame.as_ref()?.location().cloned()
+    }
+
+    fn report_host_error_value(
+        &mut self,
+        value: Value,
+        origin: Option<crate::diagnostics::DiagnosticSourceLocation>,
+    ) -> Result<(), RuntimeError> {
         let base = self.stack.len();
         let throw_site = self.pending_throw_site;
         let uncaught_site = self.uncaught_throw_site;
+        let pending_origin = self.pending_diagnostic_origin.clone();
+        let uncaught_origin = self.uncaught_diagnostic_origin.clone();
         self.stack.push(value.clone());
         let result = (|| {
             let mut message = Output::new();
@@ -230,11 +247,13 @@ impl Vm {
                 let mut state = self.new_web_event_state(6, "error".into());
                 state.cancelable = true;
                 state.set("message", Value::String(message.text.clone().into()));
-                // Source positions are unavailable at this host boundary;
-                // do not fabricate a filename or BlueTS source location.
-                state.set("filename", Value::String("".into()));
-                state.set("lineno", Value::Number(0.0));
-                state.set("colno", Value::Number(0.0));
+                let (filename, line, column) = origin
+                    .as_ref()
+                    .map(|source| (source.filename.as_str(), source.line, source.column))
+                    .unwrap_or(("", 0, 0));
+                state.set("filename", Value::String(filename.into()));
+                state.set("lineno", Value::Number(f64::from(line)));
+                state.set("colno", Value::Number(f64::from(column)));
                 state.set("error", value);
                 let prototype = self.globals["%WebErrorEvent%"];
                 let event = self.with_roots(|heap| heap.alloc_drag_event(state, prototype))?;
@@ -257,6 +276,8 @@ impl Vm {
         self.stack.truncate(base);
         self.pending_throw_site = throw_site;
         self.uncaught_throw_site = uncaught_site;
+        self.pending_diagnostic_origin = pending_origin;
+        self.uncaught_diagnostic_origin = uncaught_origin;
         result
     }
 }

@@ -42,6 +42,7 @@
 use crate::ast::*;
 use crate::token::{Keyword, LexError, Punct, SpannedToken, Token, Tokenizer};
 
+mod diagnostic_spans;
 mod editions;
 mod expressions;
 mod functions;
@@ -136,6 +137,27 @@ pub fn parse_with_debug_spans(
     Ok((program, spans, identifiers))
 }
 
+/// Parses source with statement spans indexed by the public executable-AST
+/// preorder. Non-statement and parser-synthesized nodes remain unbound.
+pub fn parse_with_diagnostic_spans(
+    source: &str,
+) -> Result<(Program, Vec<Option<ParsedStatementSpan>>), ParseError> {
+    let escaped = crate::source_encoding::escape(source);
+    let (program, _, _, spans) =
+        parse_encoded_script_diagnostics(&escaped, SyntaxEdition::EsNext, false, true)?;
+    let source_bytes = crate::source_encoding::escaped_character_source_bytes(source);
+    let spans = spans
+        .into_iter()
+        .map(|span| {
+            span.map(|(start, end)| ParsedStatementSpan {
+                start_byte: source_bytes[start],
+                end_byte: source_bytes[end],
+            })
+        })
+        .collect();
+    Ok((program, spans))
+}
+
 /// Parses Script syntax restricted to the selected output edition. Built-in
 /// runtime APIs are independent of this grammar selection.
 pub fn parse_with_edition(source: &str, edition: SyntaxEdition) -> Result<Program, ParseError> {
@@ -154,14 +176,31 @@ fn parse_encoded_with_edition(source: &str, edition: SyntaxEdition) -> Result<Pr
 }
 
 type EncodedScriptWithDebugSpans = (Program, Vec<(usize, usize)>, Vec<(usize, usize, String)>);
+type EncodedScriptWithDiagnostics = (
+    Program,
+    Vec<(usize, usize)>,
+    Vec<(usize, usize, String)>,
+    Vec<Option<(usize, usize)>>,
+);
 
 fn parse_encoded_script(
     source: &str,
     edition: SyntaxEdition,
     capture_spans: bool,
 ) -> Result<EncodedScriptWithDebugSpans, ParseError> {
+    parse_encoded_script_diagnostics(source, edition, capture_spans, false)
+        .map(|(program, spans, identifiers, _)| (program, spans, identifiers))
+}
+
+fn parse_encoded_script_diagnostics(
+    source: &str,
+    edition: SyntaxEdition,
+    capture_spans: bool,
+    capture_diagnostics: bool,
+) -> Result<EncodedScriptWithDiagnostics, ParseError> {
     let mut parser = Parser::new_script(source);
     parser.capture_debug_identifiers = capture_spans;
+    parser.diagnostic_statements = capture_diagnostics.then(Vec::new);
     parser.select_edition(edition)?;
     let mut body = Vec::new();
     let mut spans = Vec::new();
@@ -183,7 +222,24 @@ fn parse_encoded_script(
         .map_err(|error| parser.syntax_error(error.to_string()))?;
     parser.validate_edition()?;
     editions::validate_body(&program.body, edition)?;
-    Ok((program, spans, parser.debug_identifier_spans))
+    let mut diagnostic_spans = Vec::new();
+    if let Some(records) = parser.diagnostic_statements.take() {
+        let mut statements = diagnostic_spans::finish(&program.body, records).into_iter();
+        let count = crate::program_debug::ast_ids::visit_program_statement_nodes(
+            &program.body,
+            &mut |_, ordinal| {
+                diagnostic_spans.resize(ordinal + 1, None);
+                diagnostic_spans[ordinal] = statements.next().unwrap_or(None);
+            },
+        );
+        diagnostic_spans.resize(count, None);
+    }
+    Ok((
+        program,
+        spans,
+        parser.debug_identifier_spans,
+        diagnostic_spans,
+    ))
 }
 
 /// Parses direct-eval source (lexer text) before its caller applies context-sensitive
@@ -482,6 +538,7 @@ struct Parser {
     pos: usize,
     capture_debug_identifiers: bool,
     debug_identifier_spans: Vec<(usize, usize, String)>,
+    diagnostic_statements: Option<Vec<diagnostic_spans::CapturedStatement>>,
     /// Set while parsing a `for`-loop head's init clause, so the
     /// relational-expression tier refuses to consume a bare `in` as a
     /// binary operator there -- see this module's doc comment.
@@ -550,6 +607,7 @@ impl Parser {
             pos: 0,
             capture_debug_identifiers: false,
             debug_identifier_spans: Vec::new(),
+            diagnostic_statements: None,
             no_in: false,
             generator_depth: 0,
             async_depth: 0,
@@ -793,6 +851,24 @@ impl Parser {
     /// in the AST wrapped in an `Expr::Parenthesized`, which evaluates the
     /// same but is no longer a bare string statement.
     fn parse_prologue_statement(
+        &mut self,
+        prologue: &mut DirectivePrologue,
+    ) -> Result<Stmt, ParseError> {
+        let base = self.diagnostic_statements.as_ref().map(Vec::len);
+        let statement = self.parse_prologue_statement_inner(prologue)?;
+        if let Some(base) = base {
+            let captures = self.diagnostic_statements.as_mut().unwrap();
+            let mut completed = captures.split_off(base);
+            if completed.len() == 1 {
+                captures.push(completed.pop().unwrap().normalize(&statement));
+            } else {
+                captures.extend(completed);
+            }
+        }
+        Ok(statement)
+    }
+
+    fn parse_prologue_statement_inner(
         &mut self,
         prologue: &mut DirectivePrologue,
     ) -> Result<Stmt, ParseError> {

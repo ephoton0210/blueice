@@ -78,6 +78,7 @@ pub struct BlueJsPageRealmStats {
     pub tab_id: u64,
     pub origin: BlueJsPageOrigin,
     pub program_count: usize,
+    /// Root bytecode plus immutable diagnostic maps admitted for its programs.
     pub bytecode_bytes: usize,
     pub heap: HeapStats,
     /// Owned document scheduling state, including ShadowRealms.
@@ -709,6 +710,17 @@ impl BlueJsPageRuntime {
         source: BlueJsSourceIdentity,
         program: &BlueJsProgramV1,
     ) -> Result<BlueJsProgramHandle, BlueJsPageRuntimeError> {
+        self.install_program_internal(tab_id, origin, source, program, false)
+    }
+
+    fn install_program_internal(
+        &mut self,
+        tab_id: u64,
+        origin: &BlueJsPageOrigin,
+        source: BlueJsSourceIdentity,
+        program: &BlueJsProgramV1,
+        diagnostics: bool,
+    ) -> Result<BlueJsProgramHandle, BlueJsPageRuntimeError> {
         let realm = self
             .realms
             .get(&tab_id)
@@ -733,10 +745,12 @@ impl BlueJsPageRuntime {
                 ));
             }
         }
-        let handle = self
-            .registry
-            .install(source, program)
-            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?;
+        let installed = if diagnostics {
+            self.registry.install_for_diagnostics(source, program)
+        } else {
+            self.registry.install(source, program)
+        };
+        let handle = installed.map_err(BlueJsPageRuntimeError::ProgramRegistry)?;
         let bytecode_bytes = self
             .registry
             .get(handle)
@@ -771,6 +785,56 @@ impl BlueJsPageRuntime {
         Ok(handle)
     }
 
+    /// Installs source metadata in the same admission transaction as its code.
+    /// The builder sees only the immutable generation-bound registry and runs
+    /// before JavaScript executes. Its error, a malformed map or an excessive
+    /// combined code/map charge discards the candidate program entirely.
+    pub fn install_program_with_diagnostics<E>(
+        &mut self,
+        tab_id: u64,
+        origin: &BlueJsPageOrigin,
+        source: BlueJsSourceIdentity,
+        program: &BlueJsProgramV1,
+        build_map: impl FnOnce(
+            &BlueJsProgramRegistry,
+            BlueJsProgramHandle,
+        ) -> Result<crate::diagnostics::DiagnosticSourceMap, E>,
+    ) -> Result<BlueJsProgramHandle, E>
+    where
+        E: From<BlueJsPageRuntimeError>,
+    {
+        let handle = self
+            .install_program_internal(tab_id, origin, source, program, true)
+            .map_err(E::from)?;
+        let result = (|| {
+            let map = build_map(&self.registry, handle)?;
+            let realm = self.realms.get(&tab_id).expect("new program owner");
+            let total = realm
+                .bytecode_bytes
+                .checked_add(map.payload_bytes())
+                .filter(|total| *total <= self.config.max_bytecode_bytes_per_realm)
+                .ok_or_else(|| {
+                    E::from(BlueJsPageRuntimeError::BytecodeLimit {
+                        tab_id,
+                        limit: self.config.max_bytecode_bytes_per_realm,
+                    })
+                })?;
+            self.registry
+                .bind_diagnostic_sources(handle, map)
+                .map_err(|error| E::from(BlueJsPageRuntimeError::DiagnosticSourceMap(error)))?;
+            self.realms
+                .get_mut(&tab_id)
+                .expect("new program owner")
+                .bytecode_bytes = total;
+            Ok(handle)
+        })();
+        if result.is_err() {
+            self.discard_program(tab_id, handle)
+                .expect("failed pre-execution candidate remains owned");
+        }
+        result
+    }
+
     /// Drops one installed program before it executes. The runtime verifies
     /// tab ownership, releases its root-bytecode charge, and invalidates the
     /// generation together so a failed higher-level attachment cannot leave an
@@ -793,7 +857,8 @@ impl BlueJsPageRuntime {
             .registry
             .get(handle)
             .expect("an owned handle is live in the registry");
-        let bytecode_bytes = compiled.bytecode().bytes().len();
+        let bytecode_bytes =
+            compiled.bytecode().bytes().len() + compiled.bytecode().diagnostic_source_map_bytes();
         let module_id = matches!(
             compiled.ast_nodes().first().map(|node| node.kind()),
             Some(BlueJsAstNodeKind::Module)
@@ -1882,6 +1947,7 @@ pub enum BlueJsPageRuntimeError {
     VmInitialization(HeapError),
     HostBinding(RuntimeError),
     ProgramRegistry(BlueJsProgramDebugError),
+    DiagnosticSourceMap(crate::diagnostics::DiagnosticSourceMapError),
     Runtime(RuntimeError),
 }
 
@@ -1949,6 +2015,9 @@ impl fmt::Display for BlueJsPageRuntimeError {
                 formatter,
                 "BlueJS program registry rejected page program: {error}"
             ),
+            Self::DiagnosticSourceMap(error) => {
+                write!(formatter, "page diagnostic metadata rejected: {error}")
+            }
             Self::Runtime(error) => write!(formatter, "BlueJS page program failed: {error}"),
         }
     }
@@ -1960,6 +2029,7 @@ impl std::error::Error for BlueJsPageRuntimeError {
             Self::VmInitialization(error) => Some(error),
             Self::HostBinding(error) => Some(error),
             Self::ProgramRegistry(error) => Some(error),
+            Self::DiagnosticSourceMap(error) => Some(error),
             Self::Runtime(error) => Some(error),
             _ => None,
         }

@@ -1155,6 +1155,7 @@ mod debugger_mapping;
 use debugger_mapping::*;
 
 mod script_execution;
+mod source_diagnostics;
 use script_execution::*;
 
 impl BlueJsChildHost {

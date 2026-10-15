@@ -55,11 +55,14 @@ tracer; copied diagnostic messages retain no live error value.
 ## Diagnostic metadata and transport
 
 HTML leaves extraction metadata implementation-defined. This implementation
-uses the existing bounded, getter-free value preview for `message`; generated
-reports use an empty `filename` and zero `lineno`/`colno` because this boundary
-does not yet have an authorized original source position. It does not invent
-BlueTS locations; section H's source-mapping follow-up remains open. Explicit
-`ErrorEvent` construction converts the supplied dictionary members.
+uses the existing bounded, getter-free value preview for `message`. M1q's
+in-progress source-provenance work now supplies certified classic JavaScript
+statement positions through immutable owner-installed maps. Unmapped or
+source-less code retains an empty `filename` and zero `lineno`/`colno`.
+Direct/emitted BlueTS, complete asynchronous provenance and copied Core/MCP
+locations remain part of section H's open follow-up; see
+[the source-position contract](SOURCE_DIAGNOSTICS.md). Explicit `ErrorEvent`
+construction still converts the supplied dictionary members.
 
 Uncanceled output uses the console's `error` method/level with an `Uncaught `
 prefix and the existing message/record/byte limits. Native payload accounting,

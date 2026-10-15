@@ -253,6 +253,16 @@ pub struct SourceText {
 }
 
 impl SourceText {
+    pub(crate) fn same_source_range(&self, other: &Self) -> bool {
+        self.start == other.start
+            && self.end == other.end
+            && match (&self.text, &other.text) {
+                (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+                (None, None) => true,
+                _ => false,
+            }
+    }
+
     /// The range `start..end` (byte offsets on character boundaries) of
     /// `text`. Offsets larger than `u32::MAX` have no representable range:
     /// they yield the default, textless value before checking text boundaries.

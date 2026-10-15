@@ -811,7 +811,7 @@ impl BlueJsChildHost {
                         top_level_spans,
                         identifier_spans,
                     ) {
-                        Ok(_) => execute_classic(
+                        Ok(_) => execute_unmapped_classic(
                             &mut self.runtime,
                             document.tab_id,
                             &origin,

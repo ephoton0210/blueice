@@ -127,7 +127,7 @@ pub fn compile_with_limits(
     program: &Program,
     limits: CompileLimits,
 ) -> Result<Bytecode, CompileError> {
-    compile_with_limit_and_mode(program, limits, false, &[], &[], &[])
+    compile_with_limit_and_mode(program, limits, false, &[], &[], &[], false)
 }
 
 /// Like [`compile_module`], with the Test262 adapter's bytecode resource
@@ -160,7 +160,35 @@ pub fn compile_module_with_limits(
         &module.imports,
         &module.exports,
         &module.requests,
+        false,
     )
+}
+
+pub(crate) fn compile_for_diagnostics(
+    program: &crate::BlueJsProgramV1,
+) -> Result<Bytecode, CompileError> {
+    match program {
+        crate::BlueJsProgramV1::Script(program) => compile_with_limit_and_mode(
+            program,
+            CompileLimits::default(),
+            false,
+            &[],
+            &[],
+            &[],
+            true,
+        ),
+        crate::BlueJsProgramV1::Module(module) => compile_with_limit_and_mode(
+            &Program {
+                body: module.body.clone(),
+            },
+            CompileLimits::default(),
+            true,
+            &module.imports,
+            &module.exports,
+            &module.requests,
+            true,
+        ),
+    }
 }
 
 fn compile_with_limit_and_mode(
@@ -170,6 +198,7 @@ fn compile_with_limit_and_mode(
     module_imports: &[ImportEntry],
     module_exports: &[ExportEntry],
     module_requests: &[RequestedModule],
+    capture_diagnostics: bool,
 ) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
@@ -183,6 +212,8 @@ fn compile_with_limit_and_mode(
         max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
         max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
+        diagnostic_ast_ids: None,
+        diagnostic_owner: None,
         current_root_statement_index: None,
         local_scope: 0,
         with_depth: 0,
@@ -191,6 +222,11 @@ fn compile_with_limit_and_mode(
         tail_call_blockers: 0,
         tail_call_pending: false,
     };
+    if capture_diagnostics {
+        compiler.diagnostic_ast_ids = Some(std::rc::Rc::new(
+            crate::program_debug::ast_ids::collect_diagnostic_ast_node_ids(&program.body),
+        ));
+    }
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;
     compiler.bytecode.import_meta_allowed = module;
@@ -526,6 +562,8 @@ pub(crate) fn compile_eval(
         max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
         max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
+        diagnostic_ast_ids: None,
+        diagnostic_owner: None,
         current_root_statement_index: None,
         local_scope: 1,
         with_depth,
@@ -644,6 +682,8 @@ struct Loop {
 }
 
 struct Compiler {
+    diagnostic_ast_ids: Option<std::rc::Rc<crate::program_debug::ast_ids::DiagnosticAstNodeIds>>,
+    diagnostic_owner: Option<u32>,
     bytecode: Bytecode,
     names: Vec<HashMap<String, u32>>,
     /// Each lexical class private-name environment maps the source spelling
@@ -754,6 +794,15 @@ impl Compiler {
         let offset = self.offset();
         if u64::from(offset) + opcode.width() as u64 > u64::from(self.max_bytecode_bytes) {
             return Err(CompileError::ProgramTooLarge);
+        }
+        if self.diagnostic_ast_ids.is_some() {
+            self.metadata_index(self.bytecode.diagnostic_ast_owners.len())?;
+            self.bytecode.diagnostic_ast_owners.push(
+                crate::diagnostics::DiagnosticInstructionOwner {
+                    bytecode_offset: offset,
+                    ast_node_ordinal: self.diagnostic_owner,
+                },
+            );
         }
         self.bytecode.code.push(opcode as u8);
         if opcode.width() == 5 {

@@ -125,6 +125,8 @@ impl Vm {
         self.ensure_no_debugger_continuation()?;
         self.pending_throw_site = None;
         self.uncaught_throw_site = None;
+        self.pending_diagnostic_origin = None;
+        self.uncaught_diagnostic_origin = None;
         self.throw_epoch = 0;
         if let Some(root) = self.result_root.take() {
             self.release_root(root);
@@ -219,6 +221,13 @@ impl Vm {
         };
         self.pending_throw_site = None;
         self.synchronize_scheduling_usage()?;
+        self.uncaught_diagnostic_origin = if result.as_ref().is_err_and(RuntimeError::is_catchable)
+        {
+            self.pending_diagnostic_origin.take()
+        } else {
+            None
+        };
+        self.pending_diagnostic_origin = None;
         if let Err(error) = &result {
             self.report_host_exception(error)?;
         }
@@ -1305,6 +1314,7 @@ impl Vm {
                 if let (Some(target), Completion::Throw(error)) = (catch, &completion) {
                     let value = self.error_value(error.clone())?;
                     self.pending_throw_site = None;
+                    self.pending_diagnostic_origin = None;
                     handlers
                         .last_mut()
                         .expect("handler was inspected above")

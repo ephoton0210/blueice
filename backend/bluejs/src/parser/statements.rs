@@ -6,6 +6,19 @@ use super::*;
 
 impl Parser {
     pub(super) fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
+        let Some(base) = self.diagnostic_statements.as_ref().map(Vec::len) else {
+            return self.parse_statement_inner();
+        };
+        let start = self.token_start();
+        let statement = self.parse_statement_inner()?;
+        let end = self.positions[self.pos];
+        let children = self.diagnostic_statements.as_mut().unwrap().split_off(base);
+        let record = diagnostic_spans::CapturedStatement::new(&statement, (start, end), children);
+        self.diagnostic_statements.as_mut().unwrap().push(record);
+        Ok(statement)
+    }
+
+    fn parse_statement_inner(&mut self) -> Result<Stmt, ParseError> {
         if self.module
             && ((self.check_identifier("import")
                 && !self.check_punct_at(1, Punct::LParen)

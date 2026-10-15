@@ -76,6 +76,15 @@ matches M1o; final evidence is recorded in the
 [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
 See [the rejection contract](HOST_PROMISE_REJECTIONS.md).
 
+**M1q source-provenance checkpoint (in progress):** Immutable maps bind exact
+source identities and instruction ranges to installed program generations,
+with combined code/metadata admission. Parser statements and compiler AST
+instruction owners now locate root, block and function throws through the
+real Core/child path. This is an implementation checkpoint; original typed,
+expression, module, asynchronous and copied MCP positions and the final full
+gates remain open in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record)
+and [source-position contract](SOURCE_DIAGNOSTICS.md).
+
 ## Ubuntu verification scope (2026-09-19)
 
 The only available host for this update is Ubuntu 24.04.3 LTS under WSL2 (`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), not Ubuntu 24.04.4. It successfully built all workspace targets and ran focused ECMA-402/BlueJS regressions; the exact commands and outcomes are recorded in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md). The unfiltered Test262 inventory was also rerun: 96,203 / 102,926 modes pass (93.468%), including 86,304 / 91,820 ECMA-262 Core modes (93.993%) and 6,364 / 6,714 ECMA-402 modes (94.787%). Coverage figures elsewhere remain separately dated because no fresh coverage run occurred in this update.

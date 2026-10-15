@@ -558,6 +558,10 @@ pub struct Bytecode {
     /// meaningful only inside this generation: a closure left on the realm
     /// global by an earlier program must not match a newer program's target.
     pub(crate) debugger_program_generation: Option<u64>,
+    /// Immutable owner-certified positions shared by all code units of one
+    /// installed generation. Closures retain their own source association.
+    pub(crate) diagnostic_source_map: Option<std::rc::Rc<crate::diagnostics::DiagnosticSourceMap>>,
+    pub(crate) diagnostic_ast_owners: Vec<crate::diagnostics::DiagnosticInstructionOwner>,
     /// Compiler-recorded instruction starts for the root program's source
     /// order statements. `None` means the statement emits no root-code-unit
     /// instruction and therefore has no executable safe point.
@@ -694,6 +698,8 @@ impl Bytecode {
             code: Vec::new(),
             debugger_code_unit_ordinal: None,
             debugger_program_generation: None,
+            diagnostic_source_map: None,
+            diagnostic_ast_owners: Vec::new(),
             root_statement_offsets: Vec::new(),
             identifier_offsets: Vec::new(),
             root_statement_ranges: Vec::new(),

@@ -993,6 +993,8 @@ impl Compiler {
             max_metadata_entries: self.max_metadata_entries,
             max_list_items: self.max_list_items,
             function: true,
+            diagnostic_ast_ids: self.diagnostic_ast_ids.clone(),
+            diagnostic_owner: None,
             current_root_statement_index: self.current_root_statement_index,
             local_scope: 1,
             // A function created inside `with` resolves its free names

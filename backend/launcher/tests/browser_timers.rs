@@ -137,6 +137,72 @@ fn reported_page_errors_reach_window_onerror_through_the_real_child() {
     );
 }
 
+fn observed_error_source_location(script: &str) -> String {
+    let (fixture, url, gatekeeper) = fixture(format!(
+        "<p id=counter>waiting</p><script>
+        window.onerror=function(message,filename,line,column,error){{
+            document.getElementById('counter').textContent='location:'+filename+':'+line+':'+column;
+            return true;
+        }};
+        </script><script>{script}</script>"
+    ));
+    let core = SpawnedCore::spawn_with_options(
+        240.0,
+        120.0,
+        &fixture.root.join("frames"),
+        CoreLaunchOptions::default()
+            .with_gatekeeper_socket(gatekeeper)
+            .supervise_out_of_process_bluejs_with_page_dom(),
+    )
+    .unwrap();
+    let mut stream = core.stream.try_clone().unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    assert!(matches!(
+        request(&mut stream, 1, ClientMessage::Navigate { url }),
+        ServerMessage::Navigated { .. }
+    ));
+    let ServerMessage::Representation(snapshot) =
+        request(&mut stream, 2, ClientMessage::GetRepresentation)
+    else {
+        panic!("expected page representation");
+    };
+    snapshot
+        .nodes
+        .iter()
+        .filter_map(|node| node.name.as_deref())
+        .find(|name| name.starts_with("location:"))
+        .expect("the global error handler must publish the observed coordinates")
+        .to_owned()
+}
+
+#[test]
+fn uncaught_page_errors_keep_the_throwing_script_source_coordinates() {
+    let mut failures = Vec::new();
+    for (name, source, coordinates) in [
+        ("root", "\nthrow 'position-probe';\n", "2:1"),
+        (
+            "block",
+            "\nif (true) {\n  throw 'position-probe';\n}\n",
+            "3:3",
+        ),
+        (
+            "function",
+            "\nfunction fail() {\n  throw 'position-probe';\n}\nfail();\n",
+            "3:3",
+        ),
+    ] {
+        let location = observed_error_source_location(source);
+        if !location.starts_with("location:blueice://page/tab-1/document-")
+            || !location.ends_with(&format!("/inline-1.js:{coordinates}"))
+        {
+            failures.push((name, location, coordinates));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
 #[test]
 fn checked_host_member_chains_reject_before_any_page_mutation() {
     for call in [

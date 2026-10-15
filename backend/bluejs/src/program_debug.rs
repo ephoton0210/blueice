@@ -13,7 +13,7 @@
 //! source-span mapping remain owned by the page-host and debugger work.
 
 use crate::{BlueJsProgramV1, Bytecode, CompileError};
-mod ast_ids;
+pub(crate) mod ast_ids;
 use ast_ids::collect_ast_nodes;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -86,6 +86,12 @@ impl BlueJsSourceIdentity {
     /// The exact source-content fingerprint supplied by the host.
     pub fn source_hash(&self) -> &str {
         &self.source_hash
+    }
+
+    pub(crate) fn owned_identity_bytes(&self) -> usize {
+        self.canonical_module_id
+            .capacity()
+            .saturating_add(self.source_hash.capacity())
     }
 }
 
@@ -508,6 +514,26 @@ impl Default for BlueJsProgramRegistry {
 }
 
 impl BlueJsProgramRegistry {
+    /// Attach source metadata before executing this program. All validation
+    /// completes before the bytecode changes; old code clones remain immutable.
+    pub fn bind_diagnostic_sources(
+        &mut self,
+        handle: BlueJsProgramHandle,
+        map: crate::diagnostics::DiagnosticSourceMap,
+    ) -> Result<usize, crate::diagnostics::DiagnosticSourceMapError> {
+        use crate::diagnostics::DiagnosticSourceMapError as Error;
+        let program = self
+            .programs
+            .get_mut(&handle.generation)
+            .ok_or(Error::UnknownProgram)?;
+        if program.source != map.source {
+            return Err(Error::SourceMismatch);
+        }
+        let bytes = map.payload_bytes();
+        map.bind(&mut program.bytecode)?;
+        Ok(bytes)
+    }
+
     /// The ABI label a host records alongside this registry's IDs.
     pub const ABI: &'static str = BLUEJS_PROGRAM_DEBUG_ABI_V1;
 
@@ -520,6 +546,17 @@ impl BlueJsProgramRegistry {
         let bytecode = program.compile()?;
         let ast_nodes = collect_ast_nodes(program);
         self.install_with_ast_nodes(source, bytecode, ast_nodes)
+    }
+
+    /// Retains compiler AST instruction owners until an immutable diagnostic
+    /// source map consumes them. Ordinary language compilation omits these.
+    pub fn install_for_diagnostics(
+        &mut self,
+        source: BlueJsSourceIdentity,
+        program: &BlueJsProgramV1,
+    ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
+        let bytecode = crate::compiler::compile_for_diagnostics(program)?;
+        self.install_with_ast_nodes(source, bytecode, collect_ast_nodes(program))
     }
 
     /// Installs bytecode already compiled by BlueJS together with the exact

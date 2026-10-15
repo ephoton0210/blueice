@@ -8,11 +8,12 @@ use super::{AstNodeDescriptor, BlueJsAstNodeKind};
 use crate::{
     Argument, ArrayElement, ArrowBody, AssignmentPattern, AssignmentPatternElement,
     AssignmentPatternProp, BlueJsProgramV1, CatchClause, Class, ClassElement, Expr, ForHead,
-    ForInit, Function, ObjectPatternProp, ObjectProp, Param, Pattern, PropertyKey, Stmt,
+    ForInit, Function, ObjectPatternProp, ObjectProp, Param, Pattern, PropertyKey, SourceText,
+    Stmt,
 };
 
 pub(super) fn collect_ast_nodes(program: &BlueJsProgramV1) -> Vec<AstNodeDescriptor> {
-    let mut visitor = AstNodeVisitor { nodes: Vec::new() };
+    let mut visitor = AstNodeVisitor::new(true);
     match program {
         BlueJsProgramV1::Script(program) => {
             visitor.push(BlueJsAstNodeKind::Script, false);
@@ -26,16 +27,92 @@ pub(super) fn collect_ast_nodes(program: &BlueJsProgramV1) -> Vec<AstNodeDescrip
     visitor.nodes
 }
 
-struct AstNodeVisitor {
-    nodes: Vec<AstNodeDescriptor>,
+pub(crate) struct DiagnosticAstNodeIds {
+    pub(crate) statements: std::collections::HashMap<usize, usize>,
 }
 
-impl AstNodeVisitor {
+pub(crate) fn collect_diagnostic_ast_node_ids(body: &[Stmt]) -> DiagnosticAstNodeIds {
+    let mut statements = std::collections::HashMap::new();
+    let mut statement = |node: &Stmt, ordinal| {
+        statements.insert(node as *const Stmt as usize, ordinal);
+    };
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.statement_hook = Some(&mut statement);
+    visitor.push(BlueJsAstNodeKind::Script, false);
+    visitor.statements(body, true);
+    DiagnosticAstNodeIds { statements }
+}
+
+pub(crate) fn visit_statement_tree(statement: &Stmt, visit: &mut dyn FnMut(&Stmt)) {
+    let mut callback = |node: &Stmt, _| visit(node);
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.statement_hook = Some(&mut callback);
+    visitor.statement(statement, false);
+}
+
+pub(crate) fn visit_program_statement_nodes(
+    body: &[Stmt],
+    visit: &mut dyn FnMut(&Stmt, usize),
+) -> usize {
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.statement_hook = Some(visit);
+    visitor.push(BlueJsAstNodeKind::Script, false);
+    visitor.statements(body, true);
+    visitor.node_count
+}
+
+pub(crate) fn same_statement_source(left: &Stmt, right: &Stmt) -> bool {
+    if left != right {
+        return false;
+    }
+    let mut sources = Vec::new();
+    let mut collect = |source: &SourceText| sources.push(source.clone());
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.source_hook = Some(&mut collect);
+    visitor.statement(left, false);
+    let mut index = 0;
+    let mut matches = true;
+    let mut compare = |source: &SourceText| {
+        matches &= sources
+            .get(index)
+            .is_some_and(|left| left.same_source_range(source));
+        index += 1;
+    };
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.source_hook = Some(&mut compare);
+    visitor.statement(right, false);
+    matches && index == sources.len()
+}
+
+type StatementHook<'a> = &'a mut dyn FnMut(&Stmt, usize);
+
+struct AstNodeVisitor<'a> {
+    nodes: Vec<AstNodeDescriptor>,
+    node_count: usize,
+    record_nodes: bool,
+    statement_hook: Option<StatementHook<'a>>,
+    source_hook: Option<&'a mut dyn FnMut(&SourceText)>,
+}
+
+impl AstNodeVisitor<'_> {
+    fn new(record_nodes: bool) -> Self {
+        Self {
+            nodes: Vec::new(),
+            node_count: 0,
+            record_nodes,
+            statement_hook: None,
+            source_hook: None,
+        }
+    }
+
     fn push(&mut self, kind: BlueJsAstNodeKind, top_level_statement: bool) {
-        self.nodes.push(AstNodeDescriptor {
-            kind,
-            top_level_statement,
-        });
+        if self.record_nodes {
+            self.nodes.push(AstNodeDescriptor {
+                kind,
+                top_level_statement,
+            });
+        }
+        self.node_count += 1;
     }
 
     fn statements(&mut self, statements: &[Stmt], top_level: bool) {
@@ -45,6 +122,9 @@ impl AstNodeVisitor {
     }
 
     fn statement(&mut self, statement: &Stmt, top_level: bool) {
+        if let Some(hook) = &mut self.statement_hook {
+            hook(statement, self.node_count);
+        }
         self.push(BlueJsAstNodeKind::Statement, top_level);
         match statement {
             Stmt::Empty
@@ -209,7 +289,15 @@ impl AstNodeVisitor {
                     self.expression(options);
                 }
             }
-            Expr::Arrow { params, body, .. } => {
+            Expr::Arrow {
+                params,
+                body,
+                source_text,
+                ..
+            } => {
+                if let Some(hook) = &mut self.source_hook {
+                    hook(source_text);
+                }
                 for parameter in params {
                     self.parameter(parameter);
                 }
@@ -265,6 +353,9 @@ impl AstNodeVisitor {
     }
 
     fn function(&mut self, function: &Function) {
+        if let Some(hook) = &mut self.source_hook {
+            hook(&function.source_text);
+        }
         for parameter in &function.params {
             self.parameter(parameter);
         }
@@ -279,6 +370,9 @@ impl AstNodeVisitor {
     }
 
     fn class(&mut self, class: &Class) {
+        if let Some(hook) = &mut self.source_hook {
+            hook(&class.source_text);
+        }
         for decorator in &class.decorators {
             self.expression(decorator);
         }

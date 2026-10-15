@@ -772,6 +772,35 @@ pub(super) fn execute_classic(
     source: PageHostSource,
     program: BlueJsProgramV1,
 ) -> PageHostScriptOutcome {
+    let identity = match source_identity(&source) {
+        Ok(identity) => identity,
+        Err(category) => return rejected(category),
+    };
+    let handle = match runtime.install_program_with_diagnostics(
+        tab_id,
+        origin,
+        identity,
+        &program,
+        |registry, handle| {
+            super::source_diagnostics::javascript_diagnostic_source_map(registry, handle, &source)
+        },
+    ) {
+        Ok(handle) => handle,
+        Err(error) => return rejected(page_runtime_category(error)),
+    };
+    match runtime.execute_program(tab_id, handle).map(|_: Value| ()) {
+        Ok(()) => PageHostScriptOutcome::Executed,
+        Err(error) => rejected(page_runtime_category(error)),
+    }
+}
+
+pub(super) fn execute_unmapped_classic(
+    runtime: &mut BlueJsPageRuntime,
+    tab_id: u64,
+    origin: &BlueJsPageOrigin,
+    source: PageHostSource,
+    program: BlueJsProgramV1,
+) -> PageHostScriptOutcome {
     let source = match source_identity(&source) {
         Ok(source) => source,
         Err(category) => return rejected(category),

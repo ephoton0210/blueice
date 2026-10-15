@@ -908,6 +908,9 @@ pub struct Vm {
     pending_throw_site: Option<VmDebuggerThrowSite>,
     /// Published only after an outer execution ends with an uncaught throw.
     uncaught_throw_site: Option<VmDebuggerThrowSite>,
+    active_diagnostic_frame: Option<crate::diagnostics::ActiveDiagnosticFrame>,
+    pending_diagnostic_origin: Option<crate::diagnostics::DiagnosticSourceLocation>,
+    uncaught_diagnostic_origin: Option<crate::diagnostics::DiagnosticSourceLocation>,
     /// Distinguishes a new callee throw from its propagation through `Call`.
     throw_epoch: u64,
     stack: Vec<Value>,

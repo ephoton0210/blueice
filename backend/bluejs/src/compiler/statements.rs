@@ -605,6 +605,23 @@ impl Compiler {
         statement: &Stmt,
         declarations_allowed: bool,
     ) -> Result<(), CompileError> {
+        let previous = self.diagnostic_owner;
+        self.diagnostic_owner = self
+            .diagnostic_ast_ids
+            .as_ref()
+            .and_then(|ids| ids.statements.get(&(statement as *const Stmt as usize)))
+            .map(|ordinal| self.metadata_index(*ordinal))
+            .transpose()?;
+        let result = self.statement_inner(statement, declarations_allowed);
+        self.diagnostic_owner = previous;
+        result
+    }
+
+    fn statement_inner(
+        &mut self,
+        statement: &Stmt,
+        declarations_allowed: bool,
+    ) -> Result<(), CompileError> {
         if !declarations_allowed {
             // The body of an `if`, loop, `with` or label is a Statement, not a
             // StatementListItem: no class, function or generator/async
