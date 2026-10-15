@@ -489,7 +489,7 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: emitted/module/debugger source follow-up verified;
+**Progress updated 2026-10-15: initial direct source-binding follow-up verified;
 3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
@@ -624,12 +624,31 @@ the full source-position requirement.
       and MCP's emitted classic/module/async plus dynamic-unknown controls pass.
       Runtime/test hashes remain fixed during acceptance; formatting, seven
       library, changed-target and launcher test Clippy pass.
+- [x] Share the source-only AST inventory and bounded instruction-range builder
+      between original/emitted JavaScript and direct BlueTS. Preserve debugger
+      ordinals and pattern namespaces; all forty-four diagnostic groups pass.
+- [x] Derive initial direct page script/module locations from checked BlueTS
+      declarations and the final lowered AST. Retain source identity, a bounded
+      AST certificate and coordinates; discard temporary addresses/source text.
+      Reject changed source identities, changed ASTs and code/map byte overruns
+      before execution. Standalone debugger attachment behavior stays intact.
+- [x] Pass 173 bridge cases, including original function/control-flow/class
+      throws, constructor prologues, CR/CRLF/LS/PS coordinates, awaited dependency
+      failures and a dynamic-code unknown control. Add the missing default-export
+      snapshot lowering record without changing ordinary bytecode.
+- [x] Pass the initial direct follow-up: 1,758 cases across six disjoint target
+      selections, one existing ignored. Five new real-page contexts and three
+      deferred debugger cases preserve direct `.ts` sources. Official MCP now
+      verifies direct `reportError`/console at 1:1 and a Blob callback throw at
+      1:44. Formatting, seven-library, changed-target and bridge/launcher test
+      Clippy pass; runtime/test hashes remain fixed during final acceptance.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
       compiler-generated provenance.
-- [ ] Complete direct BlueTS original locations and remaining emitted-profile,
+- [ ] Complete deeper direct BlueTS expression/pattern and namespace/enum/JSX/
+      assignment-field lowering evidence, plus remaining emitted-profile,
       module and debugger precision/lifecycle acceptance.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
       disposal acceptance beyond the verified module and disposal cases.
@@ -1074,6 +1093,47 @@ receipts are retained in `target/emitted-origins-source-20261015.json` and
 identical before and after the final host replay. Direct BlueTS, remaining
 precision/emission-profile and integrated lifecycle/resource acceptance, full
 workspace/all-target and pinned Test262 gates remain open; M1q stays at 3/10.
+
+The initial direct-source follow-up reproduces a checked function throw without
+a source record (`/private/tmp/blueice-direct-origins-statements-red.log`).
+The bridge now derives a source-only coordinate table from checked BlueTS
+declarations and their final lowered AST. Temporary addresses never survive
+that traversal. A bounded private AST digest and original source identity
+reject changed artifacts before execution; normal/debugger page installers
+charge the common immutable range map with code. Source/AST substitutions and
+a code/map budget refusal leave no program or byte charge behind. Existing
+standalone debugger tests retain their caller-owned AST mutation behavior.
+
+The expanded bridge cases cover twelve function/control-flow/class/constructor
+source scenarios, CR/CRLF/LS/PS text, dependency failures before/after await and
+an explicitly unknown dynamic function. The dynamic control stores its function
+in a declared variable, respecting the existing direct-call subset. Adding a
+default-export identifier snapshot's missing lowering record fixes an existing
+body/provenance count mismatch without changing ordinary bytecode. All 173
+bridge cases pass, including its complete existing debugger and lifecycle suite.
+
+The final selection passes 1,205 BlueJS library cases and all forty-four
+diagnostic groups; bridge/launcher/real pages add 504 passes, and all five
+official MCP console cases pass. The disjoint total is 1,758 across six target
+selections, zero final failures and one existing ignored. Five new real-page
+contexts verify direct classic/module, class getter, `reportError` and awaited
+module positions; three deferred debugger contexts retain their `.ts` origins.
+MCP verifies direct `reportError`/console at original 1:1 and a Blob-text Promise
+callback throw at 1:44. The last MCP failure was an obsolete assertion that
+typed console source was unavailable; the complete five-case rerun and focused
+MCP Clippy pass after correcting that test alone. Other source/runtime/test
+hashes are unchanged. Formatting, seven-library Clippy, changed integration
+Clippy and bridge/launcher test Clippy pass. The two successful BlueJS harnesses
+from the initial coupled run retain their own passing receipts; its failed
+bridge fixture is excluded and replaced by the complete final bridge replay.
+Twelve Rust inputs, three Cargo inputs, runtime/test hashes and per-target
+receipts are in `target/direct-origins-source-20261015.json` and
+`target/direct-origins-validation-20261015.json`.
+
+This is initial direct source binding. Deeper direct expressions/patterns,
+namespace/enum/JSX and assignment-field lowering, other remaining precision,
+integrated lifecycle/resource acceptance, full workspace/all-target and pinned
+Test262 gates remain open; M1q stays at 3/10 final acceptance gates.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

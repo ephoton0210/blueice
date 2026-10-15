@@ -190,6 +190,44 @@ fn observed_script_error_source_location(script: &str, script_type: &str, emitte
 }
 
 #[test]
+fn real_pages_report_original_direct_bluets_statement_and_call_sources() {
+    for (script_type, source, coordinates) in [
+        (
+            "application/x-blueice-typescript",
+            "function fail(): void {\n throw 'direct';\n}fail();",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
+            "class C {get value(): number {\n throw 'direct';\n}}new C().value;",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
+            "window.reportError('direct');",
+            "1:1",
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            "export function fail(): void {\n throw 'direct-module';\n}fail();",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            "await 0;\nexport function fail(): void {\n throw 'direct-await';\n}fail();",
+            "3:2",
+        ),
+    ] {
+        let location = observed_script_error_source_location(source, script_type, false);
+        assert!(
+            location.starts_with("location:blueice://page/tab-1/document-")
+                && location.ends_with(&format!("/inline-1.ts:{coordinates}")),
+            "{source}: {location}"
+        );
+    }
+}
+
+#[test]
 fn real_pages_report_original_emitted_bluets_and_javascript_module_positions() {
     for (script_type, source, coordinates, extension, emitted) in [
         (

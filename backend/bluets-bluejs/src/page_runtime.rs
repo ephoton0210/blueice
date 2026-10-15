@@ -247,7 +247,13 @@ impl DirectScript {
     ) -> Result<DirectProgramAttachment, BridgeError> {
         let source = source_identity(&self.sources)?;
         let handle = runtime
-            .install_program(tab_id, origin, source, &self.program)
+            .install_program_with_diagnostics(
+                tab_id,
+                origin,
+                source,
+                &self.program,
+                |registry, handle| self.diagnostic_origins.map(registry, handle, &self.program),
+            )
             .map_err(BridgeError::PageRuntime)?;
         match self.attach_existing_in(runtime.program_registry(), handle) {
             Ok(attachment) => Ok(attachment),
@@ -316,7 +322,17 @@ impl DirectModuleGraph {
                     return Err(error);
                 }
             };
-            let handle = match runtime.install_program(tab_id, origin, source, &module.program) {
+            let handle = match runtime.install_program_with_diagnostics(
+                tab_id,
+                origin,
+                source,
+                &module.program,
+                |registry, handle| {
+                    module
+                        .diagnostic_origins
+                        .map(registry, handle, &module.program)
+                },
+            ) {
                 Ok(handle) => handle,
                 Err(error) => {
                     discard_programs(runtime, tab_id, &installed);

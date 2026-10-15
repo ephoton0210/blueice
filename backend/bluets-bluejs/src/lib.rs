@@ -26,6 +26,7 @@ use std::fmt;
 mod debug_attachment;
 pub mod page_host_typings;
 mod page_runtime;
+mod source_diagnostics;
 pub use debug_attachment::{
     DirectDebugAttachmentError, DirectDebugRegistry, DirectDebugRetentionLimits,
     RetainedDirectDebugInfo,
@@ -81,6 +82,7 @@ pub struct DirectScript {
     /// Static BlueTS source/type/symbol metadata for this exact compilation.
     /// It contains no runtime BlueJS values or source text.
     pub debug_info: BlueTsDebugInfo,
+    diagnostic_origins: source_diagnostics::DirectDiagnosticOrigins,
 }
 
 /// A checked, direct BlueJS compilation of one TypeScript source module.
@@ -95,6 +97,7 @@ pub struct DirectModule {
     pub provenance: Vec<LoweringProvenance>,
     /// Static BlueTS source/type/symbol metadata for this exact compilation.
     pub debug_info: BlueTsDebugInfo,
+    diagnostic_origins: source_diagnostics::DirectDiagnosticOrigins,
 }
 
 /// A checked, direct BlueJS compilation of a closed TypeScript module graph.
@@ -588,6 +591,13 @@ pub fn compile_direct_script(
     let program = bluejs::BlueJsProgramV1::Script(bluejs::Program { body });
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
     let sources = bridge_sources(&debug_info);
+    let diagnostic_origins = source_diagnostics::DirectDiagnosticOrigins::build(
+        &module,
+        &program,
+        &provenance,
+        &sources,
+        define_class_fields,
+    )?;
     Ok(DirectScript {
         bridge_abi: BLUE_TS_BLUEJS_BRIDGE_ABI_V1,
         program,
@@ -597,6 +607,7 @@ pub fn compile_direct_script(
         sources,
         provenance,
         debug_info,
+        diagnostic_origins,
     })
 }
 
@@ -617,10 +628,17 @@ pub fn compile_direct_module(
     let jsx_options = options.clone();
     let (module, debug_info) = checked_entry(entry, loader, options)?;
     let _jsx = JsxScope::enter(JsxContext::of(&jsx_options, &module));
-    let (module, provenance) = lower_module(None, &module, define_class_fields)?;
-    let program = bluejs::BlueJsProgramV1::Module(module);
+    let (lowered, provenance) = lower_module(None, &module, define_class_fields)?;
+    let program = bluejs::BlueJsProgramV1::Module(lowered);
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
     let sources = bridge_sources(&debug_info);
+    let diagnostic_origins = source_diagnostics::DirectDiagnosticOrigins::build(
+        &module,
+        &program,
+        &provenance,
+        &sources,
+        define_class_fields,
+    )?;
     Ok(DirectModule {
         bridge_abi: BLUE_TS_BLUEJS_BRIDGE_ABI_V1,
         program,
@@ -630,6 +648,7 @@ pub fn compile_direct_module(
         sources,
         provenance,
         debug_info,
+        diagnostic_origins,
     })
 }
 
@@ -664,11 +683,11 @@ pub fn compile_direct_module_graph(
             .get(&id)
             .expect("runtime-reachable module was selected from the project");
         let _jsx = JsxScope::enter(JsxContext::of(&jsx_options, module));
-        let (module, provenance) =
+        let (lowered, provenance) =
             lower_module(Some(&compilation.project), module, define_class_fields)?;
-        let program = bluejs::BlueJsProgramV1::Module(module);
+        let program = bluejs::BlueJsProgramV1::Module(lowered);
         let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
-        let sources = debug_info
+        let sources: Vec<BridgeSource> = debug_info
             .sources
             .iter()
             .filter(|source| source.module == id)
@@ -677,6 +696,13 @@ pub fn compile_direct_module_graph(
                 content_hash: source.content_hash.clone(),
             })
             .collect();
+        let diagnostic_origins = source_diagnostics::DirectDiagnosticOrigins::build(
+            module,
+            &program,
+            &provenance,
+            &sources,
+            define_class_fields,
+        )?;
         let module_debug_info = debug_info_for_module(&debug_info, &id);
         modules.insert(
             id,
@@ -689,6 +715,7 @@ pub fn compile_direct_module_graph(
                 sources,
                 provenance,
                 debug_info: module_debug_info,
+                diagnostic_origins,
             },
         );
     }

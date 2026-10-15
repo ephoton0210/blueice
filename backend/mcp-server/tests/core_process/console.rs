@@ -369,7 +369,12 @@ async fn real_mcp_reports_uncaught_page_values_and_keeps_native_event_delivery_a
         .iter()
         .find(|record| record.message.contains("typed-error"))
         .unwrap();
-    assert!(serde_json::to_value(typed).unwrap().get("source").is_none());
+    let typed = typed
+        .source
+        .as_ref()
+        .expect("direct BlueTS reportError has its own original call site");
+    assert!(typed.filename.ends_with("/inline-1.ts"));
+    assert_eq!((typed.line, typed.column), (1, 1));
     let generation = snapshot.accessibility.unwrap().document_generation;
     let click = client
         .call_tool(
@@ -520,10 +525,12 @@ async fn real_mcp_reports_rejections_late_handlers_and_navigation_without_live_h
             .is_some_and(|name| name.ends_with("/inline-0.js")),
         "{original}"
     );
-    assert!(serde_json::to_value(&records[1])
-        .unwrap()
-        .get("source")
-        .is_none());
+    let typed = records[1]
+        .source
+        .as_ref()
+        .expect("direct BlueTS callback keeps its original throw");
+    assert!(typed.filename.ends_with("/inline-1.ts"));
+    assert_eq!((typed.line, typed.column), (1, 44));
     assert!(records
         .iter()
         .all(|record| record.level == "error"
@@ -677,10 +684,12 @@ async fn real_mcp_console_drains_both_languages_tasks_and_native_events_and_disc
             "{record}"
         );
     }
-    assert!(serde_json::to_value(&records[2])
-        .unwrap()
-        .get("source")
-        .is_none());
+    let typed = records[2]
+        .source
+        .as_ref()
+        .expect("direct BlueTS console keeps its original call site");
+    assert!(typed.filename.ends_with("/inline-1.ts"));
+    assert_eq!((typed.line, typed.column), (1, 1));
     assert!(records
         .windows(2)
         .all(|pair| pair[0].sequence < pair[1].sequence));

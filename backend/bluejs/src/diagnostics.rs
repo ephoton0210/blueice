@@ -11,6 +11,23 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::rc::Rc;
 
+pub use crate::program_debug::ast_ids::DiagnosticNode as DiagnosticSourceNode;
+
+/// Enumerate one owner-provided AST's diagnostic ordinals without installing
+/// code or exposing a live program identity. Slot zero is the unmapped program
+/// root; binding- and assignment-pattern slots follow the public AST prefix.
+/// The returned total includes all slots, including the root.
+pub fn visit_diagnostic_source_nodes(
+    program: &crate::BlueJsProgramV1,
+    visit: &mut dyn FnMut(DiagnosticSourceNode<'_>, usize),
+) -> usize {
+    let body = match program {
+        crate::BlueJsProgramV1::Script(program) => &program.body,
+        crate::BlueJsProgramV1::Module(module) => &module.body,
+    };
+    crate::program_debug::ast_ids::visit_program_nodes(body, visit)
+}
+
 pub const MAX_DIAGNOSTIC_SOURCE_NAME_BYTES: usize = 8 * 1024;
 pub const MAX_DIAGNOSTIC_SOURCE_RANGES: usize = 65_536;
 pub const MAX_DIAGNOSTIC_SOURCE_MAP_BYTES: usize = 8 * 1024 * 1024;
@@ -124,6 +141,102 @@ impl fmt::Display for DiagnosticSourceMapError {
 impl std::error::Error for DiagnosticSourceMapError {}
 
 impl DiagnosticSourceMap {
+    /// Build bounded instruction ranges from exact source-only AST positions.
+    /// Missing slots stay unmapped, including through adjacent mapped owners.
+    /// The caller certifies the positions; binding still validates the exact
+    /// source identity, live generation and every instruction boundary.
+    pub fn from_node_positions(
+        source: BlueJsSourceIdentity,
+        bytecode: &Bytecode,
+        filename: &str,
+        positions: &[Option<(u32, u32)>],
+    ) -> Result<Self, DiagnosticSourceMapError> {
+        if positions.len() != bytecode.diagnostic_source_node_count() {
+            return Err(DiagnosticSourceMapError::SourceMismatch);
+        }
+        let mut entries = Vec::<DiagnosticSourceRange>::new();
+        let mut filename_bytes = 0usize;
+        fn collect(
+            code: &Bytecode,
+            ordinal: &mut u32,
+            filename: &str,
+            positions: &[Option<(u32, u32)>],
+            entries: &mut Vec<DiagnosticSourceRange>,
+            filename_bytes: &mut usize,
+        ) -> Result<(), DiagnosticSourceMapError> {
+            let unit = *ordinal;
+            *ordinal = ordinal
+                .checked_add(1)
+                .ok_or(DiagnosticSourceMapError::LimitExceeded)?;
+            let owners = code.diagnostic_instruction_owners();
+            for (index, owner) in owners.iter().enumerate() {
+                let Some((line, column)) = owner
+                    .ast_node_ordinal
+                    .and_then(|node| positions.get(node as usize))
+                    .copied()
+                    .flatten()
+                else {
+                    continue;
+                };
+                let start = owner.bytecode_offset;
+                let end = owners
+                    .get(index + 1)
+                    .map_or(code.bytes().len() as u32, |next| next.bytecode_offset);
+                if let Some(previous) = entries.last_mut().filter(|previous| {
+                    previous.code_unit_ordinal == unit
+                        && previous.end == start
+                        && previous.location.line == line
+                        && previous.location.column == column
+                }) {
+                    previous.end = end;
+                    continue;
+                }
+                let next = entries
+                    .len()
+                    .checked_add(1)
+                    .filter(|count| *count <= MAX_DIAGNOSTIC_SOURCE_RANGES)
+                    .ok_or(DiagnosticSourceMapError::LimitExceeded)?;
+                let capacity = if next > entries.capacity() {
+                    entries.capacity().saturating_mul(2).max(4)
+                } else {
+                    entries.capacity()
+                };
+                capacity
+                    .checked_mul(std::mem::size_of::<DiagnosticSourceRange>())
+                    .and_then(|bytes| bytes.checked_add(*filename_bytes))
+                    .and_then(|bytes| bytes.checked_add(filename.len()))
+                    .filter(|bytes| *bytes <= MAX_DIAGNOSTIC_SOURCE_MAP_BYTES)
+                    .ok_or(DiagnosticSourceMapError::LimitExceeded)?;
+                *filename_bytes = filename_bytes
+                    .checked_add(filename.len())
+                    .ok_or(DiagnosticSourceMapError::LimitExceeded)?;
+                entries.push(DiagnosticSourceRange {
+                    code_unit_ordinal: unit,
+                    start,
+                    end,
+                    location: DiagnosticSourceLocation {
+                        filename: filename.to_owned(),
+                        line,
+                        column,
+                    },
+                });
+            }
+            for child in code.child_code_units() {
+                collect(child, ordinal, filename, positions, entries, filename_bytes)?;
+            }
+            Ok(())
+        }
+        collect(
+            bytecode,
+            &mut 0,
+            filename,
+            positions,
+            &mut entries,
+            &mut filename_bytes,
+        )?;
+        Self::new(source, entries)
+    }
+
     pub fn new(
         source: BlueJsSourceIdentity,
         mut ranges: Vec<DiagnosticSourceRange>,

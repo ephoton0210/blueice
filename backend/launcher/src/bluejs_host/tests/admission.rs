@@ -5,9 +5,13 @@
 use super::*;
 
 fn debugger_source_messages(script: PageHostScript) -> blueice_ipc::console::ConsoleMessages {
+    debugger_source_batch(vec![script])
+}
+
+fn debugger_source_batch(scripts: Vec<PageHostScript>) -> blueice_ipc::console::ConsoleMessages {
     let mut host = BlueJsChildHost::default();
     let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
-        document: debugger_document(1, vec![script]),
+        document: debugger_document(1, scripts),
     });
     assert!(
         matches!(reply, PageHostReply::Synchronized { ref reports, .. } if reports.is_empty()),
@@ -40,6 +44,26 @@ fn debugger_source_messages(script: PageHostScript) -> blueice_ipc::console::Con
         panic!("console drain must succeed")
     };
     messages
+}
+
+#[test]
+fn direct_bluets_diagnostics_survive_deferred_debugger_execution() {
+    for source in [
+        "function fail(): void {\n throw 'direct';\n}fail();",
+        "class C {get value(): number {\n throw 'direct';\n}}new C().value;",
+        "async function fail(): Promise<void> {await 0;\n throw 'direct';\n}fail();",
+    ] {
+        let messages = debugger_source_batch(vec![classic(0, ";"), blue_ts_classic(1, source)]);
+        assert_eq!(messages.records.len(), 1, "{source}: {messages:?}");
+        let location = messages.records[0]
+            .source
+            .as_ref()
+            .expect("direct debugger source");
+        assert_eq!(
+            (location.filename.as_str(), location.line, location.column),
+            ("blueice://page/inline-1.ts", 2, 2)
+        );
+    }
 }
 
 #[test]

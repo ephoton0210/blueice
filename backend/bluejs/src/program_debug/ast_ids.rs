@@ -37,8 +37,10 @@ pub(crate) struct DiagnosticAstNodeIds {
     pub(crate) node_count: usize,
 }
 
+/// Borrowed syntax in the source-only diagnostic inventory. Pattern slots
+/// follow the unchanged debugger AST prefix and grant no live debugger authority.
 #[derive(Clone, Copy)]
-pub(crate) enum DiagnosticNode<'a> {
+pub enum DiagnosticNode<'a> {
     Statement(&'a Stmt),
     Expression(&'a Expr),
     Pattern(&'a Pattern),

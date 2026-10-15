@@ -228,6 +228,7 @@ pub(super) fn lower_module(
                             init: Some(bluejs::Expr::Identifier(export.name.clone())),
                         }],
                     ));
+                    provenance.push((export.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 }
                 exports.push(bluejs::ExportEntry::Local {
                     export_name: "default".to_string(),

@@ -246,9 +246,57 @@ executable hashes and per-target receipts are recorded in
 `target/emitted-origins-source-20261015.json` and
 `target/emitted-origins-validation-20261015.json`.
 
-Direct BlueTS still requires its own precise original-source producer. Full
-producer/lifecycle/resource acceptance and nonstandard emission-profile
-precision remain open; M1q stays at 3/10 final gates.
+### Initial direct BlueTS source bindings
+
+Direct page-realm script and module installers now use source-only records
+derived from checked BlueTS declarations and their final lowered AST. A shared
+BlueJS visitor names the exact diagnostic ordinals, including the existing
+pattern suffixes, without creating live debugger IDs. Temporary AST addresses
+are discarded when the bridge converts certified byte offsets to coordinates.
+The common bounded range builder consumes compiler instruction owners for both
+the launcher and the direct bridge.
+
+Each direct artifact retains its original source identity, coordinate vector
+and a private bounded AST digest. The digest streams the AST's debug structure
+and actual numeric bits without retaining another AST or original source text.
+Source substitution or AST mutation invalidates the evidence before execution.
+The page installer charges code and source ranges together; metadata refusal
+discards the candidate and graph attachment discards earlier candidates.
+Ordinary bridge bytecode, function `SourceText` behavior and debugger ordinals
+retain their original representation. Standalone registry/debugger attachment
+retains its existing caller-owned AST editing behavior.
+
+The initial bindings cover exact statement spans in ordinary functions and
+control-flow bodies, expression roots, certified identifier/member/call
+prefixes, defaults and standard defined-field class members. Constructor
+parameter-property prologues stay unmapped while original body statements
+keep their own positions. A separate fix adds the missing top-level lowering
+record for a default-export identifier snapshot; its ordinary code is unchanged.
+
+This is an initial producer, not complete direct-source precision. Deeper
+expression/pattern nodes, namespace/enum/JSX lowering and assignment-field class
+paths still need their own evidence; their gaps stay unavailable. Full
+producer/lifecycle/resource and nonstandard emission-profile acceptance remain
+open; M1q stays at 3/10 final gates.
+
+The initial direct selection passes 1,205 BlueJS library cases, forty-four
+diagnostic groups and all 173 bridge cases. Launcher, real pages and official
+MCP console add 336 passes, for 1,758 across six disjoint target selections,
+zero final failures and one existing ignored. Five new real-page contexts and
+three deferred debugger contexts preserve direct `.ts` locations. MCP verifies
+direct `reportError`/console call sites at 1:1 and a Blob-text Promise callback
+throw at 1:44. Source/AST changes and a low code/map byte budget are refused
+without leaving a program or byte charge. Twelve Rust inputs, three Cargo
+inputs and runtime/test hashes are recorded in
+`target/direct-origins-source-20261015.json` and
+`target/direct-origins-validation-20261015.json`.
+
+Formatting, seven-library/integration Clippy and bridge/launcher test Clippy
+pass. The final test-only correction replaces the old typed-console
+unavailable-source assertion with exact coordinates; all five MCP console
+cases and MCP Clippy replay successfully. Other runtime/test hashes remain
+fixed. Successful BlueJS harnesses from the coupled invocation retain their
+own receipts; its failed direct-call fixture is excluded from the final count.
 
 ## Saved completions and cleanup
 
@@ -464,8 +512,9 @@ hashes and per-target receipts are recorded in
 ## Required remaining work
 
 Remaining expression dispatch, decorator application and other generated-code
-provenance still need completion. Direct BlueTS requires a precise source
-producer; emitted BlueTS and page-module/debugger producers require their
+provenance still need completion. Direct BlueTS requires its remaining precise
+expression/pattern and generated-lowering evidence; emitted BlueTS and
+page-module/debugger producers require their
 remaining precision, emission-profile and integrated lifecycle acceptance.
 The complete queued-origin matrix, including remaining delegate/protocol
 cases and integrated finalizer/disposal acceptance beyond the verified cases,

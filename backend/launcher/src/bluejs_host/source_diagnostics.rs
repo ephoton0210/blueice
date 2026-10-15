@@ -6,8 +6,7 @@
 
 use super::*;
 use blueice_bluejs::diagnostics::{
-    source_positions, DiagnosticSourceLocation, DiagnosticSourceMap, DiagnosticSourceMapError,
-    DiagnosticSourceRange, MAX_DIAGNOSTIC_SOURCE_MAP_BYTES, MAX_DIAGNOSTIC_SOURCE_RANGES,
+    source_positions, DiagnosticSourceMap, DiagnosticSourceMapError,
 };
 
 fn invalid_source() -> BlueJsPageRuntimeError {
@@ -169,84 +168,11 @@ fn bind_positions(
     filename: &str,
     positions: &[Option<(u32, u32)>],
 ) -> Result<DiagnosticSourceMap, BlueJsPageRuntimeError> {
-    let mut entries = Vec::<DiagnosticSourceRange>::new();
-    let mut filename_bytes = 0usize;
-    fn collect(
-        code: &blueice_bluejs::Bytecode,
-        ordinal: &mut u32,
-        filename: &str,
-        positions: &[Option<(u32, u32)>],
-        entries: &mut Vec<DiagnosticSourceRange>,
-        filename_bytes: &mut usize,
-    ) -> Result<(), BlueJsPageRuntimeError> {
-        let unit = *ordinal;
-        *ordinal = ordinal.checked_add(1).ok_or_else(limit)?;
-        let owners = code.diagnostic_instruction_owners();
-        for (index, owner) in owners.iter().enumerate() {
-            let Some((line, column)) = owner
-                .ast_node_ordinal
-                .and_then(|node| positions.get(node as usize))
-                .copied()
-                .flatten()
-            else {
-                continue;
-            };
-            let start = owner.bytecode_offset;
-            let end = owners
-                .get(index + 1)
-                .map_or(code.bytes().len() as u32, |next| next.bytecode_offset);
-            if let Some(previous) = entries.last_mut().filter(|previous| {
-                previous.code_unit_ordinal == unit
-                    && previous.end == start
-                    && previous.location.line == line
-                    && previous.location.column == column
-            }) {
-                previous.end = end;
-                continue;
-            }
-            let next = entries
-                .len()
-                .checked_add(1)
-                .filter(|count| *count <= MAX_DIAGNOSTIC_SOURCE_RANGES)
-                .ok_or_else(limit)?;
-            let capacity = if next > entries.capacity() {
-                entries.capacity().saturating_mul(2).max(4)
-            } else {
-                entries.capacity()
-            };
-            capacity
-                .checked_mul(std::mem::size_of::<DiagnosticSourceRange>())
-                .and_then(|bytes| bytes.checked_add(*filename_bytes))
-                .and_then(|bytes| bytes.checked_add(filename.len()))
-                .filter(|bytes| *bytes <= MAX_DIAGNOSTIC_SOURCE_MAP_BYTES)
-                .ok_or_else(limit)?;
-            *filename_bytes = filename_bytes
-                .checked_add(filename.len())
-                .ok_or_else(limit)?;
-            entries.push(DiagnosticSourceRange {
-                code_unit_ordinal: unit,
-                start,
-                end,
-                location: DiagnosticSourceLocation {
-                    filename: filename.to_owned(),
-                    line,
-                    column,
-                },
-            });
-        }
-        for child in code.child_code_units() {
-            collect(child, ordinal, filename, positions, entries, filename_bytes)?;
-        }
-        Ok(())
-    }
-    collect(
+    DiagnosticSourceMap::from_node_positions(
+        compiled.source().clone(),
         compiled.bytecode(),
-        &mut 0,
         filename,
         positions,
-        &mut entries,
-        &mut filename_bytes,
-    )?;
-    DiagnosticSourceMap::new(compiled.source().clone(), entries)
-        .map_err(BlueJsPageRuntimeError::DiagnosticSourceMap)
+    )
+    .map_err(BlueJsPageRuntimeError::DiagnosticSourceMap)
 }

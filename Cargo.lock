@@ -283,6 +283,7 @@ dependencies = [
  "blueice-bluejs",
  "blueice-bluets",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

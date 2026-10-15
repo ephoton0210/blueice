@@ -10,6 +10,209 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const CALLBACK_METHOD_SOURCE: &str = "interface Visitor { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; } let observed: number = 0; function onText(value: string): void { if (value === 'A') { observed += 1; } } function onCount(value: number): void { observed += value; } function dispatch(kind: string, listener: any): void { if (kind === 'text') { listener('A'); } else { listener(2); } } const visitor: Visitor = { visit: dispatch }; visitor.visit('text', onText); visitor.visit('count', onCount); observed;";
 
+#[test]
+fn direct_page_failures_retain_exact_original_statement_origins() {
+    for (source, line, column) in [
+        ("function fail(): void {\n throw 'direct';\n}fail();", 2, 2),
+        ("function fail(): void {if(true){\n throw 'direct';\n}}fail();", 2, 2),
+        ("function first(): void {throw 'same';}function second(): void {\n throw 'same';\n}second();", 2, 2),
+        ("async function fail(): Promise<void> {await 0;\n throw 'direct';\n}fail();", 2, 2),
+        ("let observed: number=0;function fail(): void {try {\n throw 'direct';\n}finally{observed=1;}}fail();", 2, 2),
+        ("class C {get value(): number {\n throw 'direct';\n}}new C().value;",2,2),
+        ("class C {method(): void {\n throw 'direct';\n}}new C().method();",2,2),
+        ("class C {static {\n throw 'direct';\n}}",2,2),
+        ("function outer(): void {function fail(): void {\n throw 'direct';\n}fail();}outer();",2,2),
+        ("let calls: number=0;function fail(): void {while(calls===0){calls++;\n throw 'direct';\n}}fail();",2,2),
+        ("class C {constructor(public value: number) {\n throw 'direct';\n}}new C(1);",2,2),
+        ("function fail(value: number): void {if(value===1){throw 'first';}else if(value===2){\n throw 'direct';\n}}fail(2);",2,2),
+    ] {
+        let artifact=compile_direct_script(ENTRY,&MapLoader::from([ModuleSource::new(ENTRY,source)]),CompilerOptions::default()).unwrap();
+        let mut runtime=bluejs::BlueJsPageRuntime::default();
+        runtime.open_realm(7,origin()).unwrap();
+        runtime.configure_realm_bindings(7,|host| {
+            host.install_web_file_api()?;
+            host.install_window_aliases()?;
+            host.install_host_console()?;
+            host.install_host_error_reporting()?;
+            host.install_host_rejection_tracking()
+        }).unwrap();
+        let attachment=artifact.attach_in_page_realm(&mut runtime,7,&origin()).unwrap();
+        let _result=runtime.execute_program(7,attachment.handle);
+        runtime.run_microtask_checkpoint(7).unwrap();
+        runtime.run_task_turn(7,0,64).unwrap();
+        let messages=runtime.drain_console(7).unwrap();
+        assert_eq!(messages.records.len(),1,"{source}: {messages:?}");
+        let location=messages.records[0].source.as_ref().unwrap_or_else(||panic!("missing original source: {source}: {messages:?}"));
+        assert_eq!((location.filename.as_str(),location.line,location.column),(ENTRY,line,column),"{source}");
+    }
+}
+
+#[test]
+fn direct_diagnostic_certificates_reject_changed_artifacts_and_charge_installation() {
+    for corruption in ["source", "ast", "budget"] {
+        let mut artifact = artifact();
+        let mut config = bluejs::BlueJsPageRuntimeConfig::default();
+        match corruption {
+            "source" => artifact
+                .sources
+                .iter_mut()
+                .find(|source| !source.module.ends_with(".d.ts"))
+                .unwrap()
+                .content_hash
+                .push('x'),
+            "ast" => {
+                let bluejs::BlueJsProgramV1::Script(program) = &mut artifact.program else {
+                    unreachable!()
+                };
+                let bluejs::Stmt::VarDecl(_, declarations) = &mut program.body[0] else {
+                    unreachable!()
+                };
+                declarations[0].init = Some(bluejs::Expr::Binary {
+                    op: bluejs::BinaryOp::Add,
+                    left: Box::new(bluejs::Expr::Number(41.0)),
+                    right: Box::new(bluejs::Expr::Number(2.0)),
+                });
+                artifact.bytecode = artifact.program.compile().unwrap();
+            }
+            "budget" => config.max_bytecode_bytes_per_realm = artifact.bytecode.bytes().len(),
+            _ => unreachable!(),
+        }
+        let mut runtime = bluejs::BlueJsPageRuntime::new(config).unwrap();
+        runtime.open_realm(7, origin()).unwrap();
+        assert!(
+            artifact
+                .attach_in_page_realm(&mut runtime, 7, &origin())
+                .is_err(),
+            "{corruption}"
+        );
+        assert!(
+            runtime.program_handles(7).unwrap().is_empty(),
+            "{corruption}"
+        );
+        assert_eq!(
+            runtime.realm_stats(7).unwrap().bytecode_bytes,
+            0,
+            "{corruption}"
+        );
+    }
+}
+
+#[test]
+fn direct_module_default_snapshot_retains_a_complete_statement_inventory() {
+    let artifact = compile_direct_module(
+        MODULE_ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            MODULE_ENTRY,
+            "const value: number=1;export default value;value;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Module(module) = &artifact.program else {
+        unreachable!()
+    };
+    assert_eq!(artifact.provenance.len(), module.body.len());
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    artifact.attach_in(&mut registry).unwrap();
+}
+
+fn diagnostic_runtime() -> bluejs::BlueJsPageRuntime {
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    runtime
+        .configure_realm_bindings(7, |host| {
+            host.install_web_file_api()?;
+            host.install_window_aliases()?;
+            host.install_host_console()?;
+            host.install_host_error_reporting()?;
+            host.install_host_rejection_tracking()
+        })
+        .unwrap();
+    runtime
+}
+
+#[test]
+fn direct_source_coordinates_preserve_original_unicode_and_line_terminators() {
+    for newline in ["\r", "\r\n", "\u{2028}", "\u{2029}"] {
+        let source=format!("const face: string='😀';{newline}function fail(): void {{{newline} throw 'direct';{newline}}}fail();");
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, &source)]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let mut runtime = diagnostic_runtime();
+        let attachment = artifact
+            .attach_in_page_realm(&mut runtime, 7, &origin())
+            .unwrap();
+        assert!(runtime.execute_program(7, attachment.handle).is_err());
+        let messages = runtime.drain_console(7).unwrap();
+        assert_eq!(messages.records.len(), 1);
+        let location = messages.records[0].source.as_ref().unwrap();
+        assert_eq!(
+            (location.filename.as_str(), location.line, location.column),
+            (ENTRY, 3, 2),
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
+fn direct_module_dependency_failures_keep_original_origins_before_and_after_await() {
+    for awaited in [false, true] {
+        let source=format!("export const marker: number=0;\n{}function fail(): void {{\n throw 'dependency';\n}}fail();",if awaited {"await 0;\n"}else{""});
+        let graph = compile_direct_module_graph(
+            GRAPH_ENTRY,
+            &MapLoader::from([
+                ModuleSource::new(GRAPH_ENTRY, "import './dep.ts';"),
+                ModuleSource::new("graph/dep.ts", &source),
+            ]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let mut runtime = diagnostic_runtime();
+        let attachment = graph
+            .attach_in_page_realm(&mut runtime, 7, &origin())
+            .unwrap();
+        assert!(attachment.execute_in_page_realm(&mut runtime, 7).is_err());
+        runtime.run_microtask_checkpoint(7).unwrap();
+        let messages = runtime.drain_console(7).unwrap();
+        assert_eq!(messages.records.len(), 1, "{messages:?}");
+        let location = messages.records[0].source.as_ref().unwrap();
+        assert_eq!(
+            (location.filename.as_str(), location.line, location.column),
+            ("graph/dep.ts", if awaited { 4 } else { 3 }, 2)
+        );
+    }
+}
+
+#[test]
+fn direct_mapped_callers_cannot_supply_dynamic_function_body_origins() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const dynamic: any=Function(\"throw 'dynamic'\");dynamic();",
+        )]),
+        CompilerOptions {
+            ambient_declaration_modules: vec![ModuleSource::new(
+                "memory:///owner.d.ts",
+                "declare function Function(source: string): any;",
+            )],
+            ..CompilerOptions::default()
+        },
+    )
+    .unwrap();
+    let mut runtime = diagnostic_runtime();
+    let attachment = artifact
+        .attach_in_page_realm(&mut runtime, 7, &origin())
+        .unwrap();
+    assert!(runtime.execute_program(7, attachment.handle).is_err());
+    let messages = runtime.drain_console(7).unwrap();
+    assert_eq!(messages.records.len(), 1, "{messages:?}");
+    assert!(messages.records[0].source.is_none(), "{messages:?}");
+}
+
 fn artifact() -> DirectScript {
     compile_direct_script(
         ENTRY,

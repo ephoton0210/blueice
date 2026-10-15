@@ -2034,3 +2034,81 @@ fn source_map_builder_and_budget_failures_leave_no_partially_installed_program()
     ));
     assert_eq!(runtime.realm_stats(1).unwrap().program_count, 0);
 }
+
+#[test]
+fn owner_ast_inventory_builds_exact_maps_without_changing_debugger_ordinals() {
+    use blueice_bluejs::diagnostics::{visit_diagnostic_source_nodes, DiagnosticSourceNode};
+    let source = "let [value=1]=[];[value]=[2];function fail(){throw value;}fail();";
+    let program = BlueJsProgramV1::Script(parse(source).unwrap());
+    let mut throw_node = None;
+    let (mut patterns, mut assignments) = (Vec::new(), Vec::new());
+    let count = visit_diagnostic_source_nodes(&program, &mut |node, ordinal| match node {
+        DiagnosticSourceNode::Statement(blueice_bluejs::Stmt::Throw(_)) => {
+            throw_node = Some(ordinal)
+        }
+        DiagnosticSourceNode::Pattern(_) => patterns.push(ordinal),
+        DiagnosticSourceNode::AssignmentPattern(_) => assignments.push(ordinal),
+        _ => {}
+    });
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install_for_diagnostics(identity("owner"), &program)
+        .unwrap();
+    let code = registry.get(handle).unwrap();
+    assert_eq!(count, code.bytecode().diagnostic_source_node_count());
+    let prefix = code.ast_nodes().len();
+    assert!(patterns.iter().all(|ordinal| *ordinal >= prefix));
+    assert!(assignments
+        .iter()
+        .all(|ordinal| *ordinal >= prefix + patterns.len()));
+    assert!(!patterns.is_empty() && !assignments.is_empty());
+    assert!(matches!(
+        DiagnosticSourceMap::from_node_positions(
+            code.source().clone(),
+            code.bytecode(),
+            "memory:///position.js",
+            &vec![None; count - 1]
+        ),
+        Err(Error::SourceMismatch)
+    ));
+    let mut positions = vec![None; count];
+    let empty = DiagnosticSourceMap::from_node_positions(
+        code.source().clone(),
+        code.bytecode(),
+        "memory:///position.js",
+        &positions,
+    )
+    .unwrap();
+    positions[throw_node.unwrap()] = Some((22, 1));
+    let map = DiagnosticSourceMap::from_node_positions(
+        code.source().clone(),
+        code.bytecode(),
+        "memory:///position.js",
+        &positions,
+    )
+    .unwrap();
+    let unknown = registry
+        .install_for_diagnostics(identity("owner"), &program)
+        .unwrap();
+    registry.bind_diagnostic_sources(unknown, empty).unwrap();
+    fn unmapped(code: &blueice_bluejs::Bytecode) {
+        for instruction in code.instructions() {
+            assert!(code
+                .diagnostic_source_location(instruction.offset as u32)
+                .is_none());
+        }
+        for child in code.child_code_units() {
+            unmapped(child);
+        }
+    }
+    unmapped(registry.get(unknown).unwrap().bytecode());
+    registry.bind_diagnostic_sources(handle, map).unwrap();
+    let mut vm = page();
+    assert!(vm
+        .execute_script(registry.get(handle).unwrap().bytecode())
+        .is_err());
+    assert_eq!(
+        observed(&mut vm),
+        Value::String("memory:///position.js:22:1".into())
+    );
+}
