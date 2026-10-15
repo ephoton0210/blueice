@@ -403,6 +403,22 @@ fn run_async(vm: &mut Vm, setup: &str) -> Value {
 }
 
 #[test]
+fn asynchronous_disposal_uses_intrinsic_suppression_without_calling_the_global_constructor() {
+    for body in [
+        "await using resource={[Symbol.asyncDispose](){throw second;}};throw first;",
+        "var stack=new AsyncDisposableStack();stack.defer(function(){throw second;});stack.defer(function(){throw first;});await stack.disposeAsync();",
+    ] {
+        let mut vm = Vm::default();
+        let source = format!(
+            "var result=false;var first={{}},second={{}},calls=0;var Original=SuppressedError;\
+             globalThis.SuppressedError=function(){{calls++;throw 'override';}};\
+             (async function(){{try{{{body}}}catch(e){{result=e instanceof Original&&e.error===second&&e.suppressed===first&&calls===0;}}}})();"
+        );
+        assert_eq!(run_async(&mut vm, &source), Value::Bool(true), "{body}");
+    }
+}
+
+#[test]
 fn await_using_awaits_the_dispose_methods_own_returned_promise() {
     let mut vm = Vm::default();
     // Proves this goes through a real `Await` (suspend/resume), not just a

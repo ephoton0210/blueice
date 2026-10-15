@@ -448,6 +448,13 @@ fn module_rejection_origins_survive_async_fanout_and_cached_imports() {
             2,
         ),
         (
+            "rejected await through disposal",
+            "await using resource=null;await globalThis.input;",
+            "import './dep.js';",
+            "driver",
+            2,
+        ),
+        (
             "unknown module",
             "Function(\"throw 'probe';\")();",
             "import './dep.js';",
@@ -598,6 +605,91 @@ fn dynamic_import_argument_failures_keep_their_own_origin() {
 }
 
 #[test]
+fn resource_disposal_keeps_the_escaping_failure_origin() {
+    let mut failures = Vec::new();
+    for (name, source, expected_line) in [
+        ("await using preserves rejected input", "var input=Promise.reject('probe');(async function(){await using x=null;await input;})();", 2),
+        ("await using awaits rejected disposer", "var input=Promise.reject('probe');(async function(){await using x={[Symbol.asyncDispose](){return input;}};})();", 2),
+        ("await using unknown failure", "(async function(){await using x=null;Function(\"throw 'probe';\")();})();", 0),
+        ("async stack rejected disposer", "var input=Promise.reject('probe');var stack=new AsyncDisposableStack();stack.defer(function(){return input;});stack.disposeAsync();", 2),
+        ("async stack throwing disposer", "var stack=new AsyncDisposableStack();stack.defer(function(){throw 'probe';});stack.disposeAsync();", 3),
+        ("async stack later caught noise", "var stack=new AsyncDisposableStack();stack.defer(function(){try{throw 'caught';}catch{}});stack.defer(function(){throw 'probe';});stack.disposeAsync();", 4),
+        ("async stack suppression", "var input=Promise.reject('probe');var stack=new AsyncDisposableStack();stack.defer(function(){return input;});stack.defer(function(){throw 'ignored';});stack.disposeAsync();", 2),
+        ("async stack unknown replacement", "var stack=new AsyncDisposableStack();stack.defer(Function(\"throw 'probe';\"));stack.defer(function(){throw 'ignored';});stack.disposeAsync();", 0),
+        ("sync stack later caught noise", "var stack=new DisposableStack();stack.defer(function(){try{throw 'caught';}catch{}});stack.defer(function(){throw 'probe';});Promise.resolve().then(function(){stack.dispose();});", 4),
+        ("using later caught noise", "(async function(){using first={[Symbol.dispose](){try{throw 'caught';}catch{}}};using second={[Symbol.dispose](){throw 'probe';}};})();", 5),
+    ] {
+        for aggressive_gc in [false, true] {
+            let mut config = blueice_bluejs::VmConfig::default();
+            if aggressive_gc {
+                config.heap.nursery_capacity = 1;
+            }
+            let mut vm = page_with_vm(Vm::new(config).unwrap());
+            vm.install_host_rejection_tracking().unwrap();
+            vm.execute_script(&mapped_promise_code(source)).unwrap();
+            vm.run_host_microtask_checkpoint().unwrap();
+            vm.run_browser_task_turn(1).unwrap();
+            let batch = vm.drain_host_console().unwrap();
+            assert_eq!(batch.records.len(), 1, "{name}/{aggressive_gc}: {batch:?}");
+            let expected = (expected_line != 0).then(|| location(expected_line));
+            if batch.records[0].source != expected {
+                failures.push((name, aggressive_gc, batch.records[0].source.clone(), expected));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn disposal_origins_survive_suspension_and_are_charged_without_retaining_owners() {
+    fn suspended(source: &str, filename: &str) -> Vm {
+        let mut config = blueice_bluejs::VmConfig::default();
+        config.heap.nursery_capacity = 1;
+        config.heap.major_threshold_bytes = 1;
+        let mut vm = page_with_vm(Vm::new(config).unwrap());
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_promise_code_with_filename(source, filename))
+            .unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();
+        assert!(vm.drain_host_console().unwrap().records.is_empty());
+        vm
+    }
+    for (source, line) in [
+        ("var hold=Promise.withResolvers();var stack=new AsyncDisposableStack();stack.defer(function(){return hold.promise;});stack.defer(function(){throw 'probe';});var result=stack.disposeAsync();var weak=new WeakRef(result);", 4),
+        ("var stack;var hold=Promise.withResolvers();var result=(async function(){await using first={[Symbol.asyncDispose](){return hold.promise;}};await using second={[Symbol.asyncDispose](){throw 'probe';}};})();var weak=new WeakRef(result);", 5),
+    ] {
+        let short = "memory:///a.js";
+        let long = format!("memory:///{}.js", "x".repeat(4096));
+        let short_bytes = suspended(source, short).host_scheduling_usage().unwrap().payload_bytes;
+        let mut vm = suspended(source, &long);
+        assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes - short_bytes, long.len() - short.len());
+        let before = vm.heap().stats().major_collections;
+        vm.execute_script(&mapped_promise_code_with_filename(
+            "try{throw 'ambient';}catch{};for(var i=0;i<1000;i++){var garbage={i:i};}hold.resolve();",
+            "memory:///later.js",
+        )).unwrap();
+        assert!(vm.heap().stats().major_collections > before);
+        vm.run_host_microtask_checkpoint().unwrap();
+        vm.run_browser_task_turn(1).unwrap();
+        let batch = vm.drain_host_console().unwrap();
+        assert_eq!(batch.records.len(), 1, "{source}: {batch:?}");
+        assert_eq!(batch.records[0].source, Some(DiagnosticSourceLocation {
+            filename: long,
+            line,
+            column: 1,
+        }));
+        vm.execute_script(&compile(&parse("result=null;stack=null;hold=null;0;").unwrap()).unwrap()).unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();
+        let before = vm.heap().stats().major_collections;
+        let collected = vm.execute_script(&compile(&parse(
+            "for(var i=0;i<1000;i++){var garbage={i:i};}weak.deref()===undefined"
+        ).unwrap()).unwrap()).unwrap();
+        assert!(vm.heap().stats().major_collections > before);
+        assert_eq!(collected, Value::Bool(true), "{source}");
+    }
+}
+
+#[test]
 fn promise_rejection_sources_survive_jobs_awaits_and_native_forwarding() {
     let mut failures = Vec::new();
     for (name, source, expected_line) in [
@@ -660,6 +752,7 @@ fn queued_async_generator_requests_keep_the_request_or_replacement_origin() {
         ("queued after await", "var hold=Promise.withResolvers();var iterator=(async function*(){await hold.promise;})();iterator.next();", "iterator.throw('probe');", "request", 2),
         ("queued after yield", "var hold=Promise.withResolvers();var iterator=(async function*(){yield 0;})();iterator.next();", "iterator.throw('probe');", "request", 2),
         ("awaited finalizer", "var hold=Promise.withResolvers();var iterator=(async function*(){try{yield 0;}finally{await hold.promise;try{throw 'caught';}catch{}}})();iterator.next();", "iterator.throw('probe');", "request", 2),
+        ("awaited disposal", "var hold=Promise.withResolvers();var iterator=(async function*(){await using resource={[Symbol.asyncDispose](){return hold.promise;}};yield 0;})();iterator.next();", "iterator.throw('probe');", "request", 2),
         ("replacement finalizer", "var hold=Promise.withResolvers();var iterator=(async function*(){try{yield 0;}finally{await hold.promise;throw 'probe';}})();iterator.next();", "iterator.throw('ignored');", "generator", 3),
         ("rejected return", "var hold=Promise.withResolvers();var iterator=(async function*(){await hold.promise;yield 0;})();iterator.next();", "iterator.return(Promise.reject('probe'));", "request", 2),
         ("return constructor throws", "var hold=Promise.withResolvers();var iterator=(async function*(){yield 0;})();iterator.next();", "var input=Promise.resolve();Object.defineProperty(input,'constructor',{get:function(){throw 'probe';}});iterator.return(input);", "request", 3),

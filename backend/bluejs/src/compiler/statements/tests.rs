@@ -18,6 +18,7 @@ fn bare_compiler() -> Compiler {
         max_metadata_entries: limits.max_metadata_entries,
         max_list_items: limits.max_list_items,
         function: false,
+        async_dispose_helper: false,
         diagnostic_ast_ids: None,
         diagnostic_owner: None,
         current_root_statement_index: None,

@@ -212,6 +212,7 @@ fn compile_with_limit_and_mode(
         max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
         max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
+        async_dispose_helper: false,
         diagnostic_ast_ids: None,
         diagnostic_owner: None,
         current_root_statement_index: None,
@@ -543,6 +544,42 @@ pub(crate) fn compile_eval(
     context: EvalContext,
     limits: CompileLimits,
 ) -> Result<Bytecode, CompileError> {
+    compile_eval_inner(
+        program,
+        visible,
+        variable_environment_names,
+        lexical_conflicts,
+        context,
+        limits,
+        false,
+    )
+}
+
+/// The private stack helper uses the same native completion-folding loop as
+/// `await using`; ordinary eval never enables this compiler mode.
+pub(crate) fn compile_async_dispose_helper() -> Result<Bytecode, CompileError> {
+    let program = crate::parse("(async function(entries) {})")
+        .expect("the fixed disposal helper signature is valid JavaScript");
+    compile_eval_inner(
+        &program,
+        &[],
+        &[],
+        &[],
+        EvalContext::default(),
+        CompileLimits::default(),
+        true,
+    )
+}
+
+fn compile_eval_inner(
+    program: &Program,
+    visible: &[(String, Binding, u32)],
+    variable_environment_names: &[String],
+    lexical_conflicts: &[String],
+    context: EvalContext,
+    limits: CompileLimits,
+    async_dispose_helper: bool,
+) -> Result<Bytecode, CompileError> {
     let EvalContext {
         strict,
         new_target_allowed,
@@ -562,6 +599,7 @@ pub(crate) fn compile_eval(
         max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
         max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
+        async_dispose_helper,
         diagnostic_ast_ids: None,
         diagnostic_owner: None,
         current_root_statement_index: None,
@@ -701,6 +739,9 @@ struct Compiler {
     max_metadata_entries: u64,
     max_list_items: u32,
     function: bool,
+    /// Only the fixed native AsyncDisposableStack helper replaces its empty
+    /// function body with the compiler's awaited disposal loop.
+    async_dispose_helper: bool,
     /// Set only while the root code unit compiles one source-order statement.
     current_root_statement_index: Option<usize>,
     local_scope: usize,

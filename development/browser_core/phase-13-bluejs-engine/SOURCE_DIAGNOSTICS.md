@@ -221,13 +221,54 @@ receipts are in `target/module-origins-source-20261015.json` and
 owner-certified module maps; original page-module/debugger source production
 remains a separate open requirement. M1q remains at 3/10 final gates.
 
+## Disposal completions
+
+Both `await using` and the private `AsyncDisposableStack` helper now compile
+the same awaited resource loop. A disposal catch folds its error into the
+enclosing finalizer's native pending completion. The finalizer forwards that
+completion with its saved source/debugger origin and a fresh epoch, instead
+of generating a JavaScript rethrow. Successful cleanup preserves the incoming
+origin; a new disposal failure replaces it, including explicit absence.
+Synchronous disposal also preserves its chosen origin across later successful
+disposers that catch unrelated errors.
+
+Caught origins move through the existing handler-frame field. Suspended
+generator and async/module frame accounting already measures those filename
+capacities. No diagnostic property or additional JavaScript root is added.
+Suppression uses the intrinsic construction path, consistent with
+[DisposeResources](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-disposeresources),
+without calling a replaced global `SuppressedError` constructor.
+
+The first ten-scenario matrix loses eighteen origins under two GC settings.
+The corrected thirty-two diagnostic groups pass, including module and queued
+generator disposal, source capacity deltas, cross-script suspension, observed
+major collection and owner release after a completed host checkpoint. The
+initial owner-release assertion ran collection in the same job that cleared
+references; the final assertion uses a separate checkpoint and collection job.
+The real MCP fixture also reproduces an absent original source with unchanged
+prechange Core/host binaries after generator/finally/stack/`await using`
+forwarding.
+
+The final selection passes all 1,547 BlueJS cases across thirty targets,
+including the complete thirty-two-group diagnostic target and resource
+management, GC and allocation/instruction-refusal regressions. Bridge,
+Launcher and real page tests add 491 passes and one existing ignored; all
+three official MCP console cases pass. With the matching new Core/host, the
+original inline line 5, column 25 survives the complete disposal chain.
+The disjoint total is 2,041 passes over thirty-four targets, zero final
+failures. Formatting, matching runtime/Gatekeeper builds and focused
+six-library Clippy pass. Fifteen Rust inputs, old/new runtime hashes, test
+hashes and per-target receipts are recorded in
+`target/disposal-origins-source-20261015.json` and
+`target/disposal-origins-validation-20261015.json`. M1q stays at 3/10 final gates.
+
 ## Required remaining work
 
-Precise expression/parameter/generated-code provenance, direct and emitted
+Precise expression/parameter/other generated-code provenance, direct and emitted
 BlueTS and page-module/debugger source producers still need their full acceptance.
 The complete queued-origin matrix, including remaining delegate/protocol
-cases and rejected-await/async-disposal finalizer
-interactions, remains part of M1q.
+cases and integrated finalizer/disposal acceptance beyond the verified cases,
+remains part of M1q.
 Other copies held by asynchronous diagnostic state must join document-native
 accounting. Navigation, stale generations, GC, source-map refusals and resource
 containment need integrated

@@ -1923,6 +1923,9 @@ impl Vm {
                             Some(Completion::Throw(error)) => Some(error),
                             _ => None,
                         };
+                        if prior.is_some() {
+                            self.publish_rejection_origin(frame.pending_origin.clone());
+                        }
                         self.dispose_resources_sync(resources, prior)?;
                     }
                     Opcode::DrainAsyncDisposables => {
@@ -1948,8 +1951,11 @@ impl Vm {
                             Some(Completion::Throw(error)) => Some(error),
                             _ => None,
                         };
-                        let value = self.build_async_dispose_state(resources, prior)?;
+                        let value = self.build_async_dispose_entries(resources, prior)?;
                         self.stack.push(value);
+                    }
+                    Opcode::UpdateDisposalCompletion => {
+                        self.update_disposal_completion(&mut handlers, operand)?;
                     }
                     Opcode::AbruptJump => {
                         let jump = &code.abrupt_jumps[operand];

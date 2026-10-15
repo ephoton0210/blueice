@@ -993,6 +993,7 @@ impl Compiler {
             max_metadata_entries: self.max_metadata_entries,
             max_list_items: self.max_list_items,
             function: true,
+            async_dispose_helper: false,
             diagnostic_ast_ids: self.diagnostic_ast_ids.clone(),
             diagnostic_owner: None,
             current_root_statement_index: self.current_root_statement_index,
@@ -1251,7 +1252,11 @@ impl Compiler {
             child.super_call_epilogue()?;
             child.emit(Opcode::Pop, 0)?;
         }
-        child.statements_with_disposal(&function.body)?;
+        if self.async_dispose_helper {
+            child.compile_async_dispose_helper_body()?;
+        } else {
+            child.statements_with_disposal(&function.body)?;
+        }
         child.constant(Value::Undefined)?;
         child.emit(Opcode::Return, 0)?;
         let child_remaining = child.max_bytecode_bytes.saturating_sub(child.offset());

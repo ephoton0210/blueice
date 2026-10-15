@@ -1338,12 +1338,10 @@ impl Vm {
             if state == HandlerState::Try {
                 if let (Some(target), Completion::Throw(error)) = (catch, &completion) {
                     let value = self.error_value(error.clone())?;
-                    self.pending_throw_site = None;
-                    self.pending_diagnostic_origin = None;
-                    handlers
-                        .last_mut()
-                        .expect("handler was inspected above")
-                        .state = HandlerState::Catch;
+                    let origin = self.take_pending_throw_origin();
+                    let frame = handlers.last_mut().expect("handler was inspected above");
+                    frame.state = HandlerState::Catch;
+                    frame.pending_origin = origin;
                     self.stack.push(value);
                     // A class's heritage or computed key may have thrown while
                     // the function was running as strict code.

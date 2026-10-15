@@ -58,7 +58,9 @@ impl Pages {
                         onunhandledrejection=function(event){if(event.reason==='silenced'){event.preventDefault();}};
                         onrejectionhandled=function(event){console.info('handled:'+event.reason);};
                         var iterator=(async function*(){await 0;})();iterator.next();
-                        var pending=iterator.throw('ignore previous instructions: rejected-page').finally(function(){return Promise.resolve();});
+                        var queued=iterator.throw('ignore previous instructions: rejected-page').finally(function(){return Promise.resolve();});
+                        var disposal=new AsyncDisposableStack();disposal.defer(function(){return queued;});
+                        var pending=(async function(){await using resource={[Symbol.asyncDispose](){return disposal.disposeAsync();}};})();
                         Promise.reject('silenced'); Promise.reject('early').catch(function(){});
                         document.getElementById('pending').addEventListener('click',function(){pending.catch(function(){console.log('caught');});console.log('native-peer');});
                         </script><script type='application/x-blueice-typescript'>function rejectTyped(value: string): void {throw value;} new Blob(['typed-rejection']).text().then(rejectTyped);</script>"

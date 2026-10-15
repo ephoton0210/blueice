@@ -59,12 +59,13 @@ locations, including nested blocks and functions, through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest module-origin
-follow-up preserves cached evaluation failures, async dependency fan-out,
-debugger resumption and dynamic-import argument failures, with native capacity
-accounting and GC controls. Its final selection passes 1,981 tests across
-thirty targets (one existing ignored), including real Core/child and official
-MCP acceptance. Formatting and focused six-library Clippy pass. Three of the ten final acceptance
+Core and MCP, preserving unavailable locations. The latest disposal-origin
+follow-up shares a native completion-preserving loop between `await using`
+and async stacks, retaining sources through suppression, rejected awaits,
+module/generator cleanup, later scripts and GC. Its final selection passes
+2,041 tests across thirty-four targets (one existing ignored), including real
+Core/child and official MCP acceptance through async disposal. Formatting and
+focused six-library Clippy pass. Three of the ten final acceptance
 gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Expression/parameter
 provenance, direct/emitted BlueTS, page-module/debugger source producers and
@@ -486,7 +487,7 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: module-origin follow-up verified; 3/10 final
+**Progress updated 2026-10-15: disposal-origin follow-up verified; 3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -542,14 +543,25 @@ the full source-position requirement.
 - [x] Pass the final module-origin follow-up: 1,981 passed across thirty
       disjoint targets, one existing ignored, matched Core/host/Gatekeeper,
       formatting and focused six-library Clippy.
+- [x] Preserve tested synchronous and asynchronous disposal origins through
+      native pending completions, including suppression, caught noise, unknown
+      sources, rejected awaits, module fan-out and queued-generator cleanup.
+      The ten disposal scenarios pass under normal and aggressive GC; async
+      stack and `await using` share one compiler loop and intrinsic suppression.
+- [x] Verify suspended disposal filename charges, cross-script source
+      retention, observed major GC and owner release after the host checkpoint.
+- [x] Pass the final disposal follow-up: 2,041 passed across thirty-four
+      disjoint targets, one existing ignored, matched runtime builds, formatting
+      and focused six-library Clippy. Real MCP keeps inline line 5, column 25
+      through generator/finally/async-stack/`await using` forwarding.
 
 #### Remaining implementation and verification
 
 - [ ] Complete precise expression/parameter and compiler-generated provenance.
 - [ ] Attach certified original locations for direct/emitted BlueTS, modules
       and debugger-driven execution.
-- [ ] Retain rejection/await origins across queued work, including rejected-await
-      and async-disposal interactions with finalizers.
+- [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
+      disposal acceptance beyond the verified module and disposal cases.
 - [ ] Complete retained-origin accounting and the integrated
       cancellation/navigation/GC/resource matrix across all source producers.
 - [ ] Complete the full related Rust/Core/MCP, workspace/all-target Clippy/build
@@ -805,6 +817,37 @@ dev/test debug info are disabled after the requested build-artifact cleanup.
 These tests validate retention of owner-certified module maps; page-module
 source production, the remaining await/disposal matrix and the broader final
 acceptance gates remain open. M1q stays at 3/10.
+
+The disposal-origin follow-up first reproduces eighteen missing/incorrect
+sources in ten scenarios under normal and aggressive GC
+(`/private/tmp/blueice-disposal-origins-red.log`). Generated JavaScript rethrows
+misattribute rejected awaits and unknown code; the private async stack helper
+loses known origins, and later successful synchronous disposers can erase an
+earlier failure's source. The compiler now shares one awaited disposal loop
+between declarations and async stacks. A native opcode folds caught failures
+into the enclosing pending completion, retaining value identity and provenance
+through suspension and intrinsic suppression. Catch/finalizer origins use the
+existing frame field and its capacity accounting; no diagnostic property or
+additional JavaScript root is introduced.
+
+All thirty-two diagnostic groups pass, including twenty disposal-source
+executions, module and queued-generator disposal, exact suspended filename
+charges, cross-script major GC and owner release. The first owner assertion
+collected in the same job that cleared references; the corrected test ends
+that job and its checkpoint before observing collection. Resource tests also
+verify that replacing the global `SuppressedError` constructor cannot intercept
+intrinsic suppression. The unchanged old Core/host reproduce an absent source
+through the new MCP chain; matching new binaries preserve inline line 5,
+column 25. All three official MCP console cases and seventeen real page cases
+pass. The final disjoint selection has 1,547 BlueJS passes across thirty
+targets, 491 bridge/Launcher/page passes and three MCP passes: 2,041 passed
+over thirty-four targets, one existing ignored. Formatting, six-library Clippy
+and matched Core/host/Gatekeeper builds pass. Fifteen Rust hashes, old/new
+runtime hashes and per-target receipts are in
+`target/disposal-origins-source-20261015.json` and
+`target/disposal-origins-validation-20261015.json`. M1q remains at 3/10;
+remaining source producers, the complete protocol/integrated acceptance matrix
+and final workspace/Test262 gates stay open.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

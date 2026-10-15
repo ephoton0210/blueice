@@ -146,11 +146,14 @@ impl Vm {
         prior: Option<RuntimeError>,
     ) -> Result<(), RuntimeError> {
         let mut completion = prior;
+        let mut origin = self.take_pending_throw_origin();
         while let Some(resource) = resources.pop() {
+            let epoch = self.throw_epoch;
             if let Err(new_error) = self.dispose_one(&resource) {
                 if !new_error.is_catchable() {
                     return Err(new_error);
                 }
+                origin = self.caught_rejection_origin(epoch);
                 self.root_error(&new_error);
                 completion = Some(match completion {
                     Some(prior_error) if prior_error.is_catchable() => {
@@ -167,7 +170,68 @@ impl Vm {
                 });
             }
         }
-        completion.map_or(Ok(()), Err)
+        if let Some(error) = completion {
+            self.publish_rejection_origin(origin);
+            Err(error)
+        } else {
+            self.restore_pending_throw_origin(origin);
+            Ok(())
+        }
+    }
+
+    /// Fold a caught disposer failure into the enclosing finalizer's rooted
+    /// pending completion. Neither the value nor its origin passes through a
+    /// generated JavaScript throw or an observable diagnostic property.
+    pub(in super::super) fn update_disposal_completion(
+        &mut self,
+        handlers: &mut [HandlerFrame],
+        parent: usize,
+    ) -> Result<(), RuntimeError> {
+        let position = handlers
+            .iter()
+            .rposition(|frame| frame.metadata == parent)
+            .expect("the disposal catch has an enclosing finalizer");
+        assert!(handlers[position].state == HandlerState::Finally);
+        let pending = handlers[position].pending;
+        let prior = pending.map(|index| self.pending_completions[index].clone());
+        let base = self.stack.len();
+        let caught = self
+            .stack
+            .last()
+            .expect("a disposal catch receives its error")
+            .clone();
+        let value = (|| {
+            if let Some(Completion::Throw(error)) = prior {
+                let suppressed = self.error_value(error)?;
+                self.stack.push(suppressed.clone());
+                self.make_suppressed_error(caught, suppressed)
+            } else {
+                Ok(caught)
+            }
+        })();
+        self.stack.truncate(base - 1);
+        let value = value?;
+        let pending = match pending {
+            Some(index) => {
+                self.pending_completions[index] = Completion::Throw(RuntimeError::Thrown(value));
+                index
+            }
+            None => {
+                let index = self.pending_completions.len();
+                self.pending_completions
+                    .push(Completion::Throw(RuntimeError::Thrown(value)));
+                index
+            }
+        };
+        let origin = std::mem::take(
+            &mut handlers
+                .last_mut()
+                .expect("the catch remains active")
+                .pending_origin,
+        );
+        handlers[position].pending = Some(pending);
+        handlers[position].pending_origin = origin;
+        Ok(())
     }
 
     /// Pushes every heap value held by `resources` onto the VM stack so a
@@ -193,43 +257,22 @@ impl Vm {
         }
     }
 
-    /// Converts a drained resource list plus any prior pending error into
-    /// the plain JS value `[hasError, pendingError, entries]` that
-    /// `Compiler::compile_async_dispose_finally`'s synthesized `while`/
-    /// `try`/`catch` loop destructures and iterates. `entries` is a real
-    /// Array of `[receiver, method, hasArgument, argument, isAsync,
-    /// syncFallback]` records, one per resource, in declaration order (the loop walks it
-    /// back to front, i.e. reverse declaration order).
-    pub(in super::super) fn build_async_dispose_state(
+    /// Drain only resource entries. The enclosing finalizer retains its
+    /// original completion and native origin across every Await.
+    pub(in super::super) fn build_async_dispose_entries(
         &mut self,
         resources: Vec<DisposableResource>,
         prior: Option<RuntimeError>,
     ) -> Result<Value, RuntimeError> {
-        // The drained resources are reachable only from this frame; root
-        // them before `error_value` (which may allocate) and before any
-        // entry array is built.
-        let base = self.stack.len();
-        self.root_resources(&resources);
-        let result = (|| {
-            let (has_error, pending_error) = match prior {
-                None => (false, Value::Undefined),
-                Some(error) => {
-                    if !error.is_catchable() {
-                        return Err(error);
-                    }
-                    (true, self.error_value(error)?)
-                }
-            };
-            self.stack.push(pending_error.clone());
-            let entries = self.entries_array_from_resources(resources)?;
-            self.stack.push(entries.clone());
-            self.array_from(vec![Value::Bool(has_error), pending_error, entries])
-        })();
-        self.stack.truncate(base);
-        result
+        if let Some(error) = prior {
+            if !error.is_catchable() {
+                return Err(error);
+            }
+        }
+        self.entries_array_from_resources(resources)
     }
 
-    /// The `entries` half of `build_async_dispose_state`'s return value:
+    /// Resource entries for the compiler's awaited disposal loop:
     /// a real Array of `[receiver, method, hasArgument, argument, isAsync,
     /// syncFallback]` records, one per resource, in declaration order.
     fn entries_array_from_resources(
@@ -264,8 +307,9 @@ impl Vm {
     /// Lazily compiles (once) and caches an internal async function
     /// implementing the exact same `Await`-interleaved disposal loop as
     /// `Compiler::compile_async_dispose_finally`'s synthesized bytecode --
-    /// `(hasError, pendingError, entries) => { ...loop...; if (hasError)
-    /// throw pendingError; }` -- reused by `AsyncDisposableStack.prototype.disposeAsync`.
+    /// `(entries) => { ...loop...; }` -- reused by
+    /// `AsyncDisposableStack.prototype.disposeAsync`. Its enclosing native
+    /// completion retains error values and origins through each Await.
     /// A *native* method cannot itself contain a bytecode `Await`, so
     /// calling this real (compiled, not hand-emitted) async function is how
     /// `disposeAsync` gets a real per-resource `Await` -- a dispose method's
@@ -276,40 +320,8 @@ impl Vm {
         if let Some(helper) = &self.async_dispose_helper {
             return Ok(helper.clone());
         }
-        const SOURCE: &str = r#"(async function (hasError, pendingError, entries) {
-            let i = entries.length;
-            while (i > 0) {
-                i = i - 1;
-                let entry = entries[i];
-                try {
-                    if (entry[1] !== undefined) {
-                        let result = entry[2] ? entry[1].call(entry[0], entry[3]) : entry[1].call(entry[0]);
-                        if (entry[4]) { await (entry[5] ? undefined : result); }
-                    } else if (entry[4]) {
-                        await undefined;
-                    }
-                } catch (e) {
-                    if (hasError) {
-                        pendingError = new SuppressedError(e, pendingError);
-                    } else {
-                        pendingError = e;
-                        hasError = true;
-                    }
-                }
-            }
-            if (hasError) throw pendingError;
-        })"#;
-        let program = crate::parse(SOURCE)
-            .expect("the fixed asynchronous disposal helper is valid JavaScript");
-        let code = crate::compiler::compile_eval(
-            &program,
-            &[],
-            &[],
-            &[],
-            crate::compiler::EvalContext::default(),
-            crate::compiler::CompileLimits::default(),
-        )
-        .expect("the fixed asynchronous disposal helper fits the default compile limits");
+        let code = crate::compiler::compile_async_dispose_helper()
+            .expect("the fixed asynchronous disposal helper fits the default compile limits");
         let helper = self.execute_eval(&code, Vec::new(), !code.strict)?;
         self.async_dispose_helper = Some(helper.clone());
         Ok(helper)
@@ -742,12 +754,7 @@ impl Vm {
             self.stack.push(entries.clone());
             let helper = self.async_dispose_helper()?;
             self.stack.push(helper.clone());
-            self.call_native(
-                helper,
-                Value::Undefined,
-                vec![Value::Bool(false), Value::Undefined, entries],
-                false,
-            )
+            self.call_native(helper, Value::Undefined, vec![entries], false)
         })();
         self.stack.truncate(base);
         result

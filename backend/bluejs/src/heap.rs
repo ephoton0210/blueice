@@ -276,6 +276,8 @@ pub(crate) struct GeneratorHandlerFrame {
     /// Index into `GeneratorState::Suspended::pending_completions` while a
     /// finally block is running an abrupt completion.
     pub(crate) pending: Option<usize>,
+    /// Captured at catch/finalizer entry; a disposal catch transfers its
+    /// origin to the enclosing finalizer's pending completion.
     pub(crate) pending_origin: crate::diagnostics::ThrowOrigin,
 }
 

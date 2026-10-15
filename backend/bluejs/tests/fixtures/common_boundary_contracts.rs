@@ -919,7 +919,7 @@ fn shared_properties_preserve_ingress_and_copy_refusals() {
     }
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
-        vm.build_async_dispose_state(vec![], Some(RuntimeError::InstructionLimit)),
+        vm.build_async_dispose_entries(vec![], Some(RuntimeError::InstructionLimit)),
         Err(RuntimeError::InstructionLimit)
     ));
     assert!(vm.stack.is_empty());

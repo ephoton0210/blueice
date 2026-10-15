@@ -190,6 +190,22 @@ impl Compiler {
         is_async: bool,
         compile_body: &mut dyn FnMut(&mut Self) -> Result<(), CompileError>,
     ) -> Result<(), CompileError> {
+        self.wrap_disposal_with_entries(is_async, compile_body, None)
+    }
+
+    pub(super) fn compile_async_dispose_helper_body(&mut self) -> Result<(), CompileError> {
+        let entries = self
+            .resolve("entries")
+            .expect("the private helper parameter exists");
+        self.wrap_disposal_with_entries(true, &mut |_| Ok(()), Some(entries))
+    }
+
+    fn wrap_disposal_with_entries(
+        &mut self,
+        is_async: bool,
+        compile_body: &mut dyn FnMut(&mut Self) -> Result<(), CompileError>,
+        entries: Option<u32>,
+    ) -> Result<(), CompileError> {
         let handler_index = self.metadata_index(self.bytecode.handlers.len())?;
         self.bytecode.handlers.push(Handler {
             try_start: 0,
@@ -200,7 +216,9 @@ impl Compiler {
             finally_end: None,
         });
         self.emit(Opcode::PushHandler, handler_index)?;
-        self.emit(Opcode::MarkDisposables, 0)?;
+        if entries.is_none() {
+            self.emit(Opcode::MarkDisposables, 0)?;
+        }
         // No `ClearCompletion` here, unlike a real `try` block: a block that
         // declares `using` is not a TryStatement, so its completion is the
         // statement list's own, and disposal returns that completion
@@ -218,7 +236,7 @@ impl Compiler {
         let finally_start = self.offset();
         self.bytecode.handlers[handler_index as usize].finally = Some(finally_start);
         if is_async {
-            self.compile_async_dispose_finally(handler_index)?;
+            self.compile_async_dispose_finally(handler_index, entries)?;
         } else {
             self.emit(Opcode::DisposeResources, handler_index)?;
         }
@@ -228,47 +246,14 @@ impl Compiler {
         Ok(())
     }
 
-    /// The `await using`-capable disposal finally body: `Opcode::DisposeResources`
-    /// runs the entire disposal loop as one atomic native step, which cannot
-    /// suspend mid-loop the way a real `await` must. This compiles a
-    /// synthesized (never user-visible) `while`/`try`/`catch` loop instead,
-    /// built from ordinary AST nodes and compiled through the normal
-    /// statement/expression pipeline -- `Await` included -- so a resource
-    /// that needs awaiting suspends exactly like any other `await`
-    /// expression, resuming and continuing the loop correctly. Only the
-    /// initial drain (turning the native disposable-resource list into a
-    /// plain JS value) is a native primitive; see `Opcode::DrainAsyncDisposables`
-    /// and `Vm::build_async_dispose_state`.
-    ///
-    /// Equivalent, if it were written as source (`*name*` bindings are
-    /// compiler-internal and cannot collide with user identifiers):
-    /// ```text
-    /// let [*hasError*, *pendingError*, *entries*] = <drain>;
-    /// let *i* = *entries*.length;
-    /// while (*i* > 0) {
-    ///     *i* = *i* - 1;
-    ///     let *entry* = *entries*[*i*];
-    ///     try {
-    ///         if (*entry*[1] !== undefined) {
-    ///             let *result* = *entry*[2]
-    ///                 ? *entry*[1].call(*entry*[0], *entry*[3])
-    ///                 : *entry*[1].call(*entry*[0]);
-    ///             if (*entry*[4]) { await (*entry*[5] ? undefined : *result*); }
-    ///         } else if (*entry*[4]) {
-    ///             await undefined;
-    ///         }
-    ///     } catch (*caught*) {
-    ///         if (*hasError*) {
-    ///             *pendingError* = new SuppressedError(*caught*, *pendingError*);
-    ///         } else {
-    ///             *pendingError* = *caught*;
-    ///             *hasError* = true;
-    ///         }
-    ///     }
-    /// }
-    /// if (*hasError*) throw *pendingError*;
-    /// ```
-    fn compile_async_dispose_finally(&mut self, handler_index: u32) -> Result<(), CompileError> {
+    /// Await each resource through ordinary bytecode, but fold caught errors
+    /// into the enclosing native completion. ResumeCompletion then forwards
+    /// the saved value and origin without a generated JavaScript rethrow.
+    fn compile_async_dispose_finally(
+        &mut self,
+        handler_index: u32,
+        supplied_entries: Option<u32>,
+    ) -> Result<(), CompileError> {
         fn ident(name: &str) -> Expr {
             Expr::Identifier(name.to_owned())
         }
@@ -286,20 +271,6 @@ impl Compiler {
                 value: Box::new(value),
             })
         }
-        fn array_ident_pattern(names: &[&str]) -> Pattern {
-            Pattern::Array(
-                names
-                    .iter()
-                    .map(|name| {
-                        Some(ArrayPatternElement {
-                            pattern: Pattern::Identifier((*name).to_owned()),
-                            default: None,
-                            rest: false,
-                        })
-                    })
-                    .collect(),
-            )
-        }
         fn let_decl(name: &str, init: Expr) -> Stmt {
             Stmt::VarDecl(
                 DeclKind::Let,
@@ -312,19 +283,19 @@ impl Compiler {
 
         self.enter_scope(
             vec![
-                ("*hasError*".to_owned(), DeclKind::Let),
-                ("*pendingError*".to_owned(), DeclKind::Let),
-                ("*entries*".to_owned(), DeclKind::Let),
-                ("*i*".to_owned(), DeclKind::Let),
+                ("*entries*".into(), DeclKind::Let),
+                ("*i*".into(), DeclKind::Let),
             ],
             &BTreeSet::new(),
             false,
         )?;
-        self.emit(Opcode::DrainAsyncDisposables, handler_index)?;
-        self.bind_pattern(
-            &array_ident_pattern(&["*hasError*", "*pendingError*", "*entries*"]),
-            DeclKind::Let,
-        )?;
+        if let Some(slot) = supplied_entries {
+            self.emit(Opcode::GetBinding, slot)?;
+        } else {
+            self.emit(Opcode::DrainAsyncDisposables, handler_index)?;
+        }
+        let entries_slot = self.resolve("*entries*").expect("just declared above");
+        self.emit(Opcode::InitializeBinding, entries_slot)?;
         self.expression(&Expr::Member {
             object: Box::new(ident("*entries*")),
             property: Box::new(ident("length")),
@@ -332,7 +303,6 @@ impl Compiler {
         })?;
         let i_slot = self.resolve("*i*").expect("just declared above");
         self.emit(Opcode::InitializeBinding, i_slot)?;
-
         let call_entry = |with_argument: bool| Expr::Call {
             callee: Box::new(Expr::Member {
                 object: Box::new(index("*entry*", 1.0)),
@@ -382,29 +352,20 @@ impl Compiler {
                 alternate: None,
             })),
         }];
-        let catch_clause = CatchClause {
-            param: Some(Pattern::Identifier("*caught*".to_owned())),
-            body: vec![Stmt::If {
-                test: ident("*hasError*"),
-                consequent: Box::new(assign(
-                    "*pendingError*",
-                    Expr::New {
-                        callee: Box::new(ident("SuppressedError")),
-                        args: vec![
-                            Argument::Normal(ident("*caught*")),
-                            Argument::Normal(ident("*pendingError*")),
-                        ],
-                    },
-                )),
-                alternate: Some(Box::new(Stmt::Block(vec![
-                    assign("*pendingError*", ident("*caught*")),
-                    assign("*hasError*", Expr::Bool(true)),
-                ]))),
-            }],
-        };
-
-        let loop_body = Stmt::Block(vec![
-            assign(
+        let head = self.offset();
+        self.expression(&Expr::Binary {
+            op: BinaryOp::Gt,
+            left: Box::new(ident("*i*")),
+            right: Box::new(Expr::Number(0.0)),
+        })?;
+        let exit = self.emit(Opcode::JumpIfFalse, 0)?;
+        self.enter_scope(
+            vec![("*entry*".into(), DeclKind::Let)],
+            &BTreeSet::new(),
+            false,
+        )?;
+        self.statement(
+            &assign(
                 "*i*",
                 Expr::Binary {
                     op: BinaryOp::Sub,
@@ -412,50 +373,33 @@ impl Compiler {
                     right: Box::new(Expr::Number(1.0)),
                 },
             ),
-            let_decl(
-                "*entry*",
-                Expr::Member {
-                    object: Box::new(ident("*entries*")),
-                    property: Box::new(ident("*i*")),
-                    computed: true,
-                },
-            ),
-            Stmt::Try {
-                block: try_block,
-                handler: Some(catch_clause),
-                finalizer: None,
-            },
-        ]);
-
-        self.loop_statement(
-            None,
-            Some(&Expr::Binary {
-                op: BinaryOp::Gt,
-                left: Box::new(ident("*i*")),
-                right: Box::new(Expr::Number(0.0)),
+            false,
+        )?;
+        self.expression(&Expr::Member {
+            object: Box::new(ident("*entries*")),
+            property: Box::new(ident("*i*")),
+            computed: true,
+        })?;
+        let entry_slot = self
+            .resolve("*entry*")
+            .expect("the loop entry was declared");
+        self.emit(Opcode::InitializeBinding, entry_slot)?;
+        self.try_statement_with_disposal(
+            &try_block,
+            Some(&CatchClause {
+                param: None,
+                body: Vec::new(),
             }),
             None,
-            &loop_body,
-            false,
-            Vec::new(),
+            Some(handler_index),
         )?;
-
-        self.statement(
-            &Stmt::If {
-                test: ident("*hasError*"),
-                consequent: Box::new(Stmt::Throw(ident("*pendingError*"))),
-                alternate: None,
-            },
-            true,
-        )?;
-
+        self.leave_scope()?;
+        self.emit(Opcode::Jump, head)?;
+        self.patch(exit, self.offset());
         self.leave_scope()?;
         Ok(())
     }
 
-    /// Module linking separates declaration instantiation from evaluation.
-    /// Keeping the declaration prefix explicit lets the VM run it for every
-    /// member of a cyclic graph before it starts evaluating any body.
     pub(super) fn function_declarations(
         &mut self,
         statements: &[Stmt],
@@ -1288,6 +1232,16 @@ impl Compiler {
         handler: Option<&CatchClause>,
         finalizer: Option<&[Stmt]>,
     ) -> Result<(), CompileError> {
+        self.try_statement_with_disposal(block, handler, finalizer, None)
+    }
+
+    fn try_statement_with_disposal(
+        &mut self,
+        block: &[Stmt],
+        handler: Option<&CatchClause>,
+        finalizer: Option<&[Stmt]>,
+        disposal_parent: Option<u32>,
+    ) -> Result<(), CompileError> {
         let handler_index = self.metadata_index(self.bytecode.handlers.len())?;
         self.bytecode.handlers.push(Handler {
             try_start: 0,
@@ -1351,6 +1305,8 @@ impl Compiler {
                 // The VM places the caught JavaScript value on the stack at
                 // this destination. Binding initialization consumes it.
                 self.bind_pattern(param, DeclKind::Let)?;
+            } else if let Some(parent) = disposal_parent {
+                self.emit(Opcode::UpdateDisposalCompletion, parent)?;
             } else {
                 self.emit(Opcode::Pop, 0)?;
             }
