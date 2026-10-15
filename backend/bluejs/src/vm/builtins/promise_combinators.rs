@@ -78,18 +78,22 @@ impl Vm {
         &mut self,
         capability: &PromiseCapability,
         outcome: Result<Value, RuntimeError>,
+        previous_epoch: u64,
     ) -> Result<Value, RuntimeError> {
         match outcome {
             Ok(value) => Ok(value),
             Err(error) => {
+                let origin = self.caught_rejection_origin(previous_epoch);
                 let reason = self.error_value(error)?;
                 self.stack.push(reason.clone());
-                self.call_native(
-                    capability.reject.clone(),
-                    Value::Undefined,
-                    vec![reason],
-                    false,
-                )?;
+                self.with_rejection_origin(Some(origin), |vm| {
+                    vm.call_native(
+                        capability.reject.clone(),
+                        Value::Undefined,
+                        vec![reason],
+                        false,
+                    )
+                })?;
                 Ok(capability.promise.clone())
             }
         }
@@ -110,6 +114,7 @@ impl Vm {
                 capability.resolve.clone(),
                 capability.reject.clone(),
             ]);
+            let previous_epoch = self.throw_epoch;
             let outcome = (|| {
                 let promise_resolve = self.get_promise_resolve(constructor)?;
                 self.stack.push(promise_resolve.clone());
@@ -135,7 +140,7 @@ impl Vm {
                 }
                 performed
             })();
-            self.combinator_finish(&capability, outcome)
+            self.combinator_finish(&capability, outcome, previous_epoch)
         })();
         self.stack.truncate(base);
         result
@@ -260,6 +265,7 @@ impl Vm {
                 capability.resolve.clone(),
                 capability.reject.clone(),
             ]);
+            let previous_epoch = self.throw_epoch;
             let outcome = (|| {
                 let promise_resolve = self.get_promise_resolve(constructor)?;
                 self.stack.push(promise_resolve.clone());
@@ -276,7 +282,7 @@ impl Vm {
                     &promise_resolve,
                 )
             })();
-            self.combinator_finish(&capability, outcome)
+            self.combinator_finish(&capability, outcome, previous_epoch)
         })();
         self.stack.truncate(base);
         result

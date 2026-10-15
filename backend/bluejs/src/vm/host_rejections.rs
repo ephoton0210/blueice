@@ -217,6 +217,7 @@ impl Vm {
                     continue;
                 };
                 let reason = reason.clone();
+                let source = record.rejection_origin.source.clone();
                 let event_name = if handled {
                     "rejectionhandled"
                 } else {
@@ -238,7 +239,12 @@ impl Vm {
                     if !handled && not_canceled {
                         let mut output = Output::message("Uncaught (in promise) ");
                         vm.console_preview(&reason, &mut output)?;
-                        vm.console_emit(ConsoleFunction::Error, "error", output)?;
+                        vm.console_emit_with_source(
+                            ConsoleFunction::Error,
+                            "error",
+                            output,
+                            source,
+                        )?;
                     }
                     if !handled {
                         let record = vm

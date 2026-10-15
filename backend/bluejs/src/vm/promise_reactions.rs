@@ -30,6 +30,7 @@ impl PromiseRecord {
             },
             value,
             fulfilled,
+            origin: self.rejection_origin.clone(),
         })
     }
 }

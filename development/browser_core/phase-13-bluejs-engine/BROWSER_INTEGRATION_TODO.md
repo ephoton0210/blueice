@@ -59,9 +59,10 @@ locations, including nested blocks and functions, through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest selection passes
-2,117 tests across twelve targets (one existing ignored), formatting and
-focused six-library Clippy. Three of the ten final acceptance
+Core and MCP, preserving unavailable locations. The latest Promise-origin
+follow-up passes 1,837 tests across twenty targets (one existing ignored),
+including 32 source scenarios and real MCP rejection coordinates after
+`finally`, formatting and focused six-library Clippy. Three of the ten final acceptance
 gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Expression/parameter
 provenance, direct/emitted BlueTS, modules and queued origins remain open,
@@ -482,7 +483,7 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: source-copy acceptance verified; 3/10 final
+**Progress updated 2026-10-15: Promise-origin follow-up verified; 3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -508,12 +509,20 @@ the full source-position requirement.
 - [x] Carry bounded optional source records through private v61, exact-document
       Core validation and MCP's untrusted content frame; charge source names
       with console text and preserve unknown locations.
+- [x] Retain native Promise rejection origins through reactions, thenables,
+      settled/pending awaits, native forwarding and `finally` thunks. Verify
+      32 source scenarios, cross-script/full-GC thunk retention and collection,
+      filename payload charges and the document byte cap; real MCP verifies
+      original JavaScript coordinates after `finally` and unavailable BlueTS.
 - [x] Pass the related Rust/Core/MCP regression selection: 2,117 passed, zero
       final failures, one existing ignored, across twelve targets.
-- [x] Pass the latest current-source diagnostic/error/page replay: 48 passed,
+- [x] Pass the latest current-source diagnostic/error/page replay: 52 passed,
       zero failed, across three complete targets.
 - [x] Pass `cargo fmt --all -- --check` and focused Clippy for the BlueJS,
       BlueTS bridge, IPC, Core, launcher and MCP libraries with `-D warnings`.
+
+- [x] Pass the Promise-origin follow-up: 1,837 passed across twenty disjoint
+      targets, one existing ignored; formatting and focused six-library Clippy.
 
 #### Remaining implementation and verification
 
@@ -680,6 +689,38 @@ completed in 2m 48s. The complete evidence is recorded in
 M1q source-producer/queued-origin and final workspace/Test262 gates remain open.
 See [the in-progress contract](SOURCE_DIAGNOSTICS.md) for the immutable ownership
 and admission model and the remaining expression/typed/async/transport work.
+
+The rejection-origin follow-up starts with nineteen public scenarios covering
+native rejection, executor throws, missing handlers, thenables, adoption,
+species, awaits, finalizers and async generators. Eighteen known origins are
+missing; the unmapped-callback control correctly remains absent (one failing
+test group, nineteen filtered, 0.03s;
+`/private/tmp/blueice-promise-origins-red.log`). Promise records, queued
+settlement jobs and native finalizer thunks must retain their own source
+metadata before the queued-origin gate can close.
+
+The Promise-origin follow-up now passes 32 forwarding, replacement, unknown,
+thenable, species, combinator, await and async-generator source scenarios.
+Promise records and settlement jobs retain native provenance separately from
+rejection values. Entering JavaScript masks inherited native provenance;
+rejected awaits publish fresh epochs. Weak native `finally` thunk metadata
+survives a later script and full collection without rooting its owner.
+Retained/job filename capacities are charged, and the document byte-cap
+fixture accepts short filenames but refuses the same work with 8 KiB names.
+The initial collectibility fixture used only minor GC; forcing major GC
+correctly verifies release of promoted owners. All 23 diagnostic groups pass.
+The official three-test MCP selection verifies original inline line 4, column
+25 after `finally`, unavailable direct BlueTS metadata, cancellation, late
+handlers and navigation. The first sandboxed socket attempts failed before
+execution; the same compiled Launcher/browser/MCP executables pass with local
+socket access. The final disjoint selection passes 1,837 tests over twenty
+targets with one existing ignored; format and six-library Clippy also pass.
+Source/runtime hashes and per-target results are recorded in
+`target/promise-origins-source-20261015.json` and
+`target/promise-origins-validation-20261015.json`. This is a completed
+implementation step within M1q; the ten final gates remain at 3/10. Queued
+async-generator request provenance, module failure fan-out, async-disposal
+interactions and the remaining source producers still need full acceptance.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

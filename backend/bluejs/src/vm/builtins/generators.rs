@@ -1192,6 +1192,7 @@ impl Vm {
                 // AsyncIteratorClose runs before the protocol TypeError. A
                 // failed close replaces that error, and both completions
                 // must enter the generator's enclosing catch/finally.
+                let close_epoch = self.throw_epoch;
                 let close = self
                     .get_method(&iterator, &"return".into())
                     .and_then(|method| {
@@ -1229,6 +1230,7 @@ impl Vm {
                         kind: AsyncGeneratorDelegateKind::CloseMissingThrow,
                         value: error,
                         fulfilled: false,
+                        origin: self.caught_rejection_origin(close_epoch),
                     });
                     return Ok(Some(Value::Undefined));
                 }
@@ -1329,7 +1331,6 @@ impl Vm {
             .promises
             .get(&promise)
             .expect("Promise.resolve registers its Promise")
-            .status
             .clone_for_await()
         {
             PromiseAwaitStatus::Pending => self.enqueue_promise_reaction(
@@ -1349,15 +1350,17 @@ impl Vm {
                     kind,
                     value,
                     fulfilled: true,
+                    origin: ThrowOrigin::default(),
                 });
             }
-            PromiseAwaitStatus::Rejected(value) => {
+            PromiseAwaitStatus::Rejected(value, origin) => {
                 self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
                     generator,
                     target,
                     kind,
                     value,
                     fulfilled: false,
+                    origin,
                 });
             }
         }
@@ -1543,6 +1546,7 @@ impl Vm {
             self.set_async_generator_status(generator, AsyncGeneratorStatus::Executing)
                 .expect("the verified queue head retains its generator; a status change cannot allocate");
             let receiver = Value::Object(generator);
+            let resume_epoch = self.throw_epoch;
             let result = match completion {
                 AsyncGeneratorRunCompletion::Next(value) => {
                     self.generator_next(&receiver, Some(value), Some(request.target))
@@ -1615,15 +1619,15 @@ impl Vm {
                     return self.finish_async_generator_run(generator, request.target, result);
                 }
                 Err(error) => {
+                    let origin = self.caught_rejection_origin(resume_epoch);
                     let value = self.error_value(error)?;
-                    self.complete_async_generator_request(
-                        generator,
-                        request.target,
-                        PromiseStatus::Rejected(value),
-                    )
-                    .expect(
-                        "the scheduler completes the retained FIFO head and its tracked promise",
-                    );
+                    self.with_rejection_origin(Some(origin), |vm| {
+                        vm.complete_async_generator_request(
+                            generator,
+                            request.target,
+                            PromiseStatus::Rejected(value),
+                        )
+                    })?;
                 }
             }
         }
@@ -1694,7 +1698,6 @@ impl Vm {
                 .promises
                 .get(&promise)
                 .expect("Promise.resolve registers its Promise")
-                .status
                 .clone_for_await()
             {
                 PromiseAwaitStatus::Pending => self.enqueue_promise_reaction(
@@ -1712,15 +1715,17 @@ impl Vm {
                         kind,
                         value,
                         fulfilled: true,
+                        origin: ThrowOrigin::default(),
                     });
                 }
-                PromiseAwaitStatus::Rejected(value) => {
+                PromiseAwaitStatus::Rejected(value, origin) => {
                     self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
                         generator,
                         target,
                         kind,
                         value,
                         fulfilled: false,
+                        origin,
                     });
                 }
             }
@@ -1895,7 +1900,6 @@ impl Vm {
                 .promises
                 .get(&awaited)
                 .expect("Promise.resolve registers its Promise")
-                .status
                 .clone_for_await();
             match status {
                 PromiseAwaitStatus::Pending => self.enqueue_promise_reaction(
@@ -1915,15 +1919,17 @@ impl Vm {
                         result,
                         value,
                         fulfilled: true,
+                        origin: ThrowOrigin::default(),
                     });
                 }
-                PromiseAwaitStatus::Rejected(value) => {
+                PromiseAwaitStatus::Rejected(value, origin) => {
                     self.enqueue_promise_job(PromiseJob::AsyncGeneratorYield {
                         generator,
                         target,
                         result,
                         value,
                         fulfilled: false,
+                        origin,
                     });
                 }
             }

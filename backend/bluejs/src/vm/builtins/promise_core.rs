@@ -94,6 +94,7 @@ impl Vm {
             promise,
             PromiseRecord {
                 status: PromiseStatus::Pending,
+                rejection_origin: ThrowOrigin::default(),
                 reactions: Vec::new(),
                 handled: false,
                 rejection_notified: false,
@@ -393,6 +394,7 @@ impl Vm {
         let result = (|| {
             let (resolve, reject) = self.promise_resolving_functions(promise)?;
             self.stack.extend([resolve.clone(), reject.clone()]);
+            let epoch = self.throw_epoch;
             if let Err(error) = self.call_native(
                 executor,
                 Value::Undefined,
@@ -401,9 +403,12 @@ impl Vm {
             ) {
                 // An abrupt executor rejects through the reject function, so
                 // an earlier resolve() call still wins.
+                let origin = self.caught_rejection_origin(epoch);
                 let reason = self.error_value(error)?;
                 self.stack.push(reason.clone());
-                self.call_native(reject, Value::Undefined, vec![reason], false)?;
+                self.with_rejection_origin(Some(origin), |vm| {
+                    vm.call_native(reject, Value::Undefined, vec![reason], false)
+                })?;
             }
             Ok(Value::Object(promise))
         })();
@@ -457,12 +462,14 @@ impl Vm {
         let result = (|| {
             let callback = native::argument(args, 0).clone();
             let rest = args.iter().skip(1).cloned().collect();
+            let epoch = self.throw_epoch;
             match self.call_native(callback, Value::Undefined, rest, false) {
                 Ok(value) => {
                     self.stack.push(value.clone());
                     self.promise_resolve_constructor(constructor, value)
                 }
                 Err(error) => {
+                    let origin = self.caught_rejection_origin(epoch);
                     let reason = self.error_value(error)?;
                     self.stack.push(reason.clone());
                     let capability = self.new_promise_capability(constructor)?;
@@ -471,7 +478,9 @@ impl Vm {
                         capability.resolve.clone(),
                         capability.reject.clone(),
                     ]);
-                    self.call_native(capability.reject, Value::Undefined, vec![reason], false)?;
+                    self.with_rejection_origin(Some(origin), |vm| {
+                        vm.call_native(capability.reject, Value::Undefined, vec![reason], false)
+                    })?;
                     Ok(capability.promise)
                 }
             }
@@ -497,6 +506,11 @@ impl Vm {
         promise: ObjectId,
         status: PromiseStatus,
     ) -> Result<(), RuntimeError> {
+        let origin = if matches!(status, PromiseStatus::Rejected(_)) {
+            self.current_rejection_origin()
+        } else {
+            ThrowOrigin::default()
+        };
         let record = self
             .promises
             .get_mut(&promise)
@@ -515,6 +529,7 @@ impl Vm {
         };
         let reactions = std::mem::take(&mut record.reactions);
         record.status = status;
+        record.rejection_origin = origin.clone();
         if !fulfilled && !record.handled {
             self.track_host_rejection(promise);
         }
@@ -528,16 +543,19 @@ impl Vm {
                 },
                 value: value.clone(),
                 fulfilled,
+                origin: origin.clone(),
             },
             PromiseReaction::ModuleAwait { continuation } => PromiseJob::ModuleAwait {
                 continuation,
                 value: value.clone(),
                 fulfilled,
+                origin: origin.clone(),
             },
             PromiseReaction::AsyncAwait { continuation } => PromiseJob::AsyncAwait {
                 continuation,
                 value: value.clone(),
                 fulfilled,
+                origin: origin.clone(),
             },
             PromiseReaction::AsyncGeneratorYield {
                 generator,
@@ -549,6 +567,7 @@ impl Vm {
                 result,
                 value: value.clone(),
                 fulfilled,
+                origin: origin.clone(),
             },
             PromiseReaction::AsyncGeneratorDelegate {
                 generator,
@@ -560,6 +579,7 @@ impl Vm {
                 kind,
                 value: value.clone(),
                 fulfilled,
+                origin: origin.clone(),
             },
         }) {
             self.enqueue_promise_job(job);
@@ -588,13 +608,15 @@ impl Vm {
         }
         let base = self.stack.len();
         self.stack.push(resolution.clone());
+        let epoch = self.throw_epoch;
         let then = self.get_property(&resolution, &"then".into());
         self.stack.truncate(base);
         let then = match then {
             Ok(then) => then,
             Err(error) => {
+                let origin = self.caught_rejection_origin(epoch);
                 let error = self.error_value(error)?;
-                self.settle_tracked_promise(promise, PromiseStatus::Rejected(error));
+                self.reject_promise_with_origin(promise, error, origin)?;
                 return Ok(());
             }
         };
@@ -799,26 +821,32 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         self.stack.push(argument.clone());
-        let result = (|| {
-            let on_finally = self.promise_field(state, "onFinally");
-            let constructor = self.promise_field(state, "constructor");
-            let outcome = self.call_native(on_finally, Value::Undefined, Vec::new(), false)?;
-            self.stack.push(outcome.clone());
-            let promise = self.promise_resolve_constructor(&constructor, outcome)?;
-            self.stack.push(promise.clone());
-            let thunk_state = self.promise_state()?;
-            self.stack.push(Value::Object(thunk_state));
-            self.promise_state_set(thunk_state, "value", argument.clone())?;
-            let thunk = self.promise_native_function(
+        let origin = self.current_rejection_origin();
+        let result = self.with_rejection_origin(Some(origin), |vm| {
+            let on_finally = vm.promise_field(state, "onFinally");
+            let constructor = vm.promise_field(state, "constructor");
+            let outcome = vm.call_native(on_finally, Value::Undefined, Vec::new(), false)?;
+            vm.stack.push(outcome.clone());
+            let promise = vm.promise_resolve_constructor(&constructor, outcome)?;
+            vm.stack.push(promise.clone());
+            let thunk_state = vm.promise_state()?;
+            vm.stack.push(Value::Object(thunk_state));
+            vm.promise_state_set(thunk_state, "value", argument.clone())?;
+            if catch {
+                let origin = vm.current_rejection_origin();
+                vm.promise_thunk_origins.insert(thunk_state, origin);
+                vm.synchronize_scheduling_usage()?;
+            }
+            let thunk = vm.promise_native_function(
                 NativeFunction::PromiseValueThunk {
                     state: thunk_state,
                     thrower: catch,
                 },
                 0,
             )?;
-            self.stack.push(thunk.clone());
-            self.invoke(&promise, "then", vec![thunk])
-        })();
+            vm.stack.push(thunk.clone());
+            vm.invoke(&promise, "then", vec![thunk])
+        });
         self.stack.truncate(base);
         result
     }
@@ -832,6 +860,12 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let value = self.promise_field(state, "value");
         if thrower {
+            let origin = self
+                .promise_thunk_origins
+                .get(&state)
+                .cloned()
+                .unwrap_or_default();
+            self.publish_rejection_origin(origin);
             Err(RuntimeError::Thrown(value))
         } else {
             Ok(value)
@@ -840,17 +874,20 @@ impl Vm {
 
     /// Implements the settled-value portion of Await. A pending promise needs
     /// a saved interpreter continuation, which remains a separate boundary.
-    pub(in super::super) fn await_value(&self, value: Value) -> Result<Value, RuntimeError> {
-        // The interpreter passes the result of PromiseResolve, which is always
-        // a native promise the VM tracks.
+    pub(in super::super) fn await_value(&mut self, value: Value) -> Result<Value, RuntimeError> {
         let record = self
             .promises
             .get(&value.object_id().expect("PromiseResolve returns a promise"))
             .expect("PromiseResolve returns a promise the VM tracks");
-        match &record.status {
-            PromiseStatus::Pending => Err(RuntimeError::Unsupported("pending await continuation")),
-            PromiseStatus::Fulfilled(value) => Ok(value.clone()),
-            PromiseStatus::Rejected(value) => Err(RuntimeError::Thrown(value.clone())),
+        match record.clone_for_await() {
+            PromiseAwaitStatus::Pending => {
+                Err(RuntimeError::Unsupported("pending await continuation"))
+            }
+            PromiseAwaitStatus::Fulfilled(value) => Ok(value),
+            PromiseAwaitStatus::Rejected(value, origin) => {
+                self.publish_rejection_origin(origin);
+                Err(RuntimeError::Thrown(value))
+            }
         }
     }
 

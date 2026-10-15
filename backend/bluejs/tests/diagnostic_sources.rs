@@ -204,7 +204,10 @@ fn nested_interpreters_restore_the_callers_mapped_reporting_context() {
 }
 
 fn page() -> Vm {
-    let mut vm = Vm::default();
+    page_with_vm(Vm::default())
+}
+
+fn page_with_vm(mut vm: Vm) -> Vm {
     vm.install_web_file_api().unwrap();
     vm.install_host_console().unwrap();
     vm.install_window_aliases().unwrap();
@@ -363,6 +366,187 @@ fn mapped_throw_code(source: &str, filename: &str) -> blueice_bluejs::Bytecode {
         )
         .unwrap();
     registry.get(handle).unwrap().bytecode().clone()
+}
+
+fn mapped_promise_code(source: &str) -> blueice_bluejs::Bytecode {
+    mapped_promise_code_with_filename(source, "memory:///position.js")
+}
+
+fn mapped_promise_code_with_filename(source: &str, filename: &str) -> blueice_bluejs::Bytecode {
+    fn collect(
+        code: &blueice_bluejs::Bytecode,
+        ordinal: &mut u32,
+        rows: &mut Vec<DiagnosticSourceRange>,
+    ) {
+        let unit = *ordinal;
+        *ordinal += 1;
+        let mut row = range(unit, 0, code.bytes().len() as u32);
+        row.location = location(unit + 2);
+        rows.push(row);
+        for child in code.child_code_units() {
+            collect(child, ordinal, rows);
+        }
+    }
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install(
+            identity("original"),
+            &BlueJsProgramV1::Script(parse(source).unwrap()),
+        )
+        .unwrap();
+    let mut rows = Vec::new();
+    collect(registry.get(handle).unwrap().bytecode(), &mut 0, &mut rows);
+    for row in &mut rows {
+        row.location.filename = filename.into();
+    }
+    registry
+        .bind_diagnostic_sources(
+            handle,
+            DiagnosticSourceMap::new(identity("original"), rows).unwrap(),
+        )
+        .unwrap();
+    registry.get(handle).unwrap().bytecode().clone()
+}
+
+#[test]
+fn promise_rejection_sources_survive_jobs_awaits_and_native_forwarding() {
+    let mut failures = Vec::new();
+    for (name, source, expected_line) in [
+        ("static reject", "Promise.reject('probe');", 2),
+        ("executor reject", "new Promise(function(resolve,reject){reject('probe');});", 3),
+        ("executor throw", "new Promise(function(){throw 'probe';});", 3),
+        ("missing handler", "Promise.reject('probe').then();", 2),
+        ("throwing reaction", "Promise.resolve().then(function(){throw 'probe';});", 3),
+        ("new rejection in handler", "Promise.reject('ignored').catch(function(){Promise.reject('probe');});", 3),
+        ("thenable reject", "Promise.resolve({then(resolve,reject){reject('probe');}});", 3),
+        ("thenable throw", "Promise.resolve({then(){throw 'probe';}});", 3),
+        ("adopted rejection", "new Promise(function(resolve){resolve(Promise.reject('probe'));});", 3),
+        ("rejected await", "var input=Promise.reject('probe'); (async function(){await input;})();", 2),
+        ("throw after await", "(async function(){await 0;throw 'probe';})();", 3),
+        ("successful finally", "Promise.reject('probe').finally(function(){return Promise.resolve();});", 2),
+        ("throwing finally", "Promise.reject('ignored').finally(function(){throw 'probe';});", 3),
+        ("species forwarding", "class P extends Promise {} P.reject('probe').then();", 2),
+        ("unknown reaction", "Promise.reject('ignored').then(null,Function(\"throw 'probe';\"));", 0),
+        ("awaited finalizer preserves throw", "(async function(){try{throw 'probe';}finally{await 0;try{throw 'caught';}catch{}}})();", 3),
+        ("rejected finalizer replaces throw", "var input=Promise.reject('probe'); (async function(){try{throw 'ignored';}finally{await input;}})();", 2),
+        ("async generator yield", "var input=Promise.reject('probe'); (async function*(){yield input;})().next();", 2),
+        ("async generator throw", "(async function*(){await 0;throw 'probe';})().next();", 3),
+        ("combinator iterator throws", "Promise.all({[Symbol.iterator](){throw 'probe';}});", 3),
+        ("all forwards rejection", "Promise.all([Promise.reject('probe')]);", 2),
+        ("race forwards rejection", "Promise.race([Promise.reject('probe')]);", 2),
+        ("rethrow replaces origin", "Promise.reject('ignored').catch(function(){throw 'probe';});", 3),
+        ("unknown rejected await", r#"var input=Function("return Promise.reject('probe');")(); (async function(){await input;})();"#, 0),
+        ("async body throws before await", "(async function(){throw 'probe';})();", 3),
+        ("async body adopts rejection", "var input=Promise.reject('probe'); (async function(){return input;})();", 2),
+        ("async generator throws before await", "(async function*(){throw 'probe';})().next();", 3),
+        ("throwing then getter", "Promise.resolve({get then(){throw 'probe';}});", 3),
+        ("finally adopts rejected cleanup", "var input=Promise.reject('probe'); Promise.reject('ignored').finally(function(){return input;});", 2),
+        ("Promise.try throws", "Promise.try(function(){throw 'probe';});", 3),
+        ("unknown executor throw", r#"new Promise(Function("throw 'probe';"));"#, 0),
+        ("unknown finally throw", r#"Promise.reject('ignored').finally(Function("throw 'probe';"));"#, 0),
+
+    ] {
+        let mut vm = page();
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_promise_code(source)).unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();
+        vm.run_browser_task_turn(1).unwrap();
+        let batch = vm.drain_host_console().unwrap();
+        assert_eq!(batch.records.len(), 1, "{name}: {batch:?}");
+        assert_eq!(batch.records[0].message, "Uncaught (in promise) probe", "{name}");
+        let expected = (expected_line != 0).then(|| location(expected_line));
+        if batch.records[0].source != expected {
+            failures.push((name, batch.records[0].source.clone(), expected));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn promise_rejection_records_and_queued_jobs_charge_source_copies() {
+    fn usage(filename: &str) -> (usize, usize) {
+        let mut vm = page();
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_promise_code_with_filename(
+            "var retained=Promise.reject('probe');retained.catch(function(){});",
+            filename,
+        ))
+        .unwrap();
+        let queued = vm.host_scheduling_usage().unwrap().payload_bytes;
+        vm.run_host_microtask_checkpoint().unwrap();
+        (queued, vm.host_scheduling_usage().unwrap().payload_bytes)
+    }
+    let short = "memory:///a.js";
+    let long = format!("memory:///{}.js", "x".repeat(4096));
+    let extra = long.len() - short.len();
+    let (short_queued, short_retained) = usage(short);
+    let (long_queued, long_retained) = usage(&long);
+    assert_eq!(long_queued - short_queued, 2 * extra);
+    assert_eq!(long_retained - short_retained, extra);
+}
+
+#[test]
+fn retained_rejection_sources_obey_the_document_native_byte_limit() {
+    fn execute(filename: &str) -> Result<Value, BlueJsPageRuntimeError> {
+        let mut runtime = BlueJsPageRuntime::default();
+        let origin = BlueJsPageOrigin::new("https://positions.test").unwrap();
+        runtime.open_realm(1, origin.clone()).unwrap();
+        runtime
+            .configure_realm_bindings(1, |host| host.install_host_timers())
+            .unwrap();
+        let program = BlueJsProgramV1::Script(parse(
+            "var retained=[];for(var i=0;i<512;i++){var p=Promise.reject('probe');retained.push(p);p.catch(function(){});} 'complete';"
+        ).unwrap());
+        let handle = runtime
+            .install_program_with_diagnostics(
+                1,
+                &origin,
+                identity("original"),
+                &program,
+                |registry, handle| {
+                    let code = registry.get(handle).unwrap().bytecode();
+                    let mut row = range(0, 0, code.bytes().len() as u32);
+                    row.location.filename = filename.into();
+                    DiagnosticSourceMap::new(identity("original"), vec![row])
+                        .map_err(BlueJsPageRuntimeError::DiagnosticSourceMap)
+                },
+            )
+            .unwrap();
+        runtime.execute_program(1, handle)
+    }
+    assert_eq!(
+        execute("memory:///a.js").unwrap(),
+        Value::String("complete".into())
+    );
+    assert!(matches!(
+        execute(&"f".repeat(8192)),
+        Err(BlueJsPageRuntimeError::Runtime(
+            blueice_bluejs::RuntimeError::SchedulingLimit
+        ))
+    ));
+}
+
+#[test]
+fn finally_thunk_keeps_original_source_across_scripts_and_collection() {
+    let mut config = blueice_bluejs::VmConfig::default();
+    config.heap.nursery_capacity = 1;
+    config.heap.major_threshold_bytes = 1;
+    let mut vm = page_with_vm(Vm::new(config).unwrap());
+    vm.install_host_rejection_tracking().unwrap();
+    vm.execute_script(&mapped_promise_code(
+        "var hold=Promise.withResolvers();var retained=Promise.reject('probe').finally(function(){return hold.promise;});var weak=new WeakRef(retained);",
+    )).unwrap();
+    vm.run_host_microtask_checkpoint().unwrap();
+    let before = vm.heap().stats().minor_collections;
+    vm.execute_script(&compile(&parse("try{throw 'ambient';}catch{};for(var i=0;i<3000;i++){var garbage={i:i};}hold.resolve();").unwrap()).unwrap()).unwrap();
+    assert!(vm.heap().stats().minor_collections > before);
+    vm.run_host_microtask_checkpoint().unwrap();
+    vm.run_browser_task_turn(1).unwrap();
+    let batch = vm.drain_host_console().unwrap();
+    assert_eq!(batch.records.len(), 1, "{batch:?}");
+    assert_eq!(batch.records[0].source, Some(location(2)));
+    assert_eq!(batch.records[0].message, "Uncaught (in promise) probe");
+    vm.execute_script(&compile(&parse("retained=null;hold=null;for(var i=0;i<3000;i++){var garbage={i:i};}weak.deref()===undefined").unwrap()).unwrap()).map(|value| assert_eq!(value, Value::Bool(true))).unwrap();
 }
 
 #[test]

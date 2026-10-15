@@ -99,6 +99,11 @@ impl Vm {
         &mut self,
         call: ClosureCall,
     ) -> Result<Value, RuntimeError> {
+        self.with_rejection_origin(None, |vm| vm.call_closure_inner(call))
+    }
+
+    fn call_closure_inner(&mut self, call: ClosureCall) -> Result<Value, RuntimeError> {
+        let entry_epoch = self.throw_epoch;
         let ClosureCall {
             code,
             captures,
@@ -626,8 +631,9 @@ impl Vm {
             Ok(value) if !suspended => self.resolve_promise(promise, value)?,
             Ok(_) => {}
             Err(error) => {
+                let origin = self.caught_rejection_origin(entry_epoch);
                 let value = self.error_value(error)?;
-                self.settle_tracked_promise(promise, PromiseStatus::Rejected(value));
+                self.reject_promise_with_origin(promise, value, origin)?;
             }
         }
         Ok(Value::Object(promise))

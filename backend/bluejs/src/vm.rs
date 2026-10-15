@@ -7,6 +7,7 @@
 //! safepoints. The collector itself additionally protects store inputs.
 
 use crate::bytecode::{Binding, ModuleExport, ModuleImportName, TemplateSiteId};
+use crate::diagnostics::ThrowOrigin;
 use crate::heap::{GeneratorState, PrivateElement};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
@@ -71,6 +72,7 @@ mod promise_reactions;
 mod properties;
 mod realm_reentrancy;
 mod regexp;
+mod rejection_origins;
 mod shadow_realm;
 mod temporal;
 mod test262;
@@ -487,15 +489,17 @@ enum PromiseStatus {
 enum PromiseAwaitStatus {
     Pending,
     Fulfilled(Value),
-    Rejected(Value),
+    Rejected(Value, ThrowOrigin),
 }
 
-impl PromiseStatus {
+impl PromiseRecord {
     fn clone_for_await(&self) -> PromiseAwaitStatus {
-        match self {
-            Self::Pending => PromiseAwaitStatus::Pending,
-            Self::Fulfilled(value) => PromiseAwaitStatus::Fulfilled(value.clone()),
-            Self::Rejected(value) => PromiseAwaitStatus::Rejected(value.clone()),
+        match &self.status {
+            PromiseStatus::Pending => PromiseAwaitStatus::Pending,
+            PromiseStatus::Fulfilled(value) => PromiseAwaitStatus::Fulfilled(value.clone()),
+            PromiseStatus::Rejected(value) => {
+                PromiseAwaitStatus::Rejected(value.clone(), self.rejection_origin.clone())
+            }
         }
     }
 }
@@ -569,6 +573,7 @@ enum AsyncGeneratorDelegateKind {
 
 struct PromiseRecord {
     status: PromiseStatus,
+    rejection_origin: ThrowOrigin,
     reactions: Vec<PromiseReaction>,
     handled: bool,
     rejection_notified: bool,
@@ -627,6 +632,7 @@ enum PromiseJob {
         handler: Value,
         value: Value,
         fulfilled: bool,
+        origin: ThrowOrigin,
     },
     /// HostCleanupFinalizationRegistry delivers a holding only after a GC has
     /// observed its target dead. It deliberately shares the normal job queue
@@ -657,11 +663,13 @@ enum PromiseJob {
         continuation: u64,
         value: Value,
         fulfilled: bool,
+        origin: ThrowOrigin,
     },
     AsyncAwait {
         continuation: u64,
         value: Value,
         fulfilled: bool,
+        origin: ThrowOrigin,
     },
     AsyncGeneratorYield {
         generator: ObjectId,
@@ -669,6 +677,7 @@ enum PromiseJob {
         result: ObjectId,
         value: Value,
         fulfilled: bool,
+        origin: ThrowOrigin,
     },
     AsyncGeneratorDelegate {
         generator: ObjectId,
@@ -676,6 +685,7 @@ enum PromiseJob {
         kind: AsyncGeneratorDelegateKind,
         value: Value,
         fulfilled: bool,
+        origin: ThrowOrigin,
     },
 }
 
@@ -911,6 +921,10 @@ pub struct Vm {
     active_diagnostic_frame: Option<crate::diagnostics::ActiveDiagnosticFrame>,
     pending_diagnostic_origin: Option<crate::diagnostics::DiagnosticSourceLocation>,
     uncaught_diagnostic_origin: Option<crate::diagnostics::DiagnosticSourceLocation>,
+    /// Native Promise algorithms forward an origin; entering JavaScript masks it.
+    promise_origin_override: Option<ThrowOrigin>,
+    /// Weak metadata owned by native finally-thunk state, never a heap root.
+    promise_thunk_origins: HashMap<ObjectId, ThrowOrigin>,
     /// Distinguishes a new callee throw from its propagation through `Call`.
     throw_epoch: u64,
     stack: Vec<Value>,

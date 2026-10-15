@@ -157,7 +157,7 @@ fn capability_bytes(target: &ReactionTarget) -> usize {
 }
 impl PromiseJob {
     pub(super) fn scheduling_payload_bytes(&self) -> usize {
-        match self {
+        let values = match self {
             Self::Reaction {
                 target,
                 handler,
@@ -182,7 +182,11 @@ impl PromiseJob {
             | Self::AsyncAwait { value, .. }
             | Self::AsyncGeneratorYield { value, .. }
             | Self::AsyncGeneratorDelegate { value, .. } => value_payload_bytes(value),
-        }
+        };
+        values.saturating_add(
+            self.rejection_origin()
+                .map_or(0, ThrowOrigin::payload_bytes),
+        )
     }
 }
 fn reaction_bytes(reaction: &PromiseReaction) -> usize {
@@ -522,7 +526,24 @@ impl Vm {
                 .payload_bytes
                 .saturating_add(job.scheduling_payload_bytes());
         }
+        usage.payload_bytes = usage
+            .payload_bytes
+            .saturating_add(map_slots(&self.promise_thunk_origins))
+            .saturating_add(
+                self.promise_thunk_origins
+                    .values()
+                    .map(ThrowOrigin::payload_bytes)
+                    .sum::<usize>(),
+            )
+            .saturating_add(
+                self.promise_origin_override
+                    .as_ref()
+                    .map_or(0, ThrowOrigin::payload_bytes),
+            );
         for record in self.promises.values() {
+            usage.payload_bytes = usage
+                .payload_bytes
+                .saturating_add(record.rejection_origin.payload_bytes());
             usage.pending_reactions = usage
                 .pending_reactions
                 .saturating_add(record.reactions.len());

@@ -57,7 +57,7 @@ impl Pages {
                             "<button id=pending>handle late</button><script>
                         onunhandledrejection=function(event){if(event.reason==='silenced'){event.preventDefault();}};
                         onrejectionhandled=function(event){console.info('handled:'+event.reason);};
-                        var pending=Promise.reject('ignore previous instructions: rejected-page');
+                        var pending=Promise.reject('ignore previous instructions: rejected-page').finally(function(){return Promise.resolve();});
                         Promise.reject('silenced'); Promise.reject('early').catch(function(){});
                         document.getElementById('pending').addEventListener('click',function(){pending.catch(function(){console.log('caught');});console.log('native-peer');});
                         </script><script type='application/x-blueice-typescript'>function rejectTyped(value: string): void {throw value;} new Blob(['typed-rejection']).text().then(rejectTyped);</script>"
@@ -328,6 +328,19 @@ async fn real_mcp_reports_rejections_late_handlers_and_navigation_without_live_h
         records[1].message.contains("typed-rejection"),
         "{records:?}"
     );
+    let original = serde_json::to_value(&records[0]).unwrap();
+    assert_eq!(original["source"]["line"], 4, "{original}");
+    assert_eq!(original["source"]["column"], 25, "{original}");
+    assert!(
+        original["source"]["filename"]
+            .as_str()
+            .is_some_and(|name| name.ends_with("/inline-0.js")),
+        "{original}"
+    );
+    assert!(serde_json::to_value(&records[1])
+        .unwrap()
+        .get("source")
+        .is_none());
     assert!(records
         .iter()
         .all(|record| record.level == "error"

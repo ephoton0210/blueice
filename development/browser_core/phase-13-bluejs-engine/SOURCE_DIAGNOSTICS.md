@@ -117,12 +117,49 @@ and validated runtime/test hashes are in
 `target/console-sources-source-20261015.json`; the per-selection results and
 remaining gates are in `target/console-sources-validation-20261015.json`.
 
+## Promise rejection provenance
+
+A rejected native Promise retains a copied throw origin separately from its
+JavaScript reason. Settlement jobs and already-settled await registration
+carry that origin to later turns. A missing rejection handler and native
+forwarding preserve it; a JavaScript callback captures its own new throw or
+reject call, including an explicitly unavailable dynamic-code origin. Each
+job displaces the ambient interpreter source and throw context. Rejected
+awaits publish a fresh propagation epoch before entering catch/finally.
+
+Native `finally` thrower thunks retain their original rejection provenance
+in a weak side table owned by the thunk's heap state. Collection prunes the
+metadata without rooting the Promise, reason or thunk. No JavaScript-visible
+property stores diagnostic metadata, and no reason property is evaluated.
+Promise records, queued/active jobs, displaced native scopes and retained
+thunk filename capacities participate in document scheduling accounting.
+The default rejection console report snapshots the retained origin before
+event handlers run, preserving the original diagnostic if a handler throws.
+
+The first public regression exercised nineteen forwarding/callback/await/
+finally/species/async-generator scenarios: eighteen known origins were absent,
+while the unknown-code control remained unavailable. The first implementation
+passes all nineteen. The corresponding real MCP rejection assertion also
+failed before the implementation because the original inline source was
+absent. The expanded regression now passes all 32 source scenarios and all
+23 diagnostic groups, including full-GC ownership and native-byte refusal
+controls. Real MCP acceptance verifies the original inline line 4, column 25
+after `finally` and keeps direct BlueTS unavailable. The final disjoint
+selection passes 1,837 cases across twenty targets, with one existing ignored;
+format and focused six-library Clippy pass. The initial sandboxed socket runs
+failed during setup; the same compiled binaries pass with local socket access.
+The fifteen Rust hashes and runtime/test hashes are recorded in
+`target/promise-origins-source-20261015.json`; per-target results and remaining
+gates are in `target/promise-origins-validation-20261015.json`.
+This verifies a scoped implementation step, leaving M1q at 3/10 final gates.
+
 ## Required remaining work
 
 Precise expression/parameter/generated-code provenance, direct and emitted
 BlueTS, modules and debugger-driven execution still need their full acceptance.
-Queued Promise rejection/await origins and rejected-await/async-disposal
-finalizer interactions remain part of M1q.
+The complete queued-origin matrix, including async-generator request
+provenance, module failure fan-out and rejected-await/async-disposal finalizer
+interactions, remains part of M1q.
 Other copies held by asynchronous diagnostic state must join document-native
 accounting. Navigation, stale generations, GC, source-map refusals and resource
 containment need integrated

@@ -208,6 +208,7 @@ impl Vm {
                 Some((handlers, 0)),
             );
         }
+        self.publish_rejection_origin(self.current_rejection_origin());
         let action = self.resolve_completion(
             code,
             &mut handlers,
@@ -1794,7 +1795,6 @@ impl Vm {
             .promises
             .get(&promise)
             .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
-            .status
             .clone_for_await();
         self.admit_scheduling_work(HostSchedulingUsage {
             payload_bytes: continuation_state.scheduling_payload_bytes(),
@@ -1815,13 +1815,15 @@ impl Vm {
                     continuation,
                     value,
                     fulfilled: true,
+                    origin: ThrowOrigin::default(),
                 });
             }
-            PromiseAwaitStatus::Rejected(value) => {
+            PromiseAwaitStatus::Rejected(value, origin) => {
                 self.enqueue_promise_job(PromiseJob::ModuleAwait {
                     continuation,
                     value,
                     fulfilled: false,
+                    origin,
                 });
             }
         }
@@ -1853,7 +1855,6 @@ impl Vm {
             .promises
             .get(&promise)
             .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
-            .status
             .clone_for_await();
         self.admit_scheduling_work(HostSchedulingUsage {
             payload_bytes: continuation_state.scheduling_payload_bytes(),
@@ -1875,13 +1876,15 @@ impl Vm {
                     continuation,
                     value,
                     fulfilled: true,
+                    origin: ThrowOrigin::default(),
                 });
             }
-            PromiseAwaitStatus::Rejected(value) => {
+            PromiseAwaitStatus::Rejected(value, origin) => {
                 self.enqueue_promise_job(PromiseJob::AsyncAwait {
                     continuation,
                     value,
                     fulfilled: false,
+                    origin,
                 });
             }
         }
@@ -1914,6 +1917,7 @@ impl Vm {
             handlers,
             call_depth,
         } = continuation;
+        let resume_epoch = self.throw_epoch;
         let root_base = self.async_frame_roots.len();
         self.async_frame_roots.extend(generator);
         self.async_frame_roots.push(target);
@@ -1999,8 +2003,9 @@ impl Vm {
                     ambient.templates.extend(self.templates.clone());
                     self.restore_module_execution(ambient);
                     self.call_depth = ambient_call_depth;
+                    let origin = self.caught_rejection_origin(resume_epoch);
                     let error = self.error_value(error)?;
-                    self.settle_promise(target, PromiseStatus::Rejected(error))
+                    self.reject_promise_with_origin(target, error, origin)
                 }
             };
             result
@@ -2035,6 +2040,7 @@ impl Vm {
             ));
         let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
         self.restore_module_execution(execution);
+        let resume_epoch = self.throw_epoch;
         let result = (|| {
             let outcome = if fulfilled {
                 self.interpret(
@@ -2176,12 +2182,15 @@ impl Vm {
                     ambient.templates.extend(self.templates.clone());
                     self.restore_module_execution(ambient);
                     self.call_depth = ambient_call_depth;
+                    let origin = self.caught_rejection_origin(resume_epoch);
                     let value = self.error_value(error)?;
-                    self.complete_async_generator_request(
-                        generator,
-                        target,
-                        PromiseStatus::Rejected(value),
-                    ).expect("the resumed async generator owns this retained FIFO head and tracked promise; rejection only removes its queue entry");
+                    self.with_rejection_origin(Some(origin), |vm| {
+                        vm.complete_async_generator_request(
+                            generator,
+                            target,
+                            PromiseStatus::Rejected(value),
+                        )
+                    })?;
                     self.resume_async_generator_next(generator)
                 }
             }

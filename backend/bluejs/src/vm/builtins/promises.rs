@@ -1020,161 +1020,182 @@ impl Vm {
         let active_root_base = self.async_frame_roots.len();
         self.async_frame_roots
             .extend(self.promise_job_references(&job));
-        let result: Result<(), RuntimeError> = (|| {
-            match job {
-                PromiseJob::Reaction {
-                    target,
-                    handler,
-                    value,
-                    fulfilled,
-                } => {
-                    // NewPromiseReactionJob: a missing handler passes the
-                    // settlement through; either way the outcome is delivered
-                    // through the reaction's resolve/reject.
-                    let outcome = if self
-                        .is_callable(&handler)
-                        .expect("the queued reaction retains its validated handler")
-                    {
-                        self.call_native(handler, Value::Undefined, vec![value], false)
-                    } else if fulfilled {
-                        Ok(value)
-                    } else {
-                        Err(RuntimeError::Thrown(value))
-                    };
-                    match (target, outcome) {
-                        (ReactionTarget::Native(promise), Ok(value)) => {
-                            self.resolve_promise(promise, value)?
-                        }
-                        (ReactionTarget::Native(promise), Err(error)) => {
-                            let error = self.error_value(error)?;
-                            self.settle_tracked_promise(promise, PromiseStatus::Rejected(error));
-                        }
-                        (ReactionTarget::Capability(capability), Ok(value)) => {
-                            self.stack.push(value.clone());
-                            self.call_native(
-                                capability.resolve,
-                                Value::Undefined,
-                                vec![value],
-                                false,
-                            )?;
-                        }
-                        (ReactionTarget::Capability(capability), Err(error)) => {
-                            let error = self.error_value(error)?;
-                            self.stack.push(error.clone());
-                            self.call_native(
-                                capability.reject,
-                                Value::Undefined,
-                                vec![error],
-                                false,
-                            )?;
-                        }
-                    }
-                }
-                PromiseJob::Thenable {
-                    target,
-                    thenable,
-                    then,
-                } => {
-                    // NewPromiseResolveThenableJob: a fresh resolving pair
-                    // (with its own [[AlreadyResolved]]) is handed to `then`;
-                    // if that throws, the pair's reject function decides
-                    // whether the rejection still counts.
-                    let base = self.stack.len();
-                    let outcome: Result<(), RuntimeError> = (|| {
-                        let (resolve, reject) = self.promise_resolving_functions(target)?;
-                        self.stack.extend([resolve.clone(), reject.clone()]);
-                        if let Err(error) =
-                            self.call_native(then, thenable, vec![resolve, reject.clone()], false)
-                        {
-                            let error = self.error_value(error)?;
-                            self.stack.push(error.clone());
-                            self.call_native(reject, Value::Undefined, vec![error], false)?;
-                        }
-                        Ok(())
-                    })();
-                    self.stack.truncate(base);
-                    outcome?;
-                }
-                PromiseJob::DynamicImport {
-                    target,
-                    referrer,
-                    specifier,
-                    module_type,
-                    phase,
-                } => {
-                    let result = self.dynamic_import_job(&referrer, &specifier, module_type, phase);
-                    match result {
-                        Ok(DynamicImportResult::Fulfilled(namespace)) => {
-                            // ContinueDynamicImport calls the capability's
-                            // Resolve function, including an exported `then`.
-                            self.resolve_promise(target, namespace)
-                                .expect("dynamic import produced a retained namespace: completed export cells are initialized, and a deferred namespace omits then; callable exports execute in later fallible jobs")
-                        }
-                        Ok(DynamicImportResult::WaitingDeferred { namespace, modules }) => {
-                            self.deferred_import_waiters.push(DeferredImportWaiter {
-                                promise: target,
-                                namespace,
-                                pending: modules.into_iter().collect(),
-                            });
-                        }
-                        Ok(DynamicImportResult::Waiting(module)) => {
-                            self.module_import_waiters
-                                .entry(module)
-                                .or_default()
-                                .push(target);
-                        }
-                        Err(error) => {
-                            let error = self.error_value(error)?;
-                            self.settle_tracked_promise(target, PromiseStatus::Rejected(error));
-                        }
-                    }
-                }
-                PromiseJob::ModuleAwait {
-                    continuation,
-                    value,
-                    fulfilled,
-                } => self.resume_module_await(continuation, value, fulfilled)?,
-                PromiseJob::AsyncAwait {
-                    continuation,
-                    value,
-                    fulfilled,
-                } => self.resume_async_await(continuation, value, fulfilled)?,
-                PromiseJob::AsyncGeneratorYield {
-                    generator,
-                    target,
-                    result,
-                    value,
-                    fulfilled,
-                } => {
-                    self.finish_async_generator_yield(generator, target, result, value, fulfilled)?
-                }
-                PromiseJob::AsyncGeneratorDelegate {
-                    generator,
-                    target,
-                    kind,
-                    value,
-                    fulfilled,
-                } => {
-                    self.finish_async_generator_delegate(generator, target, kind, value, fulfilled)?
-                }
-                PromiseJob::FinalizationCleanup { callback, holdings } => {
-                    // Cleanup callbacks are host jobs, not Promise reactions. A
-                    // throwing callback is reported through this embedding's job
-                    // runner but cannot resurrect or re-register the consumed
-                    // cell.
-                    self.call_native(callback, Value::Undefined, vec![holdings], false)?;
-                }
-                PromiseJob::HostMicrotask { callback } => {
-                    self.call_native(callback, Value::Undefined, Vec::new(), false)?;
-                }
-            }
-            Ok(())
-        })();
+        let ambient_frame = self.active_diagnostic_frame.take();
+        let ambient_origin = self.take_pending_throw_origin();
+        let ambient_bytes = ambient_origin.payload_bytes();
+        self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(ambient_bytes);
+        let origin = job.rejection_origin().cloned().unwrap_or_default();
+        let epoch = self.throw_epoch;
+        let result = self.with_rejection_origin(Some(origin), |vm| vm.execute_promise_job(job));
+        let failure_origin = self.caught_rejection_origin(epoch);
+        self.active_diagnostic_frame = ambient_frame;
+        self.restore_pending_throw_origin(ambient_origin);
+        self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(ambient_bytes);
+        if result.as_ref().is_err_and(|error| error.is_catchable()) {
+            self.publish_rejection_origin(failure_origin);
+        }
         self.stack.truncate(root_base);
         self.async_frame_roots.truncate(active_root_base);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(active_bytes);
         self.synchronize_scheduling_usage()?;
         result?;
         Ok(true)
+    }
+    fn execute_promise_job(&mut self, job: PromiseJob) -> Result<(), RuntimeError> {
+        match job {
+            PromiseJob::Reaction {
+                target,
+                handler,
+                value,
+                fulfilled,
+                ..
+            } => {
+                // NewPromiseReactionJob: a missing handler passes the
+                // settlement through; either way the outcome is delivered
+                // through the reaction's resolve/reject.
+                let epoch = self.throw_epoch;
+                let callable = self
+                    .is_callable(&handler)
+                    .expect("the queued reaction retains its validated handler");
+                let outcome = if callable {
+                    self.call_native(handler, Value::Undefined, vec![value], false)
+                } else if fulfilled {
+                    Ok(value)
+                } else {
+                    Err(RuntimeError::Thrown(value))
+                };
+                let origin = if !callable {
+                    self.current_rejection_origin()
+                } else if self.throw_epoch != epoch {
+                    self.caught_rejection_origin(epoch)
+                } else {
+                    ThrowOrigin::default()
+                };
+                match (target, outcome) {
+                    (ReactionTarget::Native(promise), Ok(value)) => {
+                        self.resolve_promise(promise, value)?
+                    }
+                    (ReactionTarget::Native(promise), Err(error)) => {
+                        let error = self.error_value(error)?;
+                        self.reject_promise_with_origin(promise, error, origin)?;
+                    }
+                    (ReactionTarget::Capability(capability), Ok(value)) => {
+                        self.stack.push(value.clone());
+                        self.call_native(capability.resolve, Value::Undefined, vec![value], false)?;
+                    }
+                    (ReactionTarget::Capability(capability), Err(error)) => {
+                        let error = self.error_value(error)?;
+                        self.stack.push(error.clone());
+                        self.with_rejection_origin(Some(origin), |vm| {
+                            vm.call_native(capability.reject, Value::Undefined, vec![error], false)
+                        })?;
+                    }
+                }
+            }
+            PromiseJob::Thenable {
+                target,
+                thenable,
+                then,
+            } => {
+                // NewPromiseResolveThenableJob: a fresh resolving pair
+                // (with its own [[AlreadyResolved]]) is handed to `then`;
+                // if that throws, the pair's reject function decides
+                // whether the rejection still counts.
+                let base = self.stack.len();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    let (resolve, reject) = self.promise_resolving_functions(target)?;
+                    self.stack.extend([resolve.clone(), reject.clone()]);
+                    let epoch = self.throw_epoch;
+                    if let Err(error) =
+                        self.call_native(then, thenable, vec![resolve, reject.clone()], false)
+                    {
+                        let origin = self.caught_rejection_origin(epoch);
+                        let error = self.error_value(error)?;
+                        self.stack.push(error.clone());
+                        self.with_rejection_origin(Some(origin), |vm| {
+                            vm.call_native(reject, Value::Undefined, vec![error], false)
+                        })?;
+                    }
+                    Ok(())
+                })();
+                self.stack.truncate(base);
+                outcome?;
+            }
+            PromiseJob::DynamicImport {
+                target,
+                referrer,
+                specifier,
+                module_type,
+                phase,
+            } => {
+                let epoch = self.throw_epoch;
+                let result = self.dynamic_import_job(&referrer, &specifier, module_type, phase);
+                match result {
+                    Ok(DynamicImportResult::Fulfilled(namespace)) => {
+                        // ContinueDynamicImport calls the capability's
+                        // Resolve function, including an exported `then`.
+                        self.resolve_promise(target, namespace)
+                                .expect("dynamic import produced a retained namespace: completed export cells are initialized, and a deferred namespace omits then; callable exports execute in later fallible jobs")
+                    }
+                    Ok(DynamicImportResult::WaitingDeferred { namespace, modules }) => {
+                        self.deferred_import_waiters.push(DeferredImportWaiter {
+                            promise: target,
+                            namespace,
+                            pending: modules.into_iter().collect(),
+                        });
+                    }
+                    Ok(DynamicImportResult::Waiting(module)) => {
+                        self.module_import_waiters
+                            .entry(module)
+                            .or_default()
+                            .push(target);
+                    }
+                    Err(error) => {
+                        let origin = self.caught_rejection_origin(epoch);
+                        let error = self.error_value(error)?;
+                        self.reject_promise_with_origin(target, error, origin)?;
+                    }
+                }
+            }
+            PromiseJob::ModuleAwait {
+                continuation,
+                value,
+                fulfilled,
+                ..
+            } => self.resume_module_await(continuation, value, fulfilled)?,
+            PromiseJob::AsyncAwait {
+                continuation,
+                value,
+                fulfilled,
+                ..
+            } => self.resume_async_await(continuation, value, fulfilled)?,
+            PromiseJob::AsyncGeneratorYield {
+                generator,
+                target,
+                result,
+                value,
+                fulfilled,
+                ..
+            } => self.finish_async_generator_yield(generator, target, result, value, fulfilled)?,
+            PromiseJob::AsyncGeneratorDelegate {
+                generator,
+                target,
+                kind,
+                value,
+                fulfilled,
+                ..
+            } => self.finish_async_generator_delegate(generator, target, kind, value, fulfilled)?,
+            PromiseJob::FinalizationCleanup { callback, holdings } => {
+                // Cleanup callbacks are host jobs, not Promise reactions. A
+                // throwing callback is reported through this embedding's job
+                // runner but cannot resurrect or re-register the consumed
+                // cell.
+                self.call_native(callback, Value::Undefined, vec![holdings], false)?;
+            }
+            PromiseJob::HostMicrotask { callback } => {
+                self.call_native(callback, Value::Undefined, Vec::new(), false)?;
+            }
+        }
+        Ok(())
     }
 }

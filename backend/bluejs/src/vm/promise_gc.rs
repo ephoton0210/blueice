@@ -179,6 +179,13 @@ impl Vm {
         if self.promises.len().saturating_mul(4) < self.promises.capacity() {
             self.promises.shrink_to_fit();
         }
+        self.promise_thunk_origins
+            .retain(|state, _| self.heap.contains(*state));
+        if self.promise_thunk_origins.len().saturating_mul(4)
+            < self.promise_thunk_origins.capacity()
+        {
+            self.promise_thunk_origins.shrink_to_fit();
+        }
         let mut modules = HashSet::new();
         let mut functions = HashSet::new();
         for record in self.promises.values() {
