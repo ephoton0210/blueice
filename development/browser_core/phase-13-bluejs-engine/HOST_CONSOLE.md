@@ -36,14 +36,15 @@ it preserves counters and timers. Group records carry a bounded display depth.
 | Retained resource | Limit and behavior |
 | --- | --- |
 | Queued records | 256; evict oldest records. |
-| Queued message allocations | 256 KiB in total; evict oldest records. |
+| Queued message/source allocations | 256 KiB in total; evict oldest records. |
 | One UTF-8 message | 8 KiB, with an explicit truncation flag. |
+| One copied source filename | 8 KiB; unknown locations are omitted. |
 | Count labels / timer labels | 128 each; refuse further labels with a warning. |
 | Label display | 256 UTF-8 bytes; refuse longer labels without merging keys. |
 | Display group depth | 32; balance deeper groups without retaining a label stack. |
 
-The fixed queue slots, message capacities and label payloads enter the existing
-document-owned native/scheduling byte ledger. The shared 8 MiB document limit
+The fixed queue slots, message/source capacities and label payloads enter the
+existing document-owned native/scheduling byte ledger. The shared 8 MiB document limit
 still applies. Console records contain copied strings and scalar metadata;
 they retain no Promise, callable, DOM wrapper or other managed JS object.
 Draining transfers records and refreshes retained-byte accounting. Replacement
@@ -51,8 +52,9 @@ and close discard that realm's records, counters and timers.
 
 ## Core, wire and MCP
 
-Private protocol **v60** adds `DrainConsole` and a bounded console reply for
-one exact `(tab, document generation)`. The child drains the VM and returns
+Private protocol **v61** extends the v60 `DrainConsole` reply with optional
+copied source locations for one exact `(tab, document generation)`. The child
+drains the VM and returns
 updated owned-byte accounting. Core checks document identity, record shape,
 count/byte bounds, sequence/timestamp order and accounting before publication.
 Malformed replies revoke the addressed realm through existing containment,
@@ -61,8 +63,23 @@ without replaying its scripts or disturbing another tab.
 The public control protocol adds `GetConsoleMessages`/`ConsoleMessages`.
 Its coarse version remains v2 under the existing additive-variant rule.
 The response names the current document, includes record sequence, time,
-method, level, group depth, message/truncation and the overflow count since
-the previous drain or clear. An unavailable owner returns a stable error.
+method, level, group depth, message/truncation, available source location and
+the overflow count since the previous drain or clear. The new `source` field
+has a serde default and is omitted when unavailable, preserving old public
+records under the existing additive-field rule. An unavailable owner returns
+a stable error.
+
+M1q attaches `{filename, line, column}` from certified immutable maps. Lines
+and UTF-16 columns are one-based. Ordinary console calls use the active call
+site; uncaught reports keep the escaping throw's origin through error handlers.
+Unknown callbacks cannot borrow an earlier root script's location. The VM
+charges filename capacities with message capacities before queue eviction.
+Core and MCP independently validate positive coordinates, the filename bound
+and the combined 256 KiB message/source text budget. Filenames are untrusted
+strings and grant no source-loading or debugger authority. The related
+public/Core/MCP transport acceptance passes; source-producer and final full
+gates remain in progress. See
+[the source contract](SOURCE_DIAGNOSTICS.md).
 
 MCP's `get_console_messages` tool accepts an optional tab id, drains only
 that document's bounded snapshot and wraps the serialized result in the
@@ -76,8 +93,8 @@ Acceptance covers public VM/profile behavior, diagnostic resource limits,
 Core containment and MCP framing/transport. The real Core/child fixture uses
 an official MCP client, mixed JavaScript/checked BlueTS, a Promise job, a timer
 and a native click; it verifies draining and navigation isolation. Source-map
-positions and complete external host-buffer accounting remain separate TODO
-items. M1o supplies uncaught exceptions; M1p supplies rejection notifications
+provenance for typed/module/queued work and complete external host-buffer
+accounting remain separate TODO items. M1o supplies uncaught exceptions; M1p supplies rejection notifications
 and uncanceled `Uncaught (in promise) ` diagnostics through the same route.
 The rejection follow-up's final gates are tracked in the
 [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).

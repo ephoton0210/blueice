@@ -84,9 +84,14 @@ real Core/child path. Saved finalizers and ignored iterator-close failures
 preserve their pending throw's origin, including across generator suspension
 and later scripts; saved filename payloads join the existing suspension
 budgets. This is an implementation checkpoint; original typed,
-expression, module, asynchronous and copied MCP positions and the final full
+expression, module and asynchronous positions and the final full
 gates remain open in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record)
 and [source-position contract](SOURCE_DIAGNOSTICS.md).
+Bounded optional console sources now pass through private v61, Core validation
+and MCP's untrusted frame, with combined message/source admission and explicit
+unknown locations. The source-copy acceptance covers twelve targets and
+2,117 passing cases, one existing ignored, formatting and focused six-library
+Clippy; the full M1q milestone remains in progress.
 
 ## Ubuntu verification scope (2026-09-19)
 

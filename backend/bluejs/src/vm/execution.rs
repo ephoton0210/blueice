@@ -229,7 +229,7 @@ impl Vm {
         };
         self.pending_diagnostic_origin = None;
         if let Err(error) = &result {
-            self.report_host_exception(error)?;
+            self.report_host_exception_with_origin(error, self.uncaught_diagnostic_origin.clone())?;
         }
         result
     }

@@ -58,12 +58,14 @@ live program generations and reports original classic JavaScript statement
 locations, including nested blocks and functions, through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
-latest checkpoint passes 1,837 tests across twenty targets
-(one existing ignored), formatting and focused three-library Clippy. Two of
-the ten final acceptance gates are complete; the detailed implementation
+private v61 console drain now carries bounded optional source records through
+Core and MCP, preserving unavailable locations. The latest selection passes
+2,117 tests across twelve targets (one existing ignored), formatting and
+focused six-library Clippy. Three of the ten final acceptance
+gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Expression/parameter
-provenance, direct/emitted BlueTS, modules, queued origins and copied Core/MCP
-locations remain open, along with their integrated resource/GC checks and
+provenance, direct/emitted BlueTS, modules and queued origins remain open,
+along with their final integrated Core/MCP/resource/GC checks and
 final workspace/Test262 gates. Unknown or generated-only locations remain
 explicitly unavailable. Section H remains unchecked.
 See the [in-progress source-position contract](SOURCE_DIAGNOSTICS.md).
@@ -388,8 +390,9 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
       adds the separate rejection tracker in B. M1q now verifies immutable
       source maps and original classic JavaScript root/block/function
       coordinates through real Core/child error handlers. Direct/emitted
-      BlueTS, precise expressions/parameters, queued origins and copied
-      Core/MCP locations remain open. See the detailed M1q implementation
+      BlueTS, precise expressions/parameters and queued origins remain open.
+      Known copied locations now pass the bounded private v61 Core/MCP route.
+      See the detailed M1q implementation
       checklist and final gates below; unmapped code retains empty/zero
       metadata.
 
@@ -479,7 +482,7 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: implementation checkpoint verified; 2/10 final
+**Progress updated 2026-10-15: source-copy acceptance verified; 3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -495,19 +498,22 @@ the full source-position requirement.
       including nested blocks/functions, repeated function bodies, Annex B
       wrappers, labels and directive normalization.
 - [x] Report mapped throws and active `reportError` call sites, restore nested
-      interpreter contexts, and keep unmapped `eval`/`Function` origins unknown.
+      interpreter contexts, and keep unmapped `eval`/`Function` and callback
+      origins unknown without borrowing an earlier root script's location.
 - [x] Verify original JavaScript root/block/function coordinates through real
       Core/child `window.onerror` delivery.
 - [x] Preserve source/debugger origins through synchronous finalizers, ignored
       iterator-close failures and yielded generator resumption across scripts;
       verify collection and suspended filename payload charges.
-- [x] Pass the expanded three-library/public/debugger/GC/resource regression
-      selection: 1,837 passed, zero failed, one existing ignored, across twenty
-      targets.
-- [x] Pass the latest current-source diagnostic/error/page replay: 43 passed,
+- [x] Carry bounded optional source records through private v61, exact-document
+      Core validation and MCP's untrusted content frame; charge source names
+      with console text and preserve unknown locations.
+- [x] Pass the related Rust/Core/MCP regression selection: 2,117 passed, zero
+      final failures, one existing ignored, across twelve targets.
+- [x] Pass the latest current-source diagnostic/error/page replay: 48 passed,
       zero failed, across three complete targets.
 - [x] Pass `cargo fmt --all -- --check` and focused Clippy for the BlueJS,
-      BlueTS bridge and launcher libraries with `-D warnings`.
+      BlueTS bridge, IPC, Core, launcher and MCP libraries with `-D warnings`.
 
 #### Remaining implementation and verification
 
@@ -516,8 +522,8 @@ the full source-position requirement.
       and debugger-driven execution.
 - [ ] Retain rejection/await origins across queued work, including rejected-await
       and async-disposal interactions with finalizers.
-- [ ] Account retained diagnostic copies and carry bounded locations through
-      Core/MCP, with integrated cancellation/navigation/GC/resource coverage.
+- [ ] Complete retained-origin accounting and the integrated
+      cancellation/navigation/GC/resource matrix across all source producers.
 - [ ] Complete the full related Rust/Core/MCP, workspace/all-target Clippy/build
       and pinned Test262 gates, then finalize the milestone documentation.
 
@@ -527,7 +533,7 @@ the full source-position requirement.
 - [x] Bind certified source positions to exact live program generations.
 - [ ] Preserve throw/reject/report origins across synchronous and queued work.
 - [ ] Map JavaScript, direct BlueTS and compiler-emitted source positions.
-- [ ] Carry bounded copied locations through Core/MCP and retain unavailable cases.
+- [x] Carry bounded copied locations through Core/MCP and retain unavailable cases.
 - [ ] Verify cancellation, stale generations, navigation, GC and resource limits.
 - [ ] Pass the related Rust and real Core/MCP acceptance selections.
 - [ ] Pass formatting and workspace/all-target Clippy/build.
@@ -627,6 +633,51 @@ and focused three-library Clippy with `-D warnings` pass; Clippy completed in
 Finalizer filename copies join generator managed bytes and async/module
 continuation scheduling bytes. The broader M1q acceptance requirements above
 remain open; this follow-up does not close section H.
+
+The console-copy follow-up now reproduces the next boundary failure. Both
+public VM tests lose the copied source object (two failed, fifteen filtered;
+`/private/tmp/blueice-console-sources-vm-red.log`), and the real Core/child
+console reply loses the known line 2, column 1 location (one failed, sixteen
+filtered, 2.27s; `/private/tmp/blueice-console-sources-core-red.log`). Optional
+source records, combined console-byte admission and independent Core/MCP
+validation are the next implementation step; unknown locations must stay
+absent.
+The three public IPC groups also failed before implementation: valid source
+data was discarded, eleven malformed source variants were accepted, and
+filename bytes escaped the existing batch bound
+(`/private/tmp/blueice-console-sources-ipc-red.log`). The first mapped-console
+implementation passes these IPC groups and eighteen of nineteen VM groups,
+but a new control exposes an unrelated unknown timer error inheriting the
+previous script's filename (`/private/tmp/blueice-console-sources-foundation.log`).
+Root reporting was then separated from callback reporting before the
+complete Core/MCP rerun.
+The corrected source run passes all nineteen VM groups and all three IPC
+groups. The dedicated Core selection also passes both tests, including ten
+malformed-reply variants and addressed-realm containment (818 unrelated tests
+filtered). The first real-page/MCP attempts stop at startup: the sibling Core
+binary still predates the private v61 change while the child is rebuilt.
+The nine library/public targets pass (2,095 cases, one existing ignored), but
+the seventeen real page cases and three official MCP cases require a matching
+Core/child binary rebuild and rerun; their failed startup attempts are not
+counted as acceptance. Evidence is in
+`/private/tmp/blueice-console-sources-regressions.log`,
+`/private/tmp/blueice-console-sources-core-validation.log` and
+`/private/tmp/blueice-console-sources-mcp.log`.
+After rebuilding the matching Core/BlueJS-host binaries (36.16s), all seventeen
+page cases pass. Reusing the unchanged Cargo-built official MCP test executable
+then passes all three console cases (nine filtered, 1.71s), including known
+JavaScript positions, unavailable direct BlueTS positions, native events,
+Promise/timer work, cancellation and navigation isolation. The final disjoint
+selection has 2,117 passes across twelve targets and one existing ignored:
+nine successful library/public targets from the original run, the successful
+page rerun, the two-case Core selection and the three-case MCP selection.
+The failed startup attempts remain recorded above and are superseded by the
+matched-runtime acceptance. All thirteen recorded Rust hashes remain unchanged;
+runtime/test executable hashes are in `target/console-sources-source-20261015.json`.
+Formatting and focused six-library Clippy with `-D warnings` pass; Clippy
+completed in 2m 48s. The complete evidence is recorded in
+`target/console-sources-validation-20261015.json`. The full
+M1q source-producer/queued-origin and final workspace/Test262 gates remain open.
 See [the in-progress contract](SOURCE_DIAGNOSTICS.md) for the immutable ownership
 and admission model and the remaining expression/typed/async/transport work.
 

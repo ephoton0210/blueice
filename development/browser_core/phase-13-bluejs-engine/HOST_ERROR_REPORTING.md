@@ -59,14 +59,17 @@ uses the existing bounded, getter-free value preview for `message`. M1q's
 in-progress source-provenance work now supplies certified classic JavaScript
 statement positions through immutable owner-installed maps. Unmapped or
 source-less code retains an empty `filename` and zero `lineno`/`colno`.
-Direct/emitted BlueTS, complete asynchronous provenance and copied Core/MCP
-locations remain part of section H's open follow-up; see
+Direct/emitted BlueTS and complete asynchronous provenance remain part of
+section H's open follow-up. Known locations now accompany copied Core/MCP
+console records through the validated v61 transport; see
 [the source-position contract](SOURCE_DIAGNOSTICS.md). Explicit `ErrorEvent`
 construction still converts the supplied dictionary members.
 
 Uncanceled output uses the console's `error` method/level with an `Uncaught `
 prefix and the existing message/record/byte limits. Native payload accounting,
 exact-document Core validation and MCP's untrusted-content framing apply to
-the same copied batch. No new wire field or private protocol version is needed;
-the current bounded drain remains private v60. Draining never executes script
-or resumes jobs and returns no live exception handle.
+the same copied batch. M1q's private v61 drain adds an optional bounded `source`
+field; unknown locations are omitted. Root execution passes its own captured
+origin explicitly, while callback reports use their pending origin so an
+unmapped callback cannot inherit an earlier script's filename. Draining never
+executes script or resumes jobs and returns no live exception handle.

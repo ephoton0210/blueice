@@ -82,15 +82,50 @@ with `-D warnings` also pass (Clippy: 1m 11s). All nineteen Rust hashes in
 run; `target/source-diagnostics-cleanup-validation-20261015.json` records the
 selection and remaining gates.
 
+## Copied source records and transport
+
+Console records now carry an optional copied `source` with filename, line
+and column. Ordinary calls use their active instruction; uncaught reports
+pass their captured origin explicitly after dispatching error handlers.
+Unknown callbacks use an absent location even if a preceding root script
+reported a mapped exception. No error-value source property is evaluated.
+
+The private child channel is v61. The public field has a serde default, is
+omitted when unknown and preserves the coarse public protocol v2. Filename
+bytes are bounded at 8 KiB and share the existing 256 KiB console text limit
+with messages. VM eviction and native accounting measure owned capacities;
+wire validation measures copied UTF-8 text. Core and MCP each validate the
+bounded record before publication. Filenames remain untrusted data inside
+MCP's existing page-content frame and confer no loading/debugger authority.
+
+The red baseline comprises two VM failures, one real Core/child failure and
+three IPC failures. The first implementation passes the IPC controls and
+eighteen VM cases but exposes a stale root-to-unknown-timer fallback. An
+explicit root-reporting origin removes that fallback. Core's two dedicated
+tests pass, including ten malformed-reply variants. The matched Core/child
+page rerun passes all seventeen cases, and the unchanged Cargo-built official
+MCP executable passes all three console cases (nine filtered, 1.71s). Known
+JavaScript sources survive messages, tasks, native events and navigation;
+direct BlueTS and unmapped code keep their explicit absence.
+
+The final disjoint selection has 2,117 passes across twelve targets and one
+existing ignored. The first real-process attempts used an older Core binary
+and failed startup; rebuilding the matching private v61 Core/host binaries
+resolved those attempts before acceptance. Formatting and focused six-library
+Clippy with `-D warnings` pass (Clippy: 2m 48s). The thirteen Rust source hashes
+and validated runtime/test hashes are in
+`target/console-sources-source-20261015.json`; the per-selection results and
+remaining gates are in `target/console-sources-validation-20261015.json`.
+
 ## Required remaining work
 
 Precise expression/parameter/generated-code provenance, direct and emitted
 BlueTS, modules and debugger-driven execution still need their full acceptance.
-Queued Promise rejection/await origins, rejected-await/async-disposal finalizer
-interactions and copied Core/MCP source locations remain part of M1q.
+Queued Promise rejection/await origins and rejected-await/async-disposal
+finalizer interactions remain part of M1q.
 Other copies held by asynchronous diagnostic state must join document-native
-accounting. Navigation, stale
-generations, GC, source-map refusals and resource containment need integrated
+accounting. Navigation, stale generations, GC, source-map refusals and resource
+containment need integrated
 coverage. Broader host-buffer/network/UI/default-on policy remains separate.
 
 No source position may be inferred from a nearby token, an unrelated later
@@ -112,7 +147,8 @@ passing cases and one existing ignored. Formatting and focused three-library
 Clippy with `-D warnings` pass.
 
 The [TODO progress checklist](BROWSER_INTEGRATION_TODO.md#milestone-record)
-records the verified implementation steps and remaining work. Two of
-the ten full M1q acceptance gates are complete. This checkpoint does not claim
+records the verified implementation steps and remaining work. At the foundation
+checkpoint, two of the ten full M1q acceptance gates were complete. That
+checkpoint does not claim
 workspace/all-target Clippy/build, final Core/MCP acceptance, a fresh pinned
 Test262 run or fresh coverage.

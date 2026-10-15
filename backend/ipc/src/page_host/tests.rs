@@ -9,7 +9,7 @@ mod debugger_shapes;
 
 #[test]
 fn browser_turn_wake_delay_is_optional_and_round_trips() {
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 60);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 61);
     let old = r#"{"DragTasksFlushed":{"tab_id":7,"document_generation":3}}"#;
     assert_eq!(
         serde_json::from_str::<PageHostReply>(old).unwrap(),

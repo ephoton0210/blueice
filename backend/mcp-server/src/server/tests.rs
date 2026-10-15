@@ -20,6 +20,11 @@ fn console_messages_are_json_data_inside_the_untrusted_page_boundary() {
             group_depth: 0,
             message: hostile.into(),
             truncated: false,
+            source: Some(blueice_ipc::console::ConsoleSourceLocation {
+                filename: hostile.into(),
+                line: 7,
+                column: 11,
+            }),
         }],
     };
     let result = console_messages_to_result(&messages);
@@ -30,6 +35,12 @@ fn console_messages_are_json_data_inside_the_untrusted_page_boundary() {
         .unwrap();
     let decoded: blueice_ipc::console::ConsoleMessages = serde_json::from_str(payload).unwrap();
     assert_eq!(decoded, messages);
+    let mut invalid_source = messages.clone();
+    invalid_source.records[0].source.as_mut().unwrap().line = 0;
+    assert_eq!(
+        console_messages_to_result(&invalid_source).is_error,
+        Some(true)
+    );
     let mut invalid = messages;
     invalid.records[0].message = "x".repeat(8193);
     assert_eq!(console_messages_to_result(&invalid).is_error, Some(true));

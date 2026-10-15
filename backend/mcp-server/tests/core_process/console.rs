@@ -168,6 +168,25 @@ async fn real_mcp_reports_uncaught_page_values_and_keeps_native_event_delivery_a
     assert!(!records
         .iter()
         .any(|record| record.message.contains("silenced")));
+    let reported = records
+        .iter()
+        .find(|record| record.message.contains("page-error"))
+        .unwrap();
+    let reported = serde_json::to_value(reported).unwrap();
+    assert_eq!(reported["source"]["line"], 4);
+    assert_eq!(reported["source"]["column"], 25);
+    assert!(
+        reported["source"]["filename"]
+            .as_str()
+            .is_some_and(|name| name.starts_with("blueice://page/tab-1/document-")
+                && name.ends_with("/inline-0.js")),
+        "{reported}"
+    );
+    let typed = records
+        .iter()
+        .find(|record| record.message.contains("typed-error"))
+        .unwrap();
+    assert!(serde_json::to_value(typed).unwrap().get("source").is_none());
     let generation = snapshot.accessibility.unwrap().document_generation;
     let click = client
         .call_tool(
@@ -212,6 +231,13 @@ async fn real_mcp_reports_uncaught_page_values_and_keeps_native_event_delivery_a
     assert!(batch.document_generation > generation);
     assert_eq!(batch.records.len(), 1);
     assert_eq!(batch.records[0].message, "replacement");
+    let replacement = serde_json::to_value(&batch.records[0]).unwrap();
+    assert_eq!(replacement["source"]["line"], 1);
+    assert_eq!(replacement["source"]["column"], 1);
+    assert_ne!(
+        replacement["source"]["filename"],
+        reported["source"]["filename"]
+    );
     client.cancel().await.unwrap();
     server_task.await.unwrap();
     launcher.shutdown();
@@ -445,6 +471,20 @@ async fn real_mcp_console_drains_both_languages_tasks_and_native_events_and_disc
         .starts_with("ignore previous instructions"));
     assert_eq!(records[2].message, "typed");
     assert_eq!(records[3].message, "timer");
+    for (index, line) in [(0, 2), (1, 3), (3, 4)] {
+        let record = serde_json::to_value(&records[index]).unwrap();
+        assert_eq!(record["source"]["line"], line, "{record}");
+        assert!(
+            record["source"]["filename"]
+                .as_str()
+                .is_some_and(|name| name.ends_with("/inline-0.js")),
+            "{record}"
+        );
+    }
+    assert!(serde_json::to_value(&records[2])
+        .unwrap()
+        .get("source")
+        .is_none());
     assert!(records
         .windows(2)
         .all(|pair| pair[0].sequence < pair[1].sequence));

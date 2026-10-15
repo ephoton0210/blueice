@@ -16,6 +16,11 @@ fn batch(tab: TabId) -> blueice_ipc::console::ConsoleMessages {
             group_depth: 0,
             message: "page".into(),
             truncated: false,
+            source: Some(blueice_ipc::console::ConsoleSourceLocation {
+                filename: "page:///console.js".into(),
+                line: 7,
+                column: 11,
+            }),
         }],
     }
 }
@@ -37,7 +42,7 @@ fn console_read_uses_the_exact_live_document_and_refreshes_retained_payload() {
 }
 #[test]
 fn malformed_console_replies_revoke_only_the_addressed_realm_without_replaying_scripts() {
-    for failure in 0..5 {
+    for failure in 0..10 {
         let (mut tabs, tab) = loaded_tabs("<p>console</p>", "https://example.test/console");
         let other = tabs.open_tab();
         tabs.get_mut(other).unwrap().load_html_str(
@@ -53,7 +58,28 @@ fn malformed_console_replies_revoke_only_the_addressed_realm_without_replaying_s
             1 => messages.document_generation += 1,
             2 => messages.records[0].message = "x".repeat(8193),
             3 => bytes = u64::MAX,
-            _ => messages.records[0].level = "forged".into(),
+            4 => messages.records[0].level = "forged".into(),
+            5 => messages.records[0].source.as_mut().unwrap().line = 0,
+            6 => messages.records[0].source.as_mut().unwrap().column = 0,
+            7 => messages.records[0].source.as_mut().unwrap().filename = "x".repeat(8193),
+            8 => messages.records[0]
+                .source
+                .as_mut()
+                .unwrap()
+                .filename
+                .clear(),
+            _ => {
+                let mut record = messages.records.pop().unwrap();
+                record.message = "m".repeat(4096);
+                record.source.as_mut().unwrap().filename = "f".repeat(4096);
+                messages.records = (1..=33)
+                    .map(|sequence| {
+                        let mut record = record.clone();
+                        record.sequence = sequence;
+                        record
+                    })
+                    .collect();
+            }
         }
         executor.child.console_reply = Some(PageHostReply::ConsoleMessages {
             messages,

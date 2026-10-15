@@ -366,6 +366,147 @@ fn mapped_throw_code(source: &str, filename: &str) -> blueice_bluejs::Bytecode {
 }
 
 #[test]
+fn copied_console_errors_keep_the_escaping_origin_after_error_handlers_run() {
+    let mut vm = page();
+    vm.execute_script(
+        &compile(&parse("onerror=function(){console.log('handler');return false;};").unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    let code = mapped_throw_code(
+        "try{throw 'original';}finally{try{throw 'caught';}catch{}}",
+        "memory:///position.js",
+    );
+    assert!(vm.execute_script(&code).is_err());
+    let batch = serde_json::to_value(vm.drain_host_console().unwrap()).unwrap();
+    assert_eq!(batch["records"][0]["message"], "handler");
+    assert_eq!(batch["records"][1]["message"], "Uncaught original");
+    assert_eq!(
+        batch["records"][1]["source"],
+        serde_json::json!({
+            "filename":"memory:///position.js", "line":2, "column":1
+        })
+    );
+    assert!(batch["records"][0].get("source").is_none());
+}
+
+#[test]
+fn copied_console_calls_keep_active_locations_and_leave_unknown_code_unlocated() {
+    for source in ["console.log('probe');", "reportError('probe');"] {
+        let mut vm = page();
+        vm.execute_script(&compile(&parse("onerror=null;").unwrap()).unwrap())
+            .unwrap();
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install(
+                identity("original"),
+                &BlueJsProgramV1::Script(parse(source).unwrap()),
+            )
+            .unwrap();
+        let instruction = registry
+            .get(handle)
+            .unwrap()
+            .bytecode()
+            .instructions()
+            .find(|i| i.opcode == Opcode::Call)
+            .unwrap();
+        let mut row = range(
+            0,
+            instruction.offset as u32,
+            (instruction.offset + instruction.opcode.width()) as u32,
+        );
+        row.location = location(42);
+        registry
+            .bind_diagnostic_sources(
+                handle,
+                DiagnosticSourceMap::new(identity("original"), vec![row]).unwrap(),
+            )
+            .unwrap();
+        vm.execute_script(registry.get(handle).unwrap().bytecode())
+            .unwrap();
+        let batch = serde_json::to_value(vm.drain_host_console().unwrap()).unwrap();
+        assert_eq!(
+            batch["records"][0]["source"],
+            serde_json::json!({
+                "filename":"memory:///position.js", "line":42, "column":1
+            }),
+            "{source}"
+        );
+        vm.execute_script(&compile(&parse("console.log('unknown');").unwrap()).unwrap())
+            .unwrap();
+        let unknown = serde_json::to_value(vm.drain_host_console().unwrap()).unwrap();
+        assert!(unknown["records"][0].get("source").is_none());
+    }
+}
+
+#[test]
+fn copied_console_source_names_share_eviction_and_native_payload_accounting() {
+    let mut vm = page();
+    vm.install_host_rejection_tracking().unwrap();
+    let filename = "f".repeat(8192);
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install(
+            identity("original"),
+            &BlueJsProgramV1::Script(
+                parse("for(var i=0;i<100;i++){console.log('message');}").unwrap(),
+            ),
+        )
+        .unwrap();
+    let length = registry.get(handle).unwrap().bytecode().bytes().len() as u32;
+    let mut row = range(0, 0, length);
+    row.location.filename = filename.clone();
+    registry
+        .bind_diagnostic_sources(
+            handle,
+            DiagnosticSourceMap::new(identity("original"), vec![row]).unwrap(),
+        )
+        .unwrap();
+    vm.execute_script(registry.get(handle).unwrap().bytecode())
+        .unwrap();
+    let buffered = vm.host_scheduling_usage().unwrap().payload_bytes;
+    let batch = vm.drain_host_console().unwrap();
+    let drained = vm.host_scheduling_usage().unwrap().payload_bytes;
+    assert!(batch.records.len() < 100);
+    assert_eq!(batch.dropped_records, 100 - batch.records.len() as u64);
+    let text_bytes = batch
+        .records
+        .iter()
+        .map(|record| {
+            let source = record.source.as_ref().unwrap();
+            assert_eq!(source.filename, filename);
+            record.message.capacity() + source.filename.capacity()
+        })
+        .sum::<usize>();
+    assert!(text_bytes <= blueice_bluejs::MAX_HOST_CONSOLE_BYTES);
+    assert_eq!(buffered - drained, text_bytes);
+}
+
+#[test]
+fn copied_console_unknown_tasks_do_not_inherit_the_previous_scripts_error_source() {
+    let mut vm = page();
+    vm.install_host_timer_functions().unwrap();
+    vm.execute_script(
+        &compile(
+            &parse("onerror=null;setTimeout(Function(\"throw 'unknown-task';\"),0);").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(vm
+        .execute_script(&mapped_throw_code(
+            "throw 'original';",
+            "memory:///position.js"
+        ))
+        .is_err());
+    vm.drain_host_console().unwrap();
+    assert_eq!(vm.run_due_host_timers(0).unwrap().uncaught_errors, 1);
+    let batch = serde_json::to_value(vm.drain_host_console().unwrap()).unwrap();
+    assert_eq!(batch["records"][0]["message"], "Uncaught unknown-task");
+    assert!(batch["records"][0].get("source").is_none(), "{batch}");
+}
+
+#[test]
 fn a_suspended_finalizer_restores_its_throw_after_another_script_and_collection() {
     let mut vm = page();
     let code = mapped_throw_code(

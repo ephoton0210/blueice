@@ -61,6 +61,8 @@ previews with `Uncaught (in promise) `, method/level `error`, and existing bound
 They do not dispatch an additional global `error` event. A throwing listener
 uses the existing uncaught-exception path; peers retain ordinary dispatch.
 
-Core/MCP drain copied, untrusted-framed diagnostics through unchanged private
-v60 replies. No live Promise/reason handle crosses IPC. Original source mapping
-retains its separate open item; this increment installs no network API.
+Core/MCP drain copied, untrusted-framed diagnostics through private v61, whose
+M1q console extension adds optional bounded source positions. No live
+Promise/reason handle crosses IPC. Promise rejection/await origins retain their
+separate open item and unavailable locations stay omitted; see
+[the source contract](SOURCE_DIAGNOSTICS.md). This increment installs no network API.

@@ -178,6 +178,47 @@ fn observed_error_source_location(script: &str) -> String {
 }
 
 #[test]
+fn copied_console_sources_survive_the_real_core_child_boundary() {
+    let (fixture, url, gatekeeper) = fixture(
+        "<p>console positions</p><script>\nreportError('copied-source');\nFunction(\"throw 'unknown-source';\")();\n</script>".into(),
+    );
+    let core = SpawnedCore::spawn_with_options(
+        240.0,
+        120.0,
+        &fixture.root.join("frames"),
+        CoreLaunchOptions::default()
+            .with_gatekeeper_socket(gatekeeper)
+            .supervise_out_of_process_bluejs_with_page_dom(),
+    )
+    .unwrap();
+    let mut stream = core.stream.try_clone().unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    assert!(matches!(
+        request(&mut stream, 1, ClientMessage::Navigate { url }),
+        ServerMessage::Navigated { .. }
+    ));
+    let ServerMessage::ConsoleMessages(batch) =
+        request(&mut stream, 2, ClientMessage::GetConsoleMessages)
+    else {
+        panic!("expected copied console records");
+    };
+    assert_eq!(batch.records.len(), 2, "{batch:?}");
+    let batch = serde_json::to_value(batch).unwrap();
+    assert_eq!(batch["records"][0]["source"]["line"], 2);
+    assert_eq!(batch["records"][0]["source"]["column"], 1);
+    assert!(
+        batch["records"][0]["source"]["filename"]
+            .as_str()
+            .is_some_and(|name| name.starts_with("blueice://page/tab-1/document-")
+                && name.ends_with("/inline-0.js")),
+        "{batch}"
+    );
+    assert!(batch["records"][1].get("source").is_none());
+}
+
+#[test]
 fn uncaught_page_errors_keep_the_throwing_script_source_coordinates() {
     let mut failures = Vec::new();
     for (name, source, coordinates) in [

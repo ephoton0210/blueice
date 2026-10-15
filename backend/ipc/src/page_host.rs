@@ -150,6 +150,7 @@ pub use drag_drop::{
 };
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
+/// V61 copies bounded optional original source positions with console records.
 /// V58 adds exact-document animation-frame render requests and scheduling replies.
 /// V57 returns the next relative timer wake-up after a bounded browser turn.
 /// V56 carries document-bound drag image requests. V55 adds document-bound drag
@@ -171,7 +172,7 @@ pub use drag_drop::{
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 60;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 61;
 
 /// Private candidate limits; core independently checks the original source.
 pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;

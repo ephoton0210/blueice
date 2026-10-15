@@ -1539,6 +1539,13 @@ impl BlueJsChildHost {
                     group_depth: record.group_depth,
                     message: record.message,
                     truncated: record.truncated,
+                    source: record.source.map(|source| {
+                        blueice_ipc::console::ConsoleSourceLocation {
+                            filename: source.filename,
+                            line: source.line,
+                            column: source.column,
+                        }
+                    }),
                 })
                 .collect(),
         };

@@ -26,6 +26,18 @@ pub struct HostConsoleRecord {
     pub group_depth: u32,
     pub message: String,
     pub truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<crate::diagnostics::DiagnosticSourceLocation>,
+}
+
+impl HostConsoleRecord {
+    fn owned_text_bytes(&self) -> usize {
+        self.message.capacity()
+            + self
+                .source
+                .as_ref()
+                .map_or(0, |source| source.filename.capacity())
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
@@ -127,7 +139,14 @@ impl ConsoleState {
                 .map(|key| key.capacity() * std::mem::size_of::<u16>())
                 .sum::<usize>()
     }
-    fn push(&mut self, function: ConsoleFunction, level: &'static str, now: u64, output: Output) {
+    fn push(
+        &mut self,
+        function: ConsoleFunction,
+        level: &'static str,
+        now: u64,
+        output: Output,
+        source: Option<crate::diagnostics::DiagnosticSourceLocation>,
+    ) {
         let record = HostConsoleRecord {
             sequence: self.sequence.saturating_add(1),
             timestamp_ms: now,
@@ -136,19 +155,20 @@ impl ConsoleState {
             group_depth: self.depth.min(u64::from(MAX_HOST_CONSOLE_GROUP_DEPTH)) as u32,
             message: output.text,
             truncated: output.truncated || self.depth > u64::from(MAX_HOST_CONSOLE_GROUP_DEPTH),
+            source,
         };
         self.sequence = record.sequence;
         while self.records.len() >= MAX_HOST_CONSOLE_RECORDS
-            || self.bytes + record.message.capacity() > MAX_HOST_CONSOLE_BYTES
+            || self.bytes + record.owned_text_bytes() > MAX_HOST_CONSOLE_BYTES
         {
             let old = self
                 .records
                 .pop_front()
                 .expect("one bounded message fits the empty console");
-            self.bytes -= old.message.capacity();
+            self.bytes -= old.owned_text_bytes();
             self.dropped = self.dropped.saturating_add(1);
         }
-        self.bytes += record.message.capacity();
+        self.bytes += record.owned_text_bytes();
         self.records.push_back(record);
     }
 }
@@ -224,11 +244,22 @@ impl Vm {
         level: &'static str,
         output: Output,
     ) -> Result<(), RuntimeError> {
+        let source = self.current_diagnostic_source_location();
+        self.console_emit_with_source(function, level, output, source)
+    }
+
+    pub(super) fn console_emit_with_source(
+        &mut self,
+        function: ConsoleFunction,
+        level: &'static str,
+        output: Output,
+        source: Option<crate::diagnostics::DiagnosticSourceLocation>,
+    ) -> Result<(), RuntimeError> {
         let now = self.sample_host_timer_clock();
         self.host_console
             .as_mut()
             .expect("console native has its state")
-            .push(function, level, now, output);
+            .push(function, level, now, output, source);
         self.synchronize_scheduling_usage()
     }
 

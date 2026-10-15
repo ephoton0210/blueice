@@ -211,14 +211,18 @@ impl Vm {
         &mut self,
         error: &RuntimeError,
     ) -> Result<(), RuntimeError> {
+        self.report_host_exception_with_origin(error, self.pending_diagnostic_origin.clone())
+    }
+
+    pub(super) fn report_host_exception_with_origin(
+        &mut self,
+        error: &RuntimeError,
+        origin: Option<crate::diagnostics::DiagnosticSourceLocation>,
+    ) -> Result<(), RuntimeError> {
         if self.host_error_reporting.is_none() || !host_timers::is_page_exception(error) {
             return Ok(());
         }
         let value = self.error_value(error.clone())?;
-        let origin = self
-            .pending_diagnostic_origin
-            .clone()
-            .or_else(|| self.uncaught_diagnostic_origin.clone());
         self.report_host_error_value(value, origin)
     }
 
@@ -269,7 +273,7 @@ impl Vm {
                 let mut output = Output::message("Uncaught ");
                 output.push(&message.text);
                 output.truncated |= message.truncated;
-                self.console_emit(ConsoleFunction::Error, "error", output)?;
+                self.console_emit_with_source(ConsoleFunction::Error, "error", output, origin)?;
             }
             Ok(())
         })();

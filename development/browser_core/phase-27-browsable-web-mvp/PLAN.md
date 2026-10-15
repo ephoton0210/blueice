@@ -86,8 +86,10 @@ M1q is in progress. A verified source-provenance foundation supplies original
 classic JavaScript statement positions through the real Core/child error
 handler and charges immutable maps with installed code. The cleanup follow-up
 preserves these origins through finalizers, ignored iterator-close failures
-and cross-script generator resumption. Typed, expression,
-module, asynchronous and copied MCP positions remain required; see
+and cross-script generator resumption. Bounded optional source records now
+pass through private v61, exact-document Core validation and MCP's untrusted
+frame, with message/source byte accounting. Typed, expression,
+module and asynchronous positions remain required; see
 [the live record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
 
 ## Objective
