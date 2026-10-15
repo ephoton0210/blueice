@@ -79,6 +79,22 @@ impl ScopeModel<'_> {
                 .partition_point(|token| token.start < nested.span.end)
                 .max(index + 1);
         }
+        // The existing walk already enters function execution scopes, visits
+        // computed keys in their enclosing scope, skips regex text and rebases
+        // template substitutions. Keep the module's await boundary here too.
+        if token.is("await")
+            && self.scopes[scope].execution == 0
+            && index
+                .checked_sub(1)
+                .is_none_or(|previous| !matches!(tokens[previous].text.as_str(), "." | "?."))
+            && !tokens.get(index + 1).is_some_and(|next| next.is(":"))
+            && self
+                .top_level_await
+                .as_ref()
+                .is_none_or(|span| token.start < span.start)
+        {
+            self.top_level_await = Some(token.span(&self.module.id));
+        }
         self.mutation(tokens, index, scope);
         if token.kind == TokenKind::Template {
             self.template(token, scope);

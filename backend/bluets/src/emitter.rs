@@ -483,7 +483,12 @@ fn emit_javascript(
     let emitted = targets::es5::lower(emitted, module, options, &lexical)?;
     helper_selection::validate(&emitted, module, options)?;
     let emitted = if wrapper == crate::ModuleKind::System {
-        system::wrap(emitted, module, options)?
+        system::wrap(
+            emitted,
+            module,
+            options,
+            crate::checker::top_level_await(project, module),
+        )?
     } else {
         emitted
     };

@@ -16,7 +16,7 @@ mod object_rest;
 mod object_spread;
 mod optional;
 
-pub const TARGET_HELPER_V1_VERSION: &str = "blue-ts-target-helper-v1";
+pub const TARGET_HELPER_V1_VERSION: &str = "blue-ts-target-helper-v2";
 pub(crate) const TARGET_HELPER_V1_SOURCE: &str = include_str!("targets/helpers.v1.js");
 pub(crate) const TARGET_HELPER_V1_SOURCES: &[&str] = &[
     TARGET_HELPER_V1_SOURCE,
@@ -166,6 +166,35 @@ fn assignment_end(tokens: &[Token], start: usize) -> usize {
         }
     }
     tokens.len()
+}
+
+/// Decorator lowering can turn a declaration into an expression. Classify
+/// the retained syntax before choosing a variable or statement boundary.
+pub(super) fn class_is_expression(tokens: &[Token], start: usize) -> bool {
+    start.checked_sub(1).is_some_and(|before| {
+        matches!(
+            tokens[before].text.as_str(),
+            "=" | "("
+                | "["
+                | ","
+                | ":"
+                | "?"
+                | "return"
+                | "new"
+                | "=>"
+                | "&&"
+                | "||"
+                | "??"
+                | "+"
+                | "-"
+                | "!"
+                | "~"
+                | "void"
+                | "typeof"
+                | "yield"
+                | "await"
+        )
+    })
 }
 
 pub(super) fn mapped_edits(previous: EmittedJavaScript, edits: Vec<TextEdit>) -> EmittedJavaScript {

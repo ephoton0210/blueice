@@ -173,22 +173,28 @@ pub(super) fn emitted_bluets_compiler_options(
     match emitted_profile {
         PageHostBlueTsEmissionProfile::Standard => {}
         PageHostBlueTsEmissionProfile::ModulePageConsole => {
-            options
-                .ambient_declaration_modules
-                .push(blueice_bluets::ModuleSource::new(
-                    MODULE_PAGE_CONSOLE_AMBIENT_ID,
-                    MODULE_PAGE_CONSOLE_AMBIENT_SOURCE,
-                ));
+            // File DOM already supplies a verified console declaration and
+            // runtime value. A page-loader declaration would duplicate it.
+            if page_dom_profile != PageDomProfile::File {
+                options
+                    .ambient_declaration_modules
+                    .push(blueice_bluets::ModuleSource::new(
+                        MODULE_PAGE_CONSOLE_AMBIENT_ID,
+                        MODULE_PAGE_CONSOLE_AMBIENT_SOURCE,
+                    ));
+            }
         }
         PageHostBlueTsEmissionProfile::Es5 => options.target = EcmaTarget::Es5,
         PageHostBlueTsEmissionProfile::System => {
             options.module_kind = ModuleKind::System;
-            options
-                .ambient_declaration_modules
-                .push(blueice_bluets::ModuleSource::new(
-                    SYSTEM_LOADER_CONSOLE_AMBIENT_ID,
-                    SYSTEM_LOADER_CONSOLE_AMBIENT_SOURCE,
-                ));
+            if page_dom_profile != PageDomProfile::File {
+                options
+                    .ambient_declaration_modules
+                    .push(blueice_bluets::ModuleSource::new(
+                        SYSTEM_LOADER_CONSOLE_AMBIENT_ID,
+                        SYSTEM_LOADER_CONSOLE_AMBIENT_SOURCE,
+                    ));
+            }
         }
         PageHostBlueTsEmissionProfile::LegacyDecorators => {
             options.experimental_decorators = true;
@@ -225,7 +231,7 @@ pub(super) fn prepare_bluets_emitted_classic(
             "BlueTS classic page console ambient conflicts with emission profile",
         ));
     }
-    if page_console_ambient {
+    if page_console_ambient && page_dom_profile != PageDomProfile::File {
         options
             .ambient_declaration_modules
             .push(blueice_bluets::ModuleSource::new(

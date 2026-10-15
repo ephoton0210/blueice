@@ -5,6 +5,7 @@
 use super::*;
 mod admission;
 mod debugger_control;
+mod diagnostic_profiles;
 mod dom_transport;
 mod error_paths;
 mod exception_sites;

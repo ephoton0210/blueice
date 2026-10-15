@@ -33,9 +33,20 @@ pub(super) fn wrap(
     emitted: EmittedJavaScript,
     module: &Module,
     options: &CompilerOptions,
+    top_level_await: Option<SourceSpan>,
 ) -> Result<EmittedJavaScript, Diagnostic> {
     if !module.is_external_module() {
         return Ok(emitted);
+    }
+    if let Some(span) = &top_level_await {
+        if options.target < crate::EcmaTarget::Es2017 {
+            return Err(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                span.clone(),
+                "System top-level await requires an ES2017 or newer target",
+            )
+            .with_typescript(1378, Vec::new()));
+        }
     }
     let mut sequence = 0;
     let mut fresh = |kind: &str| loop {
@@ -202,13 +213,25 @@ pub(super) fn wrap(
                 });
             }
         }
-        if depth == 0 && token.is("class") {
+        if depth == 0 && token.is("class") && !targets::class_is_expression(&tokens, index) {
             if let Some(name) = tokens.get(index + 1) {
+                let open = (index + 2..tokens.len())
+                    .find(|index| tokens[*index].is("{"))
+                    .ok_or_else(|| unsupported(module, "System class body is missing"))?;
+                let end = closing(&tokens, open)
+                    .ok_or_else(|| unsupported(module, "System class body is unbalanced"))?;
                 variables.insert(name.text.clone());
                 edits.push(TextEdit {
                     start: token.start,
                     end: token.start,
                     replacement: format!("{} = ", name.text),
+                });
+                // The retained class declaration becomes an assignment.
+                // Its closing brace no longer separates the next statement.
+                edits.push(TextEdit {
+                    start: tokens[end].end,
+                    end: tokens[end].end,
+                    replacement: ";".into(),
                 });
             }
         }
@@ -281,8 +304,13 @@ pub(super) fn wrap(
         .join(",\n");
     let prefix = format!("System.register({}, function({export}, {stem}_context) {{\n'use strict';\nvar exports = {{}}, {imports} = Object.create(null);\nfunction require(name) {{ return {imports}[name]; }}\n{helper}\n{variables}", serde_json::to_string(&dependencies).unwrap());
     let execute = format!(
-        "{slots}\n{}\nreturn {{setters: [{setters}], execute: function() {{\n",
-        hoisted.join("\n")
+        "{slots}\n{}\nreturn {{setters: [{setters}], execute: {}function() {{\n",
+        hoisted.join("\n"),
+        if top_level_await.is_some() {
+            "async "
+        } else {
+            ""
+        }
     );
     let suffix = format!("\n{refresh}();\n}}}};\n}});");
     Ok(mapping::relocate(

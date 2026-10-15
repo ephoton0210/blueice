@@ -32,7 +32,7 @@ mod decorator_types;
 pub(crate) use decorator_types::replacement_type as decorator_replacement_type;
 mod properties;
 mod scopes;
-pub(crate) use scopes::emission::{lexical_emission, LexicalEmission};
+pub(crate) use scopes::emission::{lexical_emission, top_level_await, LexicalEmission};
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
 pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v4";

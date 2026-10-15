@@ -94,6 +94,7 @@ pub(super) struct ScopeModel<'a> {
     scopes: Vec<Scope>,
     references: Vec<Reference>,
     arguments_reads: BTreeMap<ScopeId, Vec<SourceSpan>>,
+    top_level_await: Option<SourceSpan>,
     /// Existing, bound qualified types (including imported namespace members).
     qualified_types: BTreeSet<String>,
     type_definitions: BTreeMap<String, TypeDefinition>,
@@ -149,6 +150,7 @@ impl<'a> ScopeModel<'a> {
             scopes: Vec::new(),
             references: Vec::new(),
             arguments_reads: BTreeMap::new(),
+            top_level_await: None,
             qualified_types: types.keys().cloned().collect(),
             type_definitions: types.clone(),
             max_type_expansions,

@@ -142,12 +142,22 @@ fn observed_error_source_location(script: &str) -> String {
 }
 
 fn observed_script_error_source_location(script: &str, script_type: &str, emitted: bool) -> String {
+    observed_profile_error_source_location(script, script_type, emitted, |options| options)
+}
+
+fn observed_profile_error_source_location(
+    script: &str,
+    script_type: &str,
+    emitted: bool,
+    configure: fn(CoreLaunchOptions) -> CoreLaunchOptions,
+) -> String {
     let (fixture, url, gatekeeper) = fixture(format!(
         "<p id=counter>waiting</p><script>
         window.onerror=function(message,filename,line,column,error){{
             document.getElementById('counter').textContent='location:'+filename+':'+line+':'+column;
             return true;
         }};
+        var System={{register:function(dependencies,declare){{var body=declare(function(name,value){{return value;}},{{id:'source'}});body.execute();}}}};
         </script><script type='{script_type}'>{script}</script>"
     ));
     let options = CoreLaunchOptions::default()
@@ -160,8 +170,13 @@ fn observed_script_error_source_location(script: &str, script_type: &str, emitte
     } else {
         options
     };
-    let core = SpawnedCore::spawn_with_options(240.0, 120.0, &fixture.root.join("frames"), options)
-        .unwrap();
+    let core = SpawnedCore::spawn_with_options(
+        240.0,
+        120.0,
+        &fixture.root.join("frames"),
+        configure(options),
+    )
+    .unwrap();
     let mut stream = core.stream.try_clone().unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(20)))
@@ -186,7 +201,28 @@ fn observed_script_error_source_location(script: &str, script_type: &str, emitte
         }
         thread::sleep(Duration::from_millis(20));
     }
-    panic!("the global error handler must publish coordinates: type={script_type:?}, source={script:?}");
+    let console = request(&mut stream, 102, ClientMessage::GetConsoleMessages);
+    panic!("the global error handler must publish coordinates: type={script_type:?}, source={script:?}, console={console:?}");
+}
+
+#[test]
+fn real_pages_preserve_sources_across_all_emitted_profiles() {
+    type Configure = fn(CoreLaunchOptions) -> CoreLaunchOptions;
+    for (name, script_type, configure) in [
+        ("standard", "application/x-blueice-typescript", (|options| options) as Configure),
+        ("classic console", "application/x-blueice-typescript", CoreLaunchOptions::supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_page_console_ambient as Configure),
+        ("ES5", "application/x-blueice-typescript", CoreLaunchOptions::supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_es5 as Configure),
+        ("System", "application/x-blueice-typescript", CoreLaunchOptions::supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_system as Configure),
+        ("legacy decorators", "application/x-blueice-typescript", CoreLaunchOptions::supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_legacy_decorators as Configure),
+        ("legacy metadata", "application/x-blueice-typescript", CoreLaunchOptions::supervise_out_of_process_bluejs_with_emitted_blue_ts_classic_legacy_metadata as Configure),
+        ("standard module", "application/x-blueice-typescript-module", (|options| options) as Configure),
+        ("module console", "application/x-blueice-typescript-module", CoreLaunchOptions::supervise_out_of_process_bluejs_with_emitted_blue_ts_module_page_console_ambient as Configure),
+    ] {
+        let prefix = if name=="System" {"export const marker: number=0;"} else {""};
+        let source = format!("{prefix}class Handler {{fail(): void {{\n  const face: string='😀';  throw 'profile-page';\n}}}}new Handler().fail();");
+        let location = observed_profile_error_source_location(&source,script_type,true,configure);
+        assert!(location.starts_with("location:blueice://page/tab-1/document-") && location.ends_with("/inline-1.ts:2:29"),"{name}: {location}");
+    }
 }
 
 #[test]

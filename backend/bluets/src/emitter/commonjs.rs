@@ -399,7 +399,12 @@ pub(super) fn lower_commonjs(
                 edits.push(TextEdit {
                     start: class.span.end,
                     end: class.span.end,
-                    replacement: format!(" exports.{} = {};", class.export_name(), class.name),
+                    replacement: format!(
+                        "{} exports.{} = {};",
+                        super::relocations::unmapped(),
+                        class.export_name(),
+                        class.name
+                    ),
                 });
             }
             Declaration::Enum(item) if item.exported && !item.declared => {

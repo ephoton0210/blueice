@@ -52,6 +52,18 @@ remain open. See the
 and [rejection contract](HOST_PROMISE_REJECTIONS.md).
 
 **Current work — M1q original diagnostic source positions (in progress).**
+The producer/profile checkpoint passes 160 authenticated File DOM
+normal/deferred throw/report/rejection/dynamic-code contexts, 28 generated-helper/
+callback controls and eight real Core/child page contexts. Fixes remove duplicate
+console declarations, preserve System top-level await, retain exact ES5 class
+maps through helper insertion, terminate System class assignments and leave
+generated CommonJS class publication unmapped. The fixed-input compiler/bridge/
+launcher/MCP replay passes **1,843 cases, zero failures and 228 existing ignored**
+across 189 test executables. Formatting and complete workspace/all-target build
+and Clippy pass. Eighteen Rust inputs and 13,849 workspace/compiler inputs stay
+fixed; all 189 test executable and seven runtime hashes are verified. The gate
+count remains **6/10** pending the remaining operation and lifecycle acceptance.
+
 The implicit-protocol checkpoint is implemented in `53a6d7f88`. Certified
 operand locations survive heritage, spread, template conversion and delegated
 iteration; AsyncFromSync preserves known and unavailable callback origins.
@@ -60,14 +72,15 @@ the existing segment budget. Primitive `Proxy.ownKeys` results are rejected
 before boxed-property reads. All fifty-six diagnostic groups, three public
 own-key groups, ten source-map groups and thirty-six deferred contexts pass.
 
-The complete fixed-input Rust replay passes **9,312 cases, zero failures and
+At that implicit-protocol checkpoint, the complete fixed-input Rust replay
+passes **9,312 cases, zero failures and
 233 existing ignored** across 687 result groups, including real Core/child
 pages, all five official MCP console cases and doc tests. All 663 test
 executables and seven runtime hashes remain fixed. Formatting and complete
 workspace/all-target build and Clippy pass. BlueTS now follows the workspace's
 raw-header HTTP feature policy; the downloader probe passes in the full suite.
 
-**Six of ten final acceptance gates are complete.** The fresh complete pinned
+**Six of ten final acceptance gates are complete.** The prior complete pinned
 Test262 run matches M1p across all 102,926 modes: 102,921 pass, one stale corpus
 and four exclusions, with no changed source/result inventory or new timeout.
 Remaining expression/generated provenance,
@@ -864,6 +877,32 @@ the full source-position requirement.
       Results remain 102,921 pass, one stale corpus and four exclusions, with
       zero changed modes and no new failure or timeout. Runner exit 1 represents
       the five unchanged non-pass modes; the complete comparison succeeds.
+- [x] Exercise twenty admitted producer/profile routes in normal and deferred
+      execution: 160 throw/report/rejection/dynamic-code contexts preserve exact
+      authored UTF-16 positions or explicit absence after a later script runs.
+      Reuse File DOM's verified console declaration instead of adding duplicate
+      classic, System or module-console ambient declarations.
+- [x] Preserve System module awaits in async execute bodies, using existing
+      lexical execution scopes. Four module-await and eight nested/text controls
+      pass; ES5/ES2015 refuse atomically at the original await token.
+- [x] Preserve ES5 class parameters, bodies, keys and heritage through exact
+      relocation, with generated scaffolding unmapped. Public map validation
+      reproduces and fixes malformed class/object-spread maps; constructor,
+      derived/super, computed-key and accessor controls cover LF/CRLF and UTF-16.
+- [x] Retain System class statement boundaries and leave generated CommonJS
+      class-publication assignments unmapped. Public compile/parse/map coverage
+      checks four System class shapes and both CommonJS/System publication.
+      Thirteen source-map, four System-map and two System-runtime groups pass.
+- [x] Distinguish authored callbacks and generated-helper gaps in twenty-eight
+      normal/deferred emitted-profile contexts. Real Core/child pages exercise
+      all six emitted profiles and both console selectors through window.onerror.
+- [x] Pass the fixed-input profile replay: all 131 BlueTS, 35 bridge and 22
+      launcher test executables plus the official MCP console selection pass
+      1,843 cases, zero failures and 228 existing ignored. Formatting and full
+      workspace/all-target build/Clippy pass; eighteen Rust and 13,849 workspace/
+      compiler inputs, seven runtimes and all 189 selected test hashes stay fixed.
+      Reuse the earlier Test262 result only after verifying identical adapter/
+      worker/runner hashes, all 56,979 pinned corpus files and the saved inventory.
 
 #### Remaining implementation and verification
 
@@ -1760,6 +1799,37 @@ The requested build cleanup removes 766,331 old compiled files from the main
 checkout and sixteen old agent worktrees, releasing 335.69 GiB. Sources,
 worktree changes, corpora, reports and the live MCP executable are preserved;
 all seventeen checkout states and the protected runtime hashes are verified.
+
+The producer/profile follow-up (2026-10-16) reproduces thirty incorrect host
+contexts across duplicate console admission, System await execution, ES5
+class/object-spread maps and System class statement boundaries. Public compiler
+lookup additionally exposes generated CommonJS class-publication text claiming
+original class columns after System relocation. Generated publication now has
+explicit gaps; validators continue checking the complete mapping stream.
+The final matrix passes 160 source contexts and 28 helper/callback controls in
+normal/deferred execution. Eight real Core/child contexts cover all six emitted
+profiles and the classic/module console selectors. Thirteen public source-map,
+four System-map and two System-runtime groups pass, including four retained
+System class shapes and both CommonJS/System publication paths.
+
+The complete affected selection passes 1,843 cases, zero failures and 228
+existing ignored across 189 executables: BlueTS 1,030, bridge 298, launcher 510
+and the five official MCP console cases. All workspace targets build and pass
+Clippy with warnings denied; formatting passes. Eighteen Rust inputs and 13,849
+workspace/compiler inputs remain fixed throughout validation. Seven runtime
+and all 189 selected test executable hashes are checked before and after the
+run. The failed broad replay is retained separately from the corrected replay.
+Evidence is `target/source-profile-origins-source-20261016.json` and
+`target/source-profile-origins-validation-20261016.json`.
+
+No new Test262 execution is claimed for this compiler/host follow-up. Both
+conformance runtime binaries and all eight runner inputs exactly match
+`963c400a9`; the 56,979 pinned corpus files and saved summary/results hashes are
+verified again. The unchanged 102,926-mode result remains 102,921 pass, one
+stale corpus and four exclusions. Reuse evidence is
+`target/source-profile-origins-conformance-reuse-20261016.json`. Remaining
+operation-owner precision and the integrated queued-origin/lifecycle/resource
+matrix keep M1q at 6/10 and section H open.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

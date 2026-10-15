@@ -6,6 +6,98 @@
 
 use blueice_bluets::{compile, CompilerOptions, MapLoader, ModuleKind, ModuleSource};
 
+fn system_javascript(body: &str) -> String {
+    let id = "memory:///system-await.ts";
+    let source = format!("export const marker: number=0;{body}");
+    let compilation = compile(
+        id,
+        &MapLoader::from([ModuleSource::new(id, &source)]),
+        CompilerOptions {
+            module_kind: ModuleKind::System,
+            source_map: true,
+            diagnostic_source_map: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        !compilation.has_errors(),
+        "{source}: {:?}",
+        compilation.diagnostics
+    );
+    compilation
+        .output
+        .unwrap()
+        .artifacts
+        .remove(id)
+        .unwrap()
+        .javascript
+}
+
+#[test]
+fn system_module_awaits_have_an_async_execute_boundary() {
+    for source in [
+        "await 0;",
+        "{await 0;}",
+        "const result: any=Number(await 0);",
+        "const result: string=`value:${await 0}`;",
+    ] {
+        let javascript = system_javascript(source);
+        assert!(
+            javascript.contains("execute: async function()"),
+            "{source}: module await must execute inside an async function"
+        );
+    }
+}
+
+#[test]
+fn nested_awaits_and_await_text_keep_system_execute_synchronous() {
+    for source in [
+        "async function nested(): Promise<number> {return await 0;}",
+        "const nested: any=async()=>await 0;",
+        "const nested: any={async run(){await 0;}};",
+        "class Nested {run(){const nested: any=async()=>await 0;}}",
+        "const value: any={await:1};",
+        "const value: any=/await/;",
+        "const value: string=`await ${1}`;",
+        "const value: string=`nested:${async()=>await 0}`;",
+    ] {
+        let javascript = system_javascript(source);
+        assert!(
+            javascript.contains("execute: function()"),
+            "{source}: nested code or text must not change the execute result to a Promise"
+        );
+    }
+}
+
+#[test]
+fn system_module_await_refuses_targets_below_es2017_at_the_original_token() {
+    use blueice_bluets::EcmaTarget;
+    let id = "memory:///system-target.ts";
+    let source = "export const marker: number=0;\nawait 0;";
+    for target in [EcmaTarget::Es5, EcmaTarget::Es2015] {
+        let compilation = compile(
+            id,
+            &MapLoader::from([ModuleSource::new(id, source)]),
+            CompilerOptions {
+                module_kind: ModuleKind::System,
+                target,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(compilation.has_errors());
+        assert!(compilation.output.is_none());
+        assert!(
+            compilation
+                .diagnostics
+                .iter()
+                .any(|error| error.span.module == id
+                    && &source[error.span.start..error.span.end] == "await"),
+            "{:?}",
+            compilation.diagnostics
+        );
+    }
+}
+
 fn source_lines(mappings: &str) -> Vec<Vec<i64>> {
     const ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut source_line = 0;

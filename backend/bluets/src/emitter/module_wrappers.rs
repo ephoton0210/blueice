@@ -7,7 +7,7 @@
 use super::{javascript_specifier, Declaration, EmittedJavaScript, Module};
 use crate::{CompilerOptions, JsxMode, ModuleKind};
 
-pub(crate) const VERSION: &str = "bluets-module-wrappers/1";
+pub(crate) const VERSION: &str = "bluets-module-wrappers/2";
 
 pub(super) fn wrap(
     mut emitted: EmittedJavaScript,

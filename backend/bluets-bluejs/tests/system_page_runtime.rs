@@ -10,6 +10,28 @@ use blueice_bluejs::{
 use blueice_bluets::{CompilerOptions, MapLoader, ModuleKind, ModuleSource};
 
 #[test]
+fn system_class_declarations_keep_their_statement_boundary() {
+    let id = "memory:///system-class.ts";
+    for source in [
+        "export const marker: number=0;class Handler {fail(): void {throw 'class';}}new Handler().fail();",
+        "export class Handler {fail(): void {throw 'class';}}const result: number=1;",
+        "export const marker: number=0;class Handler {}class Other {}new Other();",
+        "export const Handler=class Named {static value(): number {return 1;}};const result: number=Handler.value();",
+    ] {
+        let compilation = blueice_bluets::compile(id,&MapLoader::from([ModuleSource::new(id,source)]),CompilerOptions {
+            module_kind: ModuleKind::System,source_map: true,diagnostic_source_map: true,inline_sources: true,
+            ..CompilerOptions::default()
+        });
+        assert!(!compilation.has_errors(),"{:?}",compilation.diagnostics);
+        let artifact = compilation.output.unwrap().artifacts.remove(id).unwrap();
+        parse(&artifact.javascript).unwrap_or_else(|error|panic!("{error:?}: {}",artifact.javascript));
+        let positions=artifact.source_map.as_ref().unwrap().original_positions_at_exact(&artifact.javascript,&[(0,0)],100_000,16_000_000);
+        let map=artifact.source_map.as_ref().unwrap();
+        assert!(positions.is_ok(),"{source}: {positions:?}\n{}",serde_json::json!({"javascript":artifact.javascript,"mappings":map.mappings,"sources_content":map.sources_content}));
+    }
+}
+
+#[test]
 fn frozen_system_output_pauses_through_a_separately_installed_loader_once() {
     let module = "memory:///main.ts";
     let frozen = include_str!("../../bluets/tests/fixtures/k11_source_maps/system_wrapper.ts");

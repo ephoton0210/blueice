@@ -13,6 +13,19 @@ pub(crate) struct LexicalEmission {
     pub(crate) captured_loop_bindings: BTreeSet<String>,
 }
 
+pub(crate) fn top_level_await(project: &Project, module: &Module) -> Option<SourceSpan> {
+    ScopeModel::new(
+        project,
+        module,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        None,
+        None,
+        128,
+    )
+    .top_level_await
+}
+
 pub(crate) fn lexical_emission(project: &Project, module: &Module) -> LexicalEmission {
     let model = ScopeModel::new(
         project,

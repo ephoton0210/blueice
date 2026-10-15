@@ -7,7 +7,6 @@
 use super::*;
 
 pub(super) fn body(
-    source: &str,
     tokens: &[Token],
     open: usize,
     close: usize,
@@ -43,7 +42,7 @@ pub(super) fn body(
                     "super key was not retained",
                 )
             })?;
-            let key = source[tokens[index + 1].end..tokens[end].start].to_string();
+            let key = copied(tokens[index + 1].end, tokens[end].start);
             index = end + 1;
             key
         } else {
@@ -68,8 +67,12 @@ pub(super) fn body(
         } else {
             format!("{base}.prototype")
         };
-        output.push_str(&source[cursor..tokens[first].start]);
-        output.push_str(&format!("Reflect.get({owner}, {key}, this)"));
+        output.push_str(&copied(cursor, tokens[first].start));
+        output.push_str(&format!(
+            "{}Reflect.get{}({owner}, {key}, this)",
+            source_anchor(tokens[first].start),
+            unmapped()
+        ));
         cursor = tokens[index - 1].end;
         if tokens.get(index).is_some_and(|token| token.is("(")) {
             output.push_str(".call(this");
@@ -80,6 +83,6 @@ pub(super) fn body(
             index += 1;
         }
     }
-    output.push_str(&source[cursor..tokens[close].end]);
+    output.push_str(&copied(cursor, tokens[close].end));
     Ok(output)
 }

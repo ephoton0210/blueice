@@ -583,3 +583,124 @@ fn diagnostic_token_maps_preserve_generated_helper_gaps() {
         .unwrap();
     assert_eq!(found, vec![None, None]);
 }
+
+#[test]
+fn es5_class_method_maps_remain_valid_after_object_spread_helper_insertion() {
+    use blueice_bluets::RuntimePolicy;
+    let id = "memory:///es5-class-map.ts";
+    for operation in ["return 0;", "throw 'authored';"] {
+        let source=format!("declare const ProfileProxy: any;class Handler {{ownKeys(): any {{\n  const face: string='😀';  {operation}\n}}}}const input: {{value: number}}=new ProfileProxy({{value:1}},new Handler());const result: any={{...input}};");
+        let compilation = compile(
+            id,
+            &MapLoader::from([ModuleSource::new(id, &source)]),
+            CompilerOptions {
+                target: EcmaTarget::Es5,
+                runtime_policy: RuntimePolicy::Checked,
+                source_map: true,
+                diagnostic_source_map: true,
+                inline_sources: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
+        let artifact = compilation.output.unwrap().artifacts.remove(id).unwrap();
+        let map = artifact.source_map.unwrap();
+        let found =
+            map.original_positions_at_exact(&artifact.javascript, &[(0, 0)], 100_000, 16_000_000);
+        assert!(found.is_ok(), "{operation}: {found:?}");
+        if operation.starts_with("throw") {
+            let generated = position(
+                &artifact.javascript,
+                artifact.javascript.find(operation).unwrap(),
+            );
+            let expected = position(&source, source.find(operation).unwrap());
+            let found = map
+                .original_positions_at_exact(
+                    &artifact.javascript,
+                    &[generated],
+                    100_000,
+                    16_000_000,
+                )
+                .unwrap()[0]
+                .expect("original method throw");
+            assert_eq!((found.line, found.column_utf16), expected);
+        }
+    }
+}
+
+#[test]
+fn exported_class_publication_stays_unmapped_through_module_wrappers() {
+    let id = "memory:///exported-class-map.ts";
+    let source = "export class Handler {fail(): void {\n const face: string='😀';throw 'authored';\n}}const result: number=1;";
+    for module_kind in [ModuleKind::CommonJs, ModuleKind::System] {
+        let compilation = compile(
+            id,
+            &MapLoader::from([ModuleSource::new(id, source)]),
+            CompilerOptions {
+                module_kind,
+                source_map: true,
+                diagnostic_source_map: true,
+                inline_sources: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
+        let artifact = compilation.output.unwrap().artifacts.remove(id).unwrap();
+        let map = artifact.source_map.as_ref().unwrap();
+        let queries = ["exports.Handler = Handler", "throw 'authored'"].map(|token| {
+            position(
+                &artifact.javascript,
+                artifact.javascript.find(token).unwrap(),
+            )
+        });
+        let positions = map
+            .original_positions_at_exact(&artifact.javascript, &queries, 100_000, 16_000_000)
+            .unwrap();
+        assert_eq!(positions[0], None);
+        let original = positions[1].expect("authored class body");
+        assert_eq!(
+            (original.line, original.column_utf16),
+            position(source, source.find("throw").unwrap())
+        );
+    }
+}
+
+#[test]
+fn es5_class_relocations_keep_authored_bodies_parameters_and_keys() {
+    let id = "memory:///es5-class-relocations.ts";
+    for (class, retained) in [
+        ("class Handler {constructor(value: number) {\n const face: string='😀';throw 'constructor';\n}}new Handler(1);", "throw 'constructor';"),
+        ("class Base {}class Handler extends Base {constructor(value: number) {super();\n const face: string='😀';throw 'derived';\n}}new Handler(1);", "throw 'derived';"),
+        ("class Base {method(): number {return 1;}}class Handler extends Base {method(): number {super.method();\n const face: string='😀';throw 'method';\n}}new Handler().method();", "throw 'method';"),
+        ("class Base {method(): number {return 1;}}class Handler extends Base {method(): number {super['method']();\n const face: string='😀';throw 'computed-super';\n}}new Handler().method();", "throw 'computed-super';"),
+        ("function key(): string {return 'method';}class Handler {[key()](): any {return 0;}}", "key()"),
+        ("class Handler {get value(): number {\n const face: string='😀';throw 'accessor';\n}}new Handler().value;", "throw 'accessor';"),
+    ] {
+        for newline in ["\n", "\r\n"] {
+            let source = format!("{class}const input: {{value: number}}={{value:1}};const result: any={{...input}};").replace('\n', newline);
+            let emit = |diagnostic_source_map| compile(id,&MapLoader::from([ModuleSource::new(id,&source)]),CompilerOptions {
+                target: EcmaTarget::Es5, source_map: true, diagnostic_source_map,
+                inline_sources: true, ..CompilerOptions::default()
+            });
+            let diagnostic = emit(true);
+            assert!(!diagnostic.has_errors(),"{source}: {:?}",diagnostic.diagnostics);
+            let artifact = diagnostic.output.unwrap().artifacts.remove(id).unwrap();
+            let ordinary = emit(false);
+            assert!(!ordinary.has_errors(),"{:?}",ordinary.diagnostics);
+            assert_eq!(artifact.javascript,ordinary.output.unwrap().artifacts[id].javascript);
+            let map = artifact.source_map.as_ref().unwrap();
+            let generated = position(&artifact.javascript,artifact.javascript.rfind(retained).unwrap());
+            let expected = position(&source,source.rfind(retained).unwrap());
+            let original = map.original_positions_at_exact(&artifact.javascript,&[generated],100_000,16_000_000).unwrap()[0].expect("retained class source");
+            assert_eq!((original.line,original.column_utf16),expected,"{source}");
+            if let Some(offset) = artifact.javascript.find("Object.defineProperty") {
+                assert_eq!(map.original_positions_at_exact(&artifact.javascript,&[position(&artifact.javascript,offset)],100_000,16_000_000).unwrap(),vec![None]);
+            }
+            if source.contains("constructor(value") {
+                let offset = artifact.javascript.find("function Handler(value").unwrap()+"function Handler(".len();
+                let original = map.original_positions_at_exact(&artifact.javascript,&[position(&artifact.javascript,offset)],100_000,16_000_000).unwrap()[0].expect("retained parameter");
+                assert_eq!((original.line,original.column_utf16),position(&source,source.find("value: number").unwrap()));
+            }
+        }
+    }
+}

@@ -5,6 +5,7 @@
 //! Named ES5 classes after the existing AST-owned member and field lowering.
 
 use super::*;
+use crate::emitter::relocations::{relocated_verbatim, source_anchor, unmapped};
 
 mod super_members;
 
@@ -122,22 +123,12 @@ pub(super) fn lower(
                 ));
             }
             let end = exponentiation::matching_close(&tokens, body).unwrap();
-            let arguments =
-                &emitted.javascript[tokens[parameters].end..tokens[parameters_end].start];
-            let text = &emitted.javascript[tokens[body].start..tokens[end].end];
+            let arguments = copied(tokens[parameters].end, tokens[parameters_end].start);
             if tokens[property].is("constructor") && !is_static && !accessor {
                 let text = if extends {
-                    derived_body(
-                        &emitted.javascript,
-                        &tokens,
-                        (body, end),
-                        &base,
-                        &construct,
-                        &receiver,
-                        module,
-                    )?
+                    derived_body(&tokens, (body, end), &base, &construct, &receiver, module)?
                 } else {
-                    text.to_string()
+                    copied(tokens[body].start, tokens[end].end)
                 };
                 constructor = Some(format!("function {name}({arguments}) {text}\n"));
             } else {
@@ -147,25 +138,17 @@ pub(super) fn lower(
                     format!("{name}.prototype")
                 };
                 let text = if extends {
-                    super_members::body(
-                        &emitted.javascript,
-                        &tokens,
-                        body,
-                        end,
-                        &base,
-                        is_static,
-                        module,
-                    )?
+                    super_members::body(&tokens, body, end, &base, is_static, module)?
                 } else {
-                    text.to_string()
+                    copied(tokens[body].start, tokens[end].end)
                 };
                 let key = if tokens[property].is("[") {
                     format!(
                         "({})",
-                        &emitted.javascript[tokens[property].end..tokens[property_end - 1].start]
+                        copied(tokens[property].end, tokens[property_end - 1].start)
                     )
                 } else if tokens[property].kind == TokenKind::String {
-                    tokens[property].text.clone()
+                    copied(tokens[property].start, tokens[property].end)
                 } else {
                     serde_json::to_string(&tokens[property].text).unwrap()
                 };
@@ -191,9 +174,9 @@ pub(super) fn lower(
             String::new()
         };
         let argument = if extends {
-            tokens[start + 3].text.as_str()
+            copied(tokens[start + 3].start, tokens[start + 3].end)
         } else {
-            ""
+            String::new()
         };
         let expression = format!(
             "(function ({}) {{\n{constructor}{inheritance}{members}return {name};\n}})({argument})",
@@ -226,51 +209,38 @@ pub(super) fn lower(
                 TextEdit {
                     start: insertion,
                     end: insertion,
-                    replacement: format!("\n{helper}\n"),
+                    replacement: format!("{}\n{helper}\n", unmapped()),
                 },
                 TextEdit {
                     start: tokens[start].start,
                     end: tokens[close].end,
-                    replacement,
+                    replacement: format!("{}{replacement}", unmapped()),
                 },
             ],
         );
     }
 }
 
-/// A class expression produces a constructor value at its existing expression
-/// site. Decorator lowering can introduce such a site for an original class
-/// declaration, so classify the retained emitted syntax rather than its source
-/// declaration alone.
-fn class_is_expression(tokens: &[crate::Token], start: usize) -> bool {
-    start.checked_sub(1).is_some_and(|before| {
-        matches!(
-            tokens[before].text.as_str(),
-            "=" | "("
-                | "["
-                | ","
-                | ":"
-                | "?"
-                | "return"
-                | "new"
-                | "=>"
-                | "&&"
-                | "||"
-                | "??"
-                | "+"
-                | "-"
-                | "!"
-                | "~"
-                | "void"
-                | "typeof"
-                | "yield"
-                | "await"
-        )
-    })
+/// A moved body or operand retains its current input coordinates. Synthetic
+/// scaffolding following the slice must not inherit its final mapped token.
+fn copied(start: usize, end: usize) -> String {
+    format!("{}{}", relocated_verbatim(start, end), unmapped())
+}
+
+fn relocated_body(start: usize, end: usize, mut edits: Vec<TextEdit>) -> String {
+    edits.sort_by_key(|edit| (edit.start, edit.end));
+    let mut output = String::new();
+    let mut cursor = start;
+    for edit in edits {
+        output.push_str(&copied(cursor, edit.start));
+        output.push_str(&edit.replacement);
+        cursor = edit.end;
+    }
+    output.push_str(&copied(cursor, end));
+    output
 }
 
 fn derived_body(
-    source: &str,
     tokens: &[Token],
     body: (usize, usize),
     base: &str,
@@ -303,26 +273,34 @@ fn derived_body(
             let arguments = &tokens[index + 2..end];
             let values = if let [spread, arguments] = arguments {
                 if spread.is("...") && arguments.is("arguments") {
-                    "arguments".to_string()
+                    copied(arguments.start, arguments.end)
                 } else {
-                    format!("[{}]", &source[tokens[index + 1].end..tokens[end].start])
+                    format!("[{}]", copied(tokens[index + 1].end, tokens[end].start))
                 }
             } else {
-                format!("[{}]", &source[tokens[index + 1].end..tokens[end].start])
+                format!("[{}]", copied(tokens[index + 1].end, tokens[end].start))
             };
             edits.push(TextEdit {
-                start: tokens[index].start - begin,
-                end: tokens[end].end - begin,
-                replacement: format!("{receiver} = {construct}({base}, this, {values})"),
+                start: tokens[index].start,
+                end: tokens[end].end,
+                replacement: format!(
+                    "{receiver} = {}{construct}{}({base}, this, {values})",
+                    source_anchor(tokens[index].start),
+                    unmapped()
+                ),
             });
             index = end + 1;
             continue;
         }
         if tokens[index].is("this") {
             edits.push(TextEdit {
-                start: tokens[index].start - begin,
-                end: tokens[index].end - begin,
-                replacement: receiver.into(),
+                start: tokens[index].start,
+                end: tokens[index].end,
+                replacement: format!(
+                    "{}{receiver}{}",
+                    source_anchor(tokens[index].start),
+                    unmapped()
+                ),
             });
         }
         if tokens[index].is("return") {
@@ -335,14 +313,14 @@ fn derived_body(
         index += 1;
     }
     edits.push(TextEdit {
-        start: tokens[open].end - begin,
-        end: tokens[open].end - begin,
+        start: tokens[open].end,
+        end: tokens[open].end,
         replacement: format!("\nvar {receiver};\n"),
     });
     edits.push(TextEdit {
-        start: tokens[close].start - begin,
-        end: tokens[close].start - begin,
+        start: tokens[close].start,
+        end: tokens[close].start,
         replacement: format!("\nreturn {receiver};\n"),
     });
-    Ok(apply_edits(&source[begin..tokens[close].end], edits).javascript)
+    Ok(relocated_body(begin, tokens[close].end, edits))
 }

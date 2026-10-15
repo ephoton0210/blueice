@@ -814,6 +814,72 @@ final bridge/host acceptance. Evidence is
 precision, emitted-profile and integrated lifecycle/resource acceptance, and
 full workspace/all-target/Test262 gates stay open. M1q remains at 3/10.
 
+### Admitted producer and emission profiles
+
+The profile follow-up exercises the authenticated File DOM owner and the
+public document/deferred-execution/console boundary. Twenty admitted routes
+cover JavaScript and direct BlueTS classic/module/awaited-module execution;
+emitted classic Standard, ES5 and both legacy decorator profiles, with and
+without the classic console ambient; System classic and awaited execute;
+and the independent Standard/ModulePageConsole module profiles before and
+after await. Each route tests normal and deferred execution and authored
+throw, explicit report, native rejection and unknown dynamic code: 160 source
+contexts. A later script catches an unrelated throw before the copied record
+is inspected. Coordinates are calculated from authored UTF-16 text including
+an astral character, not from a neighboring emitted token.
+
+File DOM already supplies the verified console declaration. Adding another
+classic, System or module-console ambient previously caused duplicate
+declaration rejection; the extra declaration is now omitted for that owner.
+The profile's module kind and the independent module selection still apply.
+The page supplies the System loader as ordinary JavaScript.
+
+System top-level await now produces an async `execute` method. The existing
+lexical scope walk identifies module execution, including template
+substitutions and computed contexts, and excludes nested function execution,
+regex text and property names. Four positive and eight negative shapes are
+covered. Targets below ES2017 fail atomically at the original await token,
+consistent with the [TypeScript System top-level-await contract](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-8.html#top-level-await).
+System class declarations also retain a statement terminator when rewritten
+as assignments; adjacent statements previously produced unparseable emitted
+JavaScript. The class-expression classifier is shared with ES5 lowering so
+an existing expression does not acquire a declaration's assignment boundary.
+Generated CommonJS class-publication assignments are explicitly unmapped;
+subsequent System copies must not extrapolate original class columns across
+`exports` scaffolding. Public lookup checks both CommonJS and System output.
+
+ES5 class lowering now relocates retained parameter, method-body, computed-key
+and heritage slices through the established copy-provenance mechanism.
+Derived constructor and super-property rewrites preserve unaffected slices
+and explicitly anchor rewritten operations. Generated constructor/member
+scaffolding and class helpers have unmapped gaps. Public map lookup reproduced
+malformed coordinates after object-spread helper insertion; the fix preserves
+whole-stream validation rather than accepting out-of-range source columns.
+Constructor, derived method, computed super/key and accessor controls cover
+LF/CRLF and UTF-16 coordinates. Ordinary and diagnostic emission produce the
+same JavaScript.
+
+Twenty-eight additional normal/deferred profile controls distinguish authored
+callback throws from generated helper failures in all six emitted profiles.
+Real Core/child pages also exercise every profile through `window.onerror`.
+The fixed-input replay passes 1,843 cases, zero failures and 228 existing
+ignored across all 131 BlueTS, 35 bridge and 22 launcher test executables plus
+the official MCP console selection. All workspace targets build and pass
+Clippy with warnings denied; formatting passes. Eighteen Rust inputs, 13,849
+workspace/compiler inputs, seven runtimes and all 189 selected test executable
+hashes remain fixed. The failed broad replay is retained separately; its
+exported-class map failure is covered by the corrected public regressions.
+Evidence is `target/source-profile-origins-source-20261016.json` and
+`target/source-profile-origins-validation-20261016.json`.
+
+The prior complete Test262 result is reused after verifying unchanged adapter,
+worker and runner hashes, all 56,979 pinned corpus files and the saved result
+inventory. Its 102,926 modes remain 102,921 pass, one stale corpus and four
+exclusions; this follow-up does not claim a fresh execution. The reuse receipt
+is `target/source-profile-origins-conformance-reuse-20261016.json`. This producer
+checkpoint does not close remaining operation-owner or lifecycle acceptance;
+M1q remains at 6/10.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger
