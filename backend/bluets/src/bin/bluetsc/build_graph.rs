@@ -329,10 +329,12 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     let mut projects = Vec::new();
     let mut pretty = false;
     let mut verbose = false;
+    let mut stop_build_on_errors = false;
     let mut arguments = arguments.into_iter().skip(1).peekable();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--verbose" => verbose = true,
+            "--stopBuildOnErrors" => stop_build_on_errors = true,
             "--pretty" => {
                 pretty = arguments.peek().is_none_or(|next| next != "false");
                 if arguments
@@ -392,5 +394,5 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
             println!("    * {}", graph.display_path(project));
         }
     }
-    freshness::run(&graph, pretty, verbose)
+    freshness::run(&graph, pretty, verbose, stop_build_on_errors)
 }

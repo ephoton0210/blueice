@@ -1,0 +1,3 @@
+chain	1	build:bad/tsconfig.json;blocked:app/tsconfig.json:bad:errors;skip:app/tsconfig.json:bad:errors;blocked:tsconfig.json:app:not-built;skip:tsconfig.json:app:not-built
+parallel	2	build:bad/tsconfig.json;build:good/tsconfig.json;blocked:tsconfig.json:bad:errors;skip:tsconfig.json:bad:errors
+branch	2	build:bad/tsconfig.json;blocked:left/tsconfig.json:bad:errors;skip:left/tsconfig.json:bad:errors;build:good/tsconfig.json;build:right/tsconfig.json;blocked:tsconfig.json:left:not-built;skip:tsconfig.json:left:not-built

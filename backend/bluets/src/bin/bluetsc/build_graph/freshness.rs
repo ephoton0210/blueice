@@ -307,10 +307,50 @@ fn output_names(project: &Path, outputs: &[PathBuf]) -> io::Result<Vec<String>> 
         .collect()
 }
 
-pub(super) fn run(graph: &Graph, pretty: bool, verbose: bool) -> ExitCode {
+pub(super) fn run(
+    graph: &Graph,
+    pretty: bool,
+    verbose: bool,
+    stop_build_on_errors: bool,
+) -> ExitCode {
     let mut declaration_changed = BTreeMap::new();
     let mut available_declarations = BTreeMap::new();
+    let mut failed = BTreeMap::<PathBuf, bool>::new();
+    let mut successful_output = false;
     for project in &graph.order {
+        if stop_build_on_errors {
+            let blocked_by = graph
+                .references
+                .get(project)
+                .into_iter()
+                .flatten()
+                .find_map(|reference| failed.get(reference).map(|blocked| (reference, *blocked)));
+            if let Some((reference, upstream_blocked)) = blocked_by {
+                if verbose {
+                    let reason = if upstream_blocked {
+                        "was not built"
+                    } else {
+                        "has errors"
+                    };
+                    let project_name = graph.display_path(project);
+                    let dependency = graph.display_path(
+                        reference
+                            .parent()
+                            .expect("canonical referenced config has parent"),
+                    );
+                    println!(
+                        "Project '{project_name}' can't be built because its dependency \
+                         '{dependency}' {reason}"
+                    );
+                    println!(
+                        "Skipping build of project '{project_name}' because its dependency \
+                         '{dependency}' {reason}"
+                    );
+                }
+                failed.insert(project.clone(), true);
+                continue;
+            }
+        }
         let inputs = graph
             .inputs
             .get(project)
@@ -397,8 +437,13 @@ pub(super) fn run(graph: &Graph, pretty: bool, verbose: bool) -> ExitCode {
             &references,
         );
         if result != ExitCode::SUCCESS {
+            if stop_build_on_errors {
+                failed.insert(project.clone(), false);
+                continue;
+            }
             return result;
         }
+        successful_output |= !emitted.is_empty();
         let after = output_names(project, &emitted)
             .and_then(|names| declaration_signatures(project, &names));
         let after = match after {
@@ -422,5 +467,11 @@ pub(super) fn run(graph: &Graph, pretty: bool, verbose: bool) -> ExitCode {
         };
         available_declarations.insert(project.clone(), paths);
     }
-    ExitCode::SUCCESS
+    if failed.is_empty() {
+        ExitCode::SUCCESS
+    } else if successful_output {
+        ExitCode::from(2)
+    } else {
+        ExitCode::from(1)
+    }
 }

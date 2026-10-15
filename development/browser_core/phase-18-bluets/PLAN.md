@@ -10731,3 +10731,36 @@ oracles, the public reference/declaration replay, and BlueJS all run.
 Incremental compilation and dev/test debug symbols were disabled to bound
 build artifacts. Build-error continuation and the reference-escape gate
 remain K.12.1.5–K.12.1.6.
+
+### K.12.1.5 Build errors (2026-10-15)
+
+Pinned TypeScript 5.9.3's default `--build` does not inherently skip a
+dependent after a semantic error: with `noEmitOnError`, it can attempt the
+dependent and report TS6305 for the missing declaration. The documented
+skip-on-error behavior is selected by `--stopBuildOnErrors`, so the existing
+AC-K12.1.5 acceptance text is clarified to name that flag rather than
+claiming a false default. Its three frozen two-to-five-project fixtures cover
+a failed chain, a failed/independent parallel pair and a branching graph.
+The pinned matrix records ordered build/blocked/skip events,
+the exact upstream reason ("has errors" versus "was not built"), and exit
+code 1 when nothing else emits versus 2 when an independent project emits.
+
+BlueTSC's build scheduler now accepts `--stopBuildOnErrors`, marks a failed
+project separately from one blocked by it, and traverses the existing
+topological order so unrelated projects still build. It reports both the
+blocked-project status and skip notice in the same order and with the same
+reason as the pinned compiler. The public replay confirms failed and skipped
+projects emit no declarations, successful independent branches do, and no
+TS6305 is spuriously reported from a skipped dependent. The ordinary build
+mode's broader TypeScript error-continuation semantics are not claimed by
+this leaf and remain part of G-M2. The explicit three-fixture pinned recorder
+can refresh `build-error-matrix.tsv` with
+`BLUEICE_WRITE_PROJECT_BUILD_ERRORS_MATRIX=1`.
+
+The focused pinned and public tests pass 2/2, workspace rustfmt and
+warnings-denied two-crate all-target Clippy pass, and the complete K.0
+two-crate test gate exits 0 with pinned TypeScript 5.9.3, Acorn 8.15.0,
+and Node 24.21.0. Every ordinary and ignored oracle runs, including the
+previous project build-order, freshness and referenced-declaration suites;
+Cargo incremental compilation and dev/test debug symbols were disabled to
+bound regenerated artifacts. The reference-escape gate remains K.12.1.6.

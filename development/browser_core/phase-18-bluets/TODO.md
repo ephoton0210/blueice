@@ -596,8 +596,11 @@ not `.tsbuildinfo` bytes.
     project's emitted `.d.ts`, not its sources. *Pass when:* an error that exists only in the referenced
     source is not reported in the dependent, and deleting the `.d.ts` is reported.
     - *Evidence:* PLAN.md, "K.12.1.4 Referenced declarations" (2026-10-15): four-row pinned rebuild matrix, 11/11 focused integration tests, source-only error and missing-output controls, K.0 two-crate gate.
-  - [ ] **AC-K12.1.5 Build errors.** A failing project stops its dependents, others continue; exit code and
-    skipped-project reporting match `tsc`. *Pass when:* >= 3 fixtures.
+  - [x] **AC-K12.1.5 Build errors.** With pinned `tsc --build --stopBuildOnErrors`, a failing
+    project stops its dependents while independent projects continue; exit code and skipped-project
+    reporting match `tsc`. The default `--build` mode can still attempt dependents after errors.
+    *Pass when:* >= 3 fixtures.
+    - *Evidence:* PLAN.md, "K.12.1.5 Build errors" (2026-10-15): three pinned ordered-event fixtures, exact blocked/skip reasons and exit codes, K.0 two-crate gate.
   - [ ] **AC-K12.1.6 Gate.** Owner-only root rules (J.4.3) hold: a reference outside the canonical root
     is refused. *Pass when:* a symlink-escape fixture is refused with a bounded diagnostic.
 - [ ] **K.12.2 Incremental and watch (L).**
