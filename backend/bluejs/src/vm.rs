@@ -42,6 +42,7 @@ mod host_event_checkpoints;
 mod host_finalization;
 mod host_objects;
 mod host_promises;
+mod host_rejections;
 mod window_aliases;
 pub use host_promises::{
     HostAsyncFunction, HostAsyncObjectMethod, HostPromiseCompletion, HostPromiseToken,
@@ -569,6 +570,8 @@ enum AsyncGeneratorDelegateKind {
 struct PromiseRecord {
     status: PromiseStatus,
     reactions: Vec<PromiseReaction>,
+    handled: bool,
+    rejection_notified: bool,
 }
 
 /// Whether a disposable resource was added by a `using` declaration/
@@ -1041,6 +1044,7 @@ pub struct Vm {
     host_console: Option<host_console::ConsoleState>,
     /// None until the page owner enables errors; true while firing `error`.
     host_error_reporting: Option<bool>,
+    host_rejections: Option<host_rejections::HostRejections>,
     /// Opaque host-object factories and their collector-rooted, realm-private
     /// identity tables. Neither a JavaScript value nor a raw host key enters
     /// a Rust callback through the primitive-only HostValue ABI.

@@ -56,6 +56,11 @@ pub(super) enum BrowserTask {
         source: HostTaskSource,
         serial: u64,
     },
+    PromiseRejections {
+        serial: u64,
+        entries: Vec<host_rejections::PendingRejection>,
+        handled: bool,
+    },
 }
 
 impl BrowserTask {
@@ -63,7 +68,7 @@ impl BrowserTask {
         use host_task_turns::TaskSource;
         match self {
             Self::AbortTimeout { .. } => TaskSource::Timer,
-            Self::DragString { .. } => TaskSource::DomManipulation,
+            Self::DragString { .. } | Self::PromiseRejections { .. } => TaskSource::DomManipulation,
             Self::FileRead { .. } => TaskSource::FileReading,
             Self::HostPromise {
                 source: HostTaskSource::Networking,
@@ -87,6 +92,7 @@ impl BrowserTask {
             | Self::DragString { serial, .. }
             | Self::FileRead { serial, .. }
             | Self::HostPromise { serial, .. } => (0, *serial),
+            Self::PromiseRejections { serial, .. } => (0, *serial),
         }
     }
 
@@ -96,6 +102,7 @@ impl BrowserTask {
             | Self::DragString { serial, .. }
             | Self::FileRead { serial, .. }
             | Self::HostPromise { serial, .. } => *serial = next,
+            Self::PromiseRejections { serial, .. } => *serial = next,
         }
     }
 }
@@ -226,12 +233,23 @@ impl Vm {
                 text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
             }
             BrowserTask::HostPromise { completion, .. } => completion.payload_bytes(),
+            BrowserTask::PromiseRejections { entries, .. } => {
+                entries.capacity() * std::mem::size_of::<host_rejections::PendingRejection>()
+            }
             _ => 0,
         };
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
         self.synchronize_scheduling_usage()?;
         self.remaining_instructions = self.config.instruction_budget;
         let (result, root, next, report_page_exception) = match task {
+            BrowserTask::PromiseRejections {
+                entries, handled, ..
+            } => (
+                self.run_host_rejection_task(entries, handled),
+                None,
+                None,
+                false,
+            ),
             BrowserTask::HostPromise {
                 token, completion, ..
             } => (

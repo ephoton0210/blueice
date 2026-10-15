@@ -42,6 +42,7 @@ impl Vm {
         on_rejected: Value,
         target: ReactionTarget,
     ) -> Result<(), RuntimeError> {
+        self.mark_promise_handled(promise);
         if self
             .promises
             .get(&promise)

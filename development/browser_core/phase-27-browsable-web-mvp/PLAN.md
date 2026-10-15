@@ -29,7 +29,7 @@ broader host-buffer policy keep M1 in progress.
 M1j replaces storage-group scheduling with logical document task sources and
 one page timeout clock. Same-source order spans same-document realms; source
 selection rotates before returning to Core. Real network/UI ingress, broader
-host buffers and error/rejection reporting keep M1 in progress; see
+host buffers keep M1 in progress; M1o/M1p below supply reporting. See
 [the policy](../phase-13-bluejs-engine/HOST_TASK_SOURCES.md).
 
 M1k adds owner-installed Promise-returning service operations and branded async
@@ -43,8 +43,8 @@ M1l installs top-level `window`, `self`, `top` and `parent` in the active
 File DOM v13 profile. Generated host-member signatures and an independent
 real Core/child global-inventory test cover JavaScript and checked BlueTS.
 The typed profile remains a bounded installed surface; nested browsing
-contexts, WindowProxy and global error/rejection delivery remain
-open. See [the global contract](../phase-13-bluejs-engine/WINDOW_GLOBALS.md).
+contexts and WindowProxy remain open; M1o/M1p below supply global
+error/rejection delivery. See [the global contract](../phase-13-bluejs-engine/WINDOW_GLOBALS.md).
 
 M1m completes console's MCP route. File DOM v14 adds typed,
 bounded page logging; private v60 drains one document's copied records through
@@ -52,8 +52,8 @@ Core to MCP `get_console_messages`. Real mixed-language MCP acceptance passes,
 including task/native-click output and navigation isolation. Rust/build/Clippy
 gates pass and the complete Test262 inventory matches M1l; see the
 [milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
-The M1o follow-up below addresses uncaught exceptions; rejection tracking and
-the remaining M1 policy work stay open.
+The M1o/M1p follow-ups below supply exception and rejection reporting; the
+remaining M1 policy work stays open.
 
 M1n's checked host-boundary correction is accepted. Missing member
 chains now fail before a checked page's earlier DOM writes can run; ambient
@@ -69,7 +69,18 @@ MCP client verify continuation after task/native-listener throws. Related
 Rust, format, workspace Clippy/build and complete pinned Test262 gates pass.
 Final evidence is recorded in the
 [milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
-General rejection tracking and broader host-buffer policy keep M1 open.
+M1p now implements general page rejection tracking; broader host-buffer policy
+keeps M1 open.
+
+M1p's rejection follow-up is accepted. File DOM v16 installs both
+global rejection events with immutable-profile compatibility. Pending roots,
+weak outstanding notifications, cancellation, early/late handlers and
+navigation are covered by public VM/profile and real Core/MCP acceptance.
+Uncanceled copied diagnostics use the existing private v60 console route.
+All 37 related Rust targets, formatting and workspace/all-target Clippy/build
+pass. The complete pinned Test262 inventory matches M1o; final evidence is in the
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record);
+see [the rejection contract](../phase-13-bluejs-engine/HOST_PROMISE_REJECTIONS.md).
 
 ## Objective
 

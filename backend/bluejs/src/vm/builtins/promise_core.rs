@@ -95,6 +95,8 @@ impl Vm {
             PromiseRecord {
                 status: PromiseStatus::Pending,
                 reactions: Vec::new(),
+                handled: false,
+                rejection_notified: false,
             },
         );
         Ok(promise)
@@ -513,6 +515,9 @@ impl Vm {
         };
         let reactions = std::mem::take(&mut record.reactions);
         record.status = status;
+        if !fulfilled && !record.handled {
+            self.track_host_rejection(promise);
+        }
         for job in reactions.into_iter().map(|reaction| match reaction {
             PromiseReaction::Then(reaction) => PromiseJob::Reaction {
                 target: reaction.target,

@@ -9,7 +9,7 @@ use super::*;
 use crate::heap::DragEventState;
 use crate::native::EventNative;
 
-const EVENT_NAMES: [&str; 7] = [
+const EVENT_NAMES: [&str; 8] = [
     "Event",
     "UIEvent",
     "MouseEvent",
@@ -17,6 +17,7 @@ const EVENT_NAMES: [&str; 7] = [
     "ProgressEvent",
     "CustomEvent",
     "ErrorEvent",
+    "PromiseRejectionEvent",
 ];
 const MODIFIERS: [(&str, &str); 14] = [
     ("Alt", "altKey"),
@@ -50,6 +51,10 @@ impl Vm {
 
     pub(super) fn install_web_error_events(&mut self) -> Result<(), RuntimeError> {
         self.install_web_event_subtype(6, &["message", "filename", "lineno", "colno", "error"], &[])
+    }
+
+    pub(super) fn install_web_rejection_events(&mut self) -> Result<(), RuntimeError> {
+        self.install_web_event_subtype(7, &["promise", "reason"], &[])
     }
 
     fn install_web_event_subtype(
@@ -107,7 +112,7 @@ impl Vm {
             )?;
             let constructor = self.web_file_constructor(
                 name,
-                1,
+                if rank == 7 { 2 } else { 1 },
                 NativeFunction::WebEvent(EventNative::Constructor(rank)),
                 self.heap
                     .get_own(parent, "constructor")?
@@ -522,6 +527,19 @@ impl Vm {
                     self.coerce_string(&message)?
                 };
                 state.set("message", Value::String(message));
+            }
+            if rank == 7 {
+                let promise = self.event_init_value(&options, "promise")?;
+                if promise.object_id().is_none() {
+                    return Err(RuntimeError::TypeError(
+                        "PromiseRejectionEvent requires an object promise".into(),
+                    ));
+                }
+                self.stack.push(promise.clone());
+                state.set("promise", promise);
+                let reason = self.event_init_value(&options, "reason")?;
+                self.stack.push(reason.clone());
+                state.set("reason", reason);
             }
             let default = self.globals[&format!("%Web{}%", EVENT_NAMES[rank as usize])];
             let prototype = self.constructor_prototype_for(default, None)?;

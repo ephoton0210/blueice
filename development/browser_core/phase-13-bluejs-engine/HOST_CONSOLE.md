@@ -75,9 +75,12 @@ page-requested clearing; the tool does not provide a separate execution path.
 Acceptance covers public VM/profile behavior, diagnostic resource limits,
 Core containment and MCP framing/transport. The real Core/child fixture uses
 an official MCP client, mixed JavaScript/checked BlueTS, a Promise job, a timer
-and a native click; it verifies draining and navigation isolation. Unhandled
-rejection reporting, source-map positions and complete external host-buffer
-accounting remain separate TODO items; M1o supplies uncaught exception reporting.
+and a native click; it verifies draining and navigation isolation. Source-map
+positions and complete external host-buffer accounting remain separate TODO
+items. M1o supplies uncaught exceptions; M1p supplies rejection notifications
+and uncanceled `Uncaught (in promise) ` diagnostics through the same route.
+The rejection follow-up's final gates are tracked in the
+[milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
 
 M1o's follow-up is accepted. Its v15 profile inherits this complete
 console surface and sends uncanceled page exceptions through the same bounded

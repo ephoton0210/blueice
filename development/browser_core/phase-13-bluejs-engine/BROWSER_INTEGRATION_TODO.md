@@ -35,20 +35,21 @@ and BlueTS lines. The baseline descriptions below remain the original gap
 inventory; the dated milestone records identify what has actually been
 implemented and verified on `feature/bluejs-browser-integration-gaps`.
 
-**Latest milestone — M1o uncaught page exceptions (2026-10-15).**
-The owner-selected File DOM v15 profile adds `ErrorEvent`, global EventTarget
-methods, `onerror` and `reportError`, with matching checked typings. Shared
-script/task/callback reporting preserves original values, cancellation,
-recursive-event suppression, one-time module/TLA delivery, GC ownership and
-resource containment. Uncanceled copied errors reach the bounded Core/MCP
-console. All 24 related Rust targets plus fresh official MCP acceptance pass
-(3,102 cases; one existing ignored), along with formatting and workspace/
-all-target Clippy/build. All 102,926 pinned Test262 modes match M1n's accepted
-source/result inventory: 102,921 pass, one stale corpus, four exclusions,
-no new failure or timeout. Original source positions and general rejection
-tracking remain open. See the
-[M1o milestone record](#m1o--uncaught-page-exceptions-and-global-error-events-2026-10-15)
-and [error-reporting contract](HOST_ERROR_REPORTING.md).
+**Latest milestone — M1p Promise rejection tracking (2026-10-15).**
+The owner-selected File DOM v16 profile adds `PromiseRejectionEvent`,
+`onunhandledrejection` and `onrejectionhandled` with checked listener typings.
+Completed checkpoints queue bounded document tasks; early handlers suppress
+notification, late handlers receive one follow-up event, and canceled reports
+stay out of the copied console. Pending roots preserve values; outstanding
+notifications remain weak and navigation discards old work. All 37 related
+Rust targets plus fresh official MCP acceptance pass (3,235 cases; one existing
+ignored), along with formatting and workspace/all-target Clippy/build.
+All 102,926 pinned Test262 modes match M1o's accepted source/result inventory:
+102,921 pass, one stale corpus, four exclusions, no new failure or timeout.
+Original source positions and broader host-buffer/network/UI/default-on policy
+remain open. See the
+[M1p milestone record](#m1p--promise-rejection-tracking-and-global-events-2026-10-15)
+and [rejection contract](HOST_PROMISE_REJECTIONS.md).
 
 ## A. Event loop and scheduling (P0)
 
@@ -182,8 +183,13 @@ ownership for queued/running jobs, module work and host waits.
       pending until its Promise settles, including major-GC pressure. Stream
       iteration and tee regressions cover the previously dropped behavior.
 
-- [ ] Host unhandled-rejection tracking (`HostPromiseRejectionTracker`) and
-      the `unhandledrejection` / `rejectionhandled` events
+- [x] **M1p: host unhandled-rejection tracking**
+      (`HostPromiseRejectionTracker`) and `unhandledrejection` /
+      `rejectionhandled` events. Completed checkpoints queue bounded DOM-source
+      tasks, preserving original values, cancellation, early/late handling,
+      weak outstanding ownership and navigation isolation. Public VM/profile,
+      real Core/MCP and all final gates pass; see the milestone record and
+      [rejection contract](HOST_PROMISE_REJECTIONS.md).
 - [x] **M1g: event-loop FinalizationRegistry cleanup.** Successful page host
       checkpoints discover GC-cleared cells and queue engine tasks, including
       collections during callbacks. Registry/cell ownership survives until
@@ -238,6 +244,10 @@ exists). Several exist on the product line, marked below.
       installs six matching v15 bindings; original values, trusted/synthetic
       event behavior, cancellation, recursion and navigation are covered.
       Older profiles remain immutable and reject these names. See B.
+- [x] **M1p: global rejection-event surface.** File DOM v16 installs
+      `PromiseRejectionEvent`, `onunhandledrejection` and `onrejectionhandled`.
+      Independent real JavaScript/BlueTS inventories pin these three names;
+      old-profile absence and checked listener/constructor controls pass. See B.
 - [x] **M1l: global-inventory test.** Real Core/child JavaScript and checked
       BlueTS pages execute `typeof globalThis.<name>` for every section C
       name, pinning the installed set and remaining absences independently
@@ -360,8 +370,8 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
       provides global exception events and copied Core/MCP diagnostics, but
       generated errors use empty/zero source metadata at this boundary.
       Mapping them back to BlueTS original positions remains open; only
-      debugger pauses currently use the safe-point map. General rejection
-      tracking also remains open in B.
+      debugger pauses currently use the safe-point map. M1p implements the
+      separate rejection tracker in B.
 
 ### BlueJS capabilities BlueTS should use or still needs
 
@@ -447,6 +457,87 @@ the generated typings in the same change.
 
 ## Milestone record
 
+### M1p — Promise rejection tracking and global events (2026-10-15)
+
+- [x] Reproduce missing notification through the real Core/child public boundary.
+- [x] Track first rejection/handler transitions across public and internal awaits.
+- [x] Queue both global events on the existing document task source.
+- [x] Install `PromiseRejectionEvent` and handler attributes with v16 typings.
+- [x] Verify early/late handlers, cancellation, GC, resource caps and navigation.
+- [x] Pass real Core/MCP and the complete related Rust regression selection.
+- [x] Pass final formatting checks.
+- [x] Pass workspace/all-target Clippy with `-D warnings`.
+- [x] Pass the final workspace/all-target production build.
+- [x] Compare the complete pinned Test262 inventory against M1o.
+- [x] Finalize evidence, documentation and a detailed English commit.
+
+The owner-selected File DOM v16 surface and tracker are implemented; see
+[the rejection contract](HOST_PROMISE_REJECTIONS.md). Its 61 bindings preserve
+the v15 identity prefix and old artifact bytes. Both events use the existing
+DOM-manipulation task source. Uncanceled copied diagnostics retain the private
+v60 Core/MCP console route; no live Promise/reason crosses IPC. Original source
+mapping and broader host-buffer/network/UI/default-on policy remain open.
+
+**Verified red baseline and corrections:**
+
+- The first real Core/child fixture expected an ignored rejection to invoke
+  `onunhandledrejection` before a later timer published its result. It failed
+  with `result:unreported` instead of `result:probe` (one failed, fourteen
+  filtered; `/private/tmp/blueice-rejections-red.log`). The final fixture passes.
+- The first VM run passed nine of eleven groups. Streams internal reader
+  `closed` promises needed explicit handled flags at error initialization,
+  error delivery and reader release. The adoption/combinator assertion also
+  expected the wrong order: independent Node v26.7.0 confirms `0,2,1`, matching
+  the existing queue. Evidence: `/private/tmp/blueice-rejections-vm.log` and
+  `target/rejection-order-node-20261015.json`. The corrected host follow-up
+  passed all 44 selected cases; subsequent controls expanded rejection coverage
+  to thirteen groups, all green in the final complete selection.
+- Initial official MCP acceptance observed only JavaScript output. Independent
+  checked compilation confirmed that `Promise.reject` is refused because this
+  page profile does not declare the `Promise` value. The corrected typed fixture
+  uses `Blob.text().then(rejectTyped)` with a named typed callback. Profile
+  regressions retain the undeclared-global refusal; both languages now reach
+  the official MCP client. Failed evidence remains in
+  `/private/tmp/blueice-rejections-mcp.log` and
+  `/private/tmp/blueice-rejections-typed-probe.log`.
+
+**Completed macOS acceptance:**
+
+- All 37 selected targets (six libraries and 31 public integration targets):
+  3,234 passed, one existing ignored, zero failed. Coverage includes thirteen
+  rejection groups, existing error/console/scheduling/finalization behavior,
+  Promise/async/generator/Streams GC and lifecycle controls, old/new profile
+  checks, all fifteen real timer/page fixtures and Core/launcher/IPC/MCP.
+- Fresh official MCP client → Core → child acceptance passes (one passed,
+  eleven filtered; final replay 4.17s). It verifies JavaScript and checked
+  BlueTS output, cancellation/early handling, exact native late-handler order,
+  untrusted-content framing and replacement-document isolation.
+- Final formatting, workspace/all-target Clippy with `-D warnings` (13m 41s)
+  and workspace/all-target production build (15m 02s) pass.
+- Complete pinned Test262: 102,921 passed, one stale corpus, four exclusions,
+  zero new failures/timeouts, 437.384s. All 102,926 unique path/modes match
+  M1o for source hashes, metadata, expectations, dispositions and result
+  kind/phase. Only elapsed time, binary hashes and nondeterministic diagnostic
+  text are excluded from the comparison. Frozen binary hashes match the run
+  summary. No fresh coverage, full-workspace-test, reference-TypeScript or
+  other-platform result is claimed.
+
+Final evidence:
+
+- Rust log: `/private/tmp/blueice-rejections-regressions.log`;
+  audit: `target/rejections-rust-validation-20261015.json`;
+  unchanged 23-file Rust manifest: `target/rejections-source-final-20261015.json`.
+- Final MCP/format/Clippy/build logs:
+  `/private/tmp/blueice-rejections-mcp-final.log`,
+  `/private/tmp/blueice-rejections-format.log`,
+  `/private/tmp/blueice-rejections-clippy.log`,
+  `/private/tmp/blueice-rejections-build.log`.
+- Full raw Test262 evidence: `target/test262-rejections-full-20261015/`
+  (`summary.json`, `results.jsonl`, `baseline-comparison.json`);
+  frozen binaries: `target/test262-rejections-bins-20261015/`.
+- Unmodified committed summary:
+  [test262-browser-rejections-macos-summary.json](test262-browser-rejections-macos-summary.json).
+
 ### M1o — Uncaught page exceptions and global error events (2026-10-15)
 
 - [x] Reproduce missing reporting through the real Core/child public boundary.
@@ -465,7 +556,8 @@ the generated typings in the same change.
 The owner-selected File DOM v15 surface and shared reporter are implemented;
 see [the error-reporting contract](HOST_ERROR_REPORTING.md). The prior v14
 artifact and private v60 console transport remain unchanged. Original source
-positions and general rejection tracking retain their separate open items.
+positions and general rejection tracking were separate open items at M1o;
+M1p above completes the rejection tracker.
 
 **Verified red baseline:** the real Core/child `reportError(new Error('probe'))`
 fixture left its page showing `unreported`, instead of invoking `window.onerror`.

@@ -41,9 +41,11 @@ page handler.
 Script, task, microtask and native-listener boundaries share the reporter.
 Page module records retain a one-time reporting flag until their evaluation
 finishes, including later top-level-await rejection. Dynamic imports retain
-their Promise rejection behavior; general `unhandledrejection` tracking is
-the separate open item in section B. Loader/compiler admission failures keep
-their existing rejection reports.
+their Promise rejection behavior. M1p supplies the separate document-task
+`unhandledrejection` / `rejectionhandled` tracker; its final gates are recorded
+in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record) and
+[rejection contract](HOST_PROMISE_REJECTIONS.md). Loader/compiler admission
+failures keep their existing rejection reports.
 
 The original public execution error remains observable to the host. Reporting
 preserves native debugger throw-site metadata and roots thrown objects through

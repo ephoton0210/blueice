@@ -32,8 +32,8 @@ typings and four top-level global aliases. `BlueIceWindow` host members reuse
 existing declaration signatures; the older artifacts stay immutable.
 Real Core/child JavaScript and checked BlueTS pages pin the browser-global
 inventory and exercise aliased DOM/scheduling access. Nested contexts,
-navigation-stable WindowProxy and global error/rejection reporting
-remain open. See [the global contract](WINDOW_GLOBALS.md).
+navigation-stable WindowProxy remain open; M1o/M1p below supply global
+error/rejection reporting. See [the global contract](WINDOW_GLOBALS.md).
 
 **M1m console integration:** The File DOM profile adds an
 owner-installed 19-method console, bounded copied diagnostic records and native
@@ -62,8 +62,19 @@ copied diagnostics use the existing private v60 Core/MCP console route. All
 24 related Rust targets, real Core/MCP acceptance, formatting and workspace
 Clippy/build pass. The complete pinned Test262 source/result inventory matches
 M1n; see the milestone record for final evidence.
-Older profiles stay immutable; original source positions and general rejection
-tracking remain open. See [the reporting contract](HOST_ERROR_REPORTING.md).
+Older profiles stay immutable; original source positions remain open. See
+[the reporting contract](HOST_ERROR_REPORTING.md).
+
+**M1p rejection follow-up (2026-10-15):** File DOM v16 adds
+`PromiseRejectionEvent`, `onunhandledrejection` and `onrejectionhandled` with
+checked global listener overloads. First reject/handle transitions, internal
+awaits and Streams handled flags feed bounded DOM-source notification tasks.
+Pending delivery owns roots; outstanding notifications remain weak. All 37
+related Rust targets, mixed-language real Core/MCP acceptance, formatting and
+workspace/all-target Clippy/build pass. The complete pinned Test262 inventory
+matches M1o; final evidence is recorded in the
+[milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+See [the rejection contract](HOST_PROMISE_REJECTIONS.md).
 
 ## Ubuntu verification scope (2026-09-19)
 

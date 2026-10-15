@@ -63,6 +63,14 @@ remain immutable. Public VM/profile, real Core/MCP, related Rust, workspace
 build/Clippy/formatting and full pinned Test262 gates pass; see the
 [error-reporting contract](HOST_ERROR_REPORTING.md).
 
+M1p advances the active profile to v16 with `PromiseRejectionEvent`,
+`onunhandledrejection` and `onrejectionhandled`. The independent JavaScript/
+BlueTS inventory includes all three names. Existing v15 identities remain a
+prefix; only the new profile gains rejection listener overloads. All 37 related
+Rust targets, real Core/MCP, formatting and workspace/all-target Clippy/build
+pass. The complete pinned Test262 inventory matches M1o; see the
+[milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+
 `backend/launcher/tests/browser_timers.rs` observes every section C global
 through `typeof globalThis.<name>` in real JavaScript and checked BlueTS
 pages. It also pins the DOM/scheduling names and absence of `Window`,

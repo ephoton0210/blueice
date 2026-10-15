@@ -379,6 +379,7 @@ pub(crate) enum NativeFunction {
     WindowAliasSet(&'static str),
     Console(crate::vm::ConsoleFunction),
     HostError(HostErrorNative),
+    HostRejectionHandler(&'static str, bool),
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

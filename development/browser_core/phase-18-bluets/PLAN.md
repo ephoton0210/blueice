@@ -43,8 +43,19 @@ names. Public checked profile controls, real mixed-language Core/MCP acceptance,
 all 24 related Rust targets, formatting and workspace Clippy/build pass. The
 complete pinned Test262 inventory matches M1n; evidence is recorded in the
 [milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
-Original error source mapping and rejection tracking stay open; see the
+Original error source mapping stays open; see the
 [error contract](../phase-13-bluejs-engine/HOST_ERROR_REPORTING.md).
+
+**Typed page rejections (M1p, 2026-10-15):** File DOM v16 extends
+the immutable v15 inventory with three rejection globals and checked listener
+overloads. Event construction retains an opaque object and arbitrary reason;
+readonly fields, wrong handlers and old-profile absence retain refusal controls.
+The mixed-language MCP fixture uses a declared `Blob.text()` Promise and a
+named typed callback; the owner still refuses undeclared standard-library
+value globals such as `Promise`. All 37 related Rust targets, real Core/MCP,
+formatting and workspace/all-target Clippy/build pass. The complete pinned
+Test262 inventory matches M1o; final evidence is recorded in the
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
 
 The direct bridge lowers parenthesized `new Identifier(args)` expressions with normal or spread arguments. Member constructors and omitted parentheses remain excluded.
 

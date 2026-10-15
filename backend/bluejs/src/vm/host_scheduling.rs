@@ -451,6 +451,7 @@ impl Vm {
             return Ok(());
         }
         self.report_pending_host_module_errors()?;
+        self.notify_host_rejections()?;
         self.kept_weak_objects.clear();
         if self.host_scheduling.is_some()
             && self.own_scheduling_usage().payload_bytes >= MAX_HOST_SCHEDULING_BYTES / 4
@@ -490,6 +491,15 @@ impl Vm {
                 .as_ref()
                 .map_or(0, |console| console.payload_bytes()),
         );
+        if let Some(state) = &self.host_rejections {
+            usage.pending_reactions = usage
+                .pending_reactions
+                .saturating_add(state.pending.len())
+                .saturating_add(state.active);
+            usage.payload_bytes = usage.payload_bytes.saturating_add(
+                state.pending.capacity() * std::mem::size_of::<host_rejections::PendingRejection>(),
+            );
+        }
         usage.payload_bytes = usage.payload_bytes.saturating_add(
             self.host_promises
                 .pending
@@ -551,6 +561,10 @@ impl Vm {
                 }
                 browser_tasks::BrowserTask::HostPromise { completion, .. } => {
                     completion.payload_bytes()
+                }
+                browser_tasks::BrowserTask::PromiseRejections { entries, .. } => {
+                    usage.pending_reactions = usage.pending_reactions.saturating_add(entries.len());
+                    entries.capacity() * std::mem::size_of::<host_rejections::PendingRejection>()
                 }
                 _ => 0,
             });
@@ -662,6 +676,7 @@ impl Vm {
         promise: ObjectId,
         reaction: PromiseReaction,
     ) {
+        self.mark_promise_handled(promise);
         if self
             .admit_scheduling_work(HostSchedulingUsage {
                 pending_reactions: 1,

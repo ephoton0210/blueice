@@ -1324,6 +1324,7 @@ impl Vm {
                 return Ok(Some(Value::Undefined));
             }
         };
+        self.mark_promise_handled(promise);
         match self
             .promises
             .get(&promise)
@@ -1688,6 +1689,7 @@ impl Vm {
             let promise = promise
                 .object_id()
                 .expect("Promise.resolve always returns a Promise");
+            self.mark_promise_handled(promise);
             match self
                 .promises
                 .get(&promise)
@@ -1888,6 +1890,7 @@ impl Vm {
             let awaited = awaited
                 .object_id()
                 .expect("Promise.resolve always returns a Promise");
+            self.mark_promise_handled(awaited);
             let status = self
                 .promises
                 .get(&awaited)

@@ -516,7 +516,10 @@ impl Vm {
                 1 => {
                     self.settle_tracked_promise(closed, PromiseStatus::Fulfilled(Value::Undefined))
                 }
-                2 => self.settle_tracked_promise(closed, PromiseStatus::Rejected(error)),
+                2 => {
+                    self.settle_tracked_promise(closed, PromiseStatus::Rejected(error));
+                    self.set_promise_handled(closed);
+                }
                 _ => {}
             }
             Ok(reader)
@@ -718,6 +721,7 @@ impl Vm {
             } else {
                 owner.closed = self.promise_reject(error)?.object_id().unwrap();
             }
+            self.set_promise_handled(owner.closed);
             owner.stream = None;
             self.put_reader(reader, owner)
         })();
@@ -801,6 +805,7 @@ impl Vm {
                     );
                 }
                 self.settle_tracked_promise(owner.closed, PromiseStatus::Rejected(reason));
+                self.set_promise_handled(owner.closed);
                 self.put_reader(reader, owner)?;
             }
             Ok(())

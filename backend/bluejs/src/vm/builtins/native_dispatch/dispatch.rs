@@ -203,6 +203,9 @@ impl Vm {
             NativeFunction::HostError(function) => {
                 self.host_error_call(function, &receiver, &args, construct)
             }
+            NativeFunction::HostRejectionHandler(event, set) => {
+                self.host_rejection_handler(event, set, &receiver, &args, construct)
+            }
             NativeFunction::WindowAliasSet(name) => {
                 self.window_alias_call(&receiver, Some((name, first.clone())), construct)
             }

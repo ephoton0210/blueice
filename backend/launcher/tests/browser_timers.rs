@@ -41,6 +41,60 @@ fn request(stream: &mut UnixStream, id: u64, message: ClientMessage) -> ServerMe
 type FrameMessage = (Option<u64>, Option<u64>, ServerMessage);
 
 #[test]
+fn unhandled_promise_rejections_reach_the_real_page_before_a_later_timer() {
+    let (fixture, url, gatekeeper) = fixture(
+        "<p id=counter>waiting</p><script>
+        var observed='unreported';
+        window.onunhandledrejection=function(event){observed=event.reason;event.preventDefault();};
+        Promise.reject('probe');
+        setTimeout(function(){document.getElementById('counter').textContent='result:'+observed;},150);
+        </script>".to_string(),
+    );
+    let core = SpawnedCore::spawn_with_options(
+        240.0,
+        120.0,
+        &fixture.root.join("frames"),
+        CoreLaunchOptions::default()
+            .with_gatekeeper_socket(gatekeeper)
+            .supervise_out_of_process_bluejs_with_page_dom(),
+    )
+    .unwrap();
+    let mut stream = core.stream.try_clone().unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    let mut frames = VecDeque::new();
+    assert!(matches!(
+        request_with_frames(&mut stream, 1, ClientMessage::Navigate { url }, &mut frames),
+        ServerMessage::Navigated { .. }
+    ));
+    loop {
+        let (_, id, message) = frames
+            .pop_front()
+            .unwrap_or_else(|| blueice_ipc::read_server_message_with_ids(&mut stream).unwrap());
+        if id.is_none() && matches!(message, ServerMessage::FrameReady { .. }) {
+            let ServerMessage::Representation(snapshot) = request_with_frames(
+                &mut stream,
+                2,
+                ClientMessage::GetRepresentation,
+                &mut frames,
+            ) else {
+                panic!("expected page representation");
+            };
+            if let Some(result) = snapshot
+                .nodes
+                .iter()
+                .filter_map(|node| node.name.as_deref())
+                .find(|text| text.starts_with("result:"))
+            {
+                assert_eq!(result, "result:probe");
+                break;
+            }
+        }
+    }
+}
+
+#[test]
 fn reported_page_errors_reach_window_onerror_through_the_real_child() {
     let (fixture, url, gatekeeper) = fixture(
         "<p id=counter>unreported</p><script>
@@ -431,6 +485,9 @@ fn javascript_and_bluets_pin_the_browser_integration_global_inventory() {
         ("CompressionStream", "undefined"),
         ("crypto", "undefined"),
         ("reportError", "function"),
+        ("PromiseRejectionEvent", "function"),
+        ("onunhandledrejection", "object"),
+        ("onrejectionhandled", "object"),
         ("ErrorEvent", "function"),
         ("onerror", "object"),
         ("addEventListener", "function"),

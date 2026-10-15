@@ -1788,6 +1788,7 @@ impl Vm {
         continuation_state: ModuleContinuation,
         promise: ObjectId,
     ) -> Result<(), RuntimeError> {
+        self.mark_promise_handled(promise);
         // Validate before publishing a frame or consuming its serial.
         let status = self
             .promises
@@ -1846,6 +1847,7 @@ impl Vm {
         continuation_state: AsyncContinuation,
         promise: ObjectId,
     ) -> Result<(), RuntimeError> {
+        self.mark_promise_handled(promise);
         // Validate before publishing a frame or consuming its serial.
         let status = self
             .promises

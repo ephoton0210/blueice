@@ -152,15 +152,16 @@ impl Vm {
                 Ok(Value::Undefined)
             }
             HostErrorNative::Handler(set) => {
-                self.host_error_handler(global.object_id().unwrap(), set, args)
+                self.host_event_handler(global.object_id().unwrap(), "error", set, args)
             }
             HostErrorNative::Event(_) => unreachable!(),
         }
     }
 
-    fn host_error_handler(
+    pub(super) fn host_event_handler(
         &mut self,
         global: ObjectId,
+        name: &'static str,
         set: bool,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
@@ -168,7 +169,7 @@ impl Vm {
         let old = state
             .listeners
             .iter()
-            .position(|listener| listener.handler && listener.name == "error");
+            .position(|listener| listener.handler && listener.name == name);
         if !set {
             return Ok(old.map_or(Value::Null, |index| {
                 Value::Object(state.listeners[index].callback)
@@ -190,7 +191,7 @@ impl Vm {
                 })?;
                 state.listeners.push(WebListener {
                     serial: state.next_serial,
-                    name: "error".into(),
+                    name: name.into(),
                     callback,
                     capture: false,
                     once: false,
