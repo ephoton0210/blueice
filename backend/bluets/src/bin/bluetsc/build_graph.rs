@@ -10,6 +10,8 @@ use blueice_bluets::{Diagnostic, DiagnosticCode};
 use serde_json::Value;
 use tsconfig::clean_path;
 use tsconfig::inheritance::Reader;
+#[path = "build_graph/freshness.rs"]
+mod freshness;
 
 enum GraphFailure {
     Boundary(String),
@@ -23,6 +25,8 @@ struct Graph {
     visiting: Vec<PathBuf>,
     visited: BTreeSet<PathBuf>,
     composite: BTreeMap<PathBuf, bool>,
+    inputs: BTreeMap<PathBuf, freshness::Inputs>,
+    references: BTreeMap<PathBuf, Vec<PathBuf>>,
     order: Vec<PathBuf>,
 }
 
@@ -35,6 +39,8 @@ impl Graph {
             visiting: Vec::new(),
             visited: BTreeSet::new(),
             composite: BTreeMap::new(),
+            inputs: BTreeMap::new(),
+            references: BTreeMap::new(),
             order: Vec::new(),
         }
     }
@@ -147,13 +153,23 @@ impl Graph {
         if composite {
             self.validate_file_coverage(path, &project.files)?;
         }
+        self.inputs.insert(
+            path.to_path_buf(),
+            freshness::Inputs::new(
+                project.fingerprint.clone(),
+                project.config_inputs.clone(),
+                project.files.clone(),
+            ),
+        );
         let directory = path.parent().expect("canonical config has parent");
+        let mut edges = Vec::new();
         for (index, reference) in references.iter().enumerate() {
             let referenced = self.reference_config(directory, reference)?;
             self.visit(&referenced)?;
             let canonical = fs::canonicalize(&referenced).map_err(|error| {
                 GraphFailure::Boundary(format!("cannot resolve referenced project: {error}"))
             })?;
+            edges.push(canonical.clone());
             let referenced_composite = self.composite.get(&canonical) == Some(&true);
             if !referenced_composite {
                 let offset = reference_object_offset(&config_source, index).unwrap_or(0);
@@ -167,6 +183,7 @@ impl Graph {
                 ));
             }
         }
+        self.references.insert(path.to_path_buf(), edges);
         Ok(())
     }
 
@@ -365,19 +382,5 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
             println!("    * {}", graph.display_path(project));
         }
     }
-    for project in &graph.order {
-        if verbose {
-            println!("Building project: {}", graph.display_path(project));
-        }
-        let result = native_cli::run_build_project(vec![
-            "--project".into(),
-            project.to_string_lossy().into_owned(),
-            "--pretty".into(),
-            pretty.to_string(),
-        ]);
-        if result != ExitCode::SUCCESS {
-            return result;
-        }
-    }
-    ExitCode::SUCCESS
+    freshness::run(&graph, pretty, verbose)
 }

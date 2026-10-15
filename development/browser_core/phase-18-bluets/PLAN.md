@@ -10656,3 +10656,41 @@ the five-graph recorder, public CLI replay, emitted execution and declaration
 oracle, the 82-test TypeScript oracle, and the BlueJS library's 163 tests.
 The generated refusal inventory remains unchanged after rerunning
 `tools/inventory_refusals.py`; G-M2 is narrowed to the still-open build gaps.
+
+### K.12.1.3 Up-to-date decisions (2026-10-15)
+
+The pinned TypeScript 5.9.3 `--build --verbose` matrix follows one four-project
+reference graph through ten consecutive states: cold build, no-op, source
+mtime-only touch, config mtime-only touch, a source comment, a declaration
+signature change in a leaf, a signature change on an independent branch, a
+root-source change, a comment-only edit to a dependency's emitted `.d.ts`, and
+a second no-op. The frozen rebuilt sets show that TypeScript skips both
+no-ops and the source mtime-only touch, rebuilds a config touched without a
+content change, and propagates a declaration-signature change only until a
+dependent's own declaration remains unchanged. The original public replay
+rebuilt all four projects at every step. A second red replay isolated the
+config mtime-only mismatch after content-based skipping was implemented.
+
+BlueTSC now records an owner-local, atomically replaced build state per
+project. Its fingerprint binds the resolved configuration, config-input
+modification times, selected source identities and source bytes. A project
+is skipped only when the state matches and every recorded output remains a
+regular file under the project root. After rebuilding, lexed declaration
+tokens determine whether immediate dependents need recompilation. This
+preserves no-op output timestamps and avoids recompiling through an unchanged
+intermediate declaration. A symlinked state path is refused before read; a
+forged absolute output path is not read and forces a safe rebuild. The
+ten-step public and pinned replays agree on every rebuilt set, and after
+every step the two compilers' emitted exports run identically under Node and
+their declarations match. The three K.12.1 focused targets pass 16/16 tests,
+including all pinned oracle tests; rustfmt and warnings-denied two-crate
+Clippy pass. The complete K.0 two-crate gate also passes with pinned
+TypeScript 5.9.3, Acorn 8.15.0, and Node 24.21.0, including ordinary and
+ignored oracle tests; Cargo incremental compilation and dev/test debug
+symbols were disabled to bound the regenerated build artifacts.
+
+This state is not TypeScript `.tsbuildinfo`, and the test does not claim exact
+verbose prose or broad imported/package-input invalidation. Referenced
+declaration consumption and error continuation remain K.12.1.4–K.12.1.5;
+cache-key completeness, manifest/symlink invalidation, randomized edit
+equivalence and corrupt `.tsbuildinfo` remain K.12.2.

@@ -1,0 +1,10 @@
+projfresh-cold	lib/tsconfig.json;app/tsconfig.json;side/tsconfig.json;tsconfig.json
+projfresh-noop	-
+projfresh-lib-touch	-
+projfresh-lib-config-touch	lib/tsconfig.json
+projfresh-lib-comment	lib/tsconfig.json
+projfresh-lib-signature	lib/tsconfig.json;app/tsconfig.json
+projfresh-side-signature	side/tsconfig.json;tsconfig.json
+projfresh-root-signature	tsconfig.json
+projfresh-lib-declaration-comment	-
+projfresh-second-noop	-

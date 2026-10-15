@@ -15,14 +15,18 @@ mod statistics;
 use args::Args;
 
 pub(super) fn run(arguments: Vec<String>) -> ExitCode {
-    run_with_mode(arguments, false)
+    run_with_mode(arguments, false, None)
 }
 
-pub(super) fn run_build_project(arguments: Vec<String>) -> ExitCode {
-    run_with_mode(arguments, true)
+pub(super) fn run_build_project(arguments: Vec<String>, emitted: &mut Vec<PathBuf>) -> ExitCode {
+    run_with_mode(arguments, true, Some(emitted))
 }
 
-fn run_with_mode(arguments: Vec<String>, allow_references: bool) -> ExitCode {
+fn run_with_mode(
+    arguments: Vec<String>,
+    allow_references: bool,
+    emitted_outputs: Option<&mut Vec<PathBuf>>,
+) -> ExitCode {
     let started = std::time::Instant::now();
     let empty_command = arguments.is_empty();
     let diagnostics_json = arguments
@@ -191,6 +195,9 @@ fn run_with_mode(arguments: Vec<String>, allow_references: bool) -> ExitCode {
         Ok(emitted) => emitted,
         Err(error) => return fail(&error.to_string(), pretty),
     };
+    if let Some(outputs) = emitted_outputs {
+        outputs.extend(emitted.iter().cloned());
+    }
     statistics.written(write_started.elapsed());
     if list_emitted {
         for file in emitted {
