@@ -83,3 +83,60 @@ fn direct_expression_origin_capture_refuses_oversized_metadata() {
         Err(BridgeError::ProvenanceAttachment(message)) if message.contains("byte budget")
     ));
 }
+
+#[test]
+fn template_substitutions_keep_their_original_offsets_and_executable_output() {
+    for source in [
+        "`😀:${x}:${x}`",
+        "[`head:${x + x}`,x]",
+        "f(`head:${x}`,x)",
+        "`escaped:\\n${x}`",
+        "`head:${(x,x)}`",
+    ] {
+        let mut tokens = lex(ENTRY, source).unwrap();
+        tokens.pop();
+        let ordinary = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap();
+        let (expression, origins) = ExpressionLowerer::new(ENTRY, &tokens)
+            .parse_with_origins()
+            .unwrap();
+        assert_eq!(expression, ordinary, "{source}");
+        let mut positions = Vec::new();
+        origins
+            .bind(&expression, &mut |node, offset| {
+                if let bluejs::Expr::Identifier(name) = node {
+                    if name == "x" {
+                        positions.push(offset);
+                    }
+                }
+            })
+            .unwrap();
+        assert_eq!(
+            positions,
+            source
+                .match_indices('x')
+                .map(|(offset, _)| offset)
+                .collect::<Vec<_>>(),
+            "{source}"
+        );
+        let program = |value| {
+            bluejs::BlueJsProgramV1::Script(bluejs::Program {
+                body: vec![bluejs::Stmt::Expr(value)],
+            })
+        };
+        let ordinary = program(ordinary).compile().unwrap();
+        let collected = program(expression).compile().unwrap();
+        assert_eq!(collected.bytes(), ordinary.bytes(), "{source}");
+        assert_eq!(collected.constants(), ordinary.constants(), "{source}");
+    }
+}
+
+#[test]
+fn template_subparsers_share_the_enclosing_capture_budget() {
+    let source = format!("`{}`", "${x}".repeat(50_000));
+    let mut tokens = lex(ENTRY, &source).unwrap();
+    tokens.pop();
+    assert!(ExpressionLowerer::new(ENTRY, &tokens).parse().is_ok());
+    assert!(
+        matches!(ExpressionLowerer::new(ENTRY,&tokens).parse_with_origins(),Err(BridgeError::ProvenanceAttachment(message)) if message.contains("byte budget"))
+    );
+}

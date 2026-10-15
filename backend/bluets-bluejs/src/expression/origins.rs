@@ -12,7 +12,7 @@ pub(crate) struct ExpressionOrigin {
     kind: Discriminant<bluejs::Expr>,
     start: usize,
     end: usize,
-    // Opaque atoms (class, template and JSX) certify only their own root.
+    // Opaque atoms (class and JSX) certify only their own root here.
     children: Option<Vec<ExpressionOrigin>>,
 }
 
@@ -60,6 +60,7 @@ fn children<'a>(expression: &'a bluejs::Expr, mut visit: impl FnMut(&'a bluejs::
             visit(alternate);
         }
         Expr::Sequence(values) => values.iter().for_each(&mut visit),
+        Expr::Template { expressions, .. } => expressions.iter().for_each(&mut visit),
         Expr::Member {
             object,
             property,

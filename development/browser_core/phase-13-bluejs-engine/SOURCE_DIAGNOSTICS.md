@@ -319,11 +319,11 @@ still bind installation to its immutable final AST.
 
 Capture allocations are conservatively charged before growth against an
 8 MiB limit. Inconsistent evidence or capture refusal stops artifact creation.
-Template, class-expression and JSX atoms certify only their own root until
-their independent lowering paths produce child evidence. The public template
-failure regression confirms that an unmapped descendant does not borrow its
-parent's location. Namespace/enum rewrites that do not exactly match a replay
-retain only their earlier independently proven bindings.
+This first expression increment kept template, class-expression and JSX atoms
+opaque below their roots. Its public template regression confirmed that an
+unmapped descendant did not borrow its parent's location; the next increment
+below now supplies that descendant's own evidence. Namespace/enum rewrites that
+do not exactly match a replay retain only their earlier proven bindings.
 
 Twenty-two public failures verify operands, arguments, member chains, computed
 keys, arrays, object values, conditional/logical branches, assignment/update
@@ -345,6 +345,55 @@ runtime/test hashes remain fixed; receipts are retained in
 `target/direct-expression-source-20261016.json` and
 `target/direct-expression-validation-20261016.json`. M1q stays at 3/10 final
 acceptance gates.
+
+### Embedded template and class-expression evidence
+
+The existing template lowering parser now passes its optional capture through
+the parser for each substitution. The lexer still rebases tokens to original
+byte offsets, and the grammar, escape decoding and ordinary output are
+unchanged. Siblings share both pending roots and the allocation charge, so
+many individually small substitutions cannot bypass the 8 MiB capture limit.
+The origin tree names each substitution in execution order, including templates
+inside arrays/calls and repeated expressions.
+
+After exact expression replay succeeds, a class-expression root can also name
+its checked original class declaration by the recorded byte offset. Defined-
+field classes use the existing member/body evidence traversal for methods,
+accessors, constructors, defaults, static blocks and field initializer
+expressions. Original statements keep their positions around constructor
+parameter-property prologues. Nested class expressions recurse through the
+same proof. A successful parent traversal must not clear a refusal raised by
+its child; a public oversized-class fixture verifies this atomic failure.
+
+Fifteen public template/class failure scenarios pass, plus ten source-coordinate
+contexts covering UTF-16 and CR/CRLF/LS/PS. Module dependencies retain template
+and class-expression origins before and after await. Five parser shapes retain
+ordinary ASTs, instruction bytes and constants. Shared-budget and nested-refusal
+controls pass. Dynamic function bodies reached through a mapped template or
+class keep unavailable origins, as do class-expression descendants in the
+separately lowered assignment-field mode. Remaining class/computed-key,
+pattern/namespace/enum/JSX/assignment-field evidence and integrated lifecycle/
+resource/full-workspace/Test262 acceptance stay open.
+
+The final selection passes all thirty-five bridge library/integration targets
+(253 cases, fifteen existing external-oracle cases ignored), forty-four BlueJS
+diagnostic groups, 312 launcher cases, nineteen real-page cases and five MCP
+console cases. This is 633 passes across thirty-nine disjoint targets, zero
+final failures and sixteen existing ignored. Five additional real-page contexts
+and two deferred debugger contexts pass. Queued template/class MCP errors
+retain original 5:2 and 6:2. Formatting and related library/integration/test
+Clippy pass with warnings denied.
+
+The final page fixture needed an explicit export for its top-level await to
+pass the existing BlueTS external-module check. After that test-only correction,
+the complete page/MCP replay and browser-target Clippy pass. Other source,
+runtime and test identities are unchanged. Nine Rust inputs, three Cargo inputs,
+three runtime and thirty-eight test executables are recorded in
+`target/direct-nested-source-20261016.json` and
+`target/direct-nested-validation-20261016.json`; the initial failed receipt and
+source identities are retained in the matching `direct-nested-initial-*`
+manifests. Final host replay keeps every recorded identity fixed. M1q remains
+at 3/10 final acceptance gates.
 
 ## Saved completions and cleanup
 

@@ -378,12 +378,21 @@ impl Evidence<'_> {
         match ExpressionLowerer::for_module(self.module, tokens).parse_with_origins() {
             Ok((replayed, origins)) if &replayed == expression => {
                 let result = origins.bind(expression, &mut |node, offset| {
+                    if self.define_fields {
+                        if let bluejs::Expr::Class(class) = node {
+                            if let Some(original) = self.module.class_expression(offset) {
+                                self.class(&original.class, class);
+                            }
+                        }
+                    }
                     self.bind(
                         DiagnosticSourceNode::Expression(node),
                         &SourceSpan::new(&self.module.id, offset, offset),
                     );
                 });
-                self.error = result.err();
+                if let Err(error) = result {
+                    self.error = Some(error);
+                }
                 return;
             }
             Err(error @ BridgeError::ProvenanceAttachment(_)) => {

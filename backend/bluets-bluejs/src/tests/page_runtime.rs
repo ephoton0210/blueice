@@ -326,12 +326,16 @@ fn direct_source_coordinates_preserve_original_unicode_and_line_terminators() {
 
 #[test]
 fn direct_module_dependency_failures_keep_original_origins_before_and_after_await() {
-    for (awaited, deep) in [(false, false), (true, false), (false, true), (true, true)] {
+    for (awaited, kind) in [false, true]
+        .into_iter()
+        .flat_map(|awaited| ["throw", "operand", "template", "class"].map(|kind| (awaited, kind)))
+    {
         let prefix = if awaited { "await 0;\n" } else { "" };
-        let source = if deep {
-            format!("export const absent: any=null;\n{prefix}export const value: any=0 + (\n absent.field);")
-        } else {
-            format!("export const marker: number=0;\n{prefix}function fail(): void {{\n throw 'dependency';\n}}fail();")
+        let source = match kind {
+            "operand" => format!("export const absent: any=null;\n{prefix}export const value: any=0 + (\n absent.field);"),
+            "template" => format!("export const absent: any=null;\n{prefix}export const value: any=`value:${{\n absent.field}}`;"),
+            "class" => format!("export const marker: number=0;\n{prefix}const C=class {{go(): void {{\n throw 'dependency-class';}}}};new C().go();"),
+            _ => format!("export const marker: number=0;\n{prefix}function fail(): void {{\n throw 'dependency';\n}}fail();"),
         };
         let graph = compile_direct_module_graph(
             GRAPH_ENTRY,
@@ -360,40 +364,115 @@ fn direct_module_dependency_failures_keep_original_origins_before_and_after_awai
 
 #[test]
 fn direct_mapped_callers_cannot_supply_dynamic_function_body_origins() {
-    let artifact = compile_direct_script(
-        ENTRY,
-        &MapLoader::from([ModuleSource::new(
+    for call in [
+        "dynamic();",
+        "const value: any=`${dynamic()}`;",
+        "const C=class {go(): void {dynamic();}};new C().go();",
+    ] {
+        let source = format!("const dynamic: any=Function(\"throw 'dynamic'\");{call}");
+        let artifact = compile_direct_script(
             ENTRY,
-            "const dynamic: any=Function(\"throw 'dynamic'\");dynamic();",
-        )]),
-        CompilerOptions {
-            ambient_declaration_modules: vec![ModuleSource::new(
-                "memory:///owner.d.ts",
-                "declare function Function(source: string): any;",
-            )],
-            ..CompilerOptions::default()
-        },
-    )
-    .unwrap();
-    let mut runtime = diagnostic_runtime();
-    let attachment = artifact
-        .attach_in_page_realm(&mut runtime, 7, &origin())
+            &MapLoader::from([ModuleSource::new(ENTRY, &source)]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ModuleSource::new(
+                    "memory:///owner.d.ts",
+                    "declare function Function(source: string): any;",
+                )],
+                ..CompilerOptions::default()
+            },
+        )
         .unwrap();
-    assert!(runtime.execute_program(7, attachment.handle).is_err());
-    let messages = runtime.drain_console(7).unwrap();
-    assert_eq!(messages.records.len(), 1, "{messages:?}");
-    assert!(messages.records[0].source.is_none(), "{messages:?}");
+        let mut runtime = diagnostic_runtime();
+        let attachment = artifact
+            .attach_in_page_realm(&mut runtime, 7, &origin())
+            .unwrap();
+        assert!(runtime.execute_program(7, attachment.handle).is_err());
+        let messages = runtime.drain_console(7).unwrap();
+        assert_eq!(messages.records.len(), 1, "{messages:?}");
+        assert!(messages.records[0].source.is_none(), "{messages:?}");
+    }
 }
 
 #[test]
-fn opaque_direct_template_children_keep_unavailable_origins() {
+fn direct_templates_and_class_expressions_use_their_descendants_original_sources() {
+    let mut failures = Vec::new();
+    for (name, source, line, column) in [
+        ("template operand", "const absent: any=null;const value: any=`value:${\n absent.field}`;", 2, 2),
+        ("later substitution", "const absent: any=null;const value: any=`${0}\n${\n absent.field}`;", 3, 2),
+        ("template array element", "const absent: any=null;const value: any=[`inner:${\n absent.field}`];", 2, 2),
+        ("template argument", "function read(value: any): void {}const absent: any=null;const value: any=`${read(\n absent.field)}`;", 2, 2),
+        ("class method", "const C=class {fail(): void {\n throw 'method';}};new C().fail();", 2, 2),
+        ("class getter", "const C=class {get value(): number {\n throw 'getter';}};new C().value;", 2, 2),
+        ("class constructor", "const C=class {constructor() {\n throw 'constructor';}};new C();", 2, 2),
+        ("class field", "const absent: any=null;const C=class {value: any=0 + (\n absent.field);};new C();", 2, 2),
+        ("class static block", "const C=class {static {\n throw 'static';}};", 2, 2),
+        ("class template field", "const absent: any=null;const C=class {value: any=`${\n absent.field}`;};new C();", 2, 2),
+        ("class default parameter", "const absent: any=null;const C=class {fail(value: any=\n absent.field): void {}};new C().fail();", 2, 2),
+        ("class constructor prologue", "const C=class {constructor(public value: number) {\n throw 'prologue';}};new C(0);", 2, 2),
+        ("derived class prologue", "class B {}const C=class extends B {constructor(public value: number) {super();\n throw 'derived';}};new C(0);", 2, 2),
+        ("nested class expression", "const Outer=class {fail(): void {const Inner=class {go(): void {\n throw 'nested';}};new Inner().go();}};new Outer().fail();", 2, 2),
+        ("class method template", "const absent: any=null;const C=class {fail(): void {const value: any=`value:${\n absent.field}`;}};new C().fail();", 2, 2),
+    ] {
+        let artifact = compile_direct_script(ENTRY, &MapLoader::from([ModuleSource::new(ENTRY,source)]),CompilerOptions::default())
+            .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+        let mut runtime = diagnostic_runtime();
+        let attachment = artifact.attach_in_page_realm(&mut runtime,7,&origin()).unwrap();
+        assert!(runtime.execute_program(7,attachment.handle).is_err(),"{name}");
+        let messages = runtime.drain_console(7).unwrap();
+        assert_eq!(messages.records.len(),1,"{name}: {messages:?}");
+        let actual = messages.records[0].source.as_ref().map(|source|(source.filename.as_str(),source.line,source.column));
+        if actual!=Some((ENTRY,line,column)) {failures.push((name,actual.map(|(file,line,column)|(file.to_owned(),line,column))));}
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn class_expression_nested_capture_refusal_cannot_be_overwritten_by_its_parent() {
+    let source = format!(
+        "const C=class {{fail(x: any): void {{const value: any=`{}`;}}}};",
+        "${x}".repeat(50_000)
+    );
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, &source)]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        matches!(result,Err(BridgeError::ProvenanceAttachment(message)) if message.contains("byte budget"))
+    );
+}
+
+#[test]
+fn embedded_direct_sources_preserve_utf16_columns_and_original_line_terminators() {
+    for newline in ["", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
+        for (source, marker) in [
+            (format!("const absent: any=null;const face: string='😀';const value: any=`🧊${{{newline} absent.field}}`;"), "absent.field"),
+            (format!("const face: string='😀';const C=class {{go(): void {{{newline} throw 'class';}}}};new C().go();"), "throw"),
+        ] {
+            let offset=source.rfind(marker).unwrap();
+            let expected=if newline.is_empty() {(1,source[..offset].encode_utf16().count() as u32 + 1)}else{(2,2)};
+            let artifact=compile_direct_script(ENTRY,&MapLoader::from([ModuleSource::new(ENTRY,&source)]),CompilerOptions::default()).unwrap();
+            let mut runtime=diagnostic_runtime();
+            let attachment=artifact.attach_in_page_realm(&mut runtime,7,&origin()).unwrap();
+            assert!(runtime.execute_program(7,attachment.handle).is_err());
+            let messages=runtime.drain_console(7).unwrap();
+            assert_eq!(messages.records.len(),1,"{source}: {messages:?}");
+            let location=messages.records[0].source.as_ref().unwrap();
+            assert_eq!((location.filename.as_str(),location.line,location.column),(ENTRY,expected.0,expected.1),"{source}");
+        }
+    }
+}
+
+#[test]
+fn assignment_field_class_expression_descendants_keep_unavailable_sources() {
+    let source = "const C=class {get value(): number {\n throw 'unmapped';}};new C().value;";
     let artifact = compile_direct_script(
         ENTRY,
-        &MapLoader::from([ModuleSource::new(
-            ENTRY,
-            "const absent: any=null;const value: any=`value:${absent.field}`;",
-        )]),
-        CompilerOptions::default(),
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            use_define_for_class_fields: Some(false),
+            ..CompilerOptions::default()
+        },
     )
     .unwrap();
     let mut runtime = diagnostic_runtime();

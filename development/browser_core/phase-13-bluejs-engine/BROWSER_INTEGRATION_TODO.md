@@ -660,14 +660,32 @@ the full source-position requirement.
       MCP errors preserve original `.ts` operand/argument/key positions.
       Formatting and related library/integration/test Clippy pass; eleven Rust
       inputs, three Cargo inputs and runtime/test hashes remain fixed.
+- [x] Preserve template substitution token offsets through embedded direct
+      parsers while sharing the enclosing source-capture allocation charge.
+      Match ordinary ASTs, bytes and constants in five template shapes;
+      a 50,000-substitution expression cannot reset that budget per child.
+- [x] Bind defined-field class-expression member bodies/defaults/initializers
+      to checked class-expression evidence after exact replay equality.
+      Verify fifteen template/class failure scenarios, original UTF-16 and
+      CR/CRLF/LS/PS coordinates, dependency failures before/after await,
+      constructor prologues and recursive class bodies. Preserve nested
+      capture refusal and dynamic/assignment-field unavailable controls;
+      all 182 bridge library cases pass.
+- [x] Pass the embedded-source follow-up: 633 cases across thirty-nine disjoint
+      targets, zero final failures and sixteen existing ignored. All bridge
+      library/integration targets pass (253 cases), plus forty-four diagnostic
+      groups, 312 launcher cases, nineteen real pages and five MCP console
+      cases. Five more page contexts and two deferred debugger contexts pass;
+      queued template/class MCP errors retain original 5:2/6:2. Formatting and
+      related Clippy pass; final source/runtime/test identities are recorded.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
       compiler-generated provenance.
 - [ ] Complete remaining direct BlueTS expression/pattern and namespace/enum/
-      JSX/assignment-field lowering evidence, including opaque template/class
-      descendants, plus remaining emitted-profile, module and debugger
+      JSX/assignment-field lowering evidence and remaining class/computed-key
+      provenance, plus remaining emitted-profile, module and debugger
       precision/lifecycle acceptance.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
       disposal acceptance beyond the verified module and disposal cases.
@@ -1189,6 +1207,47 @@ Remaining expression/pattern, opaque descendant, namespace/enum/JSX and
 assignment-field provenance, integrated lifecycle/resource acceptance, full
 workspace/all-target and pinned Test262 gates remain open. M1q remains at 3/10
 final acceptance gates.
+
+The embedded-source follow-up (2026-10-16) reproduces ten missing template/
+class-expression origins at the public page boundary
+(`/private/tmp/blueice-direct-nested-red.log`). The existing template parser now
+passes the same optional capture through each original-offset substitution;
+children share its pending roots and allocation charge. Five parser shapes
+retain ordinary ASTs, instruction bytes and constants, while 50,000 small
+substitutions cannot reset the capture budget. After exact replay equality,
+defined-field class-expression bodies/defaults/initializers join their checked
+original class evidence. Fifteen source scenarios cover constructors, synthetic
+prologues, accessors, static blocks, nested classes and template initializers.
+Ten additional coordinate contexts retain UTF-16 and CR/CRLF/LS/PS positions;
+dependency templates/classes retain their own origins before and after await.
+A child capture refusal cannot be cleared by a successful parent traversal.
+Mapped templates/classes cannot lend positions to dynamic function bodies;
+the separate assignment-field lowering remains explicitly unavailable.
+
+All thirty-five bridge library/integration targets pass: 253 cases, fifteen
+existing external TypeScript/Acorn oracle cases ignored. Forty-four BlueJS
+diagnostic groups, 312 launcher cases, nineteen real-page cases and five MCP
+console cases also pass, for 633 passes across thirty-nine disjoint targets,
+zero final failures and sixteen existing ignored. Five new real-page contexts
+cover templates, getters, constructors and awaited template/class modules; two
+additional deferred debugger contexts pass. MCP retains queued template/class
+origins at original 5:2 and 6:2 alongside its earlier reference positions.
+Formatting, seven-library Clippy, changed integration Clippy and bridge/launcher
+test Clippy pass with warnings denied.
+
+The initial final-page replay had one invalid fixture: an awaited class file
+without an import/export was rejected by BlueTS's existing external-module
+check before execution. Adding `export` to that class variable alone corrects
+the fixture. The complete nineteen-page replay, all five MCP console cases and
+browser-target Clippy then pass; the failed receipt is excluded from the final
+count and retained separately. Other source/runtime/test hashes are unchanged.
+Nine Rust inputs, three Cargo inputs, three runtime executables and thirty-eight
+test executables are recorded in `target/direct-nested-source-20261016.json`;
+per-target and superseded receipts are retained in
+`target/direct-nested-validation-20261016.json` and the corresponding
+`direct-nested-initial-*` manifests. Final host replay keeps all identities
+fixed. Remaining provenance, integrated lifecycle/resource and full workspace/
+all-target/Test262 gates stay open; M1q remains at 3/10 final acceptance gates.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

@@ -8,6 +8,7 @@ use super::*;
 
 mod calls;
 mod origins;
+mod templates;
 mod writes;
 
 pub(super) struct ExpressionLowerer<'a> {
@@ -74,6 +75,17 @@ impl<'a> ExpressionLowerer<'a> {
             ));
         }
         Ok((expression, self.origins))
+    }
+
+    pub(super) fn parse_embedded_expression(
+        &mut self,
+        tokens: &[Token],
+    ) -> Result<bluejs::Expr, BridgeError> {
+        let mut parser = ExpressionLowerer::new(self.module, tokens);
+        parser.origins = self.origins.take();
+        let (expression, origins) = parser.parse_impl()?;
+        self.origins = origins;
+        Ok(expression)
     }
 
     pub(super) fn parse_sequence(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -600,7 +612,7 @@ impl<'a> ExpressionLowerer<'a> {
         let opaque_atom = self
             .tokens
             .get(self.index)
-            .is_some_and(|token| matches!(token.kind, TokenKind::Template | TokenKind::JsxElement));
+            .is_some_and(|token| matches!(token.kind, TokenKind::JsxElement));
         let result = self.parse_atom_inner()?;
         self.capture_origin(
             scope,
@@ -645,7 +657,7 @@ impl<'a> ExpressionLowerer<'a> {
                 .map(bluejs::Expr::Number)
                 .map_err(|_| unsupported(self.token_span(token), "unsupported numeric literal")),
             TokenKind::String => lower_string(self.module, token),
-            TokenKind::Template => lower_template(self.module, token),
+            TokenKind::Template => self.lower_template(token),
             TokenKind::JsxElement => self.lower_jsx_element(token),
             TokenKind::Identifier => Ok(bluejs::Expr::Identifier(token.text.clone())),
             TokenKind::Keyword => match token.text.as_str() {
@@ -951,131 +963,6 @@ pub(super) fn decode_string_escapes(
         });
     }
     Ok(output)
-}
-
-pub(super) fn lower_template(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeError> {
-    let body = token
-        .text
-        .strip_prefix('`')
-        .and_then(|text| text.strip_suffix('`'))
-        .ok_or_else(|| unsupported(token_span(module, token), "invalid template token"))?;
-    let mut quasis = Vec::new();
-    let mut expressions = Vec::new();
-    let mut remainder = body;
-    let mut remainder_offset = 1usize;
-    while let Some(start) = template_substitution_start(remainder) {
-        quasis.push(decode_string_escapes(module, token, &remainder[..start])?.into());
-        let expression_start = start + 2;
-        let Some(end) = template_substitution_end(&remainder[expression_start..]) else {
-            return Err(unsupported(
-                token_span(module, token),
-                "unterminated template substitution",
-            ));
-        };
-        let expression = &remainder[expression_start..expression_start + end];
-        expressions.push(lower_template_substitution(
-            module,
-            token,
-            expression,
-            remainder_offset + expression_start,
-        )?);
-        remainder_offset += expression_start + end + 1;
-        remainder = &remainder[expression_start + end + 1..];
-    }
-    quasis.push(decode_string_escapes(module, token, remainder)?.into());
-    Ok(bluejs::Expr::Template {
-        quasis,
-        expressions,
-    })
-}
-
-pub(super) fn template_substitution_start(text: &str) -> Option<usize> {
-    let bytes = text.as_bytes();
-    let mut index = 0usize;
-    while index + 1 < bytes.len() {
-        if bytes[index] == b'\\' {
-            index += 2;
-        } else if bytes[index] == b'$' && bytes[index + 1] == b'{' {
-            return Some(index);
-        } else {
-            index += 1;
-        }
-    }
-    None
-}
-
-pub(super) fn template_substitution_end(text: &str) -> Option<usize> {
-    let bytes = text.as_bytes();
-    let mut index = 0usize;
-    let mut depth = 1usize;
-    let mut quote = None;
-    while index < bytes.len() {
-        if let Some(delimiter) = quote {
-            if bytes[index] == b'\\' {
-                index += 2;
-                continue;
-            }
-            if bytes[index] == delimiter {
-                quote = None;
-            }
-            index += 1;
-            continue;
-        }
-        match bytes[index] {
-            b'\'' | b'"' => quote = Some(bytes[index]),
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(index);
-                }
-            }
-            _ => {}
-        }
-        index += 1;
-    }
-    None
-}
-
-pub(super) fn lower_template_substitution(
-    module: &str,
-    template: &Token,
-    source: &str,
-    source_offset: usize,
-) -> Result<bluejs::Expr, BridgeError> {
-    if source.is_empty() {
-        return Err(unsupported(
-            token_span(module, template),
-            "empty template substitutions are not expressions",
-        ));
-    }
-    let mut tokens = lex(module, source).map_err(|_| {
-        unsupported(
-            token_span(module, template),
-            "invalid expression in a template substitution",
-        )
-    })?;
-    let eof = tokens
-        .pop()
-        .expect("BlueTS lexer always terminates with EOF");
-    debug_assert_eq!(eof.kind, TokenKind::Eof);
-    if tokens.is_empty() {
-        return Err(unsupported(
-            token_span(module, template),
-            "empty template substitutions are not expressions",
-        ));
-    }
-    for token in &mut tokens {
-        token.start += template.start + source_offset;
-        token.end += template.start + source_offset;
-    }
-    if let Some(optional) = tokens.iter().find(|token| token.is("?.")) {
-        return Err(unsupported(
-            token_span(module, optional),
-            "unsupported expression token `?.` in a template substitution",
-        ));
-    }
-    ExpressionLowerer::new(module, &tokens).parse()
 }
 
 pub(super) fn token_span(module: &str, token: &Token) -> SourceSpan {
