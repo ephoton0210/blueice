@@ -60,6 +60,8 @@ fn direct_bluets_diagnostics_survive_deferred_debugger_execution() {
         "const absent: any=null;class C {[\n absent.field]: any=0;}",
         "const bad: any=0;\n@bad class C {}",
         "const Native: any=WeakMap;\n@Native class C {}",
+        "namespace N {export function fail(): void {\n throw 'namespace';}}N.fail();",
+        "const absent: any=null;enum E {A=(\n absent.field)}",
         "class Handler {get apply(): any {try{throw 'caught';}catch(error){}return 0;}}const Factory: any=(globalThis as any).Proxy;const dec: any=new Factory(WeakMap,new Handler());\n@dec class C {}",
     ] {
         let messages = debugger_source_batch(vec![classic(0, ";"), blue_ts_classic(1, source)]);

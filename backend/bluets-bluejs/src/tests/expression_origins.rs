@@ -140,3 +140,34 @@ fn template_subparsers_share_the_enclosing_capture_budget() {
         matches!(ExpressionLowerer::new(ENTRY,&tokens).parse_with_origins(),Err(BridgeError::ProvenanceAttachment(message)) if message.contains("byte budget"))
     );
 }
+
+#[test]
+fn rewritten_qualified_names_keep_every_prefix_even_with_identical_spans() {
+    for segments in 2..10 {
+        let name = vec!["x"; segments].join(".");
+        let tokens = expression_tokens(&[(&name, TokenKind::Identifier)]);
+        let declaration = Declaration::Raw(blueice_bluets::RawDeclaration {
+            tokens,
+            span: SourceSpan::new(ENTRY, 0, name.len()),
+        });
+        let Declaration::Raw(rewritten) =
+            blueice_bluets::rewrite_declaration(&declaration, &BTreeMap::new()).unwrap()
+        else {
+            unreachable!()
+        };
+        let rewritten = rewritten.tokens;
+        let ordinary = ExpressionLowerer::new(ENTRY, &rewritten).parse().unwrap();
+        let (captured, origins) = ExpressionLowerer::new(ENTRY, &rewritten)
+            .parse_with_origins()
+            .unwrap();
+        assert_eq!(captured, ordinary);
+        let mut count = 0;
+        origins
+            .bind(&captured, &mut |_, offset| {
+                assert_eq!(offset, 0);
+                count += 1;
+            })
+            .unwrap();
+        assert_eq!(count, segments);
+    }
+}

@@ -6,6 +6,64 @@
 
 use super::*;
 
+/// Paths captured by the production namespace lowerer. Only original runtime
+/// declarations have entries; generated declarations/exports remain gaps.
+#[derive(Default)]
+pub(crate) struct NamespaceOrigins {
+    pub calls: Vec<usize>,
+    pub references: BTreeMap<String, String>,
+    pub entries: Vec<NamespaceEntry>,
+}
+
+pub(crate) struct NamespaceEntry {
+    pub statement: usize,
+    pub declaration: usize,
+    pub kind: NamespaceEntryKind,
+}
+
+pub(crate) enum NamespaceEntryKind {
+    Declaration,
+    ExportedInitializer,
+    Enum,
+    Namespace(NamespaceOrigins),
+}
+
+#[derive(Default)]
+struct OriginBudget(usize);
+
+impl OriginBudget {
+    fn charge(&mut self, bytes: usize) -> Result<(), BridgeError> {
+        self.0 = self
+            .0
+            .checked_add(bytes)
+            .filter(|bytes| *bytes <= bluejs::diagnostics::MAX_DIAGNOSTIC_SOURCE_MAP_BYTES)
+            .ok_or_else(|| {
+                BridgeError::ProvenanceAttachment(
+                    "direct namespace source evidence exceeds its byte budget".into(),
+                )
+            })?;
+        Ok(())
+    }
+}
+
+fn record(
+    origins: &mut Option<&mut NamespaceOrigins>,
+    budget: &mut OriginBudget,
+    statement: usize,
+    declaration: usize,
+    kind: NamespaceEntryKind,
+) -> Result<(), BridgeError> {
+    if let Some(origins) = origins.as_deref_mut() {
+        budget.charge(4 * std::mem::size_of::<NamespaceEntry>())?;
+        origins.entries.push(NamespaceEntry {
+            statement,
+            declaration,
+            kind,
+        });
+    }
+    Ok(())
+}
+
 /// An enum as `var E = (function (E) { E[E["A"] = 0] = "A"; ...; return E; })(E || {});`.
 /// One statement per declaration keeps a root statement and its source span one
 /// to one, and merged declarations reuse the object through `E || {}`. A
@@ -13,7 +71,7 @@ use super::*;
 /// every use reads it, which behaves as the inlined emit does. An ambient enum
 /// has no runtime form (`None`), except an ambient `const enum`, whose uses
 /// would need their values inlined, which the bridge does not do.
-pub(super) fn lower_enum(
+pub(crate) fn lower_enum(
     module: &Module,
     declaration: &blueice_bluets::EnumDeclaration,
     evaluations: &mut std::vec::IntoIter<blueice_bluets::EvaluatedEnum>,
@@ -33,7 +91,7 @@ pub(super) fn lower_enum(
 }
 
 /// The function an enum declaration builds its object in.
-pub(super) fn lower_enum_function(
+pub(crate) fn lower_enum_function(
     module: &Module,
     declaration: &blueice_bluets::EnumDeclaration,
     evaluations: &mut std::vec::IntoIter<blueice_bluets::EvaluatedEnum>,
@@ -173,7 +231,7 @@ pub(super) fn member_argument(parent: &str, name: &str) -> bluejs::Expr {
 }
 
 /// Where a namespace is declared.
-pub(super) enum NamespaceScope {
+pub(crate) enum NamespaceScope {
     Module,
     Namespace { parent: String },
 }
@@ -181,23 +239,63 @@ pub(super) enum NamespaceScope {
 /// Lowers namespaces the way TypeScript emits them: a function over the
 /// namespace object, called with the object or a new one, in which an exported
 /// variable is a property and every reference to it a property read.
-pub(super) struct NamespaceLowering<'a> {
-    pub(super) module: &'a Module,
-    pub(super) tokens: &'a [Token],
-    pub(super) exports: NamespaceExports,
-    pub(super) define_class_fields: bool,
+pub(crate) struct NamespaceLowering<'a> {
+    pub(crate) module: &'a Module,
+    pub(crate) tokens: &'a [Token],
+    pub(crate) exports: NamespaceExports,
+    pub(crate) define_class_fields: bool,
 }
 
 impl NamespaceLowering<'_> {
     /// The statements for one namespace declaration, none when it has nothing at
     /// run time or is ambient.
-    pub(super) fn namespace(
+    pub(crate) fn namespace(
         &self,
         namespace: &blueice_bluets::NamespaceDeclaration,
         scope: &NamespaceScope,
         declared: &mut BTreeSet<String>,
         parent_path: &str,
         outer: &BTreeMap<String, String>,
+    ) -> Result<Vec<bluejs::Stmt>, BridgeError> {
+        self.namespace_impl(
+            namespace,
+            scope,
+            declared,
+            parent_path,
+            outer,
+            None,
+            &mut OriginBudget::default(),
+        )
+    }
+
+    pub(crate) fn namespace_with_origins(
+        &self,
+        namespace: &blueice_bluets::NamespaceDeclaration,
+        declared: &mut BTreeSet<String>,
+    ) -> Result<(Vec<bluejs::Stmt>, NamespaceOrigins), BridgeError> {
+        let mut origins = NamespaceOrigins::default();
+        let statements = self.namespace_impl(
+            namespace,
+            &NamespaceScope::Module,
+            declared,
+            "",
+            &BTreeMap::new(),
+            Some(&mut origins),
+            &mut OriginBudget::default(),
+        )?;
+        Ok((statements, origins))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn namespace_impl(
+        &self,
+        namespace: &blueice_bluets::NamespaceDeclaration,
+        scope: &NamespaceScope,
+        declared: &mut BTreeSet<String>,
+        parent_path: &str,
+        outer: &BTreeMap<String, String>,
+        mut origins: Option<&mut NamespaceOrigins>,
+        budget: &mut OriginBudget,
     ) -> Result<Vec<bluejs::Stmt>, BridgeError> {
         if namespace.declared || !has_runtime_values(&namespace.body) {
             return Ok(Vec::new());
@@ -233,7 +331,14 @@ impl NamespaceLowering<'_> {
                 },
             )
             .map_err(from_diagnostic)?;
-        let mut statements = self.body(&innermost.body, &param, &own_path, &references)?;
+        let mut statements = self.body(
+            &innermost.body,
+            &param,
+            &own_path,
+            &references,
+            origins.as_deref_mut(),
+            budget,
+        )?;
         // Wrap the body in one function per segment, innermost first.
         for index in (0..chain.len()).rev() {
             let name = &chain[index].name;
@@ -248,6 +353,12 @@ impl NamespaceLowering<'_> {
                 member_argument(&chain[index - 1].name, name)
             };
             let call = bluejs::Stmt::Expr(iife(function_over(name, statements), argument));
+            if let Some(origins) = origins.as_deref_mut() {
+                budget.charge(4 * std::mem::size_of::<usize>())?;
+                origins
+                    .calls
+                    .push(if index == 0 { usize::from(first) } else { 1 });
+            }
             if index == 0 {
                 statements = Vec::new();
                 if first {
@@ -277,15 +388,31 @@ impl NamespaceLowering<'_> {
                 ];
             }
         }
+        if let Some(origins) = origins {
+            for (name, parent) in &references {
+                // Include tree-node slack and the traversal's displaced copy,
+                // even for a tiny map whose root allocation is mostly empty.
+                budget.charge(
+                    32 * std::mem::size_of::<(String, String)>()
+                        + 4 * name.capacity()
+                        + 4 * parent.capacity(),
+                )?;
+            }
+            origins.references = references;
+            origins.calls.reverse();
+        }
         Ok(statements)
     }
 
-    pub(super) fn body(
+    #[allow(clippy::too_many_arguments)]
+    fn body(
         &self,
         body: &[Declaration],
         param: &str,
         own_path: &str,
         references: &BTreeMap<String, String>,
+        mut origins: Option<&mut NamespaceOrigins>,
+        budget: &mut OriginBudget,
     ) -> Result<Vec<bluejs::Stmt>, BridgeError> {
         let module = self.module;
         let evaluations = evaluate_enums_in(body);
@@ -298,7 +425,7 @@ impl NamespaceLowering<'_> {
                 identifier_expr(name),
             ))
         };
-        for declaration in body {
+        for (index, declaration) in body.iter().enumerate() {
             let rewritten =
                 rewrite_declaration(declaration, references).map_err(from_diagnostic)?;
             match &rewritten {
@@ -308,16 +435,37 @@ impl NamespaceLowering<'_> {
                             let value =
                                 ExpressionLowerer::for_module(module, &variable.initializer)
                                     .parse()?;
+                            record(
+                                &mut origins,
+                                budget,
+                                statements.len(),
+                                index,
+                                NamespaceEntryKind::ExportedInitializer,
+                            )?;
                             statements.push(bluejs::Stmt::Expr(assign_expr(
                                 property_expr(param, &variable.name),
                                 value,
                             )));
                         }
                     } else {
+                        record(
+                            &mut origins,
+                            budget,
+                            statements.len(),
+                            index,
+                            NamespaceEntryKind::Declaration,
+                        )?;
                         statements.push(lower_variable(module, variable)?);
                     }
                 }
                 Declaration::Function(function) if !function.declared && !function.overload => {
+                    record(
+                        &mut origins,
+                        budget,
+                        statements.len(),
+                        index,
+                        NamespaceEntryKind::Declaration,
+                    )?;
                     statements.push(lower_function(module, function)?);
                     declared_here.insert(function.name.clone());
                     if function.exported {
@@ -325,6 +473,13 @@ impl NamespaceLowering<'_> {
                     }
                 }
                 Declaration::Class(class) => {
+                    record(
+                        &mut origins,
+                        budget,
+                        statements.len(),
+                        index,
+                        NamespaceEntryKind::Declaration,
+                    )?;
                     statements.push(lower_class(module, class, self.define_class_fields)?);
                     declared_here.insert(class.name.clone());
                     if class.exported {
@@ -350,13 +505,21 @@ impl NamespaceLowering<'_> {
                         } else {
                             plain_argument(name)
                         };
+                        record(
+                            &mut origins,
+                            budget,
+                            statements.len(),
+                            index,
+                            NamespaceEntryKind::Enum,
+                        )?;
                         statements.push(bluejs::Stmt::Expr(iife(function, argument)));
                     } else {
                         // An ambient enum has no run-time form.
                     }
                 }
                 Declaration::Namespace(inner) => {
-                    statements.extend(self.namespace(
+                    let mut child = NamespaceOrigins::default();
+                    let nested = self.namespace_impl(
                         inner,
                         &NamespaceScope::Namespace {
                             parent: param.to_string(),
@@ -364,9 +527,28 @@ impl NamespaceLowering<'_> {
                         &mut declared_here,
                         own_path,
                         references,
-                    )?);
+                        origins.is_some().then_some(&mut child),
+                        budget,
+                    )?;
+                    if !nested.is_empty() {
+                        record(
+                            &mut origins,
+                            budget,
+                            statements.len(),
+                            index,
+                            NamespaceEntryKind::Namespace(child),
+                        )?;
+                    }
+                    statements.extend(nested);
                 }
                 Declaration::Raw(raw) => {
+                    record(
+                        &mut origins,
+                        budget,
+                        statements.len(),
+                        index,
+                        NamespaceEntryKind::Declaration,
+                    )?;
                     statements.push(bluejs::Stmt::Expr(
                         ExpressionLowerer::for_module(module, &raw.tokens).parse()?,
                     ));

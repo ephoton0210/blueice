@@ -735,12 +735,39 @@ the full source-position requirement.
       and MCP add 336. Two new page and deferred debugger contexts pass; MCP
       keeps both new typed scripts at original 2:2. Formatting and related
       Clippy pass. Record source revisions and immutable executable hashes.
+- [x] Record namespace wrapper/body paths and reference-rewrite contexts in the
+      production lowerer, with a shared 8 MiB capture budget. Replay complete
+      root namespace groups before binding original declarations and exported
+      initializer values. Map computed enum initializer values separately from
+      generated object writes. All forty-two previously missing positions pass
+      across twenty-one shapes and both field modes, including dotted/nested/
+      merged namespaces and function/enum merges.
+- [x] Preserve intermediate qualified-name origins when rewritten tokens share
+      the same source bounds. Track consumed token cursors rather than infer
+      unchanged syntax from byte ranges. Eight chain controls pass; copied
+      namespace receivers and generated export/enum writes remain unmapped,
+      while the original namespace member read keeps its location.
+- [x] Verify twelve unchanged AST/bytecode shapes, a 25,000-declaration path
+      refusal and an oversized reference map with fewer than thirty-two
+      executable slots, ten UTF-16/newline contexts, sixteen dependency cases before/
+      after await and queued retention across actual major GC/navigation.
+      Admit constant NaN/infinity/negative-zero enums using structural replay
+      plus numeric bits; changed NaN payloads and zero signs fail bytecode/
+      source certification atomically. All 213 bridge library cases pass.
+- [x] Pass the namespace/enum follow-up: 667 cases across thirty-nine disjoint
+      targets, zero failures and sixteen existing ignored. All thirty-five
+      bridge targets pass 284 cases; forty-seven diagnostic groups, 312 launcher,
+      nineteen real-page and five MCP console cases pass. Three new page and two
+      deferred debugger contexts preserve 2:2; MCP verifies namespace and enum
+      scripts at 2:2. Formatting and related Clippy pass. Twelve Rust inputs,
+      three Cargo inputs, three runtime and thirty-nine test executable hashes
+      stay fixed throughout final acceptance.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
       compiler-generated provenance.
-- [ ] Complete remaining direct BlueTS expression/pattern, namespace/enum and
+- [ ] Complete remaining direct BlueTS expression/pattern and
       generated-helper provenance, remaining decorator application and class/key
       precision, plus emitted-profile/module/debugger
       precision and lifecycle acceptance.
@@ -1409,6 +1436,38 @@ completed BlueJS inputs and executable hashes remain unchanged. Receipts are
 `target/native-decorator-validation-20261016.json`. Remaining dispatch/generated
 precision, integrated lifecycle/resource and full workspace/all-target/Test262
 gates remain open; M1q stays at 3/10 final acceptance gates.
+
+The namespace/enum follow-up (2026-10-16) reproduces forty-two missing locations
+across twenty-one shapes and both field modes
+(`/private/tmp/blueice-namespace-origins-red-20261016.log`). Production paths now
+identify original namespace declarations, exported initializer values, nested/
+dotted wrappers and merge-dependent setup. Complete namespace replay and enum
+evaluation history control the join. Generated receivers, object/export writes
+and folded values stay unmapped. A shared 8 MiB capture budget includes path
+vectors, reference-map node slack, string capacities and displaced copies.
+
+Consumed token cursors distinguish new qualified-name members with overlapping
+source bounds from unchanged grammar tiers. Twelve AST/bytecode controls and
+eight qualified-name chains pass. A 25,000-declaration path capture and an
+oversized reference map with fewer than thirty-two executable slots refuse
+excess metadata. Ten UTF-16/newline contexts, sixteen dependency cases before/
+after await, major-GC retention and navigation pass. Structural replay and
+numeric bit checks admit NaN/infinity/negative-zero enums and atomically refuse
+changed NaN payloads, zero signs or source certificates.
+
+Final acceptance passes 667 cases over thirty-nine disjoint targets, zero
+failures and sixteen existing ignored: 284 bridge (all thirty-five targets),
+forty-seven diagnostic groups, 312 launcher, nineteen real-page and five MCP
+console cases. Three additional page contexts and two deferred debugger
+contexts keep original 2:2; MCP preserves namespace and enum sources in two
+additional typed scripts. Formatting, seven-library Clippy and related test/
+integration Clippy pass with warnings denied. Twelve Rust inputs, three Cargo
+inputs, three runtime and thirty-nine test executable hashes stay fixed.
+Final evidence is `target/namespace-origins-source-20261016.json` and
+`target/namespace-origins-validation-20261016.json`; the initial green cohort
+before reference-budget refinement is archived under `namespace-origins-initial`.
+Remaining dispatch/pattern/generated precision, integrated lifecycle/resource
+and full workspace/all-target/Test262 gates stay open; M1q remains at 3/10.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

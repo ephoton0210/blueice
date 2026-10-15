@@ -9,6 +9,7 @@
 use super::*;
 
 mod classes;
+mod namespaces;
 use bluejs::diagnostics::{self, DiagnosticSourceMap, DiagnosticSourceNode};
 use sha2::{Digest, Sha256};
 use std::fmt::Write;
@@ -79,20 +80,97 @@ impl DirectDiagnosticOrigins {
                 intervals.push((start, end));
             }
         }
+        let tokens = lex(&module.id, &module.source).map_err(BridgeError::BlueTs)?;
         let mut evidence = Evidence {
             module,
+            written_tokens: &tokens,
+            namespace_references: BTreeMap::new(),
             define_fields,
             nodes: Vec::with_capacity(count),
             erased: intervals,
             error: None,
         };
-        for (statement, origin) in body.iter().zip(provenance) {
+        let namespace_lowering = crate::lowering::namespaces::NamespaceLowering {
+            module,
+            tokens: &tokens,
+            exports: blueice_bluets::NamespaceExports::of(module),
+            define_class_fields: define_fields,
+        };
+        let mut evaluations = blueice_bluets::evaluate_enums(module).into_iter();
+        let enum_values = module
+            .declarations
+            .iter()
+            .filter_map(|declaration| {
+                if let Declaration::Enum(declaration) = declaration {
+                    Some((
+                        declaration.span.start,
+                        evaluations.next().expect("each enum is evaluated"),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut declared = BTreeSet::new();
+        let mut index = 0;
+        while index < body.len() {
+            let origin = &provenance[index];
             if origin.source.module != module.id {
                 return Err(invalid());
             }
             if let Some(original) = declarations.get(&(origin.source.start, origin.source.end)) {
-                evidence.declaration(original, statement);
+                match original {
+                    Declaration::Namespace(namespace) => {
+                        let (replayed, paths) =
+                            namespace_lowering.namespace_with_origins(namespace, &mut declared)?;
+                        let end = index
+                            .checked_add(replayed.len())
+                            .filter(|end| *end <= body.len())
+                            .ok_or_else(invalid)?;
+                        if replayed.is_empty()
+                            || !same_syntax(&body[index..end], replayed.as_slice())?
+                            || provenance[index..end]
+                                .iter()
+                                .any(|item| item.source != origin.source)
+                        {
+                            return Err(invalid());
+                        }
+                        evidence.namespace(namespace, &body[index..end], &paths);
+                        index = end;
+                        continue;
+                    }
+                    Declaration::Enum(declaration) => {
+                        let rewritten =
+                            blueice_bluets::rewrite_declaration(original, &BTreeMap::new())
+                                .map_err(lowering::from_diagnostic)?;
+                        let Declaration::Enum(rewritten) = rewritten else {
+                            return Err(invalid());
+                        };
+                        evidence.enum_statement(
+                            &rewritten,
+                            &enum_values[&declaration.span.start],
+                            &body[index],
+                        );
+                        declared.insert(declaration.name.clone());
+                    }
+                    original => {
+                        let rewritten =
+                            blueice_bluets::rewrite_declaration(original, &BTreeMap::new())
+                                .map_err(lowering::from_diagnostic)?;
+                        evidence.declaration(&rewritten, &body[index]);
+                        match original {
+                            Declaration::Function(function) => {
+                                declared.insert(function.name.clone());
+                            }
+                            Declaration::Class(class) => {
+                                declared.insert(class.name.clone());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
+            index += 1;
         }
         if let Some(error) = evidence.error {
             return Err(error);
@@ -163,7 +241,7 @@ impl DirectDiagnosticOrigins {
 
 /// Stream a bounded AST certificate without retaining a second AST or source.
 /// The certificate is private to this artifact, not a serialized ABI.
-fn fingerprint(program: &bluejs::BlueJsProgramV1) -> Result<[u8; 32], BridgeError> {
+fn syntax_hash<T: std::fmt::Debug + ?Sized>(value: &T) -> Result<Sha256, BridgeError> {
     struct Output {
         hash: Sha256,
         bytes: usize,
@@ -183,18 +261,27 @@ fn fingerprint(program: &bluejs::BlueJsProgramV1) -> Result<[u8; 32], BridgeErro
         hash: Sha256::new(),
         bytes: 0,
     };
-    write!(&mut output, "{program:?}").map_err(|_| {
+    write!(&mut output, "{value:?}").map_err(|_| {
         BridgeError::ProvenanceAttachment(
             "direct diagnostic AST fingerprint exceeds its byte budget".into(),
         )
     })?;
+    Ok(output.hash)
+}
+
+fn same_syntax<T: std::fmt::Debug + ?Sized>(left: &T, right: &T) -> Result<bool, BridgeError> {
+    Ok(syntax_hash(left)?.finalize() == syntax_hash(right)?.finalize())
+}
+
+fn fingerprint(program: &bluejs::BlueJsProgramV1) -> Result<[u8; 32], BridgeError> {
+    let mut hash = syntax_hash(program)?;
     // Debug deliberately displays all NaNs alike; include actual numeric bits.
     diagnostics::visit_diagnostic_source_nodes(program, &mut |node, _| {
         if let DiagnosticSourceNode::Expression(bluejs::Expr::Number(number)) = node {
-            output.hash.update(number.to_bits().to_le_bytes());
+            hash.update(number.to_bits().to_le_bytes());
         }
     });
-    Ok(output.hash.finalize().into())
+    Ok(hash.finalize().into())
 }
 
 fn key(node: DiagnosticSourceNode<'_>) -> (u8, usize) {
@@ -210,6 +297,8 @@ fn key(node: DiagnosticSourceNode<'_>) -> (u8, usize) {
 
 struct Evidence<'a> {
     module: &'a Module,
+    written_tokens: &'a [Token],
+    namespace_references: BTreeMap<String, String>,
     define_fields: bool,
     nodes: Vec<(u8, usize, usize)>,
     erased: Vec<(usize, usize)>,
@@ -251,7 +340,7 @@ impl Evidence<'_> {
                 self.bind(DiagnosticSourceNode::Statement(statement), &original.span);
                 self.class(original, class);
             }
-            // Generated namespace/enum scaffolding requires separate evidence;
+            // Namespace/enum wrappers are bound by their separate path replay;
             // an enclosing declaration is never a substitute for its nodes.
             _ => {}
         }
@@ -378,6 +467,24 @@ impl Evidence<'_> {
         match ExpressionLowerer::for_module(self.module, tokens).parse_with_origins() {
             Ok((replayed, origins)) if &replayed == expression => {
                 let result = origins.bind(expression, &mut |node, offset| {
+                    // Namespace rewriting introduces a parameter receiver at
+                    // the original identifier's offset. Its replacement member
+                    // read has source evidence; the synthetic receiver does not.
+                    if let bluejs::Expr::Identifier(name) = node {
+                        if let Some(token) = self
+                            .written_tokens
+                            .get(
+                                self.written_tokens
+                                    .partition_point(|token| token.start < offset),
+                            )
+                            .filter(|token| token.start == offset)
+                        {
+                            let head = token.text.split('.').next().unwrap_or("");
+                            if self.namespace_references.get(head) == Some(name) {
+                                return;
+                            }
+                        }
+                    }
                     if let bluejs::Expr::Class(class) = node {
                         if let Some(original) = self.module.class_expression(offset) {
                             self.class(&original.class, class);
@@ -397,8 +504,8 @@ impl Evidence<'_> {
                 self.error = Some(error);
                 return;
             }
-            // Enum/namespace rewriting and generated expression helpers need
-            // separate evidence. Never join a merely similar expression.
+            // Other generated expression helpers require separate evidence.
+            // Never join a merely similar expression.
             _ => {}
         }
         let Some(first) = tokens.iter().find(|token| {

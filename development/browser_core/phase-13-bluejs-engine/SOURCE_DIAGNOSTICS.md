@@ -552,6 +552,62 @@ and executable hashes remain unchanged. Evidence is retained in
 generated-code precision, integrated lifecycle/resource and full workspace/
 all-target/Test262 gates remain open; M1q stays at 3/10 final acceptance gates.
 
+### Namespace and enum lowering
+
+The production namespace lowerer optionally records its actual IIFE wrapper
+indices, original body declaration indices, exported initializer values and
+nested namespace paths. Its reference-rewrite context accompanies those
+temporary paths. A shared 8 MiB budget charges vector slots and reference-map
+capacities, including tree-node slack and displaced traversal copies, across
+the entire nested recipe; the ordinary lowering path retains
+none of it. Complete root namespace groups must replay with identical
+structure, including merge-dependent declarations and dotted wrappers, before
+the recipe joins any final AST nodes. Only original runtime statements and
+expressions receive positions. Generated object setup, export assignments and
+wrapper calls remain gaps.
+
+Enum replay uses the same evaluated declarations as production, including
+merged enum history. Only an initializer that remains a runtime expression
+binds through the generated numeric forward/reverse-write structure. Folded
+values, generated names and writes remain unmapped. Structural comparison is
+streamed within the existing fingerprint budget and preserves signed zero;
+folded numeric values additionally require identical bits, including NaN
+payloads. Direct bytecode admission also compares numeric constant bits: normal
+NaN enums are admitted, while changed payloads or zero signs are refused.
+
+Rewritten qualified-name tokens can share all their source bounds. Expression
+capture now records consumed token cursors, so a new member is distinct from an
+unchanged grammar tier even when their byte ranges coincide. Namespace reads
+rewritten to parameter members preserve the original read's coordinates;
+inserted receiver identifiers are masked using the recorded rewrite context.
+Temporary tokens, paths, addresses and reference maps are discarded before
+retaining the existing source-only ordinal/coordinate certificate.
+
+Forty-two missing positions were reproduced across twenty-one shapes and both
+field modes. They now pass, alongside twelve ordinary AST/bytecode controls,
+eight qualified-name chains, a 25,000-declaration path refusal and an oversized
+reference-map refusal with fewer than thirty-two executable slots, ten UTF-16/
+newline contexts and sixteen dependency cases before/after await. Queued
+namespace closures preserve their source across later code and actual major
+GC, and expire on navigation. Generated export/enum write failures and dynamic
+code remain unavailable; public instruction-map inspection verifies generated
+receivers remain gaps. NaN/infinity/negative-zero admission and atomic mutated
+constant refusals pass. All 213 bridge library cases pass in final validation.
+
+Final acceptance passes 667 cases across thirty-nine disjoint targets, zero
+failures and sixteen existing ignored: 284 bridge cases across all thirty-five
+targets, forty-seven diagnostic groups, 312 launcher, nineteen real-page and
+five MCP console cases. Three new page contexts (including an awaited namespace
+module) and two deferred debugger contexts preserve original 2:2; MCP verifies
+namespace and enum errors in two additional typed scripts. Formatting and
+related library/integration/test Clippy pass with warnings denied. Twelve Rust
+inputs, three Cargo inputs, three runtime and thirty-nine test executable hashes
+remain fixed. Receipts are `target/namespace-origins-source-20261016.json` and
+`target/namespace-origins-validation-20261016.json`. The initial green cohort
+before reference-budget refinement is archived separately. Remaining dispatch/
+pattern/generated precision, integrated lifecycle/resource and full workspace/
+all-target/Test262 acceptance stay open; M1q remains at 3/10 final gates.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger

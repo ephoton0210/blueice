@@ -61,4 +61,5 @@ mod direct;
 mod expression_origins;
 mod expressions;
 mod jsx_origins;
+mod namespace_origins;
 mod page_runtime;

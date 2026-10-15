@@ -284,6 +284,21 @@ fn real_pages_report_original_direct_bluets_statement_and_call_sources() {
         ),
         (
             "application/x-blueice-typescript",
+            "namespace N {export function fail(): void {\n throw 'namespace-page';}}N.fail();",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
+            "const absent: any=null;enum E {A=(\n absent.field)}",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            "await 0;export namespace N {export function fail(): void {\n throw 'namespace-module';}}N.fail();",
+            "2:2",
+        ),
+        (
+            "application/x-blueice-typescript",
             "class Handler {get apply(): any {try{throw 'caught';}catch(error){}return 0;}}const Factory: any=(globalThis as any).Proxy;const dec: any=new Factory(WeakMap,new Handler());\n@dec class C {}",
             "2:2",
         ),

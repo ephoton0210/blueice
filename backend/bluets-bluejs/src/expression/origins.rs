@@ -12,6 +12,7 @@ pub(crate) struct ExpressionOrigin {
     kind: Discriminant<bluejs::Expr>,
     start: usize,
     end: usize,
+    token_end: usize,
     // Generated JSX scaffolding can carry child evidence without a location.
     mapped: bool,
     // Class bodies use the separate checked-declaration evidence traversal.
@@ -199,8 +200,8 @@ impl ExpressionLowerer<'_> {
             if root.kind == kind
                 && root.start == scope.start
                 && root.end <= end
-                && self.tokens
-                    [self.tokens.partition_point(|token| token.end <= root.end)..self.index]
+                && root.token_end <= self.index
+                && self.tokens[root.token_end..self.index]
                     .iter()
                     .all(|token| token.text == "!")
             {
@@ -257,6 +258,7 @@ impl ExpressionLowerer<'_> {
             kind,
             start: scope.start,
             end,
+            token_end: self.index,
             mapped,
             children: (!opaque).then_some(children),
         });

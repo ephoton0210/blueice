@@ -141,7 +141,17 @@ pub(super) fn attach_existing_direct_program(
 fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> bool {
     expected.bytes() == actual.bytes()
         && expected.debugger_binding_layout_matches(actual)
-        && expected.constants() == actual.constants()
+        && expected.constants().len() == actual.constants().len()
+        && expected
+            .constants()
+            .iter()
+            .zip(actual.constants())
+            .all(|(expected, actual)| match (expected, actual) {
+                (bluejs::Value::Number(expected), bluejs::Value::Number(actual)) => {
+                    expected.to_bits() == actual.to_bits()
+                }
+                _ => expected == actual,
+            })
         && expected.root_statement_offsets() == actual.root_statement_offsets()
         && expected.root_statement_ranges() == actual.root_statement_ranges()
         && expected.root_function_child_indices() == actual.root_function_child_indices()

@@ -5,7 +5,7 @@
 pub(super) mod classes;
 mod computed_fields;
 mod module_exports;
-mod namespaces;
+pub(super) mod namespaces;
 mod patterns;
 
 use classes::*;
@@ -765,6 +765,6 @@ fn lex_module(module: &Module) -> Result<Vec<Token>, BridgeError> {
     blueice_bluets::lex(&module.id, &module.source).map_err(BridgeError::BlueTs)
 }
 
-fn from_diagnostic(diagnostic: blueice_bluets::Diagnostic) -> BridgeError {
+pub(super) fn from_diagnostic(diagnostic: blueice_bluets::Diagnostic) -> BridgeError {
     unsupported(diagnostic.span, diagnostic.message)
 }
