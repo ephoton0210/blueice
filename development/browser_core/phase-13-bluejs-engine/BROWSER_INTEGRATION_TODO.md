@@ -59,14 +59,13 @@ statement, expression and parameter locations through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest follow-up maps
-checked direct BlueTS bindings and anonymous default exports, fixes duplicate
-async-module reports and stalled ready siblings, and adds exact copied-token
-anchors to owner-selected emitted BlueTS maps. Forty-four previously missing
-direct positions and the JavaScript/direct/emitted dependency controls pass.
-Its final scoped selection passes 2,314 tests across fifty-nine disjoint
-targets (twenty-nine existing ignored), including real pages and official MCP
-console checks. Formatting and related library/test Clippy pass. Three of the
+Core and MCP, preserving unavailable locations. The latest computed-key
+follow-up fixes twenty-eight wrong VM positions and two direct BlueTS gaps
+after erased-field key prefixes. Callback sources and explicit unknowns remain
+distinct. Eighteen deferred JavaScript/direct/emitted contexts, five added real
+page contexts and two queued MCP key positions pass. Its final scoped selection
+passes 2,070 tests across fifty-two disjoint targets (sixteen existing ignored).
+Formatting and related library/test Clippy pass. Three of the
 ten final acceptance
 gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Remaining
@@ -490,9 +489,9 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: initial direct source-binding follow-up verified;
-3/10 final
-acceptance gates complete.** Completed implementation steps and test evidence
+**Progress updated 2026-10-16: binding/default-export and computed-key source
+follow-ups verified; 3/10 final acceptance gates complete.** Completed
+implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
 
@@ -795,6 +794,28 @@ the full source-position requirement.
       Clippy pass. Record twenty-two Rust inputs, four Cargo inputs, three
       runtime and fifty-nine test executable hashes, with explicit source/test
       refinements and the unchanged earlier BlueJS cohort.
+- [x] Attribute computed `ToPropertyKey` failures to the written expression,
+      preserving the ordinary bytecode. Reproduce twenty-eight wrong locations
+      across fourteen object/class/destructuring shapes and normal/aggressive
+      GC; all now pass. Ten callback/native controls preserve known or explicitly
+      unknown origins, including caught coercion noise and a revoked Proxy.
+- [x] Preserve the final written class key through the sequence that runs pending
+      erased field keys. Exact class replay and an already certified terminal
+      expression establish the conversion origin; hidden binding/assignment
+      nodes keep gaps. Reproduce both missing assignment-field-mode positions;
+      sixteen direct contexts, three callback controls and twenty dependency
+      contexts across both field modes and before/after await pass.
+- [x] Pass eighteen deferred host contexts for object/class key conversion:
+      JavaScript, direct BlueTS and emitted BlueTS each preserve original 2:2
+      in classic, module and awaited-module execution.
+- [x] Pass the computed-key follow-up: 2,070 cases across fifty-two disjoint
+      targets, zero failures and sixteen existing ignored. Fourteen BlueJS
+      targets pass 1,437 cases, all thirty-five bridge targets pass 295, launcher
+      passes 314, real pages nineteen and MCP console five. Five added page
+      contexts and two queued MCP keys retain original positions. Formatting,
+      seven-library Clippy, bridge/launcher test Clippy and changed integration
+      Clippy pass. Record seven Rust, six Cargo, three runtime and fifty-two
+      test executable hashes with immutable validation inputs.
 
 #### Remaining implementation and verification
 
@@ -1543,6 +1564,45 @@ Evidence is `target/pattern-origins-source-20261016.json` and
 `target/pattern-origins-validation-20261016.json`. Remaining dispatch/generated
 precision, emitted-profile and integrated lifecycle/resource acceptance, and
 full workspace/all-target/Test262 gates stay open; M1q remains at 3/10.
+
+The computed-key follow-up (2026-10-16) reproduces twenty-eight incorrect VM
+positions across fourteen object/class/destructuring forms with normal and
+aggressive GC (`/private/tmp/blueice-computed-key-red-20261016.log`). A computed
+key's `ToPropertyKey` now keeps that expression's diagnostic owner rather
+than the enclosing object/class/pattern owner. Native errors after a normally
+returning coercion callback use the written key, while callback throws retain
+their own known or explicitly unavailable origins. Ten native/callback controls
+include caught noise, dynamic getters/methods, fallback conversion and revoked
+proxies. The public mapper also verifies unchanged ordinary bytes recursively.
+
+Direct assignment-field mode additionally lost the written key when pending
+erased/initialized field keys preceded it in a generated sequence. Both missing
+positions were reproduced after the general compiler fix
+(`/private/tmp/blueice-computed-key-bridge-wrapper-red-20261016.log`). Complete
+class replay proves which terminal expression supplies the converted key, so
+the sequence root receives that expression's already certified origin. Hidden
+binding and prefix assignment nodes remain unmapped. Sixteen direct contexts,
+three callback controls, twenty dependency contexts across both field modes
+before/after await and eighteen three-language deferred host contexts pass.
+
+Final acceptance passes 2,070 cases across fifty-two disjoint targets, zero
+failures and sixteen existing ignored: 1,437 BlueJS across fourteen targets,
+295 bridge across all thirty-five, 314 launcher, nineteen real-page and five
+official MCP console cases. Five added page contexts cover direct/emitted
+classic and awaited module keys plus JavaScript modules. MCP keeps queued
+object/class keys at original inline-9.ts 2:2 and 3:2, alongside all earlier
+reference/binding positions. Formatting, seven-library Clippy, complete bridge/
+launcher test Clippy and changed integration-target Clippy pass with warnings
+denied. Seven Rust and six Cargo inputs remain fixed throughout validation;
+three runtime and fifty-two test executable hashes are recorded and remain
+unchanged through final bridge/host acceptance. The first deferred fixture's
+missing module export was corrected before the complete selection; its initial
+source/failed receipt is retained separately. Evidence is
+`target/computed-key-origins-source-20261016.json` and
+`target/computed-key-origins-validation-20261016.json`. Remaining dispatch/
+generated precision, emitted-profile and integrated lifecycle/resource
+acceptance, and full workspace/all-target/Test262 gates stay open; M1q remains
+at 3/10 final acceptance gates.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

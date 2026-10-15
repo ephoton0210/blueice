@@ -47,6 +47,60 @@ fn debugger_source_batch(scripts: Vec<PageHostScript>) -> blueice_ipc::console::
 }
 
 #[test]
+fn computed_key_conversion_sources_survive_deferred_execution_in_each_language() {
+    for language in [
+        PageHostScriptLanguage::JavaScript,
+        PageHostScriptLanguage::BlueTs,
+        PageHostScriptLanguage::BlueTsEmitted,
+    ] {
+        for (kind, prefix) in [
+            (PageHostScriptKind::Classic, ""),
+            (PageHostScriptKind::Module, "export const marker=0;"),
+            (PageHostScriptKind::Module, "export const marker=0;await 0;"),
+        ] {
+            for object in [true, false] {
+                let source = if language == PageHostScriptLanguage::JavaScript {
+                    let body = if object {
+                        "var result={[\n key]:1};"
+                    } else {
+                        "class C {[\n key](){}}"
+                    };
+                    format!("{prefix}class Key {{toString(){{return {{}};}}valueOf(){{return {{}};}}}}var key=new Key();{body}")
+                } else {
+                    let body = if object {
+                        "const result: any={[\n key]:1};"
+                    } else {
+                        "class C {[\n key](): void {}}"
+                    };
+                    format!("{prefix}class Key {{toString(): any {{return {{}};}}valueOf(): any {{return {{}};}}}}const key: any=new Key();{body}")
+                };
+                let module = "blueice://page/key.ts";
+                let messages = debugger_source_messages(PageHostScript {
+                    ordinal: 0,
+                    language,
+                    kind,
+                    graph: graph(module, vec![PageHostSource::new(module, &source)]),
+                });
+                assert_eq!(
+                    messages.records.len(),
+                    1,
+                    "{language:?}, {kind:?}, {source}: {messages:?}"
+                );
+                let location = messages.records[0]
+                    .source
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("{language:?}, {kind:?}, {source}: {messages:?}"));
+                assert_eq!(
+                    (location.filename.as_str(), location.line, location.column),
+                    (module, 2, 2),
+                    "{language:?}, {kind:?}, {source}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn direct_bluets_diagnostics_survive_deferred_debugger_execution() {
     for source in [
         "function fail(): void {\n throw 'direct';\n}fail();",

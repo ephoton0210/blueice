@@ -117,6 +117,138 @@ fn direct_class_keys_and_moved_initializers_keep_their_original_sources() {
 }
 
 #[test]
+fn direct_computed_key_conversions_keep_original_sources_after_lowering() {
+    let mut failures = Vec::new();
+    for define in [true, false] {
+        for (name, body) in [
+            ("object value", "const value: any={[\n key]:1};"),
+            ("class method", "class C {[\n key](): void {}}"),
+            ("class getter", "class C {get [\n key](): any {return 0;}}"),
+            ("class setter", "class C {set [\n key](value: any){}}"),
+            ("static method", "class C {static [\n key](): void {}}"),
+            ("class expression", "const C=class {[\n key](): void {}};"),
+            (
+                "pending erased key",
+                "class C {[0]: any;[\n key](): void {}}",
+            ),
+            (
+                "pending initialized key",
+                "class C {[0]: any=1;[\n key](): void {}}",
+            ),
+        ] {
+            let source = format!("class Key {{toString(): any {{try{{throw 'caught';}}catch(error){{}}return {{}};}}valueOf(): any {{return {{}};}}}}const key: any=new Key();{body}");
+            let artifact = compile_direct_script(
+                ENTRY,
+                &MapLoader::from([ModuleSource::new(ENTRY, &source)]),
+                CompilerOptions {
+                    use_define_for_class_fields: Some(define),
+                    ..CompilerOptions::default()
+                },
+            )
+            .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+            let (mut runtime, origin) = runtime();
+            let attachment = artifact
+                .attach_in_page_realm(&mut runtime, 7, &origin)
+                .unwrap();
+            assert!(
+                runtime.execute_program(7, attachment.handle).is_err(),
+                "{name}"
+            );
+            let messages = runtime.drain_console(7).unwrap();
+            assert_eq!(messages.records.len(), 1, "{name}: {messages:?}");
+            let actual = messages.records[0]
+                .source
+                .as_ref()
+                .map(|location| (location.filename.as_str(), location.line, location.column));
+            if actual != Some((ENTRY, 2, 2)) {
+                failures.push((name, define, format!("{actual:?}")));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn direct_computed_key_conversions_preserve_callback_sources_and_dynamic_gaps() {
+    for (source, expected) in [
+        ("class Key {toString(): any {\n throw 'callback';}}const key: any=new Key();const value: any={[\n key]:1};", Some((2, 2))),
+        ("class Key {toString(): any {const fail: any=Function(\"throw 'dynamic';\");return fail();}}const key: any=new Key();const value: any={[\n key]:1};", None),
+        ("class Key {get toString(): any {try{throw 'caught';}catch(error){}return 0;}valueOf(): any {return {};}}const key: any=new Key();class C {[\n key](): void {}}", Some((2, 2))),
+    ] {
+        let artifact = compile_direct_script(ENTRY, &MapLoader::from([ModuleSource::new(ENTRY, source)]), CompilerOptions::default()).unwrap();
+        let (mut runtime, origin) = runtime();
+        let attachment = artifact.attach_in_page_realm(&mut runtime, 7, &origin).unwrap();
+        assert!(runtime.execute_program(7, attachment.handle).is_err(), "{source}");
+        let messages = runtime.drain_console(7).unwrap();
+        assert_eq!(messages.records.len(), 1, "{source}: {messages:?}");
+        let actual = messages.records[0].source.as_ref().map(|location| (location.line, location.column));
+        assert_eq!(actual, expected, "{source}: {messages:?}");
+    }
+}
+
+#[test]
+fn direct_dependency_key_conversions_keep_sources_before_and_after_await() {
+    for define in [true, false] {
+        for awaited in [false, true] {
+            for (body, entry) in [
+                (
+                    "export const value: any={[\n key]:1};",
+                    "import './dep.ts';",
+                ),
+                ("export class C {[\n key](): void {}}", "import './dep.ts';"),
+                (
+                    "export default class {[\n key](): void {}}",
+                    "import './dep.ts';",
+                ),
+                (
+                    "export function fail(): void {const value: any={[\n key]:1};}fail();",
+                    "import './dep.ts';",
+                ),
+                (
+                    "export class C {[0]: any;[\n key](): void {}}",
+                    "import './dep.ts';",
+                ),
+            ] {
+                let prefix = if awaited { "await 0;" } else { "" };
+                let dependency = format!("{prefix}class Key {{toString(): any {{return {{}};}}valueOf(): any {{return {{}};}}}}const key: any=new Key();{body}");
+                let graph = compile_direct_module_graph(
+                    GRAPH_ENTRY,
+                    &MapLoader::from([
+                        ModuleSource::new(GRAPH_ENTRY, entry),
+                        ModuleSource::new("graph/dep.ts", &dependency),
+                    ]),
+                    CompilerOptions {
+                        use_define_for_class_fields: Some(define),
+                        ..CompilerOptions::default()
+                    },
+                )
+                .unwrap();
+                let (mut runtime, origin) = runtime();
+                let attachment = graph
+                    .attach_in_page_realm(&mut runtime, 7, &origin)
+                    .unwrap();
+                assert!(
+                    attachment.execute_in_page_realm(&mut runtime, 7).is_err(),
+                    "{dependency}"
+                );
+                runtime.run_microtask_checkpoint(7).unwrap();
+                let messages = runtime.drain_console(7).unwrap();
+                assert_eq!(messages.records.len(), 1, "{dependency}: {messages:?}");
+                let location = messages.records[0]
+                    .source
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("{dependency}: {messages:?}"));
+                assert_eq!(
+                    (location.filename.as_str(), location.line, location.column),
+                    ("graph/dep.ts", 2, 2),
+                    "{dependency}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn class_lowering_path_capture_preserves_ast_and_ordinary_bytecode() {
     for define in [true, false] {
         for source in [

@@ -250,7 +250,24 @@ impl Evidence<'_> {
             for (expression, index) in expressions.iter().zip(prefixes) {
                 self.class_key_assignment(class, *index, expression);
             }
-            self.expression(expressions.last().unwrap(), Self::class_key_tokens(member));
+            let written = expressions.last().unwrap();
+            self.expression(written, Self::class_key_tokens(member));
+            // Exact class replay proves this sequence runs pending erased
+            // fields before the written key. ToPropertyKey consumes the
+            // sequence result, so its owner needs the written key's certified
+            // root origin. Prefix assignments and hidden bindings stay gaps.
+            let written_key = super::key(DiagnosticSourceNode::Expression(written));
+            if let Some(offset) = self
+                .nodes
+                .iter()
+                .rfind(|(kind, address, _)| (*kind, *address) == written_key)
+                .map(|(_, _, offset)| *offset)
+            {
+                self.bind(
+                    DiagnosticSourceNode::Expression(expression),
+                    &SourceSpan::new(&self.module.id, offset, offset),
+                );
+            }
         }
     }
 

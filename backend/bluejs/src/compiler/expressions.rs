@@ -2184,7 +2184,16 @@ impl Compiler {
             PropertyKey::Identifier(name) => self.constant(Value::String(name.clone().into()))?,
             PropertyKey::String(name) => self.constant(Value::String(name.clone()))?,
             PropertyKey::Number(n) => self.constant(Value::Number(*n))?,
-            PropertyKey::Computed(expr) => self.expression(expr)?,
+            PropertyKey::Computed(expr) => {
+                return self.with_expression_owner(expr, |compiler| {
+                    compiler.expression(expr)?;
+                    // Conversion is part of the written computed key. A
+                    // successful coercion callback may have caught another
+                    // throw; a later native failure still belongs to this key.
+                    compiler.emit(Opcode::ToPropertyKey, 0)?;
+                    Ok(())
+                });
+            }
         }
         self.emit(Opcode::ToPropertyKey, 0)?;
         Ok(())

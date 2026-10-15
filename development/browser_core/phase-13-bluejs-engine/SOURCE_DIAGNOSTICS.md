@@ -698,6 +698,52 @@ fixture binary is rebuilt and replayed separately. Remaining dispatch/generated
 precision, emitted-profile and integrated lifecycle/resource acceptance, and
 full workspace/all-target/Test262 gates stay open. M1q remains at 3/10.
 
+### Computed property-key conversions
+
+Computed `PropertyKey` evaluation now owns the following `ToPropertyKey`
+instruction as well as evaluation of its expression. Previously, a native
+conversion failure used the surrounding object/class/pattern origin after
+the child expression completed. A successful coercion callback that caught
+another error made this particularly visible. The compiler keeps the written
+expression's diagnostic owner through conversion, preserving ordinary bytes
+and the callbacks' own known or explicitly unavailable throw origins.
+
+In direct BlueTS assignment-field mode, pending erased field keys precede the
+written member key in a generated sequence. Exact complete class replay proves
+that this sequence supplies the written key's conversion value. The source
+builder binds its root to the already certified final key expression; prefix
+assignments and private binding nodes remain unmapped. This uses the existing
+temporary coordinate inventory and retains no extra source text or VM roots.
+
+The public VM regression reproduces twenty-eight wrong coordinates across
+fourteen object/class/destructuring shapes under normal and aggressive GC.
+All pass after the fix, along with ten callback/native controls covering known
+getters/methods, unknown dynamic callbacks, caught noise and revoked proxies.
+The direct bridge reproduces two additional missing locations for pending
+erased/initialized field keys. Sixteen admitted direct object/class contexts,
+three callback controls and twenty dependency contexts across both field modes
+and before/after await pass. Existing grammar and computed-field type checks
+continue to determine which BlueTS programs are admitted.
+Eighteen deferred host contexts additionally verify original 2:2 for object/
+class conversion in JavaScript, direct BlueTS and emitted BlueTS classic,
+module and awaited-module execution.
+
+Final acceptance passes 2,070 cases across fifty-two disjoint targets with
+zero failures and sixteen existing ignored: 1,437 BlueJS across fourteen
+targets, 295 bridge across all thirty-five, 314 launcher, nineteen real-page
+and five official MCP console cases. Five added page contexts pass; MCP keeps
+the new queued object/class key positions at inline-9.ts 2:2 and 3:2 alongside
+the earlier source controls. Formatting, seven-library Clippy, bridge/launcher
+test Clippy and changed integration-target Clippy pass with warnings denied.
+Seven Rust and six Cargo input hashes remain fixed throughout validation.
+Three runtime and fifty-two test executable hashes are recorded and remain
+unchanged through final bridge/host acceptance. The initial deferred module
+fixture rejection and its marker-export correction are recorded separately.
+Evidence is `target/computed-key-origins-source-20261016.json` and
+`target/computed-key-origins-validation-20261016.json`. Remaining precision,
+emitted-profile, integrated lifecycle/resource and workspace/all-target/
+Test262 acceptance stay open. M1q remains at 3/10 final gates.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger
@@ -913,7 +959,7 @@ hashes and per-target receipts are recorded in
 
 Remaining expression dispatch, decorator application and other generated-code
 provenance still need completion. Direct BlueTS requires its remaining precise
-expression/pattern and generated-lowering evidence; emitted BlueTS and
+expression and generated-lowering evidence; emitted BlueTS and
 page-module/debugger producers require their
 remaining precision, emission-profile and integrated lifecycle acceptance.
 The complete queued-origin matrix, including remaining delegate/protocol

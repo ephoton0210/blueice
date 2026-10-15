@@ -1506,6 +1506,72 @@ fn class_lowering_and_decorators_keep_their_original_source() {
 }
 
 #[test]
+fn computed_key_conversion_failures_keep_the_written_expression_source() {
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name, body) in [
+            ("object value", "var result={[\n key]:1};"),
+            ("object method", "var result={[\n key](){}};"),
+            ("object getter", "var result={get [\n key](){}};"),
+            ("object setter", "var result={set [\n key](value){}};"),
+            ("class method", "class C {[\n key](){}}"),
+            ("class getter", "class C {get [\n key](){}}"),
+            ("class setter", "class C {set [\n key](value){}}"),
+            ("class field", "class C {[\n key]=1;}"),
+            ("static method", "class C {static [\n key](){}}"),
+            ("static field", "class C {static [\n key]=1;}"),
+            ("auto accessor", "class C {accessor [\n key]=1;}"),
+            (
+                "static auto accessor",
+                "class C {static accessor [\n key]=1;}",
+            ),
+            ("binding key", "var {[\n key]:value}={};"),
+            ("assignment key", "var value;({[\n key]:value}={});"),
+        ] {
+            let source = format!(
+                "var key={{[Symbol.toPrimitive](){{try{{missing;}}catch{{}}return {{}};}}}};{body}"
+            );
+            let mut config = blueice_bluejs::VmConfig::default();
+            if aggressive_gc {
+                config.heap.nursery_capacity = 1;
+                config.heap.major_threshold_bytes = 1;
+            }
+            let mut vm = page_with_vm(Vm::new(config).unwrap());
+            assert!(
+                vm.execute_script(&mapped_expression_code(&source)).is_err(),
+                "{name}"
+            );
+            let actual = observed(&mut vm);
+            let expected = Value::String("memory:///position.js:2:2".into());
+            if actual != expected {
+                failures.push((name, aggressive_gc, actual));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn computed_key_conversions_preserve_callback_origins_and_explicit_gaps() {
+    for (source, expected) in [
+        ("var key={[Symbol.toPrimitive](){\n throw 'callback';}};var result={[\n key]:1};", "memory:///position.js:2:2"),
+        ("var key={get [Symbol.toPrimitive](){\n throw 'getter';}};var result={[\n key]:1};", "memory:///position.js:2:2"),
+        ("var key={toString(){\n throw 'fallback';}};class C {[\n key](){}}", "memory:///position.js:2:2"),
+        ("var key={[Symbol.toPrimitive]:Function(\"throw 'dynamic';\")};var result={[\n key]:1};", ":0:0"),
+        ("var key={};Object.defineProperty(key,Symbol.toPrimitive,{get:Function(\"throw 'dynamic';\")});class C {[\n key](){}}", ":0:0"),
+        ("var key={toString:Function(\"throw 'dynamic';\")};var result={[\n key]:1};", ":0:0"),
+        ("var key={get [Symbol.toPrimitive](){try{missing;}catch{}return 0;}};var result={[\n key]:1};", "memory:///position.js:2:2"),
+        ("var key={toString(){try{missing;}catch{}return {};},valueOf(){return {};}};class C {[\n key](){}}", "memory:///position.js:2:2"),
+        ("var record=Proxy.revocable({},{}),key=record.proxy;record.revoke();var result={[\n key]:1};", "memory:///position.js:2:2"),
+        ("var key={[Symbol.toPrimitive](){try{missing;}catch{}return 'ok';}};var first={[key]:0};var key={[Symbol.toPrimitive]:0};var second={[\n key]:1};", "memory:///position.js:2:2"),
+    ] {
+        let mut vm = page();
+        assert!(vm.execute_script(&mapped_expression_code(source)).is_err(), "{source}");
+        assert_eq!(observed(&mut vm), Value::String(expected.into()), "{source}");
+    }
+}
+
+#[test]
 fn decorator_application_checks_keep_each_evaluated_expression_origin() {
     for aggressive_gc in [false, true] {
         for (source, expected) in [
