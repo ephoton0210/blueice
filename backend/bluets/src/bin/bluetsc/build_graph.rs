@@ -12,6 +12,8 @@ use tsconfig::clean_path;
 use tsconfig::inheritance::Reader;
 #[path = "build_graph/freshness.rs"]
 mod freshness;
+#[path = "build_graph/watch.rs"]
+mod watch;
 
 enum GraphFailure {
     Boundary(String),
@@ -337,10 +339,12 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     let mut pretty = false;
     let mut verbose = false;
     let mut stop_build_on_errors = false;
+    let mut watch = false;
     let mut arguments = arguments.into_iter().skip(1).peekable();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--verbose" => verbose = true,
+            "--watch" | "-w" => watch = true,
             "--stopBuildOnErrors" => stop_build_on_errors = true,
             "--pretty" => {
                 pretty = arguments.peek().is_none_or(|next| next != "false");
@@ -378,12 +382,19 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if watch {
+        return watch::run(&project, pretty, verbose, stop_build_on_errors);
+    }
+    build_once(&project, pretty, verbose, stop_build_on_errors)
+}
+
+fn build_once(project: &Path, pretty: bool, verbose: bool, stop_build_on_errors: bool) -> ExitCode {
     let root = project
         .parent()
         .expect("canonical project has parent")
         .to_path_buf();
     let mut graph = Graph::new(root);
-    if let Err(error) = graph.visit(&project) {
+    if let Err(error) = graph.visit(project) {
         match error {
             GraphFailure::Boundary(message) => eprintln!("bluetsc: {message}"),
             GraphFailure::Diagnostic(diagnostic) => {

@@ -10909,3 +10909,49 @@ warnings-denied two-crate all-target Clippy. The complete K.0 two-crate test
 gate exits 0 with pinned TypeScript 5.9.3, Acorn 8.15.0 and Node 24.21.0,
 including every ordinary and ignored oracle. Cargo incremental compilation
 and dev/test debug symbols were disabled to bound build artifacts.
+
+### K.12.2.5 Watch (2026-10-16)
+
+The committed two-project fixture records five ordered `--build --verbose`
+rows against pinned TypeScript 5.9.3: cold, source edit, source add, a
+three-write burst, and source delete. BlueTSC rebuilds the dependency and
+root in each row. Pinned TypeScript rebuilds only the dependency on delete:
+the removed declaration is not imported by the root. BlueTSC's extra root
+rebuild is conservative and produces the same root output; this is an
+explicit rebuild-order difference, not an equivalence claim. The ignored
+recorder can refresh `build-watch-matrix.tsv` with
+`BLUEICE_WRITE_PROJECT_WATCH_MATRIX=1`.
+
+`bluetsc --build tsconfig.json --watch` performs the initial build and then
+polls the canonical project owner tree every 50 ms. It coalesces changes
+until 180 ms of quiet, rescans after each build to avoid reacting to its own
+emission, and accepts `q` on standard input to stop with a success status.
+The scan stays inside the owner tree, never follows directory symlinks,
+skips `.git`, `target`, and build-state files, and caps directory depth,
+entry count, and bytes read. Source-byte hashes detect edits even when
+timestamps are unchanged. A process-level test bounds each cycle to 10 s,
+shutdown to 5 s, and uses no sleep over 1.1 s. It observes emitted value
+changes, added and deleted JavaScript/declaration outputs, one build for
+the burst, no extra feedback cycle, and successful shutdown.
+
+Deleting a selected source removes only its stale, recorded outputs. The
+version-four BlueTSC build state stores hashes of emitted outputs; cleanup
+requires owner-local regular files with generated-output extensions and a
+matching recorded hash, and never removes a currently selected source.
+An independently modified old output is preserved. Version-three state
+lacks output hashes, so it is rejected and rebuilt once before safe cleanup
+can resume. The seven focused watch tests, seven corrupt-state tests and
+eleven referenced-declaration tests pass, as do workspace rustfmt and
+warnings-denied two-crate all-target Clippy.
+
+The complete K.0 gate also needs the sibling BlueJS regex worker when the
+Cargo cache is clean. Build it with
+`cargo build -p blueice-bluejs --bin bluejs-regexp-worker` and set
+`BLUEJS_REGEXP_WORKER` to the resulting `target/debug/bluejs-regexp-worker`
+before the two-crate test command. A cache cleanup exposed this pre-existing
+test-harness dependency: without the worker, two parser syntax-profile tests
+fail with a missing executable; after rebuilding it, all five tests in that
+suite pass. With this prerequisite explicit, the complete K.0 two-crate
+test gate exits 0, including every ordinary and ignored oracle. Cargo
+incremental compilation and dev/test debug symbols were disabled to bound
+regenerated artifacts.

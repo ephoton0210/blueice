@@ -8,7 +8,7 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-const STATE_VERSION: u8 = 3;
+const STATE_VERSION: u8 = 4;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -162,6 +162,7 @@ struct State {
     version: u8,
     fingerprint: String,
     outputs: Vec<String>,
+    output_hashes: BTreeMap<String, String>,
     declarations: BTreeMap<String, String>,
     runtimes: BTreeMap<String, String>,
 }
@@ -206,6 +207,34 @@ impl State {
                 .outputs
                 .iter()
                 .all(|output| safe_output(project, output).is_some())
+    }
+
+    fn remove_stale_outputs(
+        &self,
+        project: &Path,
+        current_outputs: &[String],
+        selected_files: &[PathBuf],
+    ) -> io::Result<()> {
+        let current = current_outputs.iter().collect::<BTreeSet<_>>();
+        for old in &self.outputs {
+            if current.contains(old) || !is_generated_source_output(old) {
+                continue;
+            }
+            let Some(expected_hash) = self.output_hashes.get(old) else {
+                continue;
+            };
+            let Some(path) = safe_output(project, old) else {
+                continue;
+            };
+            if selected_files.contains(&path) {
+                continue;
+            }
+            let bytes = fs::read(&path)?;
+            if sha256_label(&bytes) == *expected_hash {
+                fs::remove_file(path)?;
+            }
+        }
+        Ok(())
     }
 
     fn declaration_paths(
@@ -271,6 +300,15 @@ impl State {
                     .map_err(|_| io::Error::other("build output is outside its project root"))
             })
             .collect::<io::Result<Vec<_>>>()?;
+        let output_hashes = outputs
+            .iter()
+            .map(|output| {
+                let path = safe_output(project, output)
+                    .ok_or_else(|| io::Error::other("build output is missing or unsafe"))?;
+                let bytes = fs::read(path)?;
+                Ok((output.clone(), sha256_label(&bytes)))
+            })
+            .collect::<io::Result<BTreeMap<_, _>>>()?;
         let declarations = declarations
             .iter()
             .map(|(source, declaration)| {
@@ -306,6 +344,7 @@ impl State {
             version: STATE_VERSION,
             fingerprint,
             outputs,
+            output_hashes,
             declarations,
             runtimes,
         };
@@ -332,6 +371,14 @@ impl State {
         }
         result.map(|()| state)
     }
+}
+
+fn is_generated_source_output(path: &str) -> bool {
+    [
+        ".js", ".jsx", ".mjs", ".cjs", ".d.ts", ".d.mts", ".d.cts", ".map",
+    ]
+    .iter()
+    .any(|suffix| path.ends_with(suffix))
 }
 
 fn state_path(project: &Path) -> PathBuf {
@@ -544,9 +591,14 @@ pub(super) fn run(
             return result;
         }
         successful_output |= !emitted.is_empty();
-        let after = output_names(project, &emitted)
-            .and_then(|names| declaration_signatures(project, &names));
-        let after = match after {
+        let output_names = match output_names(project, &emitted) {
+            Ok(output_names) => output_names,
+            Err(error) => {
+                eprintln!("bluetsc: cannot inspect emitted outputs: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let after = match declaration_signatures(project, &output_names) {
             Ok(after) => after,
             Err(error) => {
                 eprintln!("bluetsc: cannot read emitted declarations: {error}");
@@ -554,6 +606,14 @@ pub(super) fn run(
             }
         };
         declaration_changed.insert(project.clone(), before != after);
+        if let Some(previous) = &state {
+            if let Err(error) =
+                previous.remove_stale_outputs(project, &output_names, inputs.files())
+            {
+                eprintln!("bluetsc: cannot remove obsolete build output: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
         let state = match State::save(project, fingerprint, &emitted, &declarations, &runtimes) {
             Ok(state) => state,
             Err(error) => {

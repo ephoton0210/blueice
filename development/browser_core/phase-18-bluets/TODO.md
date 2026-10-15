@@ -618,9 +618,10 @@ not `.tsbuildinfo` bytes.
   - [x] **AC-K12.2.4 Corrupt state.** A truncated or foreign `.tsbuildinfo` falls back to a clean build
     with a diagnostic, never a wrong result.
     - *Evidence:* PLAN.md, "K.12.2.4 Corrupt build state" (2026-10-15): eight pinned ordered rows, wrong-output repair, actual TypeScript-state injection, bounded diagnostic, independent state paths, K.0 two-crate gate.
-  - [ ] **AC-K12.2.5 Watch.** `--watch` re-emits on edit, add and delete of a file, debounces bursts, and
+  - [x] **AC-K12.2.5 Watch.** `--watch` re-emits on edit, add and delete of a file, debounces bursts, and
     shuts down cleanly. *Pass when:* a bounded-time integration test (no sleeps > 5 s) covers the three
     events and one burst.
+    - *Evidence:* PLAN.md, "K.12.2.5 Watch" (2026-10-16): five pinned ordered rebuild rows, seven focused tests including a bounded process-level watch cycle and safe stale-output cleanup, warnings-denied Clippy, and K.0 two-crate gate with an explicitly built BlueJS regex worker.
 
 ### K.13 Platforms and test health — M10 — gap G-M3 and recorded flakes
 

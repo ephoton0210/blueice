@@ -324,7 +324,7 @@ fn actual_typescript_build_info_is_foreign_to_bluetsc() {
         serde_json::from_slice(&fs::read(root.join("tsconfig.bluetsc.tsbuildinfo")).unwrap())
             .unwrap();
     assert_eq!(state["producer"], "bluetsc");
-    assert_eq!(state["version"], 3);
+    assert_eq!(state["version"], 4);
     fs::remove_dir_all(oracle).unwrap();
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(clean).unwrap();

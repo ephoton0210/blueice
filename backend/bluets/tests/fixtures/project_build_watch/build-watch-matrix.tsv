@@ -1,0 +1,5 @@
+cold	dep/tsconfig.json;tsconfig.json
+edit	dep/tsconfig.json;tsconfig.json
+add	dep/tsconfig.json;tsconfig.json
+burst	dep/tsconfig.json;tsconfig.json
+delete	dep/tsconfig.json
