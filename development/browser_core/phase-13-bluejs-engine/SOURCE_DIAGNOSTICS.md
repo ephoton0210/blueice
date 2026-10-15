@@ -1045,9 +1045,20 @@ No source position may be inferred from a nearby token, an unrelated later
 callback, a page-selected source-map URL or an unauthenticated generation.
 Unknown and generated-only locations remain explicitly unavailable. The
 implicit-protocol checkpoint passes formatting and complete workspace/all-target
-Clippy/build on its final inputs. Full Rust/Core/MCP and complete pinned Test262
-acceptance are still pending; all integrated gates need current evidence before
-M1q closes.
+Clippy/build on its final inputs. Its complete Rust/Core/MCP replay passes
+9,312 cases with zero failures and 233 existing ignored across 687 result
+groups, including doc tests. The 663 test executable and seven runtime hashes
+remain fixed. The complete fresh pinned Test262 inventory matches M1p at all
+102,926 modes: 102,921 pass, one stale corpus and four exclusions, with no
+changed mode, new failure or timeout. Test-source hashes, expectations,
+feature/flag selection, status and actual kind/phase/reason match exactly;
+elapsed timings and diagnostic message text are not comparison fields. The runner's
+exit 1 reflects the five unchanged non-pass modes; the comparison succeeds.
+Evidence and immutable input/runtime/test hashes are retained in
+`target/implicit-protocol-origins-source-20261016.json` and
+`target/implicit-protocol-origins-validation-20261016.json`. M1q records 6/10
+verified gates; the remaining producer/profile and integrated lifecycle gates
+still require their own evidence before M1q closes.
 
 ## Foundation implementation checkpoint (2026-10-15)
 

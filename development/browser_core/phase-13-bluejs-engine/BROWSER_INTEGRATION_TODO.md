@@ -52,46 +52,31 @@ remain open. See the
 and [rejection contract](HOST_PROMISE_REJECTIONS.md).
 
 **Current work — M1q original diagnostic source positions (in progress).**
-The active checkpoint covers implicit class-heritage, spread, template and
-delegated-iterator failures, including AsyncFromSync rejection forwarding.
-Focused regressions also expose primitive `Proxy.ownKeys` trap results being
-accepted and missing emitted-template operand anchors. All ten public source-map
-groups and thirty-six deferred execution contexts now pass. Formatting and
-workspace/all-target build and Clippy pass. Full Rust/Core/MCP and pinned
-Test262 verification is still pending. The
-requested build cleanup preserves all source changes and evidence
-while removing 766,331 old compiled files and freeing 335.69 GiB.
-The first full Rust run passes the new VM, page and five MCP console cases,
-then stops at a downloader probe: BlueTS re-enables ureq's transparent gzip
-feature through Cargo feature unification. Matching the workspace's existing
-raw-header policy fixes all sixteen probe cases with BlueTS/net selected
-together. Complete validation is being repeated with the corrected manifest
-and lockfile; the failed full-run receipt remains available.
-Complete section H's original-position follow-up for uncaught errors and
-rejections. The verified implementation now binds immutable source maps to
-live program generations and reports tested original classic JavaScript
-statement, expression and parameter locations through real Core/child
-`ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
-cross-script generator resumption preserve the escaping throw's origin. The
-private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest native-payload
-follow-up charges retained VM filenames, active Rust-owned snapshots and paused
-debugger handlers. It reproduces an uncounted 4,095-byte filename difference,
-three byte-cap callback bypasses and five debugger states; exact charges,
-release on resume and fresh navigation now pass. Its final scoped selection
-passes 2,193 tests across fifty-five disjoint targets (sixteen existing ignored),
-including real page and official MCP source reporting.
-Formatting and related library/test Clippy pass. Four of the
-ten final acceptance
-gates are complete; the detailed implementation
-checklist below records the smaller completed steps. Remaining
-expression/generated provenance, remaining direct/emitted BlueTS and
-page-module/debugger precision and
-the complete queued-origin matrix remain open,
-along with their final integrated Core/MCP/resource/GC checks and
-final workspace/Test262 gates. Unknown or generated-only locations remain
-explicitly unavailable. Section H remains unchecked.
-See the [in-progress source-position contract](SOURCE_DIAGNOSTICS.md).
+The implicit-protocol checkpoint is implemented in `53a6d7f88`. Certified
+operand locations survive heritage, spread, template conversion and delegated
+iteration; AsyncFromSync preserves known and unavailable callback origins.
+Diagnostic emitted-template maps certify unchanged interior positions within
+the existing segment budget. Primitive `Proxy.ownKeys` results are rejected
+before boxed-property reads. All fifty-six diagnostic groups, three public
+own-key groups, ten source-map groups and thirty-six deferred contexts pass.
+
+The complete fixed-input Rust replay passes **9,312 cases, zero failures and
+233 existing ignored** across 687 result groups, including real Core/child
+pages, all five official MCP console cases and doc tests. All 663 test
+executables and seven runtime hashes remain fixed. Formatting and complete
+workspace/all-target build and Clippy pass. BlueTS now follows the workspace's
+raw-header HTTP feature policy; the downloader probe passes in the full suite.
+
+**Six of ten final acceptance gates are complete.** The fresh complete pinned
+Test262 run matches M1p across all 102,926 modes: 102,921 pass, one stale corpus
+and four exclusions, with no changed source/result inventory or new timeout.
+Remaining expression/generated provenance,
+producer/profile/module/debugger precision and the integrated queued-origin,
+GC/navigation/resource matrix remain open. The detailed implementation and
+acceptance checklist below separates completed checkpoints from the remaining
+work. Unknown and generated-only locations stay explicitly unavailable;
+section H remains unchecked. See the
+[in-progress source-position contract](SOURCE_DIAGNOSTICS.md).
 
 ## A. Event loop and scheduling (P0)
 
@@ -506,7 +491,8 @@ the generated typings in the same change.
 ### M1q — Original diagnostic source positions (in progress)
 
 **Progress updated 2026-10-16: implicit-protocol and emitted-template fixes
-under verification; 4/10 final acceptance gates complete.** Completed
+verified through full Rust/Core/MCP and pinned Test262;
+6/10 final acceptance gates complete.** Completed
 implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -869,21 +855,50 @@ the full source-position requirement.
 - [x] Reject primitive `Proxy.ownKeys` trap results before boxed-property reads.
       Three public regression groups pass 176 consumer/primitive/GC contexts,
       eight no-getter-side-effect checks and four valid-object/error controls.
+- [x] Pass the complete fixed-input workspace replay: 9,312 passed, zero failed,
+      233 existing ignored across 687 result groups, including doc tests, real
+      Core/child pages, HTTP probes and all five official MCP console cases.
+      All 663 test executables and seven runtimes retain their recorded hashes.
+- [x] Compare all 102,926 pinned Test262 modes against M1p: identical source
+      hashes, expectations, features/flags, statuses and actual kind/phase/reason.
+      Results remain 102,921 pass, one stale corpus and four exclusions, with
+      zero changed modes and no new failure or timeout. Runner exit 1 represents
+      the five unchanged non-pass modes; the complete comparison succeeds.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
-      compiler-generated provenance.
+      compiler-generated provenance. Acceptance: audit the compiler's operation
+      owners and lowering aliases against the source inventory; public failures
+      retain the executing original expression or an explicit generated-only
+      gap. Ordinary AST inventories and recursive instruction bytes stay equal.
 - [ ] Complete remaining direct BlueTS expression and
       generated-helper provenance, remaining decorator application and class/key
       precision, plus emitted-profile/module/debugger
-      precision and lifecycle acceptance.
+      precision and lifecycle acceptance. Acceptance: original callback throws
+      and generated-helper failures are distinguished through JavaScript,
+      direct BlueTS and all six admitted emitted profiles (`Standard`,
+      `ModulePageConsole`, `Es5`, `System`, `LegacyDecorators`, and
+      `LegacyDecoratorsWithMetadata`). Cover each profile's admitted classic/
+      module and deferred execution paths; assert exact original filenames and
+      UTF-16 coordinates, with unknown dynamic/helper bodies left unavailable.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
       disposal acceptance beyond the verified module and disposal cases.
+      Acceptance: mapped throws, explicit reports and rejected Promises keep
+      their own locations through microtasks, timers, native events and
+      resumable/module work after a later script runs. Finalizers and disposal
+      preserve the failure that escapes; known and unavailable callbacks do not
+      borrow one another's locations.
 - [ ] Complete retained-origin accounting and the integrated
       cancellation/navigation/GC/resource matrix across all source producers.
-- [ ] Complete the full related Rust/Core/MCP, workspace/all-target Clippy/build
-      and pinned Test262 gates, then finalize the milestone documentation.
+      Acceptance: observe actual major collection before retained callbacks;
+      then verify exact sources, cancel/navigation cleanup and stale-generation
+      refusal. Exercise map admission and retained-filename byte limits at the
+      public producer boundary, prove atomic refusal and fresh-document
+      recovery, and verify that released owners stop contributing native bytes.
+- [ ] Revalidate related Rust/Core/MCP, workspace/all-target Clippy/build and
+      the complete pinned Test262 inventory after the remaining source
+      precision/lifecycle changes; finalize the milestone documentation.
 
 #### Final acceptance gates
 
@@ -893,9 +908,9 @@ the full source-position requirement.
 - [ ] Map JavaScript, direct BlueTS and compiler-emitted source positions.
 - [x] Carry bounded copied locations through Core/MCP and retain unavailable cases.
 - [ ] Verify cancellation, stale generations, navigation, GC and resource limits.
-- [ ] Pass the related Rust and real Core/MCP acceptance selections.
+- [x] Pass the related Rust and real Core/MCP acceptance selections.
 - [x] Pass formatting and workspace/all-target Clippy/build.
-- [ ] Compare the complete pinned Test262 inventory against M1p.
+- [x] Compare the complete pinned Test262 inventory against M1p.
 - [ ] Finalize evidence, documentation and a detailed English commit.
 
 Initial inspection found that `report_host_error_value` deliberately wrote an
@@ -1719,10 +1734,32 @@ before stopping at `blueice-net --test probe`. Cargo unifies BlueTS's default
 ureq gzip feature with the ranged downloader, removing encoded response headers
 before its identity check. The corrected BlueTS manifest follows Core/net's
 existing no-transparent-decompression policy; all sixteen probe cases pass with
-BlueTS and net selected together. A full fixed-input replay is in progress;
-the before-fix source snapshot, failed receipts and logs are preserved.
-M1q remains at 4/10 verified gates while complete Rust/Core/MCP and pinned
-Test262 acceptance are pending.
+BlueTS and net selected together. The complete corrected replay passes 9,312
+cases, zero failures and 233
+existing ignored across 687 result groups, including doc tests and all five
+MCP console cases. All 663 test executable and seven runtime hashes remain
+fixed through acceptance. The before-fix source snapshot, failed receipts and
+the final `cargo test --workspace --no-fail-fast` log are retained. The failed
+and corrected commands remain separate validation receipts.
+The fresh complete pinned Test262 run finishes in 355.87
+seconds including corpus validation and reporting. All 102,926 unique
+`(path, mode)` entries match M1p's source hashes, expected results, feature/flag
+selection, status and actual kind/phase/reason. Results remain 102,921 pass,
+one stale corpus and four exclusions; no new failure or timeout appears.
+Runner exit 1 records the unchanged five non-pass modes; the complete baseline
+comparison succeeds. Formatting, workspace/all-target build/Clippy and all
+runtime/test hashes remain valid at this checkpoint. Evidence is
+`target/implicit-protocol-origins-source-20261016.json` and
+`target/implicit-protocol-origins-validation-20261016.json`, with the code
+checkpoint in `target/implicit-protocol-origins-checkpoint-20261016.json`.
+M1q now records 6/10 verified gates. Remaining producer/profile precision and
+integrated queued-origin/lifecycle/resource acceptance still prevent section H
+or the full M1q milestone from closing.
+
+The requested build cleanup removes 766,331 old compiled files from the main
+checkout and sixteen old agent worktrees, releasing 335.69 GiB. Sources,
+worktree changes, corpora, reports and the live MCP executable are preserved;
+all seventeen checkout states and the protected runtime hashes are verified.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 
