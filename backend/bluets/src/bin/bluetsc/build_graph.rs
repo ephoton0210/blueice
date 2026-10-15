@@ -156,6 +156,13 @@ impl Graph {
                 project.fingerprint.clone(),
                 project.config_inputs.clone(),
                 project.files.clone(),
+                project
+                    .options
+                    .get("module")
+                    .and_then(Value::as_str)
+                    .is_some_and(|module| {
+                        matches!(module.to_ascii_lowercase().as_str(), "node16" | "nodenext")
+                    }),
             ),
         );
         let directory = path.parent().expect("canonical config has parent");

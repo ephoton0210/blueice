@@ -10815,3 +10815,38 @@ complete K.0 two-crate test gate pass with pinned TypeScript 5.9.3, Acorn
 Cargo incremental compilation and dev/test debug symbols were disabled to
 bound regenerated artifacts. Manifest, nearer-package, symlink and path/type
 invalidation remain AC-K12.2.2 rather than being implied by this claim.
+
+### K.12.2.2 Observed-input invalidation (2026-10-15)
+
+The committed five-case, two-project matrix records pinned TypeScript 5.9.3
+`--build --verbose` order for a changed root package manifest, creation of a
+nearer package manifest, repointing an in-root manifest symlink between
+identical-byte targets, successive `paths` and `types` configuration changes,
+and creation of an unrelated file. Pinned TypeScript rebuilds the root after
+each configuration edit and skips the other edits. Its skipped package-scope
+edits are not safe to copy: a separate pinned control confirms that `--force`
+changes the emitted module format after the root or nearer manifest edit.
+BlueTSC deliberately rebuilds the root for those package-scope edits, while
+leaving the dependency untouched; the symlink case verifies canonical target
+identity even when bytes match. It agrees with the pinned ordered rebuilds
+for both configuration edits and the unrelated-file no-op. The ignored
+recorder can refresh `build-invalidation-matrix.tsv` with
+`BLUEICE_WRITE_BUILD_INVALIDATION_MATRIX=1`. The symlink replay is Unix-only;
+the frozen matrix still records the pinned Unix observation on Windows.
+
+For Node16/NodeNext projects, the owner-local build fingerprint now includes
+every selected source's ancestor `package.json` candidate up to the canonical
+owner root: absent/present state, canonical target identity and a bounded
+content hash. Reads remain behind the existing owner authorization gate.
+`paths` and `types` changes already enter the configuration fingerprint, and
+an unrelated file is not part of either observation set. The four named
+invalidation tests and unrelated-file control pass, as do both pinned-oracle
+tests, the matrix-inventory test, rustfmt and warnings-denied two-crate
+all-target Clippy. Imported package/declaration inputs beyond these measured
+scope candidates remain the broader G-M2 gap; this leaf does not claim to
+persist the package resolver's full observation log.
+
+The complete K.0 two-crate test gate exits 0 with pinned TypeScript 5.9.3,
+Acorn 8.15.0 and Node 24.21.0, including all ordinary and ignored oracles.
+Cargo incremental compilation and dev/test debug symbols were disabled to
+bound regenerated artifacts.

@@ -1,0 +1,5 @@
+manifest	dep/tsconfig.json;tsconfig.json|-
+nearer-package	dep/tsconfig.json;tsconfig.json|-
+repointed-symlink	dep/tsconfig.json;tsconfig.json|-
+paths-types	dep/tsconfig.json;tsconfig.json|tsconfig.json|tsconfig.json
+unrelated	dep/tsconfig.json;tsconfig.json|-

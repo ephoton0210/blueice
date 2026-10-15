@@ -608,9 +608,10 @@ not `.tsbuildinfo` bytes.
   - [x] **AC-K12.2.1 Cache key.** Key binds source hashes, compiler options and graph/configuration
     fingerprint (J.4.3). *Pass when:* changing any one of the three misses the cache (3 tests).
     - *Evidence:* PLAN.md, "K.12.2.1 Cache key" (2026-10-15): six pinned ordered rebuild rows, three public cache-miss tests, same-mtime source-byte hash unit test, K.0 two-crate gate.
-  - [ ] **AC-K12.2.2 Invalidation.** Changed manifest, nearer package, repointed symlink and changed
+  - [x] **AC-K12.2.2 Invalidation.** Changed manifest, nearer package, repointed symlink and changed
     `paths`/`types` each invalidate. *Pass when:* 4 named tests, plus one test that an unrelated file
     does not invalidate.
+    - *Evidence:* PLAN.md, "K.12.2.2 Observed-input invalidation" (2026-10-15): five-case pinned ordered matrix, four named invalidation tests plus unrelated-file no-op, forced-rebuild stale-output control, K.0 two-crate gate.
   - [ ] **AC-K12.2.3 Equivalence.** Incremental output is byte-identical to a clean build over a
     randomized edit sequence. *Pass when:* >= 20 steps over >= 3 projects, zero differences.
   - [ ] **AC-K12.2.4 Corrupt state.** A truncated or foreign `.tsbuildinfo` falls back to a clean build

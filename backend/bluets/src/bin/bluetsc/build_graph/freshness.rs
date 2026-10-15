@@ -14,6 +14,7 @@ pub(super) struct Inputs {
     config_fingerprint: String,
     config_files: Vec<PathBuf>,
     files: Vec<PathBuf>,
+    observe_package_scopes: bool,
 }
 
 impl Inputs {
@@ -21,11 +22,13 @@ impl Inputs {
         config_fingerprint: String,
         config_files: Vec<PathBuf>,
         files: Vec<PathBuf>,
+        observe_package_scopes: bool,
     ) -> Self {
         Self {
             config_fingerprint,
             config_files,
             files,
+            observe_package_scopes,
         }
     }
 
@@ -74,7 +77,79 @@ impl Inputs {
             bytes.extend(sha256_label(&source).bytes());
             bytes.push(0);
         }
+        if self.observe_package_scopes {
+            self.add_package_scope_observations(graph, &mut bytes)?;
+        }
         Ok(sha256_label(&bytes))
+    }
+
+    fn add_package_scope_observations(
+        &self,
+        graph: &Graph,
+        bytes: &mut Vec<u8>,
+    ) -> Result<(), String> {
+        let mut candidates = BTreeSet::new();
+        for source in &self.files {
+            let canonical = fs::canonicalize(source).map_err(|error| {
+                format!("cannot resolve build source {}: {error}", source.display())
+            })?;
+            let mut directory = canonical.parent();
+            while let Some(current) = directory.filter(|path| path.starts_with(&graph.root)) {
+                candidates.insert(current.join("package.json"));
+                if current == graph.root {
+                    break;
+                }
+                directory = current.parent();
+            }
+        }
+        for candidate in candidates {
+            graph
+                .reader
+                .authorize_future(&candidate, "package scope", false)?;
+            let identity = candidate
+                .strip_prefix(&graph.root)
+                .map_err(|_| "package scope is outside project root".to_string())?;
+            bytes.extend(identity.to_string_lossy().bytes());
+            bytes.push(0);
+            match fs::symlink_metadata(&candidate) {
+                Err(error) if error.kind() == io::ErrorKind::NotFound => bytes.push(0),
+                Err(error) => {
+                    return Err(format!(
+                        "cannot inspect package scope {}: {error}",
+                        candidate.display()
+                    ));
+                }
+                Ok(_) => {
+                    let canonical = fs::canonicalize(&candidate).map_err(|error| {
+                        format!(
+                            "cannot resolve package scope {}: {error}",
+                            candidate.display()
+                        )
+                    })?;
+                    let target = canonical
+                        .strip_prefix(&graph.root)
+                        .map_err(|_| "package scope resolves outside project root".to_string())?;
+                    let metadata = fs::metadata(&canonical).map_err(|error| {
+                        format!(
+                            "cannot inspect package scope {}: {error}",
+                            canonical.display()
+                        )
+                    })?;
+                    if !metadata.is_file() || metadata.len() > 1024 * 1024 {
+                        return Err("package scope is not a bounded regular file".into());
+                    }
+                    let contents = fs::read(&canonical).map_err(|error| {
+                        format!("cannot read package scope {}: {error}", canonical.display())
+                    })?;
+                    bytes.push(1);
+                    bytes.extend(target.to_string_lossy().bytes());
+                    bytes.push(0);
+                    bytes.extend(sha256_label(&contents).bytes());
+                }
+            }
+            bytes.push(0);
+        }
+        Ok(())
     }
 }
 
@@ -495,7 +570,7 @@ mod tests {
         let source = root.join("main.ts");
         fs::write(&source, "export const value = 1;\n").unwrap();
         let modified = fs::metadata(&source).unwrap().modified().unwrap();
-        let inputs = Inputs::new("config".into(), Vec::new(), vec![source.clone()]);
+        let inputs = Inputs::new("config".into(), Vec::new(), vec![source.clone()], false);
         let graph = Graph::new(root.clone());
         let first = inputs.fingerprint(&graph).unwrap();
         fs::write(&source, "export const value = 2;\n").unwrap();
