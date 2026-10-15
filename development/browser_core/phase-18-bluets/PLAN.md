@@ -10548,3 +10548,40 @@ hash passes its entire final-source gate. On the repaired tree, the public
 `source_map_lookup` target passes 4/4, the pinned TypeScript 5.9.3 decoded
 source-map oracle passes 23/23, and workspace rustfmt plus whitespace checks
 pass. These are focused repair checks, not the final-source gate.
+
+### K.11.6 AC-K11.E final-source gate (2026-10-15)
+
+The final production-source hash is
+`f7ba9641c27e9593334ca1c2d1e8f1366bb82f2f`. Its frozen K.11 oracle
+matrix has exactly **11 rows**; the public `source_map_lookup` target passes
+4/4 and the pinned TypeScript 5.9.3 decoded source-map oracle passes 23/23.
+Local checks on the identical repaired tree, `cargo fmt --all -- --check` and
+`cargo clippy -p blueice-bluets -p blueice-bluets-bluejs --all-targets -- -D warnings`
+exit 0. The local two-crate `--include-ignored` run was interrupted after both
+hosted ignored-oracle jobs succeeded; it is not counted as a local pass. The
+hosted ordinary workspace tests and ignored-oracle jobs together supply the
+complete gate on the committed hash.
+
+The exact hash passed hosted [CI run 38644556735](https://github.com/ephoton0210/blueice/actions/runs/38644556735):
+**29/29 jobs**, comprising 25 build/test/lint platform jobs, both
+`typescript-oracle` jobs, coverage, and the aggregate `CI gate`. The platform
+jobs run `cargo build --workspace --all-targets`, `cargo test --workspace`,
+`cargo clippy --workspace --all-targets -- -D warnings`, and platform rustfmt.
+The oracle jobs run pinned TypeScript 5.9.3 and Acorn 8.15.0 with
+`cargo test -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --ignored`
+on macOS 15 and Ubuntu 24.04; these pass along with the ordinary workspace
+tests. All five Windows workspace tests pass, including the three configurations
+that had failed the System-wrapper lookup before the embedded-helper LF pin.
+The completed Windows 11 and Windows 11 VS2026 arm64 job logs each report
+`public_lookup_keeps_non_decorator_helpers_and_system_scaffolding_unmapped ... ok`.
+
+The coverage job runs
+`cargo llvm-cov --workspace --ignore-filename-regex 'extension/src/main\.rs$|frontend-reference/src/main\.rs$|mcp-server/src/main\.rs$|mcp-server/src/server\.rs$' --failure-mode all --fail-under-lines 90 --summary-only`:
+**94.56% workspace line coverage** (217,410 lines, 11,824 missed). Its
+independent `cargo llvm-cov -p blueice-bluejs
+--failure-mode all --fail-under-lines 88 --summary-only` passes at **99.23%
+BlueJS line coverage** (82,528 lines, 633 missed). The final `CI gate` succeeds.
+No production source changed after the final-source hash; this closure records
+evidence and checks K.11.6 only. K.11.1–K.11.6 are all checked, so K.11's
+exit rule holds within its named supported profile. Unsupported source-map
+forms remain named gaps; this does not claim unrestricted TypeScript parity.

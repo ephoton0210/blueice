@@ -18,9 +18,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current status (2026-10-15):** Sections A–J, K.1–K.10 and K.11.1–K.11.5 are complete within their measured subsets
-(last hosted confirmation: run 38106557070 at `87ebda8c7`, 29/29 jobs; workspace lines 94.77%, BlueJS 99.30%).
-**Open work, in order:** K.11.6 (AC-K11.E) → K.12 → K.13 (independent) → K.14.
+**Current status (2026-10-15):** Sections A–J and K.1–K.11 are complete within their measured subsets
+(last hosted confirmation: run 38644556735 at `f7ba9641c`, 29/29 jobs; workspace lines 94.56%, BlueJS 99.23%).
+**Open work, in order:** K.12 → K.13 (independent) → K.14.
 Dated evidence journals live in `PLAN_HISTORY.md`; this file keeps only checklists, acceptance criteria and
 one-line evidence pointers.
 
@@ -541,7 +541,7 @@ goes into the resolver's observation record.*
 Token-level mappings with `names`/`sourcesContent`, compared with pinned `tsc` 5.9.3 by decoding both maps
 (not text), plus debugger mappings for generated helper frames and relocated decorator text. This is a
 bounded claim for the frozen 11-row matrix, not parity for every construct. Detailed evidence and the dated
-journal are in `PLAN_HISTORY.md` ("Archived from TODO.md: K.11"); only open work is spelled out here.
+journal are in `PLAN_HISTORY.md` ("Archived from TODO.md: K.11"); the acceptance checks are spelled out here.
 
 - [x] **K.11.1 Frozen oracle matrix** — 11 rows (copied, erased, standard method decorator, compacted
   relocation, erasure inside relocation, composed decorators, legacy, parameter+metadata, non-decorator
@@ -565,10 +565,11 @@ journal are in `PLAN_HISTORY.md` ("Archived from TODO.md: K.11"); only open work
     any helper-body frame is labelled with a user-source coordinate.
   - [x] **AC-K11.D Tick rule.** Check K.11.4 only when A–C pass in `out_of_process_debugger` and the new
     test count is recorded.
-- [ ] **K.11.6 Final-source gate (AC-K11.E).** On one committed hash: fmt, warnings-denied all-target Clippy,
+- [x] **K.11.6 Final-source gate (AC-K11.E).** On one committed hash: fmt, warnings-denied all-target Clippy,
   workspace tests with ignored oracles, line coverage >= 90%, plus hosted build/test/lint,
   `typescript-oracle`, coverage and final CI gate. *Pass when:* PLAN.md records hash, commands, fixture
   count, coverage and hosted run id, and no later commit changed production source.
+  - *Evidence:* PLAN.md, "K.11.6 AC-K11.E final-source gate" (2026-10-15).
 
 **Exit rule (AC-K11.F):** check K.11 when K.11.1–K.11.6 are all checked. Unsupported source-map forms stay
 named gaps. Do not add further positive-path debugger cases; they no longer move this item.
