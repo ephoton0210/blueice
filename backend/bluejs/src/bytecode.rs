@@ -564,6 +564,7 @@ pub struct Bytecode {
     /// installed generation. Closures retain their own source association.
     pub(crate) diagnostic_source_map: Option<std::rc::Rc<crate::diagnostics::DiagnosticSourceMap>>,
     pub(crate) diagnostic_ast_owners: Vec<crate::diagnostics::DiagnosticInstructionOwner>,
+    pub(crate) diagnostic_source_node_count: usize,
     /// Compiler-recorded instruction starts for the root program's source
     /// order statements. `None` means the statement emits no root-code-unit
     /// instruction and therefore has no executable safe point.
@@ -702,6 +703,7 @@ impl Bytecode {
             debugger_program_generation: None,
             diagnostic_source_map: None,
             diagnostic_ast_owners: Vec::new(),
+            diagnostic_source_node_count: 0,
             root_statement_offsets: Vec::new(),
             identifier_offsets: Vec::new(),
             root_statement_ranges: Vec::new(),

@@ -51,6 +51,49 @@ is separate: a mapped caller cannot manufacture a location for an unmapped
 `eval` or `Function` body. Error events preserve their existing cancellation,
 handler arguments, recursion and original-value behavior.
 
+## Expression and binding-pattern provenance
+
+`parse_with_diagnostic_node_spans` retains the public statement/expression AST
+prefix and appends binding-pattern slots in a source-only namespace. The
+legacy statement-span API and debugger inventory keep their original shape.
+Compiler instruction owners select expression and binding-pattern locations;
+temporary overlays preserve proven original ordinals through named and unnamed
+arrow lowering. Aliases contain temporary AST addresses only during compilation.
+
+Template placeholder ranges come from the lexer, including nested and tagged
+templates and braces inside strings/comments. Subparsers rebase their captured
+ranges into the enclosing source. No token-text search supplies a location.
+Cumulative cloned AST and span-storage work is capped at 8 MiB before snapshot
+cloning; shared `SourceText` buffers are not cloned or charged again. A public
+control accepts wide expression lists while refusing excessive capture work
+without treating valid grammar as a syntax error.
+
+Nine initial public failures report an outer statement or no source. The
+expanded twenty-three-scenario matrix passes, including parameter defaults,
+destructuring, arrow lowering, operator/constructor intermediates, templates,
+CRLF and UTF-16 columns. Thirty-five diagnostic groups pass, with source-only
+pattern inventory and unchanged ordinary bytecode controls. The old real
+Core/host still report the statement's inline column 25 where the RHS call
+begins at column 36. Matching new Core/host now pass all three official MCP
+console cases with the exact RHS line 5, column 36, through generator/finally/
+async-stack/`await using` forwarding. Five additional real-page contexts verify
+operand, default/destructuring parameter, named-arrow and template coordinates.
+
+The final disjoint selection passes 1,611 BlueJS cases across thirty-eight
+targets, including 1,205 library cases and thirty-five diagnostic groups.
+Bridge, Launcher and real page targets add 491 passes and one existing ignored;
+three MCP passes bring the total to 2,105 over forty-two targets. Formatting,
+matched Core/host/Gatekeeper builds and focused Clippy pass. Twenty final Rust
+input hashes, old/new runtime hashes, test hashes and receipts are in
+`target/expression-origins-source-20261015.json` and
+`target/expression-origins-validation-20261015.json`.
+The subsequent requested cleanup removes old compiled executables and caches;
+source hashes, executable hashes, receipts and logs remain available. Changed
+integration-target Clippy and a complete diagnostic-target replay also pass
+after an equivalent test-configuration initialization fix.
+Method/class/decorator lowering and other generated-code provenance still
+require their remaining implementation and acceptance.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger

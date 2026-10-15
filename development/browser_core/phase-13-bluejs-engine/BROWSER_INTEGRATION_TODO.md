@@ -54,21 +54,22 @@ and [rejection contract](HOST_PROMISE_REJECTIONS.md).
 **Current work — M1q original diagnostic source positions (in progress).**
 Complete section H's original-position follow-up for uncaught errors and
 rejections. The verified implementation now binds immutable source maps to
-live program generations and reports original classic JavaScript statement
-locations, including nested blocks and functions, through real Core/child
+live program generations and reports tested original classic JavaScript
+statement, expression and parameter locations through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest disposal-origin
-follow-up shares a native completion-preserving loop between `await using`
-and async stacks, retaining sources through suppression, rejected awaits,
-module/generator cleanup, later scripts and GC. Its final selection passes
-2,041 tests across thirty-four targets (one existing ignored), including real
-Core/child and official MCP acceptance through async disposal. Formatting and
+Core and MCP, preserving unavailable locations. The latest expression and
+parameter follow-up passes twenty-three source scenarios, preserves debugger
+ordinals with source-only pattern slots, and bounds temporary capture work.
+Its final selection passes 2,105 tests across forty-two targets (one existing
+ignored), including real Core/child and official MCP acceptance at the precise
+inline call position, line 5, column 36. Formatting and
 focused six-library Clippy pass. Three of the ten final acceptance
 gates are complete; the detailed implementation
-checklist below records the smaller completed steps. Expression/parameter
-provenance, direct/emitted BlueTS, page-module/debugger source producers and
+checklist below records the smaller completed steps. Remaining
+expression/parameter/generated provenance, direct/emitted BlueTS,
+page-module/debugger source producers and
 the complete queued-origin matrix remain open,
 along with their final integrated Core/MCP/resource/GC checks and
 final workspace/Test262 gates. Unknown or generated-only locations remain
@@ -487,7 +488,7 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: disposal-origin follow-up verified; 3/10 final
+**Progress updated 2026-10-15: expression/parameter follow-up verified; 3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -554,10 +555,27 @@ the full source-position requirement.
       disjoint targets, one existing ignored, matched runtime builds, formatting
       and focused six-library Clippy. Real MCP keeps inline line 5, column 25
       through generator/finally/async-stack/`await using` forwarding.
+- [x] Capture tested expression and parameter provenance, including operator/
+      constructor intermediates, defaults, destructuring, named/unnamed arrows,
+      nested/tagged templates and CRLF/UTF-16 positions. Twenty-three source
+      scenarios pass; five new real-page contexts preserve their own positions.
+- [x] Append pattern slots in a source-only inventory while retaining debugger
+      AST ordinals and the legacy statement-span API. Verify identical ordinary
+      bytecode, bounded snapshot work, wide-list admission and lexer-state
+      restoration; temporary arrow overlays preserve proven original owners.
+- [x] Pass the final expression follow-up: 2,105 passed across forty-two
+      disjoint targets, one existing ignored, matched runtime builds, formatting
+      and focused Clippy. Real MCP now reports the RHS call's inline line 5,
+      column 36, replacing the enclosing statement's column 25.
+- [x] Clear old compilation artifacts after validation: remove 75,154 files
+      from the main and `cov-round47` worktree targets, reducing their combined
+      allocated size by 40.55 GiB. Preserve source edits, test reports, all
+      thirty-two top-level validation manifests and the running MCP executable.
 
 #### Remaining implementation and verification
 
-- [ ] Complete precise expression/parameter and compiler-generated provenance.
+- [ ] Complete remaining precise expression/parameter and compiler-generated
+      provenance, including method/class/decorator lowering.
 - [ ] Attach certified original locations for direct/emitted BlueTS, modules
       and debugger-driven execution.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
@@ -848,6 +866,43 @@ runtime hashes and per-target receipts are in
 `target/disposal-origins-validation-20261015.json`. M1q remains at 3/10;
 remaining source producers, the complete protocol/integrated acceptance matrix
 and final workspace/Test262 gates stay open.
+
+The expression/parameter follow-up initially fails all nine source scenarios:
+operands borrow statement coordinates, and parameter/arrow failures lack a
+location (`/private/tmp/blueice-expression-origins-red.log`). The first producer
+fix passes seven; source-only pattern slots and shared named/unnamed arrow
+clone overlays resolve the remaining two. The expanded twenty-three-scenario
+matrix covers intermediate operators/constructors, parameter binding/defaults,
+template placeholders and callbacks, comments, repeated syntax and UTF-16/CRLF
+positions. Diagnostic snapshots share existing `SourceText` buffers and charge
+cumulative clone/span work before allocation, with an 8 MiB cap. Wide-list and
+excessive-capture controls pass. Public debugger ordinals remain unchanged;
+ordinary syntax and bytecode comparisons verify metadata-only compilation.
+
+The final current-source selection passes 1,611 BlueJS cases across thirty-eight
+targets, including 1,205 library cases and all thirty-five diagnostic groups.
+Bridge, Launcher and real Core/child page tests add 491 passes and one existing
+ignored; all three official MCP console cases pass. The unchanged old runtime
+reports inline column 25; matching new Core/host report the actual RHS call
+at line 5, column 36. The disjoint total is 2,105 passes across forty-two
+targets. Formatting, matched Core/host/Gatekeeper builds and focused Clippy
+pass. Initial library-test compilation found three private template-helper
+calls using old signatures; the corrected complete selection passes. Twenty
+Rust input hashes, old/new runtime hashes and per-target receipts are recorded
+in `target/expression-origins-source-20261015.json` and
+`target/expression-origins-validation-20261015.json`. Method/class/decorator and
+other generated provenance, remaining source producers and integrated/final
+workspace/Test262 gates stay open. M1q remains at 3/10 final acceptance gates.
+
+The requested compilation cleanup runs after the verified selection. Source
+hashes, test/runtime hashes and logs remain available; the corresponding old
+binaries and caches are removed, apart from the MCP executable in use. The
+cleanup verifies all twenty-two modified main-checkout files, both modified
+worktree files and all thirty-two top-level report manifests without changes.
+Its removal inventory and result are recorded in
+`/private/tmp/blueice-compiled-cleanup-plan-20261015.json` and
+`/private/tmp/blueice-compiled-cleanup-result-20261015.json`. This cleanup does
+not rerun compilation or change any final acceptance gate.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

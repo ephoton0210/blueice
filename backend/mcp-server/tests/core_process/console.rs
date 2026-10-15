@@ -333,7 +333,7 @@ async fn real_mcp_reports_rejections_late_handlers_and_navigation_without_live_h
     );
     let original = serde_json::to_value(&records[0]).unwrap();
     assert_eq!(original["source"]["line"], 5, "{original}");
-    assert_eq!(original["source"]["column"], 25, "{original}");
+    assert_eq!(original["source"]["column"], 36, "{original}");
     assert!(
         original["source"]["filename"]
             .as_str()

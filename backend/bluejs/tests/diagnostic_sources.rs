@@ -1273,6 +1273,229 @@ fn root_map(
 }
 
 #[test]
+fn expression_and_parameter_failures_use_their_own_original_source() {
+    fn mapped(source: &str) -> blueice_bluejs::Bytecode {
+        let (program, spans) = blueice_bluejs::parse_with_diagnostic_node_spans(source).unwrap();
+        assert_eq!(
+            program,
+            parse(source).unwrap(),
+            "diagnostic capture preserves syntax"
+        );
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install_for_diagnostics(identity("original"), &BlueJsProgramV1::Script(program))
+            .unwrap();
+        fn collect(
+            code: &blueice_bluejs::Bytecode,
+            unit: &mut u32,
+            source: &str,
+            spans: &[Option<blueice_bluejs::ParsedStatementSpan>],
+            rows: &mut Vec<DiagnosticSourceRange>,
+        ) {
+            let ordinal = *unit;
+            *unit += 1;
+            let owners = code.diagnostic_instruction_owners();
+            for (index, owner) in owners.iter().enumerate() {
+                let Some(span) = owner
+                    .ast_node_ordinal
+                    .and_then(|id| spans.get(id as usize))
+                    .copied()
+                    .flatten()
+                else {
+                    continue;
+                };
+                let (line, column) = source_positions(source, &[span.start_byte])[0].unwrap();
+                rows.push(DiagnosticSourceRange {
+                    code_unit_ordinal: ordinal,
+                    start: owner.bytecode_offset,
+                    end: owners
+                        .get(index + 1)
+                        .map_or(code.bytes().len() as u32, |next| next.bytecode_offset),
+                    location: DiagnosticSourceLocation {
+                        filename: "memory:///position.js".into(),
+                        line,
+                        column,
+                    },
+                });
+            }
+            for child in code.child_code_units() {
+                collect(child, unit, source, spans, rows);
+            }
+        }
+        let mut rows = Vec::new();
+        collect(
+            registry.get(handle).unwrap().bytecode(),
+            &mut 0,
+            source,
+            &spans,
+            &mut rows,
+        );
+        registry
+            .bind_diagnostic_sources(
+                handle,
+                DiagnosticSourceMap::new(identity("original"), rows).unwrap(),
+            )
+            .unwrap();
+        registry.get(handle).unwrap().bytecode().clone()
+    }
+    let mut failures = Vec::new();
+    for (name, source, expected) in [
+        (
+            "initializer operand",
+            "var result = (\n  1 +\n  missing\n);",
+            "3:3",
+        ),
+        ("member access", "var value =\n  null.field;", "2:3"),
+        ("call argument", "Math.max(\n  missing\n);", "2:3"),
+        (
+            "parameter default",
+            "function fail(value =\n  missing) {}\nfail();",
+            "2:3",
+        ),
+        (
+            "parameter pattern",
+            "function fail(\n  {value}\n) {}\nfail(null);",
+            "2:3",
+        ),
+        (
+            "repeated arrow body",
+            "var pair=[()=>missing,()=>\n  absent];\npair[1]();",
+            "2:3",
+        ),
+        ("sequence operand", "(0,\n  missing);", "2:3"),
+        (
+            "computed property",
+            "var value={};value[\n  missing\n];",
+            "2:3",
+        ),
+        (
+            "parenthesized arrow",
+            "var fail=()=> (\n  missing\n);fail();",
+            "2:3",
+        ),
+        ("binary child", "var v=1 +\n  2n / 0n;", "2:3"),
+        ("binary parent", "var v = 1 +\n  1n;", "1:9"),
+        ("member intermediate", "var v=\n  null.field.next;", "2:3"),
+        (
+            "constructor intermediate",
+            "var v=\n  new new (0)();",
+            "2:7",
+        ),
+        (
+            "arrow parameter default",
+            "var fail=(\n  value = missing\n)=>value;fail();",
+            "2:11",
+        ),
+        (
+            "generator parameter default",
+            "function* fail(value=\n  missing){}var it=fail();it.next();",
+            "2:3",
+        ),
+        (
+            "template placeholder",
+            "var v=`value ${\n  missing}`;",
+            "2:3",
+        ),
+        (
+            "tagged placeholder",
+            "function tag(){}tag`value ${\n  missing}`;",
+            "2:3",
+        ),
+        (
+            "nested template",
+            "var v=`${`inner ${\n  missing}`}`;",
+            "2:3",
+        ),
+        (
+            "template callback",
+            "var v=`${(()=>{\n  return missing;\n})()}`;",
+            "2:10",
+        ),
+        (
+            "template comment brace",
+            "var v=`${ /* } */\n  missing }`;",
+            "2:3",
+        ),
+        (
+            "CRLF and astral",
+            "var face='😀';\r\nvar v =\r\n  missing;",
+            "3:3",
+        ),
+        ("UTF16 column", "var face='😀';missing;", "1:15"),
+        (
+            "repeated member objects",
+            "var object={};\nvar v=[object,object[\n  missing]];",
+            "3:3",
+        ),
+    ] {
+        let mut vm = page();
+        assert!(vm.execute_script(&mapped(source)).is_err(), "{name}");
+        let found = observed(&mut vm);
+        let expected = Value::String(format!("memory:///position.js:{expected}").into());
+        if found != expected {
+            failures.push((name, found, expected));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn diagnostic_patterns_extend_only_the_source_inventory_and_preserve_ordinary_code() {
+    let source = "function fail(\n  {value}=missing\n){return value;}";
+    let (program, spans) = blueice_bluejs::parse_with_diagnostic_node_spans(source).unwrap();
+    let (ordinary, statements) = blueice_bluejs::parse_with_diagnostic_spans(source).unwrap();
+    assert_eq!(program, ordinary);
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install_for_diagnostics(
+            identity("original"),
+            &BlueJsProgramV1::Script(program.clone()),
+        )
+        .unwrap();
+    let compiled = registry.get(handle).unwrap();
+    assert_eq!(statements.len(), compiled.ast_nodes().len());
+    assert_eq!(
+        spans.len(),
+        compiled.bytecode().diagnostic_source_node_count()
+    );
+    assert!(spans.len() > statements.len());
+    assert_eq!(
+        spans[statements.len()].unwrap().start_byte,
+        source.find("{value}").unwrap()
+    );
+    for (index, span) in statements.iter().enumerate() {
+        if span.is_some() {
+            assert_eq!(span, &spans[index]);
+        }
+    }
+    let plain = compile(&program).unwrap();
+    fn same_code(left: &blueice_bluejs::Bytecode, right: &blueice_bluejs::Bytecode) {
+        assert_eq!(left.bytes(), right.bytes());
+        let left = left.child_code_units().collect::<Vec<_>>();
+        let right = right.child_code_units().collect::<Vec<_>>();
+        assert_eq!(left.len(), right.len());
+        for (left, right) in left.into_iter().zip(right) {
+            same_code(left, right);
+        }
+    }
+    same_code(&plain, compiled.bytecode());
+}
+
+#[test]
+fn diagnostic_capture_bounds_clone_work_and_accepts_wide_expression_lists() {
+    let source = format!(
+        "var value='{}';",
+        "x".repeat(MAX_DIAGNOSTIC_SOURCE_MAP_BYTES / 2)
+    );
+    assert!(parse(&source).is_ok());
+    let error = blueice_bluejs::parse_with_diagnostic_node_spans(&source).unwrap_err();
+    assert_eq!(error.message, "diagnostic source capture limit exceeded");
+    assert!(!error.known_syntax);
+    let source = format!("var value=[{}];", vec!["1"; 10_000].join(","));
+    assert!(blueice_bluejs::parse_with_diagnostic_node_spans(&source).is_ok());
+}
+
+#[test]
 fn parser_and_compiler_bind_each_nested_throw_to_its_own_statement() {
     for source in [
         "\nif (true) {\n  throw 'block';\n}",
@@ -1347,8 +1570,10 @@ fn page_installation_charges_code_and_maps_and_releases_both_on_discard() {
 fn source_map_builder_and_budget_failures_leave_no_partially_installed_program() {
     let program = BlueJsProgramV1::Script(parse("throw 'probe';").unwrap());
     let code_bytes = program.compile().unwrap().bytes().len();
-    let mut config = BlueJsPageRuntimeConfig::default();
-    config.max_bytecode_bytes_per_realm = code_bytes;
+    let config = BlueJsPageRuntimeConfig {
+        max_bytecode_bytes_per_realm: code_bytes,
+        ..Default::default()
+    };
     let mut runtime = BlueJsPageRuntime::new(config).unwrap();
     let origin = BlueJsPageOrigin::new("https://positions.test").unwrap();
     runtime.open_realm(1, origin.clone()).unwrap();

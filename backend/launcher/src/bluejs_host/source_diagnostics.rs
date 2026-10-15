@@ -26,8 +26,8 @@ pub(super) fn javascript_diagnostic_source_map(
         return Err(invalid());
     }
     let (_, spans) =
-        blueice_bluejs::parse_with_diagnostic_spans(&source.source).map_err(|_| invalid())?;
-    if compiled.ast_nodes().len() != spans.len() {
+        blueice_bluejs::parse_with_diagnostic_node_spans(&source.source).map_err(|_| invalid())?;
+    if compiled.bytecode().diagnostic_source_node_count() != spans.len() {
         return Err(invalid());
     }
     let offsets = spans

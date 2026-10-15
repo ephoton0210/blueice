@@ -27,20 +27,201 @@ pub(super) fn collect_ast_nodes(program: &BlueJsProgramV1) -> Vec<AstNodeDescrip
     visitor.nodes
 }
 
+#[derive(Clone)]
 pub(crate) struct DiagnosticAstNodeIds {
     pub(crate) statements: std::collections::HashMap<usize, usize>,
+    pub(crate) expressions: std::collections::HashMap<usize, usize>,
+    pub(crate) patterns: std::collections::HashMap<usize, usize>,
+    parent: Option<std::rc::Rc<Self>>,
+    pub(crate) node_count: usize,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum DiagnosticNode<'a> {
+    Statement(&'a Stmt),
+    Expression(&'a Expr),
+    Pattern(&'a Pattern),
+}
+
+impl DiagnosticNode<'_> {
+    fn address(self) -> (u8, usize) {
+        match self {
+            Self::Statement(node) => (0, node as *const Stmt as usize),
+            Self::Expression(node) => (1, node as *const Expr as usize),
+            Self::Pattern(node) => (2, node as *const Pattern as usize),
+        }
+    }
+}
+
+impl DiagnosticAstNodeIds {
+    fn table(
+        &mut self,
+        node: DiagnosticNode<'_>,
+    ) -> (&mut std::collections::HashMap<usize, usize>, usize) {
+        match node {
+            DiagnosticNode::Statement(node) => (&mut self.statements, node as *const Stmt as usize),
+            DiagnosticNode::Expression(node) => {
+                (&mut self.expressions, node as *const Expr as usize)
+            }
+            DiagnosticNode::Pattern(node) => (&mut self.patterns, node as *const Pattern as usize),
+        }
+    }
+
+    fn lookup(&self, kind: u8, key: usize) -> Option<usize> {
+        let value = match kind {
+            0 => self.statements.get(&key),
+            1 => self.expressions.get(&key),
+            _ => self.patterns.get(&key),
+        };
+        value.copied().or_else(|| {
+            self.parent
+                .as_ref()
+                .and_then(|parent| parent.lookup(kind, key))
+        })
+    }
+    pub(crate) fn statement_ordinal(&self, node: &Stmt) -> Option<usize> {
+        self.lookup(0, node as *const Stmt as usize)
+    }
+    pub(crate) fn expression_ordinal(&self, node: &Expr) -> Option<usize> {
+        self.lookup(1, node as *const Expr as usize)
+    }
+    pub(crate) fn pattern_ordinal(&self, node: &Pattern) -> Option<usize> {
+        self.lookup(2, node as *const Pattern as usize)
+    }
+    pub(crate) fn overlay(parent: std::rc::Rc<Self>) -> Self {
+        Self {
+            statements: Default::default(),
+            expressions: Default::default(),
+            patterns: Default::default(),
+            node_count: parent.node_count,
+            parent: Some(parent),
+        }
+    }
+    fn alias_nodes(&mut self, original: Vec<(u8, usize)>, cloned: Vec<(u8, usize)>) {
+        assert_eq!(
+            original.len(),
+            cloned.len(),
+            "compiler clones preserve AST node order"
+        );
+        for ((kind, old), (new_kind, new)) in original.into_iter().zip(cloned) {
+            assert_eq!(kind, new_kind, "compiler clones preserve AST node kinds");
+            if let Some(ordinal) = self.lookup(kind, old) {
+                match kind {
+                    0 => &mut self.statements,
+                    1 => &mut self.expressions,
+                    _ => &mut self.patterns,
+                }
+                .insert(new, ordinal);
+            }
+        }
+    }
+    pub(crate) fn alias_parameters(&mut self, original: &[Param], cloned: &[Param]) {
+        let collect = |parameters: &[Param]| {
+            let mut nodes = Vec::new();
+            visit_parameter_nodes(parameters, &mut |node, _| nodes.push(node.address()));
+            nodes
+        };
+        self.alias_nodes(collect(original), collect(cloned));
+    }
+    pub(crate) fn alias_expression(&mut self, original: &Expr, cloned: &Expr) {
+        let collect = |expression: &Expr| {
+            let mut nodes = Vec::new();
+            visit_expression_nodes(expression, &mut |node, _| nodes.push(node.address()));
+            nodes
+        };
+        self.alias_nodes(collect(original), collect(cloned));
+    }
+    pub(crate) fn alias_statements(&mut self, original: &[Stmt], cloned: &[Stmt]) {
+        let collect = |body: &[Stmt]| {
+            let mut nodes = Vec::new();
+            visit_program_nodes(body, &mut |node, _| nodes.push(node.address()));
+            nodes
+        };
+        self.alias_nodes(collect(original), collect(cloned));
+    }
 }
 
 pub(crate) fn collect_diagnostic_ast_node_ids(body: &[Stmt]) -> DiagnosticAstNodeIds {
-    let mut statements = std::collections::HashMap::new();
-    let mut statement = |node: &Stmt, ordinal| {
-        statements.insert(node as *const Stmt as usize, ordinal);
+    let mut ids = DiagnosticAstNodeIds {
+        statements: Default::default(),
+        expressions: Default::default(),
+        patterns: Default::default(),
+        parent: None,
+        node_count: 0,
     };
+    let count = visit_program_nodes(body, &mut |node, ordinal| {
+        let (table, key) = ids.table(node);
+        table.insert(key, ordinal);
+    });
+    ids.node_count = count;
+    ids
+}
+
+pub(crate) fn visit_program_nodes(
+    body: &[Stmt],
+    visit: &mut dyn FnMut(DiagnosticNode<'_>, usize),
+) -> usize {
+    let mut count = AstNodeVisitor::new(false);
+    count.push(BlueJsAstNodeKind::Script, false);
+    count.statements(body, true);
     let mut visitor = AstNodeVisitor::new(false);
-    visitor.statement_hook = Some(&mut statement);
+    visitor.pattern_base = count.node_count;
+    visitor.node_hook = Some(visit);
     visitor.push(BlueJsAstNodeKind::Script, false);
     visitor.statements(body, true);
-    DiagnosticAstNodeIds { statements }
+    visitor.node_count + visitor.pattern_count
+}
+
+pub(crate) fn visit_expression_nodes(
+    expression: &Expr,
+    visit: &mut dyn FnMut(DiagnosticNode<'_>, usize),
+) {
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.node_hook = Some(visit);
+    visitor.expression(expression);
+}
+
+pub(crate) fn visit_pattern_nodes(
+    pattern: &Pattern,
+    visit: &mut dyn FnMut(DiagnosticNode<'_>, usize),
+) {
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.node_hook = Some(visit);
+    visitor.pattern(pattern);
+}
+
+pub(crate) fn visit_parameter_nodes(
+    parameters: &[Param],
+    visit: &mut dyn FnMut(DiagnosticNode<'_>, usize),
+) {
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.node_hook = Some(visit);
+    for parameter in parameters {
+        visitor.parameter(parameter);
+    }
+}
+
+pub(crate) fn same_expression_source(left: &Expr, right: &Expr) -> bool {
+    if left != right {
+        return false;
+    }
+    let mut sources = Vec::new();
+    let mut collect = |source: &SourceText| sources.push(source.clone());
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.source_hook = Some(&mut collect);
+    visitor.expression(left);
+    let mut index = 0;
+    let mut matches = true;
+    let mut compare = |source: &SourceText| {
+        matches &= sources
+            .get(index)
+            .is_some_and(|left| left.same_source_range(source));
+        index += 1;
+    };
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.source_hook = Some(&mut compare);
+    visitor.expression(right);
+    matches && index == sources.len()
 }
 
 pub(crate) fn visit_statement_tree(statement: &Stmt, visit: &mut dyn FnMut(&Stmt)) {
@@ -59,6 +240,29 @@ pub(crate) fn visit_program_statement_nodes(
     visitor.push(BlueJsAstNodeKind::Script, false);
     visitor.statements(body, true);
     visitor.node_count
+}
+
+pub(crate) fn same_pattern_source(left: &Pattern, right: &Pattern) -> bool {
+    if left != right {
+        return false;
+    }
+    let mut sources = Vec::new();
+    let mut collect = |source: &SourceText| sources.push(source.clone());
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.source_hook = Some(&mut collect);
+    visitor.pattern(left);
+    let mut index = 0;
+    let mut matches = true;
+    let mut compare = |source: &SourceText| {
+        matches &= sources
+            .get(index)
+            .is_some_and(|left| left.same_source_range(source));
+        index += 1;
+    };
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.source_hook = Some(&mut compare);
+    visitor.pattern(right);
+    matches && index == sources.len()
 }
 
 pub(crate) fn same_statement_source(left: &Stmt, right: &Stmt) -> bool {
@@ -85,12 +289,16 @@ pub(crate) fn same_statement_source(left: &Stmt, right: &Stmt) -> bool {
 }
 
 type StatementHook<'a> = &'a mut dyn FnMut(&Stmt, usize);
+type DiagnosticNodeHook<'a> = &'a mut dyn FnMut(DiagnosticNode<'_>, usize);
 
 struct AstNodeVisitor<'a> {
     nodes: Vec<AstNodeDescriptor>,
     node_count: usize,
+    pattern_base: usize,
+    pattern_count: usize,
     record_nodes: bool,
     statement_hook: Option<StatementHook<'a>>,
+    node_hook: Option<DiagnosticNodeHook<'a>>,
     source_hook: Option<&'a mut dyn FnMut(&SourceText)>,
 }
 
@@ -99,8 +307,11 @@ impl AstNodeVisitor<'_> {
         Self {
             nodes: Vec::new(),
             node_count: 0,
+            pattern_base: 0,
+            pattern_count: 0,
             record_nodes,
             statement_hook: None,
+            node_hook: None,
             source_hook: None,
         }
     }
@@ -122,6 +333,9 @@ impl AstNodeVisitor<'_> {
     }
 
     fn statement(&mut self, statement: &Stmt, top_level: bool) {
+        if let Some(hook) = &mut self.node_hook {
+            hook(DiagnosticNode::Statement(statement), self.node_count);
+        }
         if let Some(hook) = &mut self.statement_hook {
             hook(statement, self.node_count);
         }
@@ -231,6 +445,9 @@ impl AstNodeVisitor<'_> {
     }
 
     fn expression(&mut self, expression: &Expr) {
+        if let Some(hook) = &mut self.node_hook {
+            hook(DiagnosticNode::Expression(expression), self.node_count);
+        }
         self.push(BlueJsAstNodeKind::Expression, false);
         match expression {
             Expr::Number(_)
@@ -452,6 +669,13 @@ impl AstNodeVisitor<'_> {
     }
 
     fn pattern(&mut self, pattern: &Pattern) {
+        if let Some(hook) = &mut self.node_hook {
+            hook(
+                DiagnosticNode::Pattern(pattern),
+                self.pattern_base + self.pattern_count,
+            );
+        }
+        self.pattern_count += 1;
         match pattern {
             Pattern::Identifier(_) => {}
             Pattern::Array(elements) => {

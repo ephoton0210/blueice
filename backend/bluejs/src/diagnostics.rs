@@ -86,6 +86,8 @@ pub struct DiagnosticSourceRange {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DiagnosticInstructionOwner {
     pub bytecode_offset: u32,
+    /// Diagnostic inventory index: the public statement/expression AST prefix
+    /// followed by pattern slots. Pattern slots grant no debugger authority.
     pub ast_node_ordinal: Option<u32>,
 }
 
@@ -231,6 +233,12 @@ impl DiagnosticSourceMap {
 }
 
 impl Bytecode {
+    /// Source-node inventory size, including pattern-only diagnostic slots.
+    /// These slots never extend the debugger's executable-AST inventory.
+    pub fn diagnostic_source_node_count(&self) -> usize {
+        self.diagnostic_source_node_count
+    }
+
     pub fn diagnostic_instruction_owners(&self) -> &[DiagnosticInstructionOwner] {
         &self.diagnostic_ast_owners
     }

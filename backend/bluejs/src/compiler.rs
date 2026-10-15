@@ -227,6 +227,8 @@ fn compile_with_limit_and_mode(
         compiler.diagnostic_ast_ids = Some(std::rc::Rc::new(
             crate::program_debug::ast_ids::collect_diagnostic_ast_node_ids(&program.body),
         ));
+        compiler.bytecode.diagnostic_source_node_count =
+            compiler.diagnostic_ast_ids.as_ref().unwrap().node_count;
     }
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;

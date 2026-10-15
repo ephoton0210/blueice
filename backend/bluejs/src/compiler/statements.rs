@@ -553,8 +553,8 @@ impl Compiler {
         self.diagnostic_owner = self
             .diagnostic_ast_ids
             .as_ref()
-            .and_then(|ids| ids.statements.get(&(statement as *const Stmt as usize)))
-            .map(|ordinal| self.metadata_index(*ordinal))
+            .and_then(|ids| ids.statement_ordinal(statement))
+            .map(|ordinal| self.metadata_index(ordinal))
             .transpose()?;
         let result = self.statement_inner(statement, declarations_allowed);
         self.diagnostic_owner = previous;
@@ -1472,6 +1472,23 @@ impl Compiler {
         pattern: &Pattern,
         kind: DeclKind,
     ) -> Result<(), CompileError> {
+        let previous = self.diagnostic_owner;
+        self.diagnostic_owner = self
+            .diagnostic_ast_ids
+            .as_ref()
+            .and_then(|ids| ids.pattern_ordinal(pattern))
+            .map(|ordinal| self.metadata_index(ordinal))
+            .transpose()?;
+        let result = self.bind_pattern_with_owner(pattern, kind);
+        self.diagnostic_owner = previous;
+        result
+    }
+
+    fn bind_pattern_with_owner(
+        &mut self,
+        pattern: &Pattern,
+        kind: DeclKind,
+    ) -> Result<(), CompileError> {
         match pattern {
             // A `var` binding inside `with` is resolved through the object
             // environments first (ResolveBinding), so its value can land on a
@@ -1673,6 +1690,23 @@ impl Compiler {
         expression: &Expr,
         inferred_name: Option<&str>,
     ) -> Result<(), CompileError> {
+        let previous = self.diagnostic_owner;
+        self.diagnostic_owner = self
+            .diagnostic_ast_ids
+            .as_ref()
+            .and_then(|ids| ids.expression_ordinal(expression))
+            .map(|ordinal| self.metadata_index(ordinal))
+            .transpose()?;
+        let result = self.expression_with_name_inner(expression, inferred_name);
+        self.diagnostic_owner = previous;
+        result
+    }
+
+    fn expression_with_name_inner(
+        &mut self,
+        expression: &Expr,
+        inferred_name: Option<&str>,
+    ) -> Result<(), CompileError> {
         match expression {
             Expr::Parenthesized(expression) => self.expression_with_name(expression, inferred_name),
             Expr::Function(function) if function.name.is_none() && inferred_name.is_some() => {
@@ -1687,23 +1721,7 @@ impl Compiler {
                 is_async,
                 source_text,
             } if inferred_name.is_some() => {
-                let body = match body {
-                    ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
-                    ArrowBody::Block(body) => body.clone(),
-                };
-                self.function_named(
-                    &Function {
-                        name: None,
-                        params: params.clone(),
-                        body,
-                        generator: false,
-                        is_async: *is_async,
-                        source_text: source_text.clone(),
-                    },
-                    true,
-                    inferred_name,
-                    false,
-                )
+                self.arrow_function(params, body, *is_async, source_text, inferred_name)
             }
             _ => self.expression(expression),
         }

@@ -13,7 +13,12 @@ impl Parser {
         let statement = self.parse_statement_inner()?;
         let end = self.positions[self.pos];
         let children = self.diagnostic_statements.as_mut().unwrap().split_off(base);
-        let record = diagnostic_spans::CapturedStatement::new(&statement, (start, end), children);
+        let record = diagnostic_spans::CapturedStatement::new(
+            &statement,
+            (start, end),
+            children,
+            &mut self.diagnostic_capture_bytes,
+        )?;
         self.diagnostic_statements.as_mut().unwrap().push(record);
         Ok(statement)
     }

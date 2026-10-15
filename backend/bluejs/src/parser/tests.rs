@@ -200,7 +200,7 @@ fn advance_stops_at_the_terminal_token() {
 #[test]
 fn template_placeholder_parser_rejects_tokens_after_one_expression() {
     let error = Parser::new("value")
-        .parse_template_placeholder("value; other")
+        .parse_template_placeholder("value; other", None)
         .expect_err("a placeholder contains exactly one expression");
     assert!(
         error
@@ -212,14 +212,18 @@ fn template_placeholder_parser_rejects_tokens_after_one_expression() {
 
 #[test]
 fn template_placeholder_errors_propagate_through_template_construction() {
-    let parser = Parser::new("value");
+    let mut parser = Parser::new("value");
     let direct = parser
-        .parse_template_placeholder("value +")
+        .parse_template_placeholder("value +", None)
         .expect_err("an incomplete placeholder is invalid");
     assert!(direct.known_syntax, "{direct:?}");
 
     let template = parser
-        .parse_template(vec!["head".into(), "tail".into()], vec!["value +".into()])
+        .parse_template(
+            vec!["head".into(), "tail".into()],
+            vec!["value +".into()],
+            Vec::new(),
+        )
         .expect_err("a template cannot contain an incomplete placeholder");
     assert!(template.known_syntax, "{template:?}");
 }

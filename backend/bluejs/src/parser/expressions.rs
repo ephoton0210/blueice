@@ -6,6 +6,10 @@ use super::*;
 
 impl Parser {
     pub(super) fn parse_expression(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_expression_inner)
+    }
+
+    fn parse_expression_inner(&mut self) -> Result<Expr, ParseError> {
         // `Expression` is a left-associative sequence of assignment
         // expressions. Callers which require AssignmentExpression
         // (arguments, initializers, patterns, and conditional arms) stay on
@@ -26,6 +30,10 @@ impl Parser {
     /// operand of any operator tier below assignment (`3 + yield 4`), which
     /// is why it is parsed here and not as a primary expression.
     fn parse_yield_expression(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_yield_expression_inner)
+    }
+
+    fn parse_yield_expression_inner(&mut self) -> Result<Expr, ParseError> {
         self.advance();
         // YieldExpression forbids a LineTerminator before `*`. It
         // cannot instead be parsed as a multiplicative expression:
@@ -55,6 +63,10 @@ impl Parser {
     }
 
     pub(super) fn parse_assignment(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_assignment_inner)
+    }
+
+    fn parse_assignment_inner(&mut self) -> Result<Expr, ParseError> {
         let left = if let Some(arrow) = self.try_parse_arrow_function()? {
             arrow
         } else {
@@ -215,6 +227,10 @@ impl Parser {
     /// destructuring pattern's brackets the no-in restriction of an
     /// enclosing `for` head does not apply (`for ([x = 'a' in {}] of y)`).
     fn parse_assignment_allowing_in(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_assignment_allowing_in_inner)
+    }
+
+    fn parse_assignment_allowing_in_inner(&mut self) -> Result<Expr, ParseError> {
         let saved_no_in = self.no_in;
         self.no_in = false;
         let expression = self.parse_assignment();
@@ -322,6 +338,10 @@ impl Parser {
     }
 
     pub(super) fn parse_conditional(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_conditional_inner)
+    }
+
+    fn parse_conditional_inner(&mut self) -> Result<Expr, ParseError> {
         let test = self.parse_nullish()?;
         if self.eat_punct(Punct::Question) {
             // `in` is allowed again between `?` and `:` even inside a
@@ -345,6 +365,12 @@ impl Parser {
     }
 
     pub(super) fn parse_nullish(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_nullish_inner)
+    }
+
+    fn parse_nullish_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let (mut left, logical) = self.parse_logical_or()?;
         while self.eat_punct(Punct::QuestionQuestion) {
             if logical {
@@ -359,11 +385,24 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
         }
         Ok(left)
     }
 
     pub(super) fn parse_logical_or(&mut self) -> Result<(Expr, bool), ParseError> {
+        let base = self.diagnostic_expressions.as_ref().map(Vec::len);
+        let start = self.token_start();
+        let result = self.parse_logical_or_inner()?;
+        if let Some(base) = base {
+            self.capture_expression(&result.0, base, start)?;
+        }
+        Ok(result)
+    }
+
+    fn parse_logical_or_inner(&mut self) -> Result<(Expr, bool), ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let (mut left, mut logical) = self.parse_logical_and()?;
         while self.eat_punct(Punct::OrOr) {
             let (right, _) = self.parse_logical_and()?;
@@ -372,12 +411,25 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
             logical = true;
         }
         Ok((left, logical))
     }
 
     pub(super) fn parse_logical_and(&mut self) -> Result<(Expr, bool), ParseError> {
+        let base = self.diagnostic_expressions.as_ref().map(Vec::len);
+        let start = self.token_start();
+        let result = self.parse_logical_and_inner()?;
+        if let Some(base) = base {
+            self.capture_expression(&result.0, base, start)?;
+        }
+        Ok(result)
+    }
+
+    fn parse_logical_and_inner(&mut self) -> Result<(Expr, bool), ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let mut left = self.parse_bitwise_or()?;
         let mut logical = false;
         while self.eat_punct(Punct::AndAnd) {
@@ -387,12 +439,19 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
             logical = true;
         }
         Ok((left, logical))
     }
 
     pub(super) fn parse_bitwise_or(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_bitwise_or_inner)
+    }
+
+    fn parse_bitwise_or_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let mut left = self.parse_bitwise_xor()?;
         while self.eat_punct(Punct::Or) {
             let right = self.parse_bitwise_xor()?;
@@ -401,11 +460,18 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
         }
         Ok(left)
     }
 
     pub(super) fn parse_bitwise_xor(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_bitwise_xor_inner)
+    }
+
+    fn parse_bitwise_xor_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let mut left = self.parse_bitwise_and()?;
         while self.eat_punct(Punct::Xor) {
             let right = self.parse_bitwise_and()?;
@@ -414,11 +480,18 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
         }
         Ok(left)
     }
 
     pub(super) fn parse_bitwise_and(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_bitwise_and_inner)
+    }
+
+    fn parse_bitwise_and_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let mut left = self.parse_equality()?;
         while self.eat_punct(Punct::And) {
             let right = self.parse_equality()?;
@@ -427,11 +500,18 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
         }
         Ok(left)
     }
 
     pub(super) fn parse_equality(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_equality_inner)
+    }
+
+    fn parse_equality_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let mut left = self.parse_relational()?;
         loop {
             let op = if self.check_punct(Punct::EqEq) {
@@ -452,11 +532,18 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
         }
         Ok(left)
     }
 
     pub(super) fn parse_relational(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_relational_inner)
+    }
+
+    fn parse_relational_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         // `#name in object` is a distinct relational-expression production:
         // a private identifier cannot otherwise begin an expression.  Keep
         // its RHS at ShiftExpression precedence, matching ordinary `in`.
@@ -502,11 +589,18 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
         }
         Ok(left)
     }
 
     pub(super) fn parse_shift(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_shift_inner)
+    }
+
+    fn parse_shift_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let mut left = self.parse_additive()?;
         loop {
             let op = if self.check_punct(Punct::ShiftLeft) {
@@ -525,11 +619,18 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
         }
         Ok(left)
     }
 
     pub(super) fn parse_additive(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_additive_inner)
+    }
+
+    fn parse_additive_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let mut left = self.parse_multiplicative()?;
         loop {
             let op = if self.check_punct(Punct::Plus) {
@@ -546,11 +647,18 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
         }
         Ok(left)
     }
 
     pub(super) fn parse_multiplicative(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_multiplicative_inner)
+    }
+
+    fn parse_multiplicative_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let mut left = self.parse_exponentiation()?;
         loop {
             let op = if self.check_punct(Punct::Star) {
@@ -569,11 +677,16 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
             };
+            self.capture_expression(&left, diagnostic_base, diagnostic_start)?;
         }
         Ok(left)
     }
 
     pub(super) fn parse_exponentiation(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_exponentiation_inner)
+    }
+
+    fn parse_exponentiation_inner(&mut self) -> Result<Expr, ParseError> {
         // Exponentiation's left operand is an UpdateExpression, not a
         // UnaryExpression. This rejects `-x ** y` while still admitting a
         // unary expression on the right (`x ** -y`) and update expressions
@@ -611,6 +724,10 @@ impl Parser {
     }
 
     pub(super) fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_unary_inner)
+    }
+
+    fn parse_unary_inner(&mut self) -> Result<Expr, ParseError> {
         if self.eat_punct(Punct::Bang) {
             return Ok(Expr::Unary {
                 op: UnaryOp::Not,
@@ -675,10 +792,18 @@ impl Parser {
     /// cannot produce one directly. Parenthesized yields remain available
     /// through the assignment parser where the grammar permits them.
     pub(super) fn parse_unary_operand(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_unary_operand_inner)
+    }
+
+    fn parse_unary_operand_inner(&mut self) -> Result<Expr, ParseError> {
         self.parse_unary()
     }
 
     pub(super) fn parse_update_expression(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_update_expression_inner)
+    }
+
+    fn parse_update_expression_inner(&mut self) -> Result<Expr, ParseError> {
         let op = if self.eat_punct(Punct::PlusPlus) {
             Some(UpdateOp::Inc)
         } else if self.eat_punct(Punct::MinusMinus) {
@@ -701,6 +826,10 @@ impl Parser {
     }
 
     pub(super) fn parse_postfix(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_postfix_inner)
+    }
+
+    fn parse_postfix_inner(&mut self) -> Result<Expr, ParseError> {
         let expr = self.parse_lhs_expression()?;
         // Postfix `++`/`--` is forbidden across a line terminator
         // (ASI); see `token.rs`'s `SpannedToken` doc comment.
@@ -732,6 +861,12 @@ impl Parser {
     }
 
     pub(super) fn parse_lhs_expression(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_lhs_expression_inner)
+    }
+
+    fn parse_lhs_expression_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let mut expr = if self.check_keyword(Keyword::New)
             && matches!(self.peek_at(1), Token::Punct(Punct::Dot))
             && matches!(self.peek_at(2), Token::Identifier(name) if name == "target")
@@ -756,6 +891,7 @@ impl Parser {
                         callee: Box::new(expr),
                         args,
                     };
+                    self.capture_expression(&expr, diagnostic_base, diagnostic_start)?;
                     continue;
                 }
                 if self.tokenizer.at_template(self.positions[self.pos]) {
@@ -806,6 +942,7 @@ impl Parser {
             } else {
                 break;
             }
+            self.capture_expression(&expr, diagnostic_base, diagnostic_start)?;
         }
         Ok(expr)
     }
@@ -819,14 +956,17 @@ impl Parser {
                 "an optional chain cannot be used as a template tag",
             )));
         }
+        let ranges = if self.diagnostic_statements.is_some() {
+            self.tokenizer
+                .template_expression_ranges(self.positions[self.pos])?
+        } else {
+            Vec::new()
+        };
         let (raw, cooked, sources) = self
             .tokenizer
             .tagged_template_at(self.positions[self.pos])?;
         self.rescan_suffix();
-        let expressions = sources
-            .iter()
-            .map(|source| self.parse_template_placeholder(source))
-            .collect::<Result<Vec<_>, _>>()?;
+        let expressions = self.parse_template_expressions(&sources, &ranges)?;
         Ok(Expr::TaggedTemplate {
             tag: Box::new(tag),
             raw,
@@ -845,6 +985,18 @@ impl Parser {
     /// covers every realistic `new` usage a hand-written DOM script
     /// makes without needing the spec's full grammar distinction.
     pub(super) fn parse_new_expression(&mut self) -> Result<Expr, ParseError> {
+        let Some(base) = self.diagnostic_expressions.as_ref().map(Vec::len) else {
+            return self.parse_new_expression_inner();
+        };
+        let start = self.tokens[self.pos - 1].start;
+        let expression = self.parse_new_expression_inner()?;
+        self.capture_expression(&expression, base, start)?;
+        Ok(expression)
+    }
+
+    fn parse_new_expression_inner(&mut self) -> Result<Expr, ParseError> {
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         // `new` takes a NewExpression/MemberExpression operand.  An
         // AwaitExpression is only admitted with explicit parentheses, as in
         // `new (await Constructor)`; `new await` is an early SyntaxError.
@@ -891,6 +1043,7 @@ impl Parser {
             } else {
                 break;
             }
+            self.capture_expression(&callee, diagnostic_base, diagnostic_start)?;
         }
         // `new` takes a MemberExpression, which has no OptionalChain form:
         // `new a?.b()` and `new a?.()` are early errors.
@@ -914,6 +1067,10 @@ impl Parser {
     /// IdentifierReference, and neither `import` nor the words following its
     /// dot may contain a Unicode escape (they are terminal symbols).
     fn parse_import_expression(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_import_expression_inner)
+    }
+
+    fn parse_import_expression_inner(&mut self) -> Result<Expr, ParseError> {
         debug_assert!(self.check_identifier("import"));
         if self.current_identifier_escaped() {
             return Err(self.syntax_error("the import keyword cannot contain an escape"));
@@ -1034,6 +1191,10 @@ impl Parser {
     }
 
     pub(super) fn parse_primary(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_primary_inner)
+    }
+
+    fn parse_primary_inner(&mut self) -> Result<Expr, ParseError> {
         match self.peek().clone() {
             Token::Punct(Punct::Slash | Punct::SlashAssign) => {
                 let (pattern, flags) = self.tokenizer.regexp_at(self.positions[self.pos])?;
@@ -1071,8 +1232,14 @@ impl Parser {
                 quasis,
                 raw_expressions,
             } => {
+                let ranges = if self.diagnostic_statements.is_some() {
+                    self.tokenizer
+                        .template_expression_ranges(self.positions[self.pos])?
+                } else {
+                    Vec::new()
+                };
                 self.advance();
-                self.parse_template(quasis, raw_expressions)
+                self.parse_template(quasis, raw_expressions, ranges)
             }
             Token::Keyword(Keyword::True) => {
                 self.advance();
@@ -1211,6 +1378,10 @@ impl Parser {
     }
 
     pub(super) fn parse_array_literal(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_array_literal_inner)
+    }
+
+    fn parse_array_literal_inner(&mut self) -> Result<Expr, ParseError> {
         // `parse_primary` dispatches here only for `[`. The loop checks `]`.
         self.advance();
         let mut elements = Vec::new();
@@ -1234,6 +1405,10 @@ impl Parser {
     }
 
     pub(super) fn parse_object_literal(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_object_literal_inner)
+    }
+
+    fn parse_object_literal_inner(&mut self) -> Result<Expr, ParseError> {
         // `parse_primary` dispatches here only for `{`. The loop checks `}`.
         self.advance();
         let mut props = Vec::new();

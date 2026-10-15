@@ -97,6 +97,19 @@ impl Compiler {
     }
 
     pub(super) fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
+        let previous = self.diagnostic_owner;
+        self.diagnostic_owner = self
+            .diagnostic_ast_ids
+            .as_ref()
+            .and_then(|ids| ids.expression_ordinal(expr))
+            .map(|ordinal| self.metadata_index(ordinal))
+            .transpose()?;
+        let result = self.expression_with_owner(expr);
+        self.diagnostic_owner = previous;
+        result
+    }
+
+    fn expression_with_owner(&mut self, expr: &Expr) -> Result<(), CompileError> {
         let start = self.offset();
         self.expression_plain(expr)?;
         if let (Some(statement_index), Expr::Identifier(name)) =
@@ -1006,21 +1019,7 @@ impl Compiler {
                 is_async,
                 source_text,
             } => {
-                let body = match body {
-                    ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
-                    ArrowBody::Block(body) => body.clone(),
-                };
-                self.function(
-                    &Function {
-                        name: None,
-                        params: params.clone(),
-                        body,
-                        generator: false,
-                        is_async: *is_async,
-                        source_text: source_text.clone(),
-                    },
-                    true,
-                )?;
+                self.arrow_function(params, body, *is_async, source_text, None)?;
             }
         }
         Ok(())

@@ -248,6 +248,11 @@ fn uncaught_page_errors_keep_the_throwing_script_source_coordinates() {
             "\nfunction* fail(){\n  try {\n    throw 'position-probe';\n  } finally { yield 1; try { throw 'caught'; } catch {} }\n}\nvar suspended=fail(); suspended.next();\n</script><script>\ntry { throw 'ambient'; } catch {} suspended.next();\n",
             "4:5",
         ),
+        ("expression operand", "var value=(\n  1 +\n  missing);", "3:3"),
+        ("default parameter", "function fail(value=\n  missing){}fail();", "2:3"),
+        ("destructuring parameter", "function fail(\n  {value}\n){}fail(null);", "2:3"),
+        ("named arrow", "var fail=()=> (\n  missing);fail();", "2:3"),
+        ("template placeholder", "var value=`${ /* } */\n  missing}`;", "2:3"),
     ] {
         let location = observed_error_source_location(source);
         if !location.starts_with("location:blueice://page/tab-1/document-")

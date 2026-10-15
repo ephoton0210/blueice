@@ -6,6 +6,48 @@ use super::*;
 use crate::bytecode::decoration as deco;
 
 impl Compiler {
+    pub(super) fn arrow_function(
+        &mut self,
+        params: &[Param],
+        body: &ArrowBody,
+        is_async: bool,
+        source_text: &SourceText,
+        inferred_name: Option<&str>,
+    ) -> Result<(), CompileError> {
+        let original_body = body;
+        let body = match body {
+            ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
+            ArrowBody::Block(body) => body.clone(),
+        };
+        let function = Function {
+            name: None,
+            params: params.to_vec(),
+            body,
+            generator: false,
+            is_async,
+            source_text: source_text.clone(),
+        };
+        let previous = self.diagnostic_ast_ids.clone();
+        if let Some(ids) = &previous {
+            let mut aliases =
+                crate::program_debug::ast_ids::DiagnosticAstNodeIds::overlay(ids.clone());
+            aliases.alias_parameters(params, &function.params);
+            match original_body {
+                ArrowBody::Expr(expression) => {
+                    let Stmt::Return(Some(cloned)) = &function.body[0] else {
+                        unreachable!("expression arrow lowers to one return")
+                    };
+                    aliases.alias_expression(expression, cloned);
+                }
+                ArrowBody::Block(body) => aliases.alias_statements(body, &function.body),
+            }
+            self.diagnostic_ast_ids = Some(std::rc::Rc::new(aliases));
+        }
+        let result = self.function_named(&function, true, inferred_name, false);
+        self.diagnostic_ast_ids = previous;
+        result
+    }
+
     pub(super) fn function(
         &mut self,
         function: &Function,

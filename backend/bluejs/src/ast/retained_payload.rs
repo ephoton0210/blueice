@@ -15,6 +15,7 @@ use std::collections::HashSet;
 #[derive(Default)]
 struct CountContext {
     source_texts: HashSet<usize>,
+    skip_shared_source_text: bool,
 }
 
 trait HeapPayload {
@@ -92,6 +93,9 @@ impl HeapPayload for BigInt {
 
 impl HeapPayload for SourceText {
     fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+        if context.skip_shared_source_text {
+            return Some(0);
+        }
         let Some(text) = &self.text else {
             return Some(0);
         };
@@ -102,6 +106,16 @@ impl HeapPayload for SourceText {
         })
     }
 }
+
+macro_rules! diagnostic_clone_payload {
+    ($($node:ty),*) => {$(impl $node {
+        pub(crate) fn diagnostic_clone_payload_bytes(&self) -> Option<usize> {
+            let mut context=CountContext {skip_shared_source_text:true,..Default::default()};
+            std::mem::size_of::<Self>().checked_add(self.heap_payload(&mut context)?)
+        }
+    })*};
+}
+diagnostic_clone_payload!(Stmt, Expr, Pattern);
 
 impl Program {
     pub fn owned_heap_payload_bytes(&self) -> Option<usize> {

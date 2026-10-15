@@ -75,6 +75,10 @@ pub struct ParsedStatementSpan {
     pub end_byte: usize,
 }
 
+/// A diagnostic range uses the same byte representation as a statement span,
+/// with its index defined by the separate diagnostic source inventory.
+pub type ParsedDiagnosticSpan = ParsedStatementSpan;
+
 /// An identifier expression's exact source token, captured when the parser
 /// constructs the expression rather than guessed from a later text search.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,7 +148,29 @@ pub fn parse_with_diagnostic_spans(
 ) -> Result<(Program, Vec<Option<ParsedStatementSpan>>), ParseError> {
     let escaped = crate::source_encoding::escape(source);
     let (program, _, _, spans) =
-        parse_encoded_script_diagnostics(&escaped, SyntaxEdition::EsNext, false, true)?;
+        parse_encoded_script_diagnostics(&escaped, SyntaxEdition::EsNext, false, true, false)?;
+    let source_bytes = crate::source_encoding::escaped_character_source_bytes(source);
+    let spans = spans
+        .into_iter()
+        .map(|span| {
+            span.map(|(start, end)| ParsedStatementSpan {
+                start_byte: source_bytes[start],
+                end_byte: source_bytes[end],
+            })
+        })
+        .collect();
+    Ok((program, spans))
+}
+
+/// Diagnostic statement/expression spans retain the public executable-AST
+/// prefix. Pattern spans follow that prefix in pattern preorder, and carry
+/// no debugger safe-point authority.
+pub fn parse_with_diagnostic_node_spans(
+    source: &str,
+) -> Result<(Program, Vec<Option<ParsedDiagnosticSpan>>), ParseError> {
+    let escaped = crate::source_encoding::escape(source);
+    let (program, _, _, spans) =
+        parse_encoded_script_diagnostics(&escaped, SyntaxEdition::EsNext, false, true, true)?;
     let source_bytes = crate::source_encoding::escaped_character_source_bytes(source);
     let spans = spans
         .into_iter()
@@ -188,7 +214,7 @@ fn parse_encoded_script(
     edition: SyntaxEdition,
     capture_spans: bool,
 ) -> Result<EncodedScriptWithDebugSpans, ParseError> {
-    parse_encoded_script_diagnostics(source, edition, capture_spans, false)
+    parse_encoded_script_diagnostics(source, edition, capture_spans, false, false)
         .map(|(program, spans, identifiers, _)| (program, spans, identifiers))
 }
 
@@ -197,10 +223,13 @@ fn parse_encoded_script_diagnostics(
     edition: SyntaxEdition,
     capture_spans: bool,
     capture_diagnostics: bool,
+    capture_nodes: bool,
 ) -> Result<EncodedScriptWithDiagnostics, ParseError> {
     let mut parser = Parser::new_script(source);
     parser.capture_debug_identifiers = capture_spans;
     parser.diagnostic_statements = capture_diagnostics.then(Vec::new);
+    parser.diagnostic_expressions = capture_nodes.then(Vec::new);
+    parser.diagnostic_patterns = capture_nodes.then(Vec::new);
     parser.select_edition(edition)?;
     let mut body = Vec::new();
     let mut spans = Vec::new();
@@ -233,6 +262,14 @@ fn parse_encoded_script_diagnostics(
             },
         );
         diagnostic_spans.resize(count, None);
+        if capture_nodes {
+            diagnostic_spans::finish_nodes(
+                &program.body,
+                parser.diagnostic_expressions.take().unwrap(),
+                parser.diagnostic_patterns.take().unwrap(),
+                &mut diagnostic_spans,
+            );
+        }
     }
     Ok((
         program,
@@ -539,6 +576,9 @@ struct Parser {
     capture_debug_identifiers: bool,
     debug_identifier_spans: Vec<(usize, usize, String)>,
     diagnostic_statements: Option<Vec<diagnostic_spans::CapturedStatement>>,
+    diagnostic_expressions: Option<Vec<diagnostic_spans::CapturedExpression>>,
+    diagnostic_patterns: Option<Vec<diagnostic_spans::CapturedPattern>>,
+    diagnostic_capture_bytes: usize,
     /// Set while parsing a `for`-loop head's init clause, so the
     /// relational-expression tier refuses to consume a bare `in` as a
     /// binary operator there -- see this module's doc comment.
@@ -608,6 +648,9 @@ impl Parser {
             capture_debug_identifiers: false,
             debug_identifier_spans: Vec::new(),
             diagnostic_statements: None,
+            diagnostic_expressions: None,
+            diagnostic_patterns: None,
+            diagnostic_capture_bytes: 0,
             no_in: false,
             generator_depth: 0,
             async_depth: 0,
@@ -1037,8 +1080,19 @@ impl Parser {
     /// just that text, but it inherits the enclosing function's context so
     /// that `yield`, `await` and strict-only restrictions mean inside the
     /// placeholder what they mean around the template.
-    fn parse_template_placeholder(&self, source: &str) -> Result<Expr, ParseError> {
+    fn parse_template_placeholder(
+        &mut self,
+        source: &str,
+        source_start: Option<usize>,
+    ) -> Result<Expr, ParseError> {
         let mut parser = Parser::new(source);
+        if source_start.is_some() {
+            parser.diagnostic_statements = self.diagnostic_statements.as_ref().map(|_| Vec::new());
+            parser.diagnostic_expressions =
+                self.diagnostic_expressions.as_ref().map(|_| Vec::new());
+            parser.diagnostic_patterns = self.diagnostic_patterns.as_ref().map(|_| Vec::new());
+            parser.diagnostic_capture_bytes = self.diagnostic_capture_bytes;
+        }
         parser.edition = self.edition;
         parser.generator_depth = self.generator_depth;
         parser.async_depth = self.async_depth;
@@ -1054,22 +1108,60 @@ impl Parser {
             self.edition,
             self.function_depth != 0 || self.async_depth != 0 || self.generator_depth != 0,
         )?;
+        if let Some(offset) = source_start {
+            self.diagnostic_capture_bytes = parser.diagnostic_capture_bytes;
+            macro_rules! merge {
+                ($field:ident) => {
+                    if let (Some(target), Some(mut records)) =
+                        (&mut self.$field, parser.$field.take())
+                    {
+                        for record in &mut records {
+                            record.shift(offset);
+                        }
+                        target.extend(records);
+                    }
+                };
+            }
+            merge!(diagnostic_statements);
+            merge!(diagnostic_expressions);
+            merge!(diagnostic_patterns);
+        }
         Ok(expr)
     }
 
     fn parse_template(
-        &self,
+        &mut self,
         quasis: Vec<crate::JsString>,
         raw_expressions: Vec<String>,
+        ranges: Vec<(usize, usize)>,
     ) -> Result<Expr, ParseError> {
-        let expressions = raw_expressions
-            .iter()
-            .map(|src| self.parse_template_placeholder(src))
-            .collect::<Result<Vec<_>, _>>()?;
+        let expressions = self.parse_template_expressions(&raw_expressions, &ranges)?;
         Ok(Expr::Template {
             quasis,
             expressions,
         })
+    }
+
+    fn parse_template_expressions(
+        &mut self,
+        sources: &[String],
+        ranges: &[(usize, usize)],
+    ) -> Result<Vec<Expr>, ParseError> {
+        if self.diagnostic_statements.is_some()
+            && (sources.len() != ranges.len()
+                || sources.iter().zip(ranges).any(|(source, (start, end))| {
+                    end.checked_sub(*start) != Some(source.chars().count())
+                }))
+        {
+            return Err(self.error("diagnostic template ranges do not match lexer source"));
+        }
+        sources
+            .iter()
+            .enumerate()
+            .map(|(index, source)| {
+                self.parse_template_placeholder(source, ranges.get(index).map(|range| range.0))
+            })
+            .collect()
     }
 }
 

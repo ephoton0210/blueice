@@ -328,6 +328,53 @@ impl Tokenizer {
         Ok((pattern, flags))
     }
 
+    /// Exact lexer-character ranges of placeholders. Rescanning uses the
+    /// same brace/string/template grammar as tokenization and restores every
+    /// mutable lexer flag before returning.
+    pub(crate) fn template_expression_ranges(
+        &mut self,
+        position: usize,
+    ) -> Result<Vec<(usize, usize)>, LexError> {
+        let state = (
+            self.pos,
+            self.line_start,
+            self.identifier_escaped,
+            self.legacy_octal_escape,
+            self.string_escaped,
+        );
+        let result = (|| {
+            self.pos = position;
+            self.skip_trivia()?;
+            self.advance();
+            let mut ranges = Vec::new();
+            loop {
+                match self.advance() {
+                    Some('`') => return Ok(ranges),
+                    Some('$') if self.peek() == Some('{') => {
+                        self.advance();
+                        let start = self.pos;
+                        self.scan_raw_until_matching_brace()?;
+                        ranges.push((start, self.pos - 1));
+                    }
+                    Some('\\') => {
+                        self.advance()
+                            .ok_or_else(|| LexError::new("unterminated template escape"))?;
+                    }
+                    Some(_) => {}
+                    None => return Err(LexError::new("unterminated template literal")),
+                }
+            }
+        })();
+        (
+            self.pos,
+            self.line_start,
+            self.identifier_escaped,
+            self.legacy_octal_escape,
+            self.string_escaped,
+        ) = state;
+        result
+    }
+
     pub(crate) fn tagged_template_at(
         &mut self,
         position: usize,
@@ -1271,6 +1318,48 @@ impl Tokenizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn template_expression_ranges_preserve_lexer_state_on_success_and_failure() {
+        let mut lexer = Tokenizer::new("\n`a${1}b${{x:'}'}.x}` x");
+        lexer.pos = 22;
+        lexer.line_start = false;
+        lexer.identifier_escaped = true;
+        lexer.legacy_octal_escape = true;
+        lexer.string_escaped = true;
+        let state = (
+            lexer.pos,
+            lexer.line_start,
+            lexer.identifier_escaped,
+            lexer.legacy_octal_escape,
+            lexer.string_escaped,
+        );
+        assert_eq!(
+            lexer.template_expression_ranges(1).unwrap(),
+            vec![(5, 6), (10, 19)]
+        );
+        assert_eq!(
+            (
+                lexer.pos,
+                lexer.line_start,
+                lexer.identifier_escaped,
+                lexer.legacy_octal_escape,
+                lexer.string_escaped
+            ),
+            state
+        );
+        assert!(lexer.template_expression_ranges(lexer.input.len()).is_err());
+        assert_eq!(
+            (
+                lexer.pos,
+                lexer.line_start,
+                lexer.identifier_escaped,
+                lexer.legacy_octal_escape,
+                lexer.string_escaped
+            ),
+            state
+        );
+    }
 
     fn tokens(src: &str) -> Vec<Token> {
         let mut t = Tokenizer::new(src);

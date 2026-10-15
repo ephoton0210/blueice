@@ -84,6 +84,23 @@ impl Parser {
     }
 
     pub(super) fn parse_binding_pattern(&mut self) -> Result<Pattern, ParseError> {
+        let Some(base) = self.diagnostic_patterns.as_ref().map(Vec::len) else {
+            return self.parse_binding_pattern_inner();
+        };
+        let start = self.token_start();
+        let pattern = self.parse_binding_pattern_inner()?;
+        let children = self.diagnostic_patterns.as_mut().unwrap().split_off(base);
+        let record = diagnostic_spans::CapturedPattern::new(
+            &pattern,
+            (start, self.positions[self.pos]),
+            children,
+            &mut self.diagnostic_capture_bytes,
+        )?;
+        self.diagnostic_patterns.as_mut().unwrap().push(record);
+        Ok(pattern)
+    }
+
+    fn parse_binding_pattern_inner(&mut self) -> Result<Pattern, ParseError> {
         match self.peek().clone() {
             Token::Identifier(name) => {
                 self.validate_binding_identifier(&name, self.current_identifier_escaped())?;

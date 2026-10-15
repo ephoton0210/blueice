@@ -93,9 +93,9 @@ pub use page_runtime::{
 pub(crate) use parser::parse_eval;
 pub use parser::{
     parse, parse_module, parse_module_with_debug_spans, parse_module_with_edition,
-    parse_with_debug_spans, parse_with_diagnostic_spans, parse_with_edition,
-    parse_with_top_level_spans, ParseError, ParsedIdentifierSpan, ParsedStatementSpan,
-    SyntaxEdition,
+    parse_with_debug_spans, parse_with_diagnostic_node_spans, parse_with_diagnostic_spans,
+    parse_with_edition, parse_with_top_level_spans, ParseError, ParsedDiagnosticSpan,
+    ParsedIdentifierSpan, ParsedStatementSpan, SyntaxEdition,
 };
 pub use program_abi::{BlueJsProgramV1, BLUEJS_PROGRAM_ABI_V1};
 pub use program_debug::{
