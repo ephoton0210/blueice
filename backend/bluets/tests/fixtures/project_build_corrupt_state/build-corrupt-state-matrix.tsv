@@ -1,0 +1,8 @@
+truncated-cold	dep/tsconfig.json;tsconfig.json
+truncated-noop	-
+truncated-repaired	tsconfig.json
+truncated-reused	-
+foreign-cold	dep/tsconfig.json;tsconfig.json
+foreign-noop	-
+foreign-repaired	tsconfig.json
+foreign-reused	-

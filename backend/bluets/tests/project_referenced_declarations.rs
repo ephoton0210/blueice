@@ -452,7 +452,7 @@ fn legacy_build_state_rebuilds_before_references_are_reused() {
     let bluetsc = Path::new(env!("CARGO_BIN_EXE_bluetsc"));
     let initial = build(bluetsc, &root);
     assert!(initial.status.success(), "{}", report(&initial));
-    let path = root.join("dep/tsconfig.json.bluetsc-build-state.json");
+    let path = root.join("dep/tsconfig.bluetsc.tsbuildinfo");
     let mut state: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     state["version"] = json!(1);
     state.as_object_mut().unwrap().remove("declarations");
@@ -466,6 +466,6 @@ fn legacy_build_state_rebuilds_before_references_are_reused() {
         report(&rebuilt)
     );
     let updated: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-    assert_eq!(updated["version"], 2);
+    assert_eq!(updated["version"], 3);
     fs::remove_dir_all(root).unwrap();
 }

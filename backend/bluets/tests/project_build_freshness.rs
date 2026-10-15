@@ -331,7 +331,7 @@ fn build_state_symlink_is_refused_before_read() {
 
     let marker = outside.join("private-state.json");
     fs::write(&marker, "private-state-sentinel").unwrap();
-    let state = root.join("lib/tsconfig.json.bluetsc-build-state.json");
+    let state = root.join("lib/tsconfig.bluetsc.tsbuildinfo");
     fs::remove_file(&state).unwrap();
     symlink(&marker, &state).unwrap();
     let rejected = Command::new(executable)
@@ -365,7 +365,7 @@ fn forged_build_state_output_cannot_escape_project_root() {
 
     let marker = outside.join("private.js");
     fs::write(&marker, "private-output-sentinel").unwrap();
-    let state_path = root.join("lib/tsconfig.json.bluetsc-build-state.json");
+    let state_path = root.join("lib/tsconfig.bluetsc.tsbuildinfo");
     let mut state: serde_json::Value =
         serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
     state["outputs"] = json!([marker.to_string_lossy()]);

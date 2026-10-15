@@ -615,8 +615,9 @@ not `.tsbuildinfo` bytes.
   - [x] **AC-K12.2.3 Equivalence.** Incremental output is byte-identical to a clean build over a
     randomized edit sequence. *Pass when:* >= 20 steps over >= 3 projects, zero differences.
     - *Evidence:* PLAN.md, "K.12.2.3 Incremental/clean equivalence" (2026-10-15): fixed-seed 24 edits across 3 projects, 25 pinned ordered rows, zero JavaScript/declaration byte differences, K.0 two-crate gate.
-  - [ ] **AC-K12.2.4 Corrupt state.** A truncated or foreign `.tsbuildinfo` falls back to a clean build
+  - [x] **AC-K12.2.4 Corrupt state.** A truncated or foreign `.tsbuildinfo` falls back to a clean build
     with a diagnostic, never a wrong result.
+    - *Evidence:* PLAN.md, "K.12.2.4 Corrupt build state" (2026-10-15): eight pinned ordered rows, wrong-output repair, actual TypeScript-state injection, bounded diagnostic, independent state paths, K.0 two-crate gate.
   - [ ] **AC-K12.2.5 Watch.** `--watch` re-emits on edit, add and delete of a file, debounces bursts, and
     shuts down cleanly. *Pass when:* a bounded-time integration test (no sleeps > 5 s) covers the three
     events and one burst.

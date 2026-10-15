@@ -10689,7 +10689,7 @@ TypeScript 5.9.3, Acorn 8.15.0, and Node 24.21.0, including ordinary and
 ignored oracle tests; Cargo incremental compilation and dev/test debug
 symbols were disabled to bound the regenerated build artifacts.
 
-This state is not TypeScript `.tsbuildinfo`, and the test does not claim exact
+At this stage this state was not TypeScript `.tsbuildinfo`, and the test did not claim exact
 verbose prose or broad imported/package-input invalidation. Referenced
 declaration consumption and error continuation remain K.12.1.4–K.12.1.5;
 cache-key completeness, manifest/symlink invalidation, randomized edit
@@ -10874,3 +10874,38 @@ complete K.0 two-crate test gate exits 0 with pinned TypeScript 5.9.3, Acorn
 8.15.0 and Node 24.21.0, including all ordinary and ignored oracles. Cargo
 incremental compilation and dev/test debug symbols were disabled to bound
 regenerated artifacts.
+
+### K.12.2.4 Corrupt build state (2026-10-15)
+
+The committed two-project fixture runs cold, no-op, corrupted-state repair
+and second no-op for both a truncated file and a foreign-version file. Its
+eight pinned TypeScript 5.9.3 `--build --verbose` rows match BlueTSC's
+ordered rebuilt projects. Before each repair the root JavaScript is poisoned
+to an incorrect value; after repair all JavaScript and declarations are
+byte-identical to a clean build. BlueTSC emits a bounded diagnostic without
+echoing foreign file content, atomically replaces the state, and skips the
+following no-op. A separate test corrupts the dependency's state and verifies
+that it and its dependent rebuild conservatively, then reuse the repaired
+state. The ignored recorder can refresh `build-corrupt-state-matrix.tsv` with
+`BLUEICE_WRITE_PROJECT_CORRUPT_STATE_MATRIX=1`.
+
+BlueTSC now owns `tsconfig.bluetsc.tsbuildinfo`, distinct from TypeScript's
+`tsconfig.tsbuildinfo`. This avoids an observed interoperability defect: when
+BlueTSC temporarily used TypeScript's default name, pinned `tsc` incorrectly
+skipped the project after reading BlueTSC's state. The version-three BlueTSC
+state has an exact producer marker, rejects malformed, oversized or foreign
+content before reuse and still refuses a symlinked state path before read.
+An actual pinned TypeScript 5.9.3 build-info file copied into BlueTSC's state
+path is diagnosed and rebuilt; conversely pinned TypeScript builds normally
+when a BlueTSC state exists alongside its own path. Older BlueTSC JSON state
+files are ignored and receive one safe rebuild under the new name. Pinned
+TypeScript itself crashes on a parseable same-version JSON object missing
+`fileInfos`; the shared matrix therefore uses an older-version foreign file
+that TypeScript handles, while BlueTSC's real-foreign test proves its stricter
+fallback independently.
+
+All seven focused corrupt-state tests pass, as do workspace rustfmt and
+warnings-denied two-crate all-target Clippy. The complete K.0 two-crate test
+gate exits 0 with pinned TypeScript 5.9.3, Acorn 8.15.0 and Node 24.21.0,
+including every ordinary and ignored oracle. Cargo incremental compilation
+and dev/test debug symbols were disabled to bound build artifacts.

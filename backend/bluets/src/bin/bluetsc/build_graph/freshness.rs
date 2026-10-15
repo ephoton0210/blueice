@@ -8,7 +8,9 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-const STATE_VERSION: u8 = 2;
+const STATE_VERSION: u8 = 3;
+const STATE_PRODUCER: &str = "bluetsc";
+const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 
 pub(super) struct Inputs {
     config_fingerprint: String,
@@ -156,6 +158,7 @@ impl Inputs {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct State {
+    producer: String,
     version: u8,
     fingerprint: String,
     outputs: Vec<String>,
@@ -163,21 +166,38 @@ struct State {
     runtimes: BTreeMap<String, String>,
 }
 
+enum LoadedState {
+    Missing,
+    Invalid,
+    Valid(State),
+}
+
 impl State {
-    fn load(project: &Path) -> io::Result<Option<Self>> {
+    fn load(project: &Path) -> io::Result<LoadedState> {
         let path = state_path(project);
         let metadata = match fs::symlink_metadata(&path) {
             Ok(metadata) => metadata,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(LoadedState::Missing);
+            }
             Err(error) => return Err(error),
         };
         if metadata.file_type().is_symlink() || !metadata.is_file() {
             return Err(io::Error::other("build state path is not a regular file"));
         }
+        if metadata.len() > MAX_STATE_BYTES {
+            return Ok(LoadedState::Invalid);
+        }
         let bytes = fs::read(path)?;
-        Ok(serde_json::from_slice::<Self>(&bytes)
-            .ok()
-            .filter(|state| state.version == STATE_VERSION))
+        if bytes.len() as u64 > MAX_STATE_BYTES {
+            return Ok(LoadedState::Invalid);
+        }
+        Ok(match serde_json::from_slice::<Self>(&bytes) {
+            Ok(state) if state.version == STATE_VERSION && state.producer == STATE_PRODUCER => {
+                LoadedState::Valid(state)
+            }
+            _ => LoadedState::Invalid,
+        })
     }
 
     fn outputs_exist(&self, project: &Path) -> bool {
@@ -282,6 +302,7 @@ impl State {
             })
             .collect::<io::Result<BTreeMap<_, _>>>()?;
         let state = Self {
+            producer: STATE_PRODUCER.into(),
             version: STATE_VERSION,
             fingerprint,
             outputs,
@@ -314,11 +335,7 @@ impl State {
 }
 
 fn state_path(project: &Path) -> PathBuf {
-    let name = project
-        .file_name()
-        .expect("canonical config has file name")
-        .to_string_lossy();
-    project.with_file_name(format!("{name}.bluetsc-build-state.json"))
+    project.with_extension("bluetsc.tsbuildinfo")
 }
 
 fn safe_output(project: &Path, output: &str) -> Option<PathBuf> {
@@ -438,7 +455,15 @@ pub(super) fn run(
             }
         };
         let state = match State::load(project) {
-            Ok(state) => state,
+            Ok(LoadedState::Missing) => None,
+            Ok(LoadedState::Invalid) => {
+                eprintln!(
+                    "bluetsc: invalid or foreign .tsbuildinfo for {}; rebuilding project",
+                    graph.display_path(project)
+                );
+                None
+            }
+            Ok(LoadedState::Valid(state)) => Some(state),
             Err(error) => {
                 eprintln!("bluetsc: cannot read build state: {error}");
                 return ExitCode::FAILURE;
